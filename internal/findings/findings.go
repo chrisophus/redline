@@ -89,6 +89,24 @@ type Finding struct {
 	Expected string   `json:"expected,omitempty"` // for surprise ranking
 	Observed string   `json:"observed,omitempty"`
 	Source   Source   `json:"source,omitempty"`
+
+	// Reviewer identifies which external code reviewer (Claude Code, Cursor, Copilot,
+	// etc.) produced this finding. Empty for Redline's own deterministic findings.
+	// When merging, multiple reviewers reporting the same defect provides the
+	// strongest confidence signal that the finding is real.
+	Reviewer string `json:"reviewer,omitempty"`
+
+	// Confidence is the reviewer's own stated confidence level in this finding
+	// (e.g., "high", "medium", "low"). Empty for Redline's deterministic findings.
+	// Useful for ranking when the same defect is reported by multiple reviewers
+	// with different confidence levels.
+	Confidence string `json:"confidence,omitempty"`
+
+	// Reporters records every reviewer that independently reported this defect after
+	// merging findings. Agreement between independent reviewers is the strongest
+	// available confidence signal. This field is populated by Merge() and used by
+	// Rank() to order findings by consensus strength. Must be sorted and deduplicated.
+	Reporters []string `json:"reporters,omitempty"`
 }
 
 // SubstrateState records whether a pane produced findings this run.
