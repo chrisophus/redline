@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -193,6 +194,146 @@ func tail(b []byte, n int) string {
 	return string(b)
 }
 
+// tailRetained is how much of a reviewer's output is kept. Only the tail is
+// ever reported, and a chatty reviewer should not be able to grow this process
+// without bound.
+const tailRetained = 8192
+
+// waitDelay is how long a killed reviewer's process tree has to exit before its
+// output pipes are closed regardless. Long enough that a well-behaved reviewer
+// finishes flushing, short enough that a badly-behaved one does not become
+// Redline's problem.
+const waitDelay = 2 * time.Second
+
+// tailWriter counts everything a reviewer writes, keeps the tail for error
+// reporting, and remembers the last non-empty line so a progress line can show
+// what the reviewer is doing. Written by the process, read by the ticker, hence
+// the mutex.
+type tailWriter struct {
+	mu    sync.Mutex
+	buf   []byte
+	n     int
+	last  string
+	carry string
+}
+
+func (w *tailWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.n += len(p)
+
+	w.buf = append(w.buf, p...)
+	if len(w.buf) > tailRetained {
+		w.buf = w.buf[len(w.buf)-tailRetained:]
+	}
+
+	// Track the last complete line. Partial writes are held in carry until
+	// their newline arrives, so a line split across two writes is not reported
+	// twice as two half lines.
+	w.carry += string(p)
+	if i := strings.LastIndexByte(w.carry, '\n'); i >= 0 {
+		for _, line := range strings.Split(w.carry[:i], "\n") {
+			if trimmed := strings.TrimSpace(line); trimmed != "" {
+				w.last = trimmed
+			}
+		}
+		w.carry = w.carry[i+1:]
+	}
+	return len(p), nil
+}
+
+func (w *tailWriter) progress() (int, string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.n, w.last
+}
+
+func (w *tailWriter) bytes() []byte {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]byte(nil), w.buf...)
+}
+
+// watch reports progress until the returned function is called. It always
+// reports once at zero elapsed, so something appears on screen the moment the
+// reviewer starts rather than one interval later.
+func watch(cfg runConfig, name string, started time.Time, w *tailWriter) func() {
+	if cfg.progress == nil {
+		return func() {}
+	}
+	cfg.progress(Update{Name: name})
+	if cfg.interval <= 0 {
+		return func() {}
+	}
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		t := time.NewTicker(cfg.interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				n, last := w.progress()
+				cfg.progress(Update{
+					Name:    name,
+					Elapsed: time.Since(started),
+					Bytes:   n,
+					Last:    last,
+				})
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-stopped
+	}
+}
+
+func trunc(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
+}
+
+// Update is what a reviewer looks like from outside while it runs.
+//
+// A reviewer can take ten minutes and most of them print nothing until they are
+// finished, so "no output yet" is the normal case rather than a symptom. What
+// distinguishes working from stuck is elapsed time against how much the process
+// has emitted, which is what this carries.
+type Update struct {
+	Name    string
+	Elapsed time.Duration
+	// Bytes is how much the reviewer has written so far. Zero after a long
+	// while is the signal that something is wrong.
+	Bytes int
+	// Last is the most recent non-empty line it wrote, trimmed. Empty when it
+	// has written nothing, or nothing with a newline in it.
+	Last string
+}
+
+// RunOption configures Run. Options rather than parameters so that adding
+// progress reporting did not have to touch every call site.
+type RunOption func(*runConfig)
+
+type runConfig struct {
+	progress func(Update)
+	interval time.Duration
+}
+
+// WithProgress calls fn once when the reviewer starts, then every interval
+// until it exits. A zero or negative interval reports only the start.
+func WithProgress(interval time.Duration, fn func(Update)) RunOption {
+	return func(c *runConfig) {
+		c.progress = fn
+		c.interval = interval
+	}
+}
+
 // Run executes adapter a and reads its findings. The output file path is
 // <outDir>/reviewer-<name>.json. The stale-file removal ensures a reviewer
 // that fails silently cannot pass off a previous run's findings as this one's.
@@ -203,7 +344,11 @@ func tail(b []byte, n int) string {
 // non-zero for findings-found); a non-zero exit with no output file IS.
 // Findings with empty Title are dropped; Severity and Confidence are normalized
 // to lowercase, defaulting invalid values to "warning" and "medium".
-func Run(ctx context.Context, a Adapter, repoDir, target, outDir string) ([]Finding, error) {
+func Run(ctx context.Context, a Adapter, repoDir, target, outDir string, opts ...RunOption) ([]Finding, error) {
+	var cfg runConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 	// The reviewer runs in the tree under review, which is not this process's
 	// working directory. A relative --out would make it write its findings
 	// beside the code it is reviewing, where nothing looks for them.
@@ -228,14 +373,43 @@ func Run(ctx context.Context, a Adapter, repoDir, target, outDir string) ([]Find
 		defer cancel()
 	}
 
-	// Execute the reviewer. Capture stderr for error reporting.
+	// Execute the reviewer, watching its output as it goes. CombinedOutput
+	// would be shorter, but it returns nothing until the process exits, and a
+	// ten-minute wait with an empty terminal is indistinguishable from a hang.
 	execCmd := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
 	execCmd.Dir = repoDir
 	execCmd.Stdin = nil
-	output, execErr := execCmd.CombinedOutput()
+	w := &tailWriter{}
+	execCmd.Stdout = w
+	execCmd.Stderr = w
+	// Without this, the timeout is not a timeout. Killing the reviewer does not
+	// kill anything it spawned, and Wait blocks until every holder of the output
+	// pipe closes it — so a reviewer whose helper outlives it hangs Redline
+	// indefinitely, well past the deadline that was supposed to prevent exactly
+	// that. WaitDelay gives the tree a moment to exit, then closes the pipes and
+	// returns.
+	execCmd.WaitDelay = waitDelay
+
+	started := time.Now()
+	execErr := execCmd.Start()
+	if execErr == nil {
+		stop := watch(cfg, a.Name, started, w)
+		execErr = execCmd.Wait()
+		stop()
+	}
+	output := w.bytes()
 
 	if ctx.Err() == context.DeadlineExceeded {
-		return nil, fmt.Errorf("reviewer %s timed out after %v", a.Name, time.Duration(a.Timeout))
+		// Say what it managed to do before the deadline. "Timed out after 10m"
+		// alone does not distinguish a reviewer that was working from one that
+		// never started.
+		n, last := w.progress()
+		detail := fmt.Sprintf("it wrote %d byte(s)", n)
+		if last != "" {
+			detail += fmt.Sprintf("; last output was %q", trunc(last, 200))
+		}
+		return nil, fmt.Errorf("reviewer %s timed out after %v (%s)",
+			a.Name, time.Duration(a.Timeout), detail)
 	}
 
 	// Read and parse the output file.

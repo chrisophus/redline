@@ -109,6 +109,23 @@ one arrived on the pull request already.
 ./redline review --with none                      # observed evidence only (the default)
 ```
 
+A reviewer can take minutes and most print nothing until they finish, so
+progress goes to stderr: what started, a tick carrying elapsed time, how much
+the reviewer has written, and its own most recent line, then what it produced.
+On a terminal the tick rewrites one line; in a pipe it prints every 30 seconds
+so a log stays readable.
+
+```
+redline: claude is reviewing…
+redline: claude reviewing — 45s elapsed, 2 KB out · reading internal/run/run.go
+redline: claude finished in 1m32s — 6 findings
+```
+
+Elapsed time against bytes written is what separates slow from stuck, which is
+why both are on the line. A reviewer that times out reports what it managed to
+write first, and one that leaves a child process holding its output open is cut
+off rather than allowed to hang past its own deadline.
+
 Findings are grouped by reviewer and never merged across them. Redline cannot
 tell whether two differently worded sentences describe the same defect without
 guessing, and a wrong guess deletes a finding you never learn existed. Exact

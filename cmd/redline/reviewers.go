@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/reviewer"
@@ -62,8 +63,11 @@ func withReviewer(o opts, res *run.Result) error {
 	}
 	tgt := reviewTarget(res.Packet.Target)
 
+	status := newStatus(os.Stderr)
 	for _, a := range chosen {
-		found, runErr := reviewer.Run(context.Background(), a, dir, tgt, o.out)
+		started := time.Now()
+		found, runErr := reviewer.Run(context.Background(), a, dir, tgt, o.out,
+			reviewer.WithProgress(status.interval, status.update))
 		if runErr != nil {
 			// A reviewer that did not run must not read as a reviewer that
 			// found nothing. Recording it as a failed substrate puts it in the
@@ -79,9 +83,10 @@ func withReviewer(o opts, res *run.Result) error {
 				Message:   "the " + a.Name + " review did not run, so nothing it would have caught is in this report",
 				Reason:    runErr.Error(),
 			})
-			fmt.Fprintf(os.Stderr, "redline: reviewer %s failed: %v\n", a.Name, runErr)
+			status.fail(a.Name, time.Since(started), runErr)
 			continue
 		}
+		status.done(a.Name, time.Since(started), len(found))
 
 		res.Report.Substrates = append(res.Report.Substrates, findings.SubstrateStatus{
 			Name:   "reviewer:" + a.Name,
