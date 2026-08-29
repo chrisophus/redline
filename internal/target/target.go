@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/ccason/redline/internal/gitx"
@@ -62,13 +61,14 @@ type Options struct {
 
 // Resolve turns options into a target, fetching from GitHub if needed.
 func Resolve(opts Options) (*Target, error) {
+	if opts.PR != "" && opts.Branch != "" {
+		return nil, fmt.Errorf("pass --pr or --branch, not both")
+	}
 	repo, err := gitx.Open(opts.Dir)
 	if err != nil {
 		return nil, err
 	}
 	switch {
-	case opts.PR != "" && opts.Branch != "":
-		return nil, fmt.Errorf("pass --pr or --branch, not both")
 	case opts.PR != "":
 		return resolvePR(repo, opts)
 	case opts.Branch != "":
@@ -114,7 +114,9 @@ func resolvePR(repo *gitx.Repo, opts Options) (*Target, error) {
 	if base == "" && pr.BaseRefName != "" {
 		base = "origin/" + pr.BaseRefName
 		if !repo.Exists(base) {
-			_ = repo.Fetch("origin", pr.BaseRefName)
+			if err := repo.Fetch("origin", pr.BaseRefName); err != nil {
+				return nil, fmt.Errorf("fetching PR base %s: %w", pr.BaseRefName, err)
+			}
 		}
 	}
 	dir, err := repo.AddWorktree(head)
@@ -168,6 +170,10 @@ func fetchPR(dir, ref string) (*PullRequest, error) {
 
 // Cleanup removes a worktree Redline materialized. Safe to call on a
 // working-tree target, where it does nothing.
+//
+// Runs do not call this: detached worktrees are a cache keyed by repository
+// and commit SHA (see gitx.AddWorktree). Call Cleanup only when you want to
+// drop a worktree you no longer need.
 func (t *Target) Cleanup(repoRoot string) error {
 	if t.Kind == KindWorktree || t.Dir == "" || t.Dir == repoRoot {
 		return nil
@@ -200,12 +206,3 @@ func shortSHA(s string) string {
 }
 
 func itoa(n int) string { return fmt.Sprintf("%d", n) }
-
-// WorktreeRoot is where Redline materializes detached worktrees.
-func WorktreeRoot() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(os.TempDir(), "redline-worktrees")
-	}
-	return filepath.Join(home, ".redline", "worktrees")
-}
