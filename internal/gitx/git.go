@@ -450,6 +450,28 @@ func (r *Repo) diffNoIndex(path string) (string, error) {
 	return "", fmt.Errorf("git diff --no-index: %s", msg)
 }
 
+// File returns one path's contents at a revision. The empty revision, or the
+// Worktree sentinel a pane passes for the head side, reads from disk instead —
+// uncommitted work is part of the change Redline reviews.
+//
+// A missing path is not an error: a spec that does not exist at the base is
+// exactly how an added spec looks, and the caller distinguishes the two by the
+// empty result.
+func (r *Repo) File(rev, path string) string {
+	if rev == "" {
+		buf, err := os.ReadFile(filepath.Join(r.Root, path))
+		if err != nil {
+			return ""
+		}
+		return string(buf)
+	}
+	out, err := r.git("show", rev+":"+path)
+	if err != nil {
+		return ""
+	}
+	return out
+}
+
 // AttrSet returns the paths for which a git attribute is explicitly set.
 //
 // `git check-attr` is asked rather than .gitattributes parsed because the file

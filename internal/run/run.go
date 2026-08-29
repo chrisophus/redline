@@ -12,6 +12,7 @@ import (
 	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/pane"
 	"github.com/ccason/redline/internal/pane/migrations"
+	"github.com/ccason/redline/internal/pane/openapi"
 	"github.com/ccason/redline/internal/target"
 )
 
@@ -99,6 +100,7 @@ func Run(opts Options) (*Result, error) {
 
 	panes := []pane.Pane{
 		&migrations.Pane{Repo: repo, UpstreamRef: resolveRef(repo, opts.Upstream, baseRef), Dir: opts.MigDir},
+		&openapi.Pane{Repo: repo},
 	}
 
 	examined := map[string]bool{}
@@ -268,9 +270,12 @@ func skippedPath(path string, prefixes []string) bool {
 // unbuilt names the check families the catalog specifies but Redline does not
 // yet implement, and the area of the change each would have covered.
 var unbuilt = []struct{ Area, Detail string }{
-	{"api", "checks 10-13 (OpenAPI breaking-change diff, vacuum, spec-vs-handler, observed-vs-declared) are not built"},
+	// The breaking-change diff ships; what is still missing for api files the
+	// pane did not claim is spec linting and any comparison against the code
+	// that serves the contract.
+	{"api", "vacuum spec linting, spec-vs-handler and observed-vs-declared response checks are not built"},
 	{"ui", "checks 15-16 (before/after route screenshots, console and network errors) are not built"},
-	{"tests", "check 14 (diff coverage — added lines no test executes) is not built"},
+	{"tests", "diff coverage — added lines no test executes — is not built"},
 }
 
 // unbuiltPanes reports, per area, that a part of this change falls under a
