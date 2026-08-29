@@ -92,8 +92,12 @@ type view struct {
 	Threads     []packet.Thread
 	Screenshots []Screenshot
 	AgentWalk   bool
-	Commits     int
-	HasReview   bool
+	// UITouched is whether the change moves the interface at all. It decides
+	// how loud the absence of captures should be: no captures on a change that
+	// touches no UI is unremarkable, and on one that does it is a gap.
+	UITouched bool
+	Commits   int
+	HasReview bool
 	// Identity keys browser-local comments to this review, not to the
 	// report.html path — every run overwrites the same file.
 	Identity string
@@ -188,6 +192,7 @@ func buildView(in HTMLInput) view {
 	if p := in.Packet; p != nil {
 		v.Commits = len(p.Commits)
 		v.Threads = p.Threads
+		v.UITouched = p.UITouched
 		if p.Target != nil {
 			v.Subtitle = p.Target.Describe()
 			if p.Target.Head != "" {

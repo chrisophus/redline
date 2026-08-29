@@ -226,6 +226,57 @@ func TestAgentPullRequestUsedWhenRedlineHasNone(t *testing.T) {
 	}
 }
 
+// The UI screens are the one artifact no other tool hands you, so they sit in
+// pass position and their absence is stated in proportion to whether the
+// interface actually moved.
+func TestInterfaceSectionIsInPassPositionAndHonestWhenEmpty(t *testing.T) {
+	uiChange := &packet.Packet{
+		UITouched: true,
+		Files:     []packet.FileChange{{Path: "web/src/App.tsx", Areas: []string{"ui"}}},
+	}
+	rep := &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0}}
+
+	html, err := HTML(HTMLInput{Report: rep, Packet: uiChange})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "touches the interface and no routes were captured") {
+		t.Error("a UI change with no captures must read as a gap")
+	}
+	// Loud, not a footnote.
+	if !strings.Contains(html, `<div class="banner">This change touches the interface`) {
+		t.Error("that gap belongs in a banner, not italic small print")
+	}
+
+	noUI := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+	html, err = HTML(HTMLInput{Report: rep, Packet: noUI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "touches the interface and no routes were captured") {
+		t.Error("a change with no UI files must not claim a UI gap")
+	}
+	if !strings.Contains(html, "absence of looking") {
+		t.Error("even then, absence must not read as a finding of no change")
+	}
+
+	// With captures, the section leads and says whose walk it was.
+	html, err = HTML(HTMLInput{
+		Report:      rep,
+		Packet:      uiChange,
+		Screenshots: []Screenshot{{Route: "/login", After: "data:image/png;base64,AAA", Caption: "form"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "Walked by the reviewing agent") {
+		t.Error("agent captures must be labelled as the agent's work")
+	}
+	if strings.Index(html, `id="interface"`) > strings.Index(html, `id="findings"`) {
+		t.Error("the interface section belongs before the findings")
+	}
+}
+
 func TestFindingsSplitByWhoIsAccountable(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{

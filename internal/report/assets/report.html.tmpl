@@ -201,8 +201,10 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   <figcaption><code class="p">{{.Route}}</code>{{if .Caption}} — {{.Caption}}{{end}}</figcaption>
 </figure>
 {{end}}
+{{else if .UITouched}}
+<div class="banner">This change touches the interface and no routes were captured. Nobody has seen what it looks like — that is a gap in this review, not a clean result.</div>
 {{else}}
-<p class="empty">No routes were captured, so the interface was not looked at. That is not a statement that it is unchanged.</p>
+<p class="empty">No routes were captured. No changed file is classified as interface, so there was probably nothing to see — but this is an absence of looking, not a finding that the interface is unchanged.</p>
 {{end}}
 
 {{if .API}}
