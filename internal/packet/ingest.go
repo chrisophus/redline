@@ -24,6 +24,17 @@ type Review struct {
 	// Unknowns are what the agent could not determine. Reported in the same
 	// section as Redline's own gaps, for the same reason.
 	Unknowns []string `json:"unknowns,omitempty"`
+	// Screenshots are routes the agent walked. They are not Redline's UI pane
+	// (checks 15–16); they are labelled as agent work when the report renders.
+	Screenshots []Shot `json:"screenshots,omitempty"`
+}
+
+// Shot is one captured page from an agent UI walk.
+type Shot struct {
+	Route   string `json:"route"`
+	Path    string `json:"path"`             // current (or after) image on disk
+	Before  string `json:"before,omitempty"` // optional before image
+	Caption string `json:"caption,omitempty"`
 }
 
 // Highlight is a called-out contract change.

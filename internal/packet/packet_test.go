@@ -13,6 +13,8 @@ func TestAreasClassifyFiles(t *testing.T) {
 		"migrations/000001_init.up.sql": "sql",
 		"api/openapi.yaml":              "api",
 		"web/src/Button.tsx":            "ui",
+		"web/index.html":                "ui",
+		"internal/report/assets/report.html.tmpl": "ui",
 		"internal/run/run.go":           "code",
 		"internal/run/run_test.go":      "tests",
 	}

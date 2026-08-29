@@ -59,7 +59,19 @@ func Build(repo *gitx.Repo, tgt *target.Target, baseSHA string, changed []string
 	}
 	all := instructions.Discover(tgt.Dir)
 	p.Instructions = instructions.For(all, changed)
+	p.UITouched = touchesUI(p.Files)
 	return p
+}
+
+func touchesUI(files []FileChange) bool {
+	for _, f := range files {
+		for _, a := range f.Areas {
+			if a == "ui" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func headRev(t *target.Target) string {
@@ -125,11 +137,15 @@ func Areas(path string) []string {
 		add("api")
 	}
 	switch ext {
-	case ".tsx", ".jsx", ".vue", ".svelte", ".css", ".scss":
+	case ".tsx", ".jsx", ".vue", ".svelte", ".css", ".scss", ".html", ".htm":
 		add("ui")
 	case ".ts", ".js":
 		if strings.Contains(lower, "/web/") || strings.Contains(lower, "/ui/") ||
 			strings.Contains(lower, "/frontend/") || strings.Contains(lower, "/components/") {
+			add("ui")
+		}
+	case ".tmpl":
+		if strings.Contains(lower, "html") {
 			add("ui")
 		}
 	}

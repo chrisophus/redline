@@ -45,6 +45,11 @@ type Packet struct {
 
 	// Guidance is the review brief: what to look for and what to leave alone.
 	Guidance Guidance `json:"guidance"`
+
+	// UITouched is true when at least one changed file is classified as UI.
+	// The skill uses this to decide whether to walk the interface; it is a
+	// fact about the packet, not a finding.
+	UITouched bool `json:"uiTouched"`
 }
 
 // FileChange is one changed file with its diff.
@@ -90,6 +95,7 @@ func DefaultGuidance() Guidance {
 			"Security-relevant handling of untrusted input, credentials, and authorization checks on new endpoints.",
 			"Violations of the repository's own instruction files, cited by file.",
 			"Tests: behaviour the change introduces that no test exercises. Name the behaviour, not the coverage number.",
+			"When `uiTouched` is true: drive the changed journeys in a real browser with agent-browser, capture screenshots, and report defects you actually saw. Diff-scoped — not a whole-app crawl. Attach them as `screenshots`. Category `ui`.",
 		},
 		Avoid: []string{
 			"Style, formatting, and naming, unless an instruction file demands it — the repository's linters own these.",
@@ -97,8 +103,9 @@ func DefaultGuidance() Guidance {
 			"Anything already reported in `deterministic` — those are observed facts and are shown to the reviewer separately.",
 			"Speculative findings you cannot point at a line for. If you are unsure, say so in `confidence`, or leave it out.",
 			"Praise, summaries of good practice, and encouragement. The reviewer's attention is the scarce resource.",
+			"Presenting an agent UI walk as Redline checks 15–16. Those are not built. Your walk is source llm.",
 		},
-		Output:  "Emit findings JSON on stdout and pipe it to `redline ingest`. Each finding needs file, line, rule, category, severity, message, and a concrete failure scenario in `context`.",
-		Sources: "Everything you emit is recorded with source \"llm\" and rendered separately from Redline's observed findings. Do not claim to have executed anything.",
+		Output:  "Emit findings JSON on stdout and pipe it to `redline ingest`. Each finding needs file, line, rule, category, severity, message, and a concrete failure scenario in `context`. Include `screenshots` when you walked the UI.",
+		Sources: "Findings you emit are recorded with source \"llm\" and rendered apart from observed ones. Do not claim Redline executed or tested anything. A UI walk you drove is your work: say so in context and attach screenshots[].",
 	}
 }

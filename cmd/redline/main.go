@@ -188,9 +188,17 @@ func write(o opts, res *run.Result, rev *packet.Review) error {
 	if err := os.WriteFile(filepath.Join(dir, "report.md"), []byte(md), 0o644); err != nil {
 		return err
 	}
+	var shots []report.Screenshot
+	if rev != nil {
+		var err error
+		shots, err = report.MaterializeShots(dir, rev.Screenshots)
+		if err != nil {
+			return err
+		}
+	}
 	html, err := report.HTML(report.HTMLInput{
 		Report: &res.Report, Packet: res.Packet, Review: rev,
-		Renders: res.Renders, Evidence: res.Evidence,
+		Renders: res.Renders, Evidence: res.Evidence, Screenshots: shots,
 	})
 	if err != nil {
 		return err

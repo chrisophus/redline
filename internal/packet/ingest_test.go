@@ -52,11 +52,23 @@ func TestApplyDedupesAndSorts(t *testing.T) {
 	}
 }
 
+func TestParseReviewScreenshots(t *testing.T) {
+	raw := `{"summary":"ui","screenshots":[{"route":"/x","path":"/tmp/a.png","caption":"form"}]}`
+	rev, err := ParseReview(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rev.Screenshots) != 1 || rev.Screenshots[0].Route != "/x" || rev.Screenshots[0].Caption != "form" {
+		t.Fatalf("%+v", rev.Screenshots)
+	}
+}
+
 func TestAreas(t *testing.T) {
 	cases := map[string][]string{
 		"migrations/0001_init.up.sql": {"sql"},
 		"api/openapi.yaml":            {"api"},
 		"web/src/App.tsx":             {"ui"},
+		"internal/report/assets/report.html.tmpl": {"ui"},
 		"pkg/foo_test.go":             {"tests"},
 		"cmd/redline/main.go":         {"code"},
 	}

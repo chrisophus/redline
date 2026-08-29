@@ -32,17 +32,20 @@ type HTMLInput struct {
 	Review   *packet.Review
 	Renders  []pane.Render
 	Evidence map[string]pane.Artifact
-	// Screenshots are before/after captures from the UI pane, keyed by route.
-	// Empty until rung 6 lands; the section renders as "did not run" rather
-	// than disappearing, so its absence is visible.
+	// Screenshots are route captures. Until the UI pane ships they come from
+	// the reviewing agent's walk (ingest `screenshots`). The section still
+	// renders empty as "did not run" when none were supplied.
 	Screenshots []Screenshot
 }
 
-// Screenshot is one before/after route capture.
+// Screenshot is one route capture. Before is optional: an agent walk of the
+// current tree often has only After. Data URIs must be template.URL or
+// html/template will replace them with #ZgotmplZ.
 type Screenshot struct {
-	Route  string
-	Before string // data URI
-	After  string // data URI
+	Route   string
+	Caption string
+	Before  template.URL
+	After   template.URL
 }
 
 // view is the flattened shape the template consumes.
@@ -65,6 +68,7 @@ type view struct {
 	Skipped     []findings.SubstrateStatus
 	Threads     []packet.Thread
 	Screenshots []Screenshot
+	AgentWalk   bool
 	Commits     int
 	HasReview   bool
 	// Identity keys browser-local comments to this review, not to the
@@ -126,6 +130,7 @@ func buildView(in HTMLInput) view {
 		Unknowns:    rep.Unknowns,
 		Dark:        rep.DarkSubstrates(),
 		Screenshots: in.Screenshots,
+		AgentWalk:   len(in.Screenshots) > 0,
 		Counts:      map[string]int{},
 	}
 	for _, s := range rep.Substrates {

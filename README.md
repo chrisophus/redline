@@ -34,6 +34,10 @@ echo '<review JSON>' | ./redline ingest   # merge judgments; open the HTML repor
 ./redline open                    # reopen .redline/report.html
 ```
 
+When the packet's `uiTouched` is true, the skill walks the changed UI with
+`agent-browser` and ingest embeds those screenshots in the HTML Interface
+section (labelled as the agent's walk, not checks 15–16).
+
 `run` and `review` also write `.redline/findings.json`, `.redline/packet.json`,
 `.redline/report.md`, `.redline/report.html`, and any captured artifacts under
 `.redline/evidence/`.
