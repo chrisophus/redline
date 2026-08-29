@@ -53,6 +53,7 @@ go build ./cmd/redline
 ./redline run                     # observe; markdown report on stdout
 ./redline run --format json       # findings schema on stdout
 ./redline review                  # packet of facts for the agent to judge
+./redline review --with claude    # run Claude Code's /code-review and merge it
 echo '<review JSON>' | ./redline ingest   # merge judgments; open the HTML report
 ./redline open                    # serve and open http://127.0.0.1:8765/report.html
 ./redline serve --stop            # stop the server for this .redline
@@ -70,6 +71,38 @@ Target (all subcommands; pass only one): the working tree by default,
 `--commit REF` for that commit against its parent (`HEAD` for the latest),
 `--range A..B` for a set of commits, `--branch REF` for a branch tip,
 `--pr N|URL` for a GitHub pull request.
+
+## Reviewers
+
+`--with NAME` runs an external code reviewer and merges its findings into the
+report. Redline composes no judgment of its own: the adapter invokes the tool's
+*own* review command — `claude` runs Claude Code's `/code-review` — so what you
+get is that tool's review, labelled with its name and its stated confidence.
+
+```
+./redline review --with claude --commit HEAD
+./redline review --with none              # observed evidence only (the default)
+```
+
+Built-in adapters: `claude`, `cursor`. Add or override one in
+`<out>/reviewers.json` — no Redline release required:
+
+```json
+{"reviewers": {"bugbot": {
+  "command": ["my-reviewer", "--json", "{out}", "{target}"],
+  "prompt": "review {target}",
+  "timeout": "10m"
+}}}
+```
+
+Placeholders: `{target}` the revision under review, `{out}` where to write
+findings, `{schema}` the findings contract, `{prompt}` the adapter's prompt with
+those already expanded.
+
+The reviewer runs inside the worktree Redline checked the target out into, so
+it reads exactly the tree the evidence describes. A reviewer that is missing,
+crashes, or times out is recorded as a substrate that **failed** and listed
+under unknowns — a review that did not run never renders as a clean one.
 
 Flags: `--base REF` (default: commit parent, range start, PR base, else origin/main), `--upstream REF`
 (default: same as base), `--migrations DIR`, `--out DIR`, `--open`, `--no-open`,

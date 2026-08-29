@@ -51,6 +51,9 @@ flags:
   --no-open         never open a browser
   --port N          loopback port for open/serve (default 8765; the next
                     free port is used if it is taken)
+  --with NAME       run an external reviewer and merge its findings:
+                    claude, cursor, none (default none). Adapters are
+                    configurable in <out>/reviewers.json
   --stop            with serve: stop the server running for --out
 `
 
@@ -62,9 +65,9 @@ func main() {
 }
 
 type opts struct {
-	base, upstream, migDir, format, out, pr, branch, commit, revRange string
-	open, noOpen, stop                                                bool
-	port                                                              int
+	base, upstream, migDir, format, out, pr, branch, commit, revRange, with string
+	open, noOpen, stop                                                      bool
+	port                                                                    int
 }
 
 func runMain(args []string) error {
@@ -87,6 +90,7 @@ func runMain(args []string) error {
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
 	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")
+	fs.StringVar(&o.with, "with", "", "run an external reviewer (claude, cursor, none)")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -128,6 +132,9 @@ func cmdRun(o opts) error {
 	if err != nil {
 		return err
 	}
+	if err := withReviewer(o, res); err != nil {
+		return err
+	}
 	if err := write(o, res, nil); err != nil {
 		return err
 	}
@@ -143,6 +150,9 @@ func cmdRun(o opts) error {
 func cmdReview(o opts) error {
 	res, err := execute(o)
 	if err != nil {
+		return err
+	}
+	if err := withReviewer(o, res); err != nil {
 		return err
 	}
 	if err := write(o, res, nil); err != nil {

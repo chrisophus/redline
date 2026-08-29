@@ -186,7 +186,7 @@ func buildView(in HTMLInput) view {
 	}
 
 	if in.Packet != nil {
-		v.Files = fileWalk(in.Packet.Files, notes)
+		v.Files = fileWalk(in.Packet.Files, notes, rep.Findings)
 		byPath := map[string]string{}
 		for _, row := range v.Files {
 			byPath[row.Path] = row.Summary
@@ -217,13 +217,40 @@ func buildView(in HTMLInput) view {
 func bannerText(rep *findings.Report) string {
 	switch {
 	case rep.Coverage.ChangedFiles == 0:
-		return "Nothing to review — the target matches its base revision."
+		return "Nothing to review — the target matches the base revision."
 	case rep.Coverage.ExaminedFiles == 0:
+		// A reviewer that ran changes what the empty pane coverage means, and
+		// the old wording — "an empty findings list says nothing" — is a plain
+		// contradiction when findings from that reviewer are on the page. Say
+		// what did look, and what that costs: a reviewer's reading is not
+		// reproducible, and it confirms nothing it did not examine.
+		if who := reviewersRan(rep); who != "" {
+			return fmt.Sprintf("No pane Redline ships covers these files, so nothing below is reproducible evidence — it is %s's reading of the change. Findings are worth what that reviewer is worth; silence is not a pass.", who)
+		}
 		return "Redline examined none of this change. No pane it currently ships covers these files, so an empty findings list says nothing about whether the change is correct."
 	case len(rep.DarkSubstrates()) > 0:
-		return fmt.Sprintf("%d pane(s) applied to this change and did not run. Their part of the change is unreviewed.", len(rep.DarkSubstrates()))
+		return fmt.Sprintf("%d pane(s) applied to this change and did not run. That part of the change is unreviewed.", len(rep.DarkSubstrates()))
 	}
 	return ""
+}
+
+// reviewersRan names the external reviewers that produced findings this run,
+// for the banner. Panes and reviewers are both substrates; only the reviewers
+// carry the "reviewer:" prefix that withReviewer stamps on them.
+func reviewersRan(rep *findings.Report) string {
+	var names []string
+	for _, s := range rep.Substrates {
+		if s.State == findings.SubstrateRan && strings.HasPrefix(s.Name, "reviewer:") {
+			names = append(names, strings.TrimPrefix(s.Name, "reviewer:"))
+		}
+	}
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // highlightDiff marks up a unified diff. Deliberately hand-rolled: a syntax
