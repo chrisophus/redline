@@ -101,6 +101,187 @@ func TestHTMLFileWalkUsesPacketAndAgentNotes(t *testing.T) {
 	}
 }
 
+func TestOrientationLeadsTheScreen(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+		Review: &packet.Review{
+			Summary: "Serve the report over loopback.",
+			Intent: &packet.Intent{
+				Ticket: &packet.IntentTicket{ID: "REL-24", Title: "Serve the report", URL: "https://example.test/REL-24"},
+				Fit:    &packet.IntentFit{Thing: "Yes, this is what REL-24 asked for.", Way: "Mostly — the port scan is undocumented."},
+			},
+			Surfaces: &packet.Surfaces{
+				Interface: &packet.Surface{Line: "Comment bar added to the report.", Moved: true},
+				Schema:    &packet.Surface{Line: "No migrations touched.", Moved: false},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"REL-24", "https://example.test/REL-24", "Serve the report",
+		"Right thing", "Yes, this is what REL-24 asked for.",
+		"Right way", "the port scan is undocumented",
+		"Comment bar added to the report.", "No migrations touched.",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("orientation missing %q", want)
+		}
+	}
+
+	// The API surface was never spoken about. That must not read the same as a
+	// surface someone checked and found unmoved.
+	if !strings.Contains(html, "Not reported.") {
+		t.Error("an unreported surface must say so")
+	}
+	if !strings.Contains(html, "surface unstated") {
+		t.Error("an unreported surface must be visually distinct from an idle one")
+	}
+	if !strings.Contains(html, "surface idle") {
+		t.Error("a checked-but-unmoved surface should render as idle")
+	}
+
+	// Orientation precedes the evidence.
+	if strings.Index(html, "REL-24") > strings.Index(html, `id="findings"`) {
+		t.Error("orientation must come before the findings")
+	}
+}
+
+func TestPrePushScreenHasNoTicketOrPR(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+		Review: &packet.Review{Summary: "Uncommitted work."},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, `class="intent"`) {
+		t.Error("with no ticket and no PR the orientation links must be omitted entirely")
+	}
+	if !strings.Contains(html, "Uncommitted work.") {
+		t.Error("the summary still leads")
+	}
+	// All three surfaces still appear, all unreported.
+	if got := strings.Count(html, "Not reported."); got != 3 {
+		t.Errorf("expected three unreported surfaces, got %d", got)
+	}
+}
+
+// A --pr review knows its pull request without the agent restating it, and
+// what Redline fetched outranks what the agent says about it.
+func TestPullRequestPrefersWhatRedlineObserved(t *testing.T) {
+	in := HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{
+			Target: &target.Target{Kind: target.KindPR, PR: &target.PullRequest{
+				Number: 42, Title: "Add the briefing", URL: "https://example.test/pr/42",
+			}},
+			Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}},
+		},
+		Review: &packet.Review{Summary: "s"},
+	}
+	html, err := HTML(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "https://example.test/pr/42") {
+		t.Error("the PR the target names must appear without agent help")
+	}
+
+	// The agent claiming a different pull request must not override the one
+	// Redline fetched, or the orientation contradicts the subtitle.
+	in.Review = &packet.Review{Summary: "s", Intent: &packet.Intent{
+		PR: &packet.IntentPR{Number: 7, Title: "Agent said seven", URL: "https://example.test/pr/7"},
+	}}
+	html, err = HTML(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "https://example.test/pr/7") {
+		t.Error("hearsay must not outrank the fetched pull request")
+	}
+	if !strings.Contains(html, "https://example.test/pr/42") {
+		t.Error("the observed pull request must still render")
+	}
+}
+
+// Pre-push there is no --pr target, so the agent's account is all there is.
+func TestAgentPullRequestUsedWhenRedlineHasNone(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+		Review: &packet.Review{Summary: "s", Intent: &packet.Intent{
+			PR: &packet.IntentPR{Number: 7, Title: "Seven", URL: "https://example.test/pr/7"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "PR #7") {
+		t.Error("with no fetched PR the agent's account should show")
+	}
+}
+
+func TestFindingsSplitByWhoIsAccountable(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Findings: []findings.Finding{
+				{File: "a.go", Rule: "review", Message: "judged thing",
+					Severity: findings.SeverityWarning, Source: findings.SourceLLM, Reviewer: "claude"},
+				{File: "b.sql", Rule: "migration-modified", Message: "observed thing",
+					Severity: findings.SeverityError, Source: findings.SourceDeterministic},
+			},
+		},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "What the reviewers found") || !strings.Contains(html, "What Redline observed") {
+		t.Fatal("judged and observed findings need their own sections")
+	}
+	judged := strings.Index(html, "judged thing")
+	observedHead := strings.Index(html, "What Redline observed")
+	if judged > observedHead {
+		t.Error("a judged finding must render in the reviewers' section")
+	}
+	if !strings.Contains(html, "judged by claude") {
+		t.Error("reviewer provenance must survive the split")
+	}
+}
+
+func TestTestFilesAreCountedNotRendered(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{
+			{Path: "internal/run/run.go", Areas: []string{"code"}, Diff: "@@ -1 +1 @@\n-a\n+b\n"},
+			{Path: "internal/run/run_test.go", Areas: []string{"tests"},
+				Diff: "@@ -1 +1 @@\n-func TestOld\n+func TestNew\n"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "1 test file changed") {
+		t.Error("changed tests must be counted so the reviewer knows they moved")
+	}
+	// The path appears in the walkthrough; the diff body must not.
+	if !strings.Contains(html, "run_test.go") {
+		t.Error("the test file should still be listed")
+	}
+	if strings.Contains(html, "func TestNew") {
+		t.Error("test file contents must not render")
+	}
+	if !strings.Contains(html, "+b") {
+		t.Error("non-test diffs must still render")
+	}
+}
+
 func TestGeneratedExclusionsAreNamedOnBothReports(t *testing.T) {
 	rep := &findings.Report{
 		Coverage: findings.Coverage{

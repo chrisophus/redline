@@ -111,6 +111,23 @@ body.drawer-open{overflow:hidden}
 .shot-lead figcaption{font-size:12px;color:var(--muted);margin-top:6px}
 .shots .cap{font-size:12px;color:var(--muted);margin-bottom:4px}
 .empty{color:var(--muted);font-style:italic}
+/* Orientation: why the change exists. Read before anything else, and the one
+   thing a diff cannot supply. */
+.intent{display:flex;flex-wrap:wrap;gap:8px 14px;margin:10px 0 0;font-size:14px}
+.intent a{color:var(--info);font-weight:500}
+.fit{margin:14px 0 0;border-left:3px solid var(--llm);padding:2px 0 2px 14px}
+.fit div{margin:4px 0;font-size:14px}
+.fit b{font-weight:600}
+.fit .q{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+/* The three contract surfaces, in the order they get checked. */
+.surfaces{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:16px 0}
+.surface{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.surface h3{font-size:14px;margin:0 0 4px}
+.surface .line{font-size:13px;line-height:1.5}
+.surface.moved{border-left:3px solid var(--info)}
+.surface.idle{opacity:.8}
+.surface.unstated{border-left:3px solid var(--warn)}
+.surface.unstated .line{color:var(--warn)}
 pre.diff span[data-line]{cursor:text;position:relative}
 pre.diff span[data-line]:hover{outline:1px solid var(--info);outline-offset:-1px}
 .viewed{opacity:.45}
@@ -143,8 +160,31 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <h2>What this change is</h2>
 <div class="summary">{{.Summary}}</div>
 
+{{if or .Ticket .PR}}
+<div class="intent">
+  {{with .Ticket}}<span>{{if .URL}}<a href="{{.URL}}">{{if .ID}}{{.ID}}{{else}}ticket{{end}}</a>{{else}}<b>{{.ID}}</b>{{end}}{{if .Title}} · {{.Title}}{{end}}</span>{{end}}
+  {{with .PR}}<span>{{if .URL}}<a href="{{.URL}}">PR{{if .Number}} #{{.Number}}{{end}}</a>{{else}}<b>PR{{if .Number}} #{{.Number}}{{end}}</b>{{end}}{{if .Title}} · {{.Title}}{{end}}</span>{{end}}
+</div>
+{{end}}
+
+{{with .Fit}}
+<div class="fit">
+  {{if .Thing}}<div><span class="q">Right thing</span> {{.Thing}}</div>{{end}}
+  {{if .Way}}<div><span class="q">Right way</span> {{.Way}}</div>{{end}}
+</div>
+{{end}}
+
+<div class="surfaces">
+{{range .Surfaces}}
+<div class="surface{{if not .Stated}} unstated{{else if .Moved}} moved{{else}} idle{{end}}">
+  <h3>{{.Label}}</h3>
+  <div class="line">{{.Line}}</div>
+</div>
+{{end}}
+</div>
+
+<h2 id="interface">What it looks like</h2>
 {{if .Screenshots}}
-<h2>What it looks like</h2>
 <p class="s">{{if .AgentWalk}}Walked by the reviewing agent. This is not Redline checks 15–16 (deterministic before/after and console capture).{{end}}</p>
 {{range .Screenshots}}
 <figure class="shot-lead">
@@ -161,18 +201,21 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   <figcaption><code class="p">{{.Route}}</code>{{if .Caption}} — {{.Caption}}{{end}}</figcaption>
 </figure>
 {{end}}
+{{else}}
+<p class="empty">No routes were captured, so the interface was not looked at. That is not a statement that it is unchanged.</p>
 {{end}}
 
-<div class="tiles">
-  <button type="button" class="tile" data-goto="findings" data-only="error"><div class="n {{if index .Counts "error"}}error{{else}}ok{{end}}">{{with index .Counts "error"}}{{.}}{{else}}0{{end}}</div><div class="l">errors</div></button>
-  <button type="button" class="tile" data-goto="findings" data-only="warning"><div class="n warning">{{with index .Counts "warning"}}{{.}}{{else}}0{{end}}</div><div class="l">warnings</div></button>
-  <button type="button" class="tile" data-goto="files"><div class="n">{{.Coverage.ExaminedFiles}}/{{.Coverage.ChangedFiles}}</div><div class="l">files examined</div></button>
-  <button type="button" class="tile" data-goto="confirms"><div class="n">{{len .Confirms}}</div><div class="l">confirmed</div></button>
-  <button type="button" class="tile" data-goto="unknowns"><div class="n">{{len .Unknowns}}</div><div class="l">undetermined</div></button>
-</div>
+{{if .API}}
+<h2>API contract</h2>
+{{range .API}}<div class="hl{{if .Breaking}} breaking{{end}}">
+  <div class="t">{{.Title}}{{if .Breaking}} — breaking{{end}}</div>
+  {{if .Detail}}<div class="d">{{.Detail}}</div>{{end}}
+  {{if .File}}<div class="d"><code>{{.File}}</code></div>{{end}}
+</div>{{end}}
+{{end}}
 
 {{if .Schema}}
-<h2>Schema changes</h2>
+<h2>Schema</h2>
 {{range .Schema}}<div class="hl{{if .Breaking}} breaking{{end}}">
   <div class="t">{{.Title}}{{if .Breaking}} — breaking{{end}}</div>
   {{if .Detail}}<div class="d">{{.Detail}}</div>{{end}}
@@ -180,14 +223,14 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 </div>{{end}}
 {{end}}
 
-{{if .API}}
-<h2>API changes</h2>
-{{range .API}}<div class="hl{{if .Breaking}} breaking{{end}}">
-  <div class="t">{{.Title}}{{if .Breaking}} — breaking{{end}}</div>
-  {{if .Detail}}<div class="d">{{.Detail}}</div>{{end}}
-  {{if .File}}<div class="d"><code>{{.File}}</code></div>{{end}}
-</div>{{end}}
-{{end}}
+<div class="tiles">
+  <button type="button" class="tile" data-goto="findings" data-only="error"><div class="n {{if index .Counts "error"}}error{{else}}ok{{end}}">{{with index .Counts "error"}}{{.}}{{else}}0{{end}}</div><div class="l">errors</div></button>
+  <button type="button" class="tile" data-goto="findings" data-only="warning"><div class="n warning">{{with index .Counts "warning"}}{{.}}{{else}}0{{end}}</div><div class="l">warnings</div></button>
+  <button type="button" class="tile" data-goto="findings" data-only="info"><div class="n">{{with index .Counts "info"}}{{.}}{{else}}0{{end}}</div><div class="l">info</div></button>
+  <button type="button" class="tile" data-goto="files"><div class="n">{{.Coverage.ExaminedFiles}}/{{.Coverage.ChangedFiles}}</div><div class="l">files examined</div></button>
+  <button type="button" class="tile" data-goto="confirms"><div class="n">{{len .Confirms}}</div><div class="l">confirmed</div></button>
+  <button type="button" class="tile" data-goto="unknowns"><div class="n">{{len .Unknowns}}</div><div class="l">undetermined</div></button>
+</div>
 
 {{if .Files}}
 <h2 id="files">Files</h2>
@@ -204,9 +247,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 </div>
 {{end}}
 
-<h2 id="findings">Findings</h2>
-{{if .Findings}}
-{{range .Findings}}
+{{define "finding"}}
 <div class="f {{lower .Severity}}" data-file="{{.File}}">
   <h3>{{.Message}}</h3>
   <div>
@@ -224,8 +265,19 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   {{if .Context}}<blockquote>{{.Context}}</blockquote>{{end}}
 </div>
 {{end}}
+
+<h2 id="findings">What the reviewers found</h2>
+{{if .Judged}}
+{{range .Judged}}{{template "finding" .}}{{end}}
 {{else}}
-<p class="empty">{{if eq .Coverage.ExaminedFiles 0}}None — because nothing was checked. See the note above.{{else}}None.{{end}}</p>
+<p class="empty">No reviewer has judged this change. Run <code>redline review --with claude</code>, or pipe a review to <code>redline ingest</code>.</p>
+{{end}}
+
+<h2 id="observed">What Redline observed</h2>
+{{if .Observed}}
+{{range .Observed}}{{template "finding" .}}{{end}}
+{{else}}
+<p class="empty">{{if eq .Coverage.ExaminedFiles 0}}Nothing — because no pane examined this change. See the note above.{{else}}Nothing. The panes that ran found no defects.{{end}}</p>
 {{end}}
 
 <h2>Drill in</h2>
@@ -250,10 +302,8 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 {{else}}
 <p class="empty">No file-level detail captured.</p>
 {{end}}
-
-<h2 id="interface">Interface</h2>
-{{if not .Screenshots}}
-<p class="empty">The UI pane did not run — no routes were captured. This is not a statement that the interface is unchanged.</p>
+{{if .TestFiles}}
+<p class="s">{{.TestFiles}} test file{{if ne .TestFiles 1}}s{{end}} changed. Their contents are not shown — a coverage number is the useful summary, not the diff of every case.</p>
 {{end}}
 
 {{if .Threads}}

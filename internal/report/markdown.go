@@ -24,6 +24,7 @@ func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]p
 	fmt.Fprintf(&b, "%d finding(s).\n\n", len(rep.Findings))
 	banner(&b, rep)
 
+	orientation(&b, p, rev)
 	section1(&b, renders)
 	fileSection(&b, p, rev)
 	section2(&b, rep)
@@ -50,6 +51,90 @@ func banner(b *strings.Builder, rep *findings.Report) {
 		fmt.Fprintf(b, "> **%d pane(s) applied to this change and did not run.** "+
 			"See _What could not be determined_.\n\n", len(rep.DarkSubstrates()))
 	}
+}
+
+// orientation is why the change exists, and one line per contract surface. It
+// comes before the evidence because it is what a reviewer reads first and the
+// only part a diff cannot supply.
+func orientation(b *strings.Builder, p *packet.Packet, rev *packet.Review) {
+	var intent *packet.Intent
+	var surfaces *packet.Surfaces
+	if rev != nil {
+		intent = rev.Intent
+		surfaces = rev.Surfaces
+	}
+	if rev != nil && rev.Summary != "" {
+		fmt.Fprintf(b, "## What this change is\n\n%s\n\n", rev.Summary)
+	}
+
+	var links []string
+	if intent != nil && intent.Ticket != nil {
+		links = append(links, describeLink(intent.Ticket.ID, intent.Ticket.Title, intent.Ticket.URL))
+	}
+	pr := prLink(intent, p)
+	if pr != "" {
+		links = append(links, pr)
+	}
+	if len(links) > 0 {
+		fmt.Fprintf(b, "%s\n\n", strings.Join(links, " · "))
+	}
+	if intent != nil && intent.Fit != nil {
+		if intent.Fit.Thing != "" {
+			fmt.Fprintf(b, "- **Right thing** — %s\n", intent.Fit.Thing)
+		}
+		if intent.Fit.Way != "" {
+			fmt.Fprintf(b, "- **Right way** — %s\n", intent.Fit.Way)
+		}
+		fmt.Fprintln(b)
+	}
+
+	fmt.Fprintf(b, "## Surfaces\n\n")
+	for _, s := range surfaceViews(surfaces) {
+		state := "did not move"
+		switch {
+		case !s.Stated:
+			state = "**not reported**"
+		case s.Moved:
+			state = "**moved**"
+		}
+		fmt.Fprintf(b, "- **%s** (%s) — %s\n", s.Label, state, s.Line)
+	}
+	fmt.Fprintln(b)
+}
+
+func describeLink(id, title, url string) string {
+	label := id
+	if label == "" {
+		label = "link"
+	}
+	if url != "" {
+		label = fmt.Sprintf("[%s](%s)", label, url)
+	}
+	if title != "" {
+		label += " " + title
+	}
+	return label
+}
+
+// prLink prefers the pull request Redline fetched over the agent's account of
+// it. The agent's is used only when Redline was not pointed at one.
+func prLink(intent *packet.Intent, p *packet.Packet) string {
+	if p != nil && p.Target != nil && p.Target.PR != nil {
+		pr := p.Target.PR
+		return describeLink(prLabel(pr.Number), pr.Title, pr.URL)
+	}
+	if intent != nil && intent.PR != nil {
+		pr := intent.PR
+		return describeLink(prLabel(pr.Number), pr.Title, pr.URL)
+	}
+	return ""
+}
+
+func prLabel(n int) string {
+	if n == 0 {
+		return "PR"
+	}
+	return fmt.Sprintf("PR #%d", n)
 }
 
 // fileSection is the walkthrough: every changed file, with the agent's

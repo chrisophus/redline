@@ -52,19 +52,39 @@ type Screenshot struct {
 
 // view is the flattened shape the template consumes.
 type view struct {
-	Title       string
-	Subtitle    string
-	Summary     string
-	URL         string
-	Author      string
-	Coverage    findings.Coverage
-	Banner      string
-	Counts      map[string]int
-	API         []packet.Highlight
-	Schema      []packet.Highlight
-	Files       []fileWalkRow
-	Findings    []findingView
+	Title    string
+	Subtitle string
+	Summary  string
+	URL      string
+	Author   string
+	Coverage findings.Coverage
+	Banner   string
+	Counts   map[string]int
+
+	// Orientation: why this change exists. Every field is optional because the
+	// screen opens pre-push, where there is no pull request and often no
+	// ticket, as well as on an open one.
+	Ticket *packet.IntentTicket
+	PR     *prView
+	Fit    *packet.IntentFit
+
+	// Surfaces always has three entries, in the order a reviewer checks them.
+	// A surface the agent said nothing about renders as unreported rather than
+	// as unchanged.
+	Surfaces []surfaceView
+
+	API    []packet.Highlight
+	Schema []packet.Highlight
+	Files  []fileWalkRow
+
+	// Judged and Observed are the same findings split by who is accountable
+	// for them. A skim of what the reviewers found is a different act from
+	// reading what Redline can prove.
+	Judged   []findingView
+	Observed []findingView
+
 	Areas       []areaView
+	TestFiles   int
 	Confirms    []findings.Confirmation
 	Unknowns    []findings.Unknown
 	Dark        []findings.SubstrateStatus
@@ -77,6 +97,23 @@ type view struct {
 	// Identity keys browser-local comments to this review, not to the
 	// report.html path — every run overwrites the same file.
 	Identity string
+}
+
+// prView is the pull request as the screen shows it, from whichever source
+// knew about it.
+type prView struct {
+	Number int
+	Title  string
+	URL    string
+}
+
+// surfaceView is one contract-surface tile. Stated separates "the agent looked
+// and nothing moved" from "nobody said" — the second must never read as a pass.
+type surfaceView struct {
+	Label  string
+	Line   string
+	Moved  bool
+	Stated bool
 }
 
 type findingView struct {
@@ -102,12 +139,17 @@ type fileView struct {
 }
 
 // areaLabels names the drill-in sections, in the order they are shown.
+//
+// Tests are deliberately absent. A reviewer does not read test bodies; they
+// read a coverage number and expect the tests to have been run. Rendering the
+// diff of every table-driven case buries the change that needed testing. The
+// files still appear in the walkthrough and are counted, so the reviewer knows
+// tests moved — they just do not have to scroll past them.
 var areaLabels = []struct{ Key, Label string }{
 	{"sql", "Schema & migrations"},
 	{"api", "API contract"},
 	{"ui", "Interface"},
 	{"code", "Code"},
-	{"tests", "Tests"},
 }
 
 // HTML renders the report page.
@@ -162,13 +204,32 @@ func buildView(in HTMLInput) view {
 		v.Subtitle = fmt.Sprintf("base %s", short(rep.BaseSHA))
 	}
 	var notes []packet.FileNote
+	var surfaces *packet.Surfaces
 	if r := in.Review; r != nil {
 		v.HasReview = true
 		v.Summary = r.Summary
 		v.API = r.APIChanges
 		v.Schema = r.SchemaChanges
 		notes = r.Files
+		surfaces = r.Surfaces
+		if r.Intent != nil {
+			v.Ticket = r.Intent.Ticket
+			v.Fit = r.Intent.Fit
+			if p := r.Intent.PR; p != nil {
+				v.PR = &prView{Number: p.Number, Title: p.Title, URL: p.URL}
+			}
+		}
 	}
+	// When the target is a pull request, Redline fetched it and that is the
+	// pull request under review. The agent's copy is hearsay about the same
+	// thing, and rendering it instead would contradict the subtitle two lines
+	// above. It is used only when Redline was not pointed at a pull request at
+	// all — the pre-push case where the agent knows one exists.
+	if in.Packet != nil && in.Packet.Target != nil && in.Packet.Target.PR != nil {
+		pr := in.Packet.Target.PR
+		v.PR = &prView{Number: pr.Number, Title: pr.Title, URL: pr.URL}
+	}
+	v.Surfaces = surfaceViews(surfaces)
 	if v.Summary == "" {
 		v.Summary = "No agent summary. Redline emits evidence; the plain-language account of the change comes from the agent driving it — run `redline review` and pipe the result to `redline ingest`."
 	}
@@ -182,7 +243,11 @@ func buildView(in HTMLInput) view {
 				fv.Evidence = template.HTML(highlightDiff(a.Content))
 			}
 		}
-		v.Findings = append(v.Findings, fv)
+		if fv.IsLLM {
+			v.Judged = append(v.Judged, fv)
+		} else {
+			v.Observed = append(v.Observed, fv)
+		}
 	}
 
 	if in.Packet != nil {
@@ -200,6 +265,7 @@ func buildView(in HTMLInput) view {
 				byArea[a] = append(byArea[a], fv)
 			}
 		}
+		v.TestFiles = len(byArea["tests"])
 		for _, al := range areaLabels {
 			files := byArea[al.Key]
 			if len(files) == 0 {
@@ -209,6 +275,37 @@ func buildView(in HTMLInput) view {
 		}
 	}
 	return v
+}
+
+// surfaceViews returns the three surfaces in the order a reviewer checks them,
+// always all three. A missing surface is rendered as unreported: the whole
+// point of the strip is that a surface nobody spoke about looks different from
+// one that was checked and had not moved.
+func surfaceViews(s *packet.Surfaces) []surfaceView {
+	labels := []struct {
+		label string
+		get   func(*packet.Surfaces) *packet.Surface
+	}{
+		{"Interface", func(x *packet.Surfaces) *packet.Surface { return x.Interface }},
+		{"API", func(x *packet.Surfaces) *packet.Surface { return x.API }},
+		{"Schema", func(x *packet.Surfaces) *packet.Surface { return x.Schema }},
+	}
+	out := make([]surfaceView, 0, len(labels))
+	for _, l := range labels {
+		sv := surfaceView{Label: l.label}
+		if s != nil {
+			if got := l.get(s); got != nil && (got.Line != "" || got.Moved) {
+				sv.Line = got.Line
+				sv.Moved = got.Moved
+				sv.Stated = true
+			}
+		}
+		if !sv.Stated {
+			sv.Line = "Not reported. Nobody said whether this surface moved."
+		}
+		out = append(out, sv)
+	}
+	return out
 }
 
 // bannerText is the same honesty check the markdown report makes. An empty

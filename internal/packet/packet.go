@@ -88,6 +88,9 @@ type Guidance struct {
 func DefaultGuidance() Guidance {
 	return Guidance{
 		Focus: []string{
+			"Orientation, as review `intent`: the ticket this change serves (`intent.ticket`), and `intent.fit` — whether this is the thing the ticket asked for (`thing`) and whether this is the way to build it (`way`). The reviewer reads that before anything else and the diff cannot supply it.",
+			"One line per contract surface, as review `surfaces`: `interface`, `api`, `schema`, each `{line, moved}`. A surface that did not move still takes a line saying what you looked at — silence there reads as a pass and must not.",
+			"Info-level findings worth addressing. Warning and error lint is gated in CI and already fixed before this review; what is useful here is the info-level remark a reviewer would want to know about.",
 			"Correctness defects: logic that does not do what the surrounding code and the PR description say it should.",
 			"Contract changes not reflected everywhere they must be — a changed API shape, an added enum value with no handling, a renamed field still read by its old name.",
 			"Error paths: newly added code that swallows, ignores, or misreports failure.",
@@ -106,7 +109,7 @@ func DefaultGuidance() Guidance {
 			"Praise, summaries of good practice, and encouragement. The reviewer's attention is the scarce resource.",
 			"Presenting an agent UI walk as Redline checks 15–16. Those are not built. Your walk is source llm.",
 		},
-		Output:  "Emit findings JSON on stdout and pipe it to `redline ingest`. Include `files`: one `{path, summary}` for every path in this packet. Each finding needs file, line, rule, category, severity, message, and a concrete failure scenario in `context`. Include `screenshots` when you walked the UI.",
+		Output:  "Emit findings JSON on stdout and pipe it to `redline ingest`. Include `intent` (ticket, fit) and `surfaces` (interface, api, schema) — those are the top of the screen. Include `files`: one `{path, summary}` for every path in this packet. Each finding needs file, line, rule, category, severity, message, and a concrete failure scenario in `context`. Include `screenshots` when you walked the UI.",
 		Sources: "Findings you emit are recorded with source \"llm\" and rendered apart from observed ones. Do not claim Redline executed or tested anything. A UI walk you drove is your work: say so in context and attach screenshots[].",
 	}
 }
