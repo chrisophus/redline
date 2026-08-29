@@ -23,6 +23,29 @@ The review loop (packet → agent → HTML report) ships on top of that.
 | 14 | Diff coverage | not started |
 | 15–16 | UI pane | not started |
 
+## Install
+
+```
+make install          # build, symlink the binary onto PATH, symlink the skill
+```
+
+Both are symlinks into this checkout, so `make install` once and a later
+`make build` is all it takes to keep the skill and the binary in step. A
+binary older than the skill driving it is the failure mode this prevents:
+it produces packets missing fields the skill expects and reads as a tool bug.
+
+`BINDIR` (default `~/.local/bin`) and `SKILLDIR` (default `~/.claude/skills`)
+override where they go. `make uninstall` removes both.
+
+That installs the skill for every repository on this machine. To commit it
+into one repository instead — for teammates without this checkout:
+
+```
+make install-repo REPO=/path/to/repo    # writes .claude/skills/redline/SKILL.md
+```
+
+A project skill overrides the personal one. Teammates still need the binary.
+
 ## Use
 
 ```
