@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -58,6 +59,11 @@ func generatedByName(path string) string {
 	if base == "go.sum" {
 		return "checksum file"
 	}
+	for _, profile := range coverageProfiles {
+		if base == profile {
+			return "coverage profile"
+		}
+	}
 	for _, lock := range lockfiles {
 		if base == lock {
 			return "lockfile"
@@ -82,6 +88,14 @@ func generatedByName(path string) string {
 	return ""
 }
 
+// coverageProfiles are test-runner output. Redline reads one to compute the
+// diff coverage number and would otherwise put it in the review as a changed
+// file, which is a strange thing to ask a reviewer to read.
+var coverageProfiles = []string{
+	"coverage.out", "cover.out", "coverage.txt", "c.out",
+	"coverage.xml", "lcov.info", "coverage-final.json",
+}
+
 var lockfiles = []string{
 	"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb",
 	"cargo.lock", "poetry.lock", "uv.lock", "composer.lock", "gemfile.lock",
@@ -94,15 +108,33 @@ var generatedSuffixes = []string{
 	".min.js", ".min.css", ".js.map", ".css.map",
 }
 
-// maxHeaderBytes is how far into a file the marker is looked for. Generators
-// write it at the top; scanning further would mean reading megabytes of
-// minified output to learn nothing.
-const maxHeaderBytes = 4096
+// maxHeaderBytes and maxHeaderLines bound how far into a file the marker is
+// looked for. Generators write it at the top, so a match deeper in is far more
+// likely to be a file that merely mentions the convention than one that follows
+// it.
+const (
+	maxHeaderBytes = 4096
+	maxHeaderLines = 30
+)
 
-// generatedByHeader looks for the markers generators agree on: Go's
-// "Code generated ... DO NOT EDIT." convention, and the "@generated" tag
-// linguist honours. Both are claims the generator makes about its own output,
-// which makes them better evidence than any guess about the filename.
+// generatedMarker matches Go's "Code generated ... DO NOT EDIT." convention,
+// anchored at both ends.
+//
+// Anchoring is the whole point. A substring test for "Code generated" and
+// "DO NOT EDIT" also matches any file that discusses the convention — including
+// this one, which excluded itself and its own test from a review before the
+// anchors went in. That is the asymmetric failure this package is built to
+// avoid: a hand-written file silently dropped, and the reviewer never learns it
+// existed.
+var generatedMarker = regexp.MustCompile(`^\s*(?:(?://+|#+|/\*+|\*|--|<!--)\s*)?Code generated\b.*\bDO NOT EDIT\.?\s*(?:\*/|-->)?\s*$`)
+
+// generatedTag matches the "@generated" tag linguist honours, again anchored:
+// the marker has to be what the line says, not something the line talks about.
+var generatedTag = regexp.MustCompile(`^\s*(?:(?://+|#+|/\*+|\*|--|<!--)\s*)?@generated\b.*$`)
+
+// generatedByHeader looks for the markers generators write about their own
+// output. That is better evidence than any guess about a filename, so long as
+// the match is a real marker and not prose.
 func generatedByHeader(dir, path string) bool {
 	if dir == "" {
 		return false
@@ -115,19 +147,17 @@ func generatedByHeader(dir, path string) bool {
 	}
 	defer f.Close()
 
-	read := 0
+	read, lines := 0, 0
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 8192), 65536)
 	for sc.Scan() {
 		line := sc.Text()
 		read += len(line) + 1
-		if read > maxHeaderBytes {
+		lines++
+		if read > maxHeaderBytes || lines > maxHeaderLines {
 			return false
 		}
-		if strings.Contains(line, "@generated") {
-			return true
-		}
-		if strings.Contains(line, "Code generated") && strings.Contains(line, "DO NOT EDIT") {
+		if generatedTag.MatchString(line) || generatedMarker.MatchString(line) {
 			return true
 		}
 	}
