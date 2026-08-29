@@ -13,9 +13,16 @@ import (
 	"github.com/ccason/redline/internal/packet"
 )
 
-// maxShotBytes caps an ingested screenshot. report.html is self-contained and
-// embeds images as data URIs; a multi-megabyte PNG would make it unusable.
-const maxShotBytes = 3 << 20
+// maxShotBytes caps one ingested screenshot and maxShotTotalBytes caps them
+// together. report.html is self-contained and embeds images as base64 data
+// URIs, which inflates every byte by a third: a diff-scoped walk of half a
+// dozen journeys with before/after pairs would otherwise produce a report no
+// browser wants to open. The copies under evidence/ui are kept either way,
+// so nothing the agent captured is lost — only the inlining stops.
+const (
+	maxShotBytes      = 3 << 20
+	maxShotTotalBytes = 12 << 20
+)
 
 // MaterializeShots copies agent screenshots under outDir/evidence/ui and
 // returns them as data URIs for the self-contained HTML report.
@@ -28,6 +35,7 @@ func MaterializeShots(outDir string, shots []packet.Shot) ([]Screenshot, error) 
 		return nil, err
 	}
 	var out []Screenshot
+	total := 0
 	for i, s := range shots {
 		if strings.TrimSpace(s.Path) == "" {
 			return nil, fmt.Errorf("screenshot %d (%s): missing path", i, s.Route)
@@ -36,25 +44,86 @@ func MaterializeShots(outDir string, shots []packet.Shot) ([]Screenshot, error) 
 		if err != nil {
 			return nil, fmt.Errorf("screenshot %d (%s): %w", i, s.Route, err)
 		}
-		afterURI, err := dataURI(afterFile)
-		if err != nil {
-			return nil, err
-		}
-		shot := Screenshot{Route: s.Route, Caption: s.Caption, After: template.URL(afterURI)}
+		shot := Screenshot{Route: s.Route, Caption: s.Caption, File: relShot(afterFile, outDir)}
+		var beforeFile string
 		if strings.TrimSpace(s.Before) != "" {
-			beforeFile, err := copyShot(dest, i, "before", s.Before, s.Route)
+			beforeFile, err = copyShot(dest, i, "before", s.Before, s.Route)
 			if err != nil {
 				return nil, fmt.Errorf("screenshot %d (%s) before: %w", i, s.Route, err)
 			}
-			beforeURI, err := dataURI(beforeFile)
+			shot.BeforeFile = relShot(beforeFile, outDir)
+		}
+		// Inline only while there is budget. Past it the report links to the
+		// copies on disk, which the loopback server already serves.
+		size := fileSize(afterFile) + fileSize(beforeFile)
+		if total+size <= maxShotTotalBytes {
+			afterURI, err := dataURI(afterFile)
 			if err != nil {
 				return nil, err
 			}
-			shot.Before = template.URL(beforeURI)
+			shot.After = template.URL(afterURI)
+			if beforeFile != "" {
+				beforeURI, err := dataURI(beforeFile)
+				if err != nil {
+					return nil, err
+				}
+				shot.Before = template.URL(beforeURI)
+			}
+			total += size
+		} else {
+			shot.After = template.URL(shot.File)
+			if shot.BeforeFile != "" {
+				shot.Before = template.URL(shot.BeforeFile)
+			}
 		}
 		out = append(out, shot)
 	}
 	return out, nil
+}
+
+// PruneMissingShots drops captures whose source file is gone. It is applied
+// only to screenshots carried forward from an earlier ingest — a walk done in
+// a temp directory that has since been cleaned — never to the ones an agent
+// just supplied, where a missing file is an error worth hearing about.
+func PruneMissingShots(shots []packet.Shot) []packet.Shot {
+	out := shots[:0:0]
+	for _, s := range shots {
+		if _, err := os.Stat(s.Path); err != nil {
+			fmt.Fprintf(os.Stderr, "redline: dropping the earlier capture of %s; %s is gone\n", s.Route, s.Path)
+			continue
+		}
+		if s.Before != "" {
+			if _, err := os.Stat(s.Before); err != nil {
+				s.Before = ""
+			}
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+func fileSize(path string) int {
+	if path == "" {
+		return 0
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return int(st.Size())
+}
+
+// relShot is the path the served report can fetch an image at, relative to
+// the evidence directory root.
+func relShot(path, outDir string) string {
+	if path == "" {
+		return ""
+	}
+	rel, err := filepath.Rel(outDir, path)
+	if err != nil {
+		return path
+	}
+	return filepath.ToSlash(rel)
 }
 
 func copyShot(dest string, i int, side, src, route string) (string, error) {

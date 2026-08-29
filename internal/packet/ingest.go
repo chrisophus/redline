@@ -99,6 +99,41 @@ func ParseReview(r io.Reader) (*Review, error) {
 	return &rev, nil
 }
 
+// Merge layers a new review onto the one already recorded for this session.
+// The reviewer-comments loop invites a second ingest carrying only the
+// findings that changed; the summary, the file walkthrough, and the contract
+// highlights live nowhere but here, so an omitted field must keep its
+// previous value rather than blank the section the report leads with. An
+// explicitly supplied field always wins.
+func Merge(prev, next *Review) *Review {
+	if next == nil {
+		return prev
+	}
+	if prev == nil {
+		return next
+	}
+	out := *next
+	if out.Summary == "" {
+		out.Summary = prev.Summary
+	}
+	if len(out.Files) == 0 {
+		out.Files = prev.Files
+	}
+	if len(out.APIChanges) == 0 {
+		out.APIChanges = prev.APIChanges
+	}
+	if len(out.SchemaChanges) == 0 {
+		out.SchemaChanges = prev.SchemaChanges
+	}
+	if len(out.Screenshots) == 0 {
+		out.Screenshots = prev.Screenshots
+	}
+	if len(out.Unknowns) == 0 {
+		out.Unknowns = prev.Unknowns
+	}
+	return &out
+}
+
 // Apply merges an agent's review into a report: LLM findings and unknowns
 // are appended, fingerprints stamped, duplicates dropped, then sorted so
 // a high-severity judgment is not buried under an earlier info finding.

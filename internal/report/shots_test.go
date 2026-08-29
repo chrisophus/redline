@@ -1,6 +1,7 @@
 package report
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,5 +79,67 @@ func TestMaterializeShotsMissingFile(t *testing.T) {
 	_, err := MaterializeShots(t.TempDir(), []packet.Shot{{Route: "/", Path: "/no/such.png"}})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+// Past the whole-report budget, captures are linked from evidence/ui rather
+// than inlined: report.html is one document, and base64 inflates every byte
+// by a third.
+func TestMaterializeShotsStopsInliningPastTheBudget(t *testing.T) {
+	dir := t.TempDir()
+	src := t.TempDir()
+	big := make([]byte, 2<<20)
+	var shots []packet.Shot
+	for i := 0; i < 8; i++ {
+		p := filepath.Join(src, fmt.Sprintf("s%d.png", i))
+		if err := os.WriteFile(p, big, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		shots = append(shots, packet.Shot{Route: fmt.Sprintf("/r%d", i), Path: p})
+	}
+	out, err := MaterializeShots(dir, shots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != len(shots) {
+		t.Fatalf("dropped captures: %d of %d", len(out), len(shots))
+	}
+	inlined, linked := 0, 0
+	for _, s := range out {
+		if strings.HasPrefix(string(s.After), "data:") {
+			inlined++
+		} else {
+			linked++
+		}
+		if s.File == "" {
+			t.Fatal("every capture should name its copy under evidence/ui")
+		}
+		if _, err := os.Stat(filepath.Join(dir, s.File)); err != nil {
+			t.Fatalf("copy missing for %s: %v", s.Route, err)
+		}
+	}
+	if linked == 0 {
+		t.Fatalf("nothing was linked; %d inlined, budget not enforced", inlined)
+	}
+	if inlined == 0 {
+		t.Fatal("nothing was inlined; the budget is too tight")
+	}
+}
+
+func TestPruneMissingShotsKeepsOnlyWhatExists(t *testing.T) {
+	src := t.TempDir()
+	here := filepath.Join(src, "here.png")
+	if err := os.WriteFile(here, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := PruneMissingShots([]packet.Shot{
+		{Route: "/a", Path: here, Before: filepath.Join(src, "gone.png")},
+		{Route: "/b", Path: filepath.Join(src, "gone.png")},
+	})
+	if len(got) != 1 || got[0].Route != "/a" {
+		t.Fatalf("got %+v", got)
+	}
+	if got[0].Before != "" {
+		t.Fatal("a missing before image should be dropped, not kept")
 	}
 }

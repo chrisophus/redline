@@ -20,6 +20,7 @@ type session struct {
 	Packet   *packet.Packet           `json:"packet"`
 	Renders  []pane.Render            `json:"renders,omitempty"`
 	Evidence map[string]pane.Artifact `json:"evidence,omitempty"`
+	Review   *packet.Review           `json:"review,omitempty"`
 }
 
 // SaveSession writes the run so ingest can merge without re-observing.
@@ -27,7 +28,8 @@ func SaveSession(dir string, res *Result) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	s := session{Report: res.Report, Packet: res.Packet, Renders: res.Renders, Evidence: res.Evidence}
+	s := session{Report: res.Report, Packet: res.Packet, Renders: res.Renders,
+		Evidence: res.Evidence, Review: res.Review}
 	buf, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
@@ -46,7 +48,8 @@ func LoadSession(dir string) (*Result, error) {
 	if err := json.Unmarshal(buf, &s); err != nil {
 		return nil, fmt.Errorf("session: %w", err)
 	}
-	res := &Result{Report: s.Report, Packet: s.Packet, Renders: s.Renders, Evidence: s.Evidence}
+	res := &Result{Report: s.Report, Packet: s.Packet, Renders: s.Renders,
+		Evidence: s.Evidence, Review: s.Review}
 	if res.Evidence == nil {
 		res.Evidence = map[string]pane.Artifact{}
 	}

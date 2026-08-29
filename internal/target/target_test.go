@@ -173,3 +173,48 @@ func sameDir(a, b string) bool {
 	}
 	return ra == rb
 }
+
+// `redline review --pr 123` followed by `redline ingest --pr 456` used to
+// merge a review of 456 into the session for 123 and report success.
+func TestMatchesRejectsADifferentTarget(t *testing.T) {
+	pr := &Target{Kind: KindPR, PR: &PullRequest{Number: 123}}
+	if err := pr.Matches(Options{PR: "123"}); err != nil {
+		t.Fatalf("same PR rejected: %v", err)
+	}
+	if err := pr.Matches(Options{PR: "https://github.com/o/r/pull/123"}); err != nil {
+		t.Fatalf("same PR by URL rejected: %v", err)
+	}
+	if err := pr.Matches(Options{PR: "456"}); err == nil {
+		t.Fatal("a different PR was accepted")
+	}
+	if err := pr.Matches(Options{Branch: "feat/x"}); err == nil {
+		t.Fatal("a branch was accepted against a PR session")
+	}
+
+	br := &Target{Kind: KindBranch, Label: "feat/x"}
+	if err := br.Matches(Options{Branch: "feat/x"}); err != nil {
+		t.Fatalf("same branch rejected: %v", err)
+	}
+	if err := br.Matches(Options{Branch: "feat/y"}); err == nil {
+		t.Fatal("a different branch was accepted")
+	}
+}
+
+func TestMatchesNormalisesRanges(t *testing.T) {
+	rg := &Target{Kind: KindRange, Label: "abc..HEAD"}
+	if err := rg.Matches(Options{Range: "abc.."}); err != nil {
+		t.Fatalf("open-ended range rejected: %v", err)
+	}
+	if err := rg.Matches(Options{Range: "abc..def"}); err == nil {
+		t.Fatal("a different range was accepted")
+	}
+}
+
+func TestRequestedIsFalseForTheWorkingTree(t *testing.T) {
+	if (Options{}).Requested() {
+		t.Fatal("the working tree is not a requested target")
+	}
+	if !(Options{Commit: "HEAD"}).Requested() {
+		t.Fatal("--commit is a requested target")
+	}
+}

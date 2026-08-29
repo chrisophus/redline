@@ -32,6 +32,7 @@ go build ./cmd/redline
 ./redline review                  # packet of facts for the agent to judge
 echo '<review JSON>' | ./redline ingest   # merge judgments; open the HTML report
 ./redline open                    # serve and open http://127.0.0.1:8765/report.html
+./redline serve --stop            # stop the server for this .redline
 ```
 
 When the packet's `uiTouched` is true, the skill walks the changed UI with
@@ -51,8 +52,20 @@ Flags: `--base REF` (default: commit parent, range start, PR base, else origin/m
 (default: same as base), `--migrations DIR`, `--out DIR`, `--open`, `--no-open`,
 `--port N` (report server, default 8765).
 
-`review` and `ingest` print `Report: http://127.0.0.1:8765/report.html` on
-stderr. That URL works in Cursor and Claude; `file://` often does not.
+`review` and `ingest` print `Report: <url>` on stderr. That URL works in Cursor
+and Claude; `file://` often does not. Read the port from that line rather than
+assuming 8765: the server identifies itself, so a port already held by another
+repository's report — or by anything else — is skipped for the next free one,
+and a server already serving *this* `.redline` is reused. It shuts down after
+30 minutes idle, or on `redline serve --stop`.
+
+Serving and opening are best effort. If the port cannot be had or no browser
+can be launched, `run` and `ingest` warn and still exit 0: the report is on
+disk either way, and a completed review must not report failure.
+
+`ingest` merges into the session `review` recorded — it never re-observes the
+tree. If you pass a target flag it must name that same session; ingesting
+`--pr 456` into a run of `--pr 123` is an error, not a silent merge.
 
 ## What use taught it
 

@@ -43,6 +43,11 @@ type Screenshot struct {
 	Caption string
 	Before  template.URL
 	After   template.URL
+	// BeforeFile and File are the copies under evidence/ui, relative to the
+	// evidence directory. Set even when the image is inlined, so the report
+	// still names where the capture lives.
+	BeforeFile string
+	File       string
 }
 
 // view is the flattened shape the template consumes.
@@ -257,20 +262,42 @@ func highlightDiffFor(path, diff string) string {
 }
 
 // diffCursor walks a unified diff, tracking old and new file line numbers.
-type diffCursor struct{ old, new int }
+// inHunk separates the header region of a file — where "--- a/x" is a header
+// — from its body, where a line starting "---" is deleted content.
+type diffCursor struct {
+	old, new int
+	inHunk   bool
+}
 
 func (c *diffCursor) classify(line string) (class, side string, src int) {
-	switch {
-	case strings.HasPrefix(line, "diff "), strings.HasPrefix(line, "index "),
-		strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"),
-		strings.HasPrefix(line, `\`), strings.HasPrefix(line, "new file"),
-		strings.HasPrefix(line, "deleted file"), strings.HasPrefix(line, "old file"),
-		strings.HasPrefix(line, "similarity "), strings.HasPrefix(line, "rename "):
+	// Header detection must not swallow content. Inside a hunk, "---port N"
+	// is a deleted line whose text begins with "--", not a file header, and
+	// treating it as one would leave the old-side cursor behind and shift
+	// every following line number in that hunk. File headers only appear
+	// before the first @@ of a file, and git always writes them with a
+	// trailing space; both conditions are required here.
+	if !c.inHunk {
+		switch {
+		case strings.HasPrefix(line, "diff "), strings.HasPrefix(line, "index "),
+			strings.HasPrefix(line, "+++ "), strings.HasPrefix(line, "--- "),
+			strings.HasPrefix(line, "new file"), strings.HasPrefix(line, "deleted file"),
+			strings.HasPrefix(line, "old file"), strings.HasPrefix(line, "similarity "),
+			strings.HasPrefix(line, "rename "):
+			return "meta", "", 0
+		}
+	} else if strings.HasPrefix(line, "diff ") {
+		// The next file in a multi-file diff.
+		c.inHunk = false
+		return "meta", "", 0
+	}
+	// "\ No newline at end of file" belongs to neither side.
+	if strings.HasPrefix(line, `\`) {
 		return "meta", "", 0
 	}
 	if m := hunkHeader.FindStringSubmatch(line); m != nil {
 		c.old, _ = strconv.Atoi(m[1])
 		c.new, _ = strconv.Atoi(m[2])
+		c.inHunk = true
 		return "hunk", "", 0
 	}
 	switch {

@@ -126,3 +126,36 @@ func TestMarkdownSection3DoesNotClaimCompleteCoverage(t *testing.T) {
 		t.Fatalf("expected an unexamined-files sentence, got:\n%s", md)
 	}
 }
+
+// A deleted line whose text begins with "--" is content, not a file header.
+// Misreading it left the old-side cursor behind and shifted every following
+// line number in the hunk — the exact failure line anchoring exists to avoid.
+func TestDiffLineStartingWithDashesIsContent(t *testing.T) {
+	diff := "--- a/README.md\n+++ b/README.md\n@@ -10,4 +10,3 @@\n context\n---port N\n+++count M\n more\n"
+	html := highlightDiffFor("README.md", diff)
+
+	if !strings.Contains(html, `data-line="11" data-side="old"`) {
+		t.Fatalf("deleted --port line was not anchored to old line 11:\n%s", html)
+	}
+	if !strings.Contains(html, `data-line="11" data-side="new"`) {
+		t.Fatalf("added ++count line was not anchored to new line 11:\n%s", html)
+	}
+	// " more" is the second context line: old 12, new 12.
+	if !strings.Contains(html, `data-line="12" data-side="new"> more`) {
+		t.Fatalf("context after the dashed lines is misnumbered:\n%s", html)
+	}
+}
+
+func TestFileHeadersStillDetected(t *testing.T) {
+	diff := "diff --git a/x.go b/x.go\nindex 1..2 100644\n--- a/x.go\n+++ b/x.go\n@@ -1,2 +1,2 @@\n a\n-b\n+c\n"
+	html := highlightDiffFor("x.go", diff)
+	if strings.Contains(html, `data-line="1" data-side="old">--- a/x.go`) {
+		t.Fatal("the --- file header was treated as content")
+	}
+	if !strings.Contains(html, `data-line="2" data-side="old">-b`) {
+		t.Fatalf("deletion not anchored to old line 2:\n%s", html)
+	}
+	if !strings.Contains(html, `data-line="2" data-side="new">+c`) {
+		t.Fatalf("addition not anchored to new line 2:\n%s", html)
+	}
+}

@@ -21,6 +21,7 @@ import (
 	"github.com/ccason/redline/internal/pane"
 	"github.com/ccason/redline/internal/report"
 	"github.com/ccason/redline/internal/run"
+	"github.com/ccason/redline/internal/target"
 )
 
 const usage = `redline — review a change with evidence, not just by reading it
@@ -30,7 +31,7 @@ usage:
   redline review  [flags]   emit the review packet for the agent to judge
   redline ingest  [flags]   merge the agent's review back in and open the report
   redline open    [flags]   serve and open the last report
-  redline serve   [flags]   serve .redline over http (blocks)
+  redline serve   [flags]   serve .redline over http (blocks; --stop ends it)
 
 target (all subcommands; pass only one):
   (default)         working tree, uncommitted work included
@@ -47,7 +48,9 @@ flags:
   --out DIR         evidence directory (default .redline)
   --open            open the HTML report when done (default for ingest)
   --no-open         never open a browser
-  --port N          loopback port for open/serve (default 8765)
+  --port N          loopback port for open/serve (default 8765; the next
+                    free port is used if it is taken)
+  --stop            with serve: stop the server running for --out
 `
 
 func main() {
@@ -59,7 +62,7 @@ func main() {
 
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
-	open, noOpen                                                      bool
+	open, noOpen, stop                                                bool
 	port                                                              int
 }
 
@@ -82,6 +85,7 @@ func runMain(args []string) error {
 	fs.StringVar(&o.revRange, "range", "", "commit range A..B")
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
+	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -97,10 +101,19 @@ func runMain(args []string) error {
 	case "open":
 		return announce(o.out, o.port, true)
 	case "serve":
+		if o.stop {
+			return report.Stop(o.out)
+		}
 		return report.Serve(o.out, o.port)
 	default:
 		return fmt.Errorf("unknown subcommand %q\n\n%s", cmd, usage)
 	}
+}
+
+// target is the subject the flags name, independent of any repository.
+func (o opts) target() target.Options {
+	return target.Options{PR: o.pr, Branch: o.branch, Commit: o.commit,
+		Range: o.revRange, Base: o.base}
 }
 
 func (o opts) toRun(dir string) run.Options {
@@ -150,20 +163,44 @@ func cmdIngest(o opts) error {
 	if err != nil {
 		return err
 	}
+	// Ingest merges into the packet the agent judged; it does not re-observe.
+	// A target flag that names something else is a mistake, not a request —
+	// silently merging a review of #456 into the session for #123 would put
+	// findings against the wrong change under a reviewer's name.
+	if o.target().Requested() {
+		if err := res.Target.Matches(o.target()); err != nil {
+			return fmt.Errorf("ingest: %w (run `redline review` for that target first)", err)
+		}
+	}
 	packet.Apply(&res.Report, rev)
-	if err := write(o, res, rev); err != nil {
+	// Screenshots from an earlier ingest are carried forward only while their
+	// files still exist; a cleaned temp directory must not fail this run.
+	if res.Review != nil {
+		res.Review.Screenshots = report.PruneMissingShots(res.Review.Screenshots)
+	}
+	res.Review = packet.Merge(res.Review, rev)
+	if err := write(o, res, res.Review); err != nil {
 		return err
 	}
-	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence, res.Packet, rev))
+	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence, res.Packet, res.Review))
 	return announce(o.out, o.port, !o.noOpen)
 }
 
+// announce prints where the report is and, when asked, opens it. Serving and
+// browsing are best effort: the report is already on disk by the time this
+// runs, and exiting non-zero because a port was taken would tell the agent
+// driving the session that a completed review failed.
 func announce(out string, port int, browse bool) error {
 	url, err := report.OpenOn(out, browse, port)
-	if url != "" {
-		fmt.Fprintf(os.Stderr, "Report: %s\n", url)
+	if url == "" {
+		// No URL means the report itself is missing. That is a real failure.
+		return err
 	}
-	return err
+	fmt.Fprintf(os.Stderr, "Report: %s\n", url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "redline: %v\n", err)
+	}
+	return nil
 }
 
 func execute(o opts) (*run.Result, error) {

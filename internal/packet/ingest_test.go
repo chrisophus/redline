@@ -79,12 +79,12 @@ func TestParseReviewScreenshots(t *testing.T) {
 
 func TestAreas(t *testing.T) {
 	cases := map[string][]string{
-		"migrations/0001_init.up.sql": {"sql"},
-		"api/openapi.yaml":            {"api"},
-		"web/src/App.tsx":             {"ui"},
+		"migrations/0001_init.up.sql":             {"sql"},
+		"api/openapi.yaml":                        {"api"},
+		"web/src/App.tsx":                         {"ui"},
 		"internal/report/assets/report.html.tmpl": {"ui"},
-		"pkg/foo_test.go":             {"tests"},
-		"cmd/redline/main.go":         {"code"},
+		"pkg/foo_test.go":                         {"tests"},
+		"cmd/redline/main.go":                     {"code"},
 	}
 	for path, want := range cases {
 		got := Areas(path)
@@ -98,5 +98,62 @@ func TestToFindingsStampsLLM(t *testing.T) {
 	fs := (&Review{Findings: []Judgment{{File: "a.go", Rule: "r", Message: "m"}}}).ToFindings()
 	if len(fs) != 1 || fs[0].Source != findings.SourceLLM || fs[0].Substrate != Substrate {
 		t.Fatalf("agent findings must be llm-sourced: %+v", fs)
+	}
+}
+
+// The reviewer-comments loop invites a second ingest carrying only the
+// findings that changed. The summary and walkthrough live nowhere but the
+// review, so omitting them must not blank the sections the report leads with.
+func TestMergeKeepsOmittedNarrative(t *testing.T) {
+	prev := &Review{
+		Summary:       "What this change does.",
+		Files:         []FileNote{{Path: "a.go", Summary: "does a"}},
+		APIChanges:    []Highlight{{Title: "moved"}},
+		SchemaChanges: []Highlight{{Title: "added column"}},
+		Screenshots:   []Shot{{Route: "/x", Path: "/tmp/x.png"}},
+	}
+	next := &Review{Findings: []Judgment{{File: "a.go", Message: "boom"}}}
+
+	got := Merge(prev, next)
+	if got.Summary != prev.Summary {
+		t.Fatalf("summary lost: %q", got.Summary)
+	}
+	if len(got.Files) != 1 || got.Files[0].Path != "a.go" {
+		t.Fatalf("walkthrough lost: %+v", got.Files)
+	}
+	if len(got.APIChanges) != 1 || len(got.SchemaChanges) != 1 {
+		t.Fatal("contract highlights lost")
+	}
+	if len(got.Screenshots) != 1 {
+		t.Fatal("screenshots lost")
+	}
+	if len(got.Findings) != 1 {
+		t.Fatalf("incoming findings dropped: %+v", got.Findings)
+	}
+}
+
+func TestMergePrefersTheNewReviewWhereItSpeaks(t *testing.T) {
+	prev := &Review{Summary: "old", Files: []FileNote{{Path: "a.go", Summary: "old"}}}
+	next := &Review{Summary: "new", Files: []FileNote{{Path: "b.go", Summary: "new"}}}
+
+	got := Merge(prev, next)
+	if got.Summary != "new" {
+		t.Fatalf("got %q", got.Summary)
+	}
+	if len(got.Files) != 1 || got.Files[0].Path != "b.go" {
+		t.Fatalf("got %+v", got.Files)
+	}
+}
+
+func TestMergeHandlesNils(t *testing.T) {
+	if got := Merge(nil, nil); got != nil {
+		t.Fatal("expected nil")
+	}
+	only := &Review{Summary: "x"}
+	if got := Merge(nil, only); got != only {
+		t.Fatal("expected the new review")
+	}
+	if got := Merge(only, nil); got != only {
+		t.Fatal("expected the previous review")
 	}
 }

@@ -10,13 +10,13 @@ import (
 
 func TestAreasClassifyFiles(t *testing.T) {
 	cases := map[string]string{
-		"migrations/000001_init.up.sql": "sql",
-		"api/openapi.yaml":              "api",
-		"web/src/Button.tsx":            "ui",
-		"web/index.html":                "ui",
+		"migrations/000001_init.up.sql":           "sql",
+		"api/openapi.yaml":                        "api",
+		"web/src/Button.tsx":                      "ui",
+		"web/index.html":                          "ui",
 		"internal/report/assets/report.html.tmpl": "ui",
-		"internal/run/run.go":           "code",
-		"internal/run/run_test.go":      "tests",
+		"internal/run/run.go":                     "code",
+		"internal/run/run_test.go":                "tests",
 	}
 	for path, want := range cases {
 		areas := packet.Areas(path)

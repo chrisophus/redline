@@ -99,11 +99,15 @@ If `uiTouched` is false, skip this step. Do not crawl an unrelated frontend.
 echo '<your review JSON>' | redline ingest --pr 123
 ```
 
-Same target flags as step 1. This merges your findings in, copies screenshots
-under `.redline/evidence/ui/`, writes the report, and prints
-`Report: http://127.0.0.1:8765/report.html` (then opens that URL). Do not pass
-`--no-open` unless the user asked. If ingest did not print a URL, run
-`redline open`.
+Same target flags as step 1 — ingest merges into the session that `review`
+recorded and errors if the flags name a different one, rather than merging
+your review into someone else's change. This copies screenshots under
+`.redline/evidence/ui/`, writes the report, and prints `Report: <url>` (then
+opens that URL). Do not pass `--no-open` unless the user asked. If ingest did
+not print a URL, run `redline open`.
+
+Read the port off that line; it is 8765 only when 8765 was free. Lead with the
+URL exactly as printed.
 
 Review JSON shape:
 

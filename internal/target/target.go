@@ -301,3 +301,90 @@ func shortSHA(s string) string {
 }
 
 func itoa(n int) string { return fmt.Sprintf("%d", n) }
+
+// Requested reports whether opts name something other than the working tree.
+func (o Options) Requested() bool {
+	return o.PR != "" || o.Branch != "" || o.Commit != "" || o.Range != ""
+}
+
+// Describe names the target opts ask for, without resolving anything.
+func (o Options) Describe() string {
+	kind, label, err := o.kindLabel()
+	if err != nil {
+		return o.Range
+	}
+	if label == "" {
+		return string(kind)
+	}
+	return string(kind) + " " + label
+}
+
+func (o Options) kindLabel() (Kind, string, error) {
+	switch {
+	case o.PR != "":
+		return KindPR, o.PR, nil
+	case o.Branch != "":
+		return KindBranch, o.Branch, nil
+	case o.Commit != "":
+		return KindCommit, o.Commit, nil
+	case o.Range != "":
+		left, right, err := parseRange(o.Range)
+		if err != nil {
+			return "", "", err
+		}
+		return KindRange, left + ".." + right, nil
+	}
+	return KindWorktree, "", nil
+}
+
+// Matches reports whether opts name this target. It compares what the user
+// typed rather than resolved SHAs: the caller is `redline ingest`, which has
+// no repository open, and the mistake worth catching is `review --pr 123`
+// followed by `ingest --pr 456`.
+func (t *Target) Matches(o Options) error {
+	if err := o.exclusive(); err != nil {
+		return err
+	}
+	kind, label, err := o.kindLabel()
+	if err != nil {
+		return err
+	}
+	if t == nil {
+		return fmt.Errorf("this run recorded no target, so --%s cannot be checked against it", string(kind))
+	}
+	if t.Kind != kind {
+		return fmt.Errorf("this run reviewed %s, not %s", t.describeSelf(), o.Describe())
+	}
+	if kind == KindPR {
+		if t.PR == nil || !samePR(o.PR, t.PR) {
+			return fmt.Errorf("this run reviewed %s, not %s", t.describeSelf(), o.Describe())
+		}
+		return nil
+	}
+	if label != "" && t.Label != "" && label != t.Label {
+		return fmt.Errorf("this run reviewed %s, not %s", t.describeSelf(), o.Describe())
+	}
+	return nil
+}
+
+func (t *Target) describeSelf() string {
+	if t.Kind == KindPR && t.PR != nil {
+		return fmt.Sprintf("pr %d", t.PR.Number)
+	}
+	if t.Label != "" {
+		return string(t.Kind) + " " + t.Label
+	}
+	return string(t.Kind)
+}
+
+// samePR accepts the number or any URL ending in it, matching what gh takes.
+func samePR(ref string, pr *PullRequest) bool {
+	ref = strings.TrimSpace(ref)
+	if ref == itoa(pr.Number) {
+		return true
+	}
+	if i := strings.LastIndex(ref, "/"); i >= 0 {
+		return strings.TrimSpace(ref[i+1:]) == itoa(pr.Number)
+	}
+	return false
+}

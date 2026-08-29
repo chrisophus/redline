@@ -40,6 +40,11 @@ type Result struct {
 	Evidence map[string]pane.Artifact
 	Target   *target.Target
 	Packet   *packet.Packet
+	// Review is the agent's last ingested judgment, carried across runs by
+	// the session snapshot. The report's summary, walkthrough, and contract
+	// highlights live only here — findings.Report has no field for them — so
+	// a follow-up ingest must merge onto it rather than replace it.
+	Review *packet.Review
 }
 
 // Run executes every applicable pane. Applicability is computed from the diff,
