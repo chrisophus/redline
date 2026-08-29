@@ -159,3 +159,45 @@ func TestFileHeadersStillDetected(t *testing.T) {
 		t.Fatalf("addition not anchored to new line 2:\n%s", html)
 	}
 }
+
+// The walk is the report's first screen. Rendering it as inert text while the
+// diffs sit inside a collapsed section below is what made the page look broken:
+// a reviewer clicks the file they care about and nothing happens.
+func TestWalkRowsAreControlsThatCarryFindingCounts(t *testing.T) {
+	rep := &findings.Report{
+		Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 0},
+		Findings: []findings.Finding{{
+			File: "a.go", Line: 3, Rule: "review", Severity: findings.SeverityError,
+			Message: "boom", Source: findings.SourceLLM, Reviewer: "claude", Confidence: "high",
+		}},
+		Substrates: []findings.SubstrateStatus{
+			{Name: "reviewer:claude", State: findings.SubstrateRan, Detail: "1 findings"},
+		},
+	}
+	pkt := &packet.Packet{Files: []packet.FileChange{
+		{Path: "a.go", Status: "modified", Added: 1},
+		{Path: "b.go", Status: "modified", Added: 1},
+	}}
+
+	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(html, `data-jump="a.go"`) {
+		t.Fatal("walk rows must be jump controls")
+	}
+	if !strings.Contains(html, "1 finding<") {
+		t.Fatal("a file carrying a finding must say so in the walk")
+	}
+	if !strings.Contains(html, "judged by claude") {
+		t.Fatal("a reviewer finding must name its reviewer")
+	}
+	// The old banner claimed an empty findings list, on a page showing findings.
+	if strings.Contains(html, "an empty findings list says nothing") {
+		t.Fatal("banner contradicts the findings on the page when a reviewer ran")
+	}
+	if !strings.Contains(html, "claude&#39;s reading of the change") {
+		t.Fatal("banner should say whose reading this is")
+	}
+}

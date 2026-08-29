@@ -49,6 +49,16 @@ a{color:inherit}
   font-weight:600;vertical-align:2px}
 .tag.llm{background:color-mix(in srgb,var(--llm) 15%,transparent);color:var(--llm)}
 .tag.det{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+/* Agreement between independent reviewers is the strongest confidence signal
+   the page has, so it is the one tag that is allowed to shout. */
+/* The walk rows are buttons: they must reset the browser's button chrome but
+   keep the row layout, or the first list on the page reads as inert text. */
+.walk-row.jump{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);font:inherit;color:inherit;cursor:pointer;padding:10px 12px}
+.walk-row.jump:hover{background:var(--hover,rgba(0,0,0,.03))}
+.walk-row.jump:focus-visible{outline:2px solid var(--llm);outline-offset:-2px}
+.file.flash{animation:flash 1.2s ease-out}
+@keyframes flash{from{background:color-mix(in srgb,var(--llm) 18%,transparent)}to{background:transparent}}
+.tag.agree{background:color-mix(in srgb,var(--llm) 30%,transparent);color:var(--llm);font-weight:600}
 .meta-row{color:var(--muted);font-size:13px;margin-top:8px}
 .meta-row b{color:var(--ink);font-weight:600}
 blockquote{margin:12px 0 0;padding:10px 14px;background:var(--code);border-radius:6px;
@@ -151,13 +161,13 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <h2>Files</h2>
 <div class="walk">
 {{range .Files}}
-<div class="walk-row">
+<button type="button" class="walk-row jump" data-jump="{{.Path}}">
   <div class="walk-head">
     <code class="p">{{.Path}}</code>
-    <span class="s">{{.Status}} · <span class="plus">+{{.Added}}</span> <span class="minus">−{{.Removed}}</span></span>
+    <span class="s">{{if .Findings}}<span class="tag {{.Severity}}">{{.Findings}} finding{{if ne .Findings 1}}s{{end}}</span> {{end}}{{.Status}} · <span class="plus">+{{.Added}}</span> <span class="minus">−{{.Removed}}</span></span>
   </div>
   {{if .Summary}}<div class="walk-sum">{{.Summary}}</div>{{end}}
-</div>
+</button>
 {{end}}
 </div>
 {{end}}
@@ -170,7 +180,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   <div>
     <span class="tag">{{.Severity}}</span>
     <span class="tag">{{.Rule}}</span>
-    {{if .IsLLM}}<span class="tag llm">agent judgment</span>{{else}}<span class="tag det">observed</span>{{end}}
+    {{if .IsLLM}}<span class="tag llm">{{if .Reviewer}}judged by {{.Reviewer}}{{else}}agent judgment{{end}}</span>{{if .Confidence}}<span class="tag">{{.Confidence}} confidence</span>{{end}}{{if gt (len .Reporters) 1}}<span class="tag agree">{{len .Reporters}} reviewers agree</span>{{end}}{{else}}<span class="tag det">observed</span>{{end}}
   </div>
   <div class="meta-row">
     {{if .File}}<b>{{.File}}</b>{{if .Line}}:{{.Line}}{{end}}{{else if .Anchor}}<b>{{.Anchor.Kind}} {{.Anchor.ID}}</b>{{end}}
@@ -405,7 +415,30 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     });
   });
 
-  document.getElementById("copy-cmts").addEventListener("click", function () {
+  // A file row is the way into that file's diff. Without this the first screen
+// of the report is a list that looks clickable and is not, while the diffs sit
+// inside a collapsed section further down.
+document.querySelectorAll(".walk-row.jump").forEach(function (row) {
+  row.addEventListener("click", function () {
+    var path = row.getAttribute("data-jump");
+    // Compare the attribute directly rather than building a selector: paths
+    // carry dots, quotes and backslashes, and every one of them is a way to
+    // get selector escaping subtly wrong.
+    var target = null;
+    document.querySelectorAll(".file").forEach(function (f) {
+      if (!target && f.getAttribute("data-path") === path) { target = f; }
+    });
+    if (!target) { return; }
+    var box = target.closest("details");
+    if (box) { box.open = true; }
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    target.classList.remove("flash");
+    void target.offsetWidth;
+    target.classList.add("flash");
+  });
+});
+
+document.getElementById("copy-cmts").addEventListener("click", function () {
     var payload = JSON.stringify({comments: state.comments}, null, 2);
     copyText(payload).then(function () {
       var b = document.getElementById("copy-cmts");

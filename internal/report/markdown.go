@@ -64,7 +64,7 @@ func fileSection(b *strings.Builder, p *packet.Packet, rev *packet.Review) {
 		notes = rev.Files
 	}
 	fmt.Fprintf(b, "## Files\n\n")
-	for _, row := range fileWalk(p.Files, notes) {
+	for _, row := range fileWalk(p.Files, notes, nil) {
 		fmt.Fprintf(b, "- `%s` (%s, +%d −%d)", row.Path, row.Status, row.Added, row.Removed)
 		if row.Summary != "" {
 			fmt.Fprintf(b, " — %s", row.Summary)
