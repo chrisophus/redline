@@ -1,5 +1,5 @@
-// Command redline reviews a change: the working tree, a branch, or a GitHub
-// pull request.
+// Command redline reviews a change: the working tree, a commit, a commit
+// range, a branch, or a GitHub pull request.
 //
 // The loop is three steps. `redline run` observes the change and reports what
 // it can establish deterministically. `redline review` emits a packet of facts
@@ -32,13 +32,15 @@ usage:
   redline open    [flags]   serve and open the last report
   redline serve   [flags]   serve .redline over http (blocks)
 
-target (all subcommands):
-  --pr N|URL        review a GitHub pull request (read-only; uses gh)
-  --branch REF      review a branch's tip
-  (default)         review the working tree, uncommitted work included
+target (all subcommands; pass only one):
+  (default)         working tree, uncommitted work included
+  --commit REF      that commit against its parent (HEAD for the latest)
+  --range A..B      commits reachable from B but not A (B defaults to HEAD)
+  --branch REF      a branch's tip against --base
+  --pr N|URL        a GitHub pull request (read-only; uses gh)
 
 flags:
-  --base REF        base revision (default: the PR's base, else origin/main)
+  --base REF        base revision (default: commit parent, range start, PR base, else origin/main)
   --upstream REF    branch new migrations must not collide with
   --migrations DIR  restrict migration checks to one directory
   --format FMT      report|json  (default report)
@@ -56,9 +58,9 @@ func main() {
 }
 
 type opts struct {
-	base, upstream, migDir, format, out, pr, branch string
-	open, noOpen                                    bool
-	port                                            int
+	base, upstream, migDir, format, out, pr, branch, commit, revRange string
+	open, noOpen                                                      bool
+	port                                                              int
 }
 
 func runMain(args []string) error {
@@ -76,6 +78,8 @@ func runMain(args []string) error {
 	fs.StringVar(&o.out, "out", ".redline", "evidence directory")
 	fs.StringVar(&o.pr, "pr", "", "GitHub pull request number or URL")
 	fs.StringVar(&o.branch, "branch", "", "branch to review")
+	fs.StringVar(&o.commit, "commit", "", "commit to review against its parent")
+	fs.StringVar(&o.revRange, "range", "", "commit range A..B")
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
@@ -101,7 +105,8 @@ func runMain(args []string) error {
 
 func (o opts) toRun(dir string) run.Options {
 	return run.Options{Dir: dir, Base: o.base, Upstream: o.upstream,
-		MigDir: o.migDir, PR: o.pr, Branch: o.branch, Out: o.out}
+		MigDir: o.migDir, PR: o.pr, Branch: o.branch, Commit: o.commit,
+		Range: o.revRange, Out: o.out}
 }
 
 func cmdRun(o opts) error {
@@ -115,7 +120,7 @@ func cmdRun(o opts) error {
 	if o.format == "json" {
 		return emitJSON(res.Report)
 	}
-	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence))
+	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence, res.Packet, nil))
 	return announce(o.out, o.port, o.open && !o.noOpen)
 }
 
@@ -149,7 +154,7 @@ func cmdIngest(o opts) error {
 	if err := write(o, res, rev); err != nil {
 		return err
 	}
-	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence))
+	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence, res.Packet, rev))
 	return announce(o.out, o.port, !o.noOpen)
 }
 
@@ -193,7 +198,7 @@ func write(o opts, res *run.Result, rev *packet.Review) error {
 	if err := run.SaveSession(dir, res); err != nil {
 		return err
 	}
-	md := report.Markdown(&res.Report, res.Renders, res.Evidence)
+	md := report.Markdown(&res.Report, res.Renders, res.Evidence, res.Packet, rev)
 	if err := os.WriteFile(filepath.Join(dir, "report.md"), []byte(md), 0o644); err != nil {
 		return err
 	}

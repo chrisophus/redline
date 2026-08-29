@@ -67,6 +67,49 @@ func TestHTMLIdentityAttribute(t *testing.T) {
 	}
 }
 
+func TestHTMLFileWalkUsesPacketAndAgentNotes(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 0}},
+		Packet: &packet.Packet{
+			Files: []packet.FileChange{
+				{Path: "cmd/redline/main.go", Status: "modified", Added: 10, Removed: 2, Areas: []string{"code"}},
+				{Path: "README.md", Status: "modified", Added: 3, Removed: 1, Areas: []string{"code"}},
+			},
+		},
+		Review: &packet.Review{
+			Summary: "Serve the report over loopback.",
+			Files: []packet.FileNote{
+				{Path: "cmd/redline/main.go", Summary: "Prints the Report: URL after ingest."},
+				{Path: "ghost.go", Summary: "Must not appear — not in the packet."},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "<h2>Files</h2>") {
+		t.Fatal("report must lead with a file walkthrough")
+	}
+	if !strings.Contains(html, "Prints the Report: URL after ingest.") {
+		t.Fatal("agent file summary must render")
+	}
+	if !strings.Contains(html, "README.md") {
+		t.Fatal("every packet file must appear even without a note")
+	}
+	if strings.Contains(html, "ghost.go") {
+		t.Fatal("notes for paths outside the packet must be dropped")
+	}
+}
+
+func TestMarkdownFileSection(t *testing.T) {
+	md := Markdown(&findings.Report{Coverage: findings.Coverage{ChangedFiles: 1}}, nil, nil,
+		&packet.Packet{Files: []packet.FileChange{{Path: "a.go", Status: "added", Added: 4}}},
+		&packet.Review{Files: []packet.FileNote{{Path: "a.go", Summary: "New entry point."}}})
+	if !strings.Contains(md, "## Files") || !strings.Contains(md, "`a.go`") || !strings.Contains(md, "New entry point.") {
+		t.Fatalf("expected file walkthrough, got:\n%s", md)
+	}
+}
+
 func TestMarkdownSection3DoesNotClaimCompleteCoverage(t *testing.T) {
 	rep := findings.Report{
 		Coverage: findings.Coverage{
@@ -75,7 +118,7 @@ func TestMarkdownSection3DoesNotClaimCompleteCoverage(t *testing.T) {
 			Unexamined:    []string{"README.md"},
 		},
 	}
-	md := Markdown(&rep, nil, nil)
+	md := Markdown(&rep, nil, nil, nil, nil)
 	if strings.Contains(md, "Nothing. Every check that applies") {
 		t.Fatal("section 3 must not claim every check ran when files are unexamined")
 	}

@@ -42,10 +42,12 @@ section (labelled as the agent's walk, not checks 15–16).
 `.redline/report.md`, `.redline/report.html`, and any captured artifacts under
 `.redline/evidence/`.
 
-Target (all subcommands): the working tree by default, `--branch REF` for a
-branch tip, `--pr N|URL` for a GitHub pull request.
+Target (all subcommands; pass only one): the working tree by default,
+`--commit REF` for that commit against its parent (`HEAD` for the latest),
+`--range A..B` for a set of commits, `--branch REF` for a branch tip,
+`--pr N|URL` for a GitHub pull request.
 
-Flags: `--base REF` (default: the PR's base, else origin/main), `--upstream REF`
+Flags: `--base REF` (default: commit parent, range start, PR base, else origin/main), `--upstream REF`
 (default: same as base), `--migrations DIR`, `--out DIR`, `--open`, `--no-open`,
 `--port N` (report server, default 8765).
 

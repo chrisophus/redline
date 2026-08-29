@@ -57,6 +57,7 @@ type view struct {
 	Counts      map[string]int
 	API         []packet.Highlight
 	Schema      []packet.Highlight
+	Files       []fileWalkRow
 	Findings    []findingView
 	Areas       []areaView
 	Confirms    []findings.Confirmation
@@ -91,6 +92,7 @@ type fileView struct {
 	Status  string
 	Added   int
 	Removed int
+	Summary string
 	Diff    template.HTML
 }
 
@@ -154,11 +156,13 @@ func buildView(in HTMLInput) view {
 	if v.Subtitle == "" {
 		v.Subtitle = fmt.Sprintf("base %s", short(rep.BaseSHA))
 	}
+	var notes []packet.FileNote
 	if r := in.Review; r != nil {
 		v.HasReview = true
 		v.Summary = r.Summary
 		v.API = r.APIChanges
 		v.Schema = r.SchemaChanges
+		notes = r.Files
 	}
 	if v.Summary == "" {
 		v.Summary = "No agent summary. Redline emits evidence; the plain-language account of the change comes from the agent driving it — run `redline review` and pipe the result to `redline ingest`."
@@ -177,10 +181,16 @@ func buildView(in HTMLInput) view {
 	}
 
 	if in.Packet != nil {
+		v.Files = fileWalk(in.Packet.Files, notes)
+		byPath := map[string]string{}
+		for _, row := range v.Files {
+			byPath[row.Path] = row.Summary
+		}
 		byArea := map[string][]fileView{}
 		for _, f := range in.Packet.Files {
 			fv := fileView{Path: f.Path, Status: f.Status, Added: f.Added, Removed: f.Removed,
-				Diff: template.HTML(highlightDiffFor(f.Path, f.Diff))}
+				Summary: byPath[f.Path],
+				Diff:    template.HTML(highlightDiffFor(f.Path, f.Diff))}
 			for _, a := range f.Areas {
 				byArea[a] = append(byArea[a], fv)
 			}

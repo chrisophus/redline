@@ -16,6 +16,9 @@ type Review struct {
 	// it lives in. Redline emits evidence; the agent supplies the sentence a
 	// reviewer reads first.
 	Summary string `json:"summary"`
+	// Files is the walkthrough: one sentence per changed path, what that file
+	// does in this change. The report leads with this even when no pane ran.
+	Files []FileNote `json:"files,omitempty"`
 	// APIChanges and SchemaChanges are the agent's reading of the contract
 	// surface this change moves, highlighted at the top of the report.
 	APIChanges    []Highlight `json:"apiChanges,omitempty"`
@@ -35,6 +38,12 @@ type Shot struct {
 	Path    string `json:"path"`             // current (or after) image on disk
 	Before  string `json:"before,omitempty"` // optional before image
 	Caption string `json:"caption,omitempty"`
+}
+
+// FileNote is the agent's one-sentence account of a changed file.
+type FileNote struct {
+	Path    string `json:"path"`
+	Summary string `json:"summary"`
 }
 
 // Highlight is a called-out contract change.

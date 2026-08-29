@@ -262,6 +262,19 @@ func worktreeRoot() (string, error) {
 // Head returns the commit HEAD points at.
 func (r *Repo) Head() (string, error) { return r.Resolve("HEAD") }
 
+// Parent returns the first parent of rev. A root commit has none.
+func (r *Repo) Parent(rev string) (string, error) {
+	sha, err := r.Resolve(rev)
+	if err != nil {
+		return "", err
+	}
+	out, err := r.git("rev-parse", "--verify", "--quiet", sha+"^")
+	if err != nil || strings.TrimSpace(out) == "" {
+		return "", fmt.Errorf("revision %s has no parent", short(sha))
+	}
+	return strings.TrimSpace(out), nil
+}
+
 // Log returns the commits on rev that are not on base, newest first.
 func (r *Repo) Log(base, rev string) ([]Commit, error) {
 	out, err := r.git("log", "--no-color", "--format=%H%x1f%an%x1f%s%x1f%b%x1e", base+".."+rev)

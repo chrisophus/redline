@@ -61,6 +61,33 @@ func (r *repo) open() *gitx.Repo {
 	return repo
 }
 
+func TestParentOfHEAD(t *testing.T) {
+	r := newRepo(t)
+	r.write("a.txt", "a\n")
+	r.commit("one")
+	r.write("b.txt", "b\n")
+	r.commit("two")
+	repo := r.open()
+	parent, err := repo.Parent("HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	one, err := repo.Resolve("HEAD~1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parent != one {
+		t.Fatalf("parent %s want %s", parent, one)
+	}
+	root, err := repo.Resolve("HEAD~1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Parent(root); err == nil {
+		t.Fatal("root commit must have no parent")
+	}
+}
+
 func TestDiffPathUntrackedFileIsANewFileDiff(t *testing.T) {
 	r := newRepo(t)
 	r.write("keep.go", "package keep\n")

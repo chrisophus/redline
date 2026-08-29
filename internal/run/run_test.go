@@ -260,7 +260,7 @@ func TestUnexaminedChangeIsNotACleanReview(t *testing.T) {
 	if len(rep.Unknowns) == 0 {
 		t.Fatal("an entirely unexamined change must be reported as unexamined")
 	}
-	md := report.Markdown(&rep, res.Renders, res.Evidence)
+	md := report.Markdown(&rep, res.Renders, res.Evidence, res.Packet, nil)
 	if !strings.Contains(md, "examined none of this change") {
 		t.Fatalf("report must say so at the top:\n%s", md)
 	}
@@ -297,7 +297,7 @@ func TestModificationCapturesTheSQLDiff(t *testing.T) {
 	if !strings.Contains(artifact, "-CREATE TABLE users (id int);") {
 		t.Fatalf("expected the removed SQL in the captured diff, got %q", artifact)
 	}
-	md := report.Markdown(&res.Report, res.Renders, res.Evidence)
+	md := report.Markdown(&res.Report, res.Renders, res.Evidence, res.Packet, nil)
 	if !strings.Contains(md, "+CREATE TABLE users (id bigint);") {
 		t.Fatal("the report must show the evidence beside the claim")
 	}
@@ -380,4 +380,59 @@ func TestCustomOutIsExcluded(t *testing.T) {
 	if !sawReal {
 		t.Fatalf("real change was dropped with the out dir: %v", res.Report.Scope)
 	}
+}
+
+func TestCommitTargetIsOnlyThatCommit(t *testing.T) {
+	r := newRepo(t)
+	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
+	r.write("one.txt", "1\n")
+	r.commit("one")
+	r.write("two.txt", "2\n")
+	r.commit("two")
+	r.write("dirty.txt", "uncommitted\n")
+
+	res := r.run(run.Options{Commit: "HEAD"})
+	if res.Target.Kind != "commit" {
+		t.Fatalf("kind %q", res.Target.Kind)
+	}
+	if !hasPath(res.Report.Scope, "two.txt") {
+		t.Fatalf("latest commit file missing: %v", res.Report.Scope)
+	}
+	if hasPath(res.Report.Scope, "one.txt") {
+		t.Fatalf("earlier commit leaked into --commit HEAD: %v", res.Report.Scope)
+	}
+	if hasPath(res.Report.Scope, "dirty.txt") {
+		t.Fatalf("working-tree dirt leaked into --commit: %v", res.Report.Scope)
+	}
+}
+
+func TestRangeTargetCoversTheSpan(t *testing.T) {
+	r := newRepo(t)
+	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
+	r.write("a.txt", "a\n")
+	r.commit("a")
+	r.write("b.txt", "b\n")
+	r.commit("b")
+	r.write("c.txt", "c\n")
+	r.commit("c")
+
+	res := r.run(run.Options{Range: "HEAD~2..HEAD"})
+	if res.Target.Kind != "range" {
+		t.Fatalf("kind %q", res.Target.Kind)
+	}
+	if !hasPath(res.Report.Scope, "b.txt") || !hasPath(res.Report.Scope, "c.txt") {
+		t.Fatalf("range should include b and c: %v", res.Report.Scope)
+	}
+	if hasPath(res.Report.Scope, "a.txt") {
+		t.Fatalf("range start tree leaked into the change: %v", res.Report.Scope)
+	}
+}
+
+func hasPath(paths []string, want string) bool {
+	for _, p := range paths {
+		if p == want {
+			return true
+		}
+	}
+	return false
 }

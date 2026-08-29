@@ -96,16 +96,17 @@ func DefaultGuidance() Guidance {
 			"Violations of the repository's own instruction files, cited by file.",
 			"Tests: behaviour the change introduces that no test exercises. Name the behaviour, not the coverage number.",
 			"When `uiTouched` is true: drive the changed journeys in a real browser with agent-browser, capture screenshots, and report defects you actually saw. Diff-scoped — not a whole-app crawl. Attach them as `screenshots`. Category `ui`.",
+			"A one-sentence summary of every path in this packet's `files[]`, returned as review `files` (`path` + `summary`). This is the walkthrough a reviewer reads first — what each file does in this change, not a restatement of the hunk.",
 		},
 		Avoid: []string{
 			"Style, formatting, and naming, unless an instruction file demands it — the repository's linters own these.",
-			"Restating what the diff plainly shows.",
+			"Restating hunks inside findings. The file-by-file `files[]` walkthrough is required; findings are for defects.",
 			"Anything already reported in `deterministic` — those are observed facts and are shown to the reviewer separately.",
 			"Speculative findings you cannot point at a line for. If you are unsure, say so in `confidence`, or leave it out.",
 			"Praise, summaries of good practice, and encouragement. The reviewer's attention is the scarce resource.",
 			"Presenting an agent UI walk as Redline checks 15–16. Those are not built. Your walk is source llm.",
 		},
-		Output:  "Emit findings JSON on stdout and pipe it to `redline ingest`. Each finding needs file, line, rule, category, severity, message, and a concrete failure scenario in `context`. Include `screenshots` when you walked the UI.",
+		Output:  "Emit findings JSON on stdout and pipe it to `redline ingest`. Include `files`: one `{path, summary}` for every path in this packet. Each finding needs file, line, rule, category, severity, message, and a concrete failure scenario in `context`. Include `screenshots` when you walked the UI.",
 		Sources: "Findings you emit are recorded with source \"llm\" and rendered apart from observed ones. Do not claim Redline executed or tested anything. A UI walk you drove is your work: say so in context and attach screenshots[].",
 	}
 }

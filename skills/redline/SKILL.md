@@ -1,6 +1,6 @@
 ---
 name: redline
-description: Review a change — the working tree, a branch, or a GitHub PR — combining Redline's observed evidence with your own reading of the code, a diff-scoped UI walk when the interface changed, and open a report UI when done. Use when asked to review a branch or PR, before pushing, or whenever a change touches migrations, an API contract, or the UI.
+description: Review a change — the working tree, the latest commit, a commit range, a branch, or a GitHub PR — combining Redline's observed evidence with your own reading of the code, a diff-scoped UI walk when the interface changed, and open a report UI when done. Use when asked to review a commit, range, branch, or PR, before pushing, or whenever a change touches migrations, an API contract, or the UI.
 ---
 
 # redline
@@ -14,7 +14,8 @@ This skill is the driver. It works the same in Claude Code and in Cursor:
 
 ## When to use
 
-- "Review this PR" / "review branch X" / "review what I've got".
+- "Review this PR" / "review branch X" / "review the latest commit" /
+  "review these commits" / "review what I've got".
 - Before a push or opening a PR.
 - Any change touching migrations, an API spec, or the interface.
 
@@ -27,7 +28,11 @@ do not skip the UI walk either.
 **1. Get the packet.**
 
 ```
-redline review --pr 123          # or --branch feat/x, or nothing for the working tree
+redline review                   # working tree (uncommitted work included)
+redline review --commit HEAD     # latest commit only
+redline review --range HEAD~3..HEAD
+redline review --branch feat/x
+redline review --pr 123
 ```
 
 This prints JSON: the target, the commits, every changed file with its diff,
@@ -49,6 +54,9 @@ calls — you are the model.
 - Volume is the failure mode. Ten real findings beat forty padded ones. Use
   `confidence` rather than either suppressing a genuine concern or asserting a
   shaky one.
+- Write a one-sentence summary for **every** path in the packet's `files[]`.
+  That walkthrough is the report's file list — Copilot-style, required even
+  when you have no findings. It is not a finding and does not restate hunks.
 
 **2b. Walk the UI when `uiTouched` is true.**
 
@@ -102,6 +110,9 @@ Review JSON shape:
 ```json
 {
   "summary": "One or two sentences: what this change does, in its own domain.",
+  "files": [
+    {"path": "internal/foo.go", "summary": "What this file does in the change, one sentence."}
+  ],
   "apiChanges":    [{"title": "...", "detail": "...", "file": "...", "breaking": true}],
   "schemaChanges": [{"title": "...", "detail": "...", "file": "...", "breaking": false}],
   "findings": [{
@@ -124,9 +135,11 @@ Review JSON shape:
 }
 ```
 
-`summary`, `apiChanges` and `schemaChanges` are what the report leads with.
-Write them for someone who has not read the diff. `screenshots[].before` is
-optional; a walk of the current tree usually has only `path`.
+`summary` and `files` are what the report leads with. Cover every path in
+the packet — a reviewer who has not opened the diff should still know what
+each file does. `apiChanges` and `schemaChanges` sit beside that. Write all
+of them in the domain of the change. `screenshots[].before` is optional; a
+walk of the current tree usually has only `path`.
 
 ## Presenting it
 

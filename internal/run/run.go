@@ -22,11 +22,13 @@ type Options struct {
 	Upstream string // branch new migrations must not collide with
 	MigDir   string // optional migrations directory filter
 
-	// PR and Branch point Redline at something other than the working tree.
-	// Both are materialized as detached worktrees, so the user's own checkout
-	// is never moved.
+	// These point Redline at something other than the working tree.
+	// Each is materialized as a detached worktree, so the user's own
+	// checkout is never moved.
 	PR     string
 	Branch string
+	Commit string
+	Range  string
 	Out    string // evidence directory; excluded from the change like .redline/
 }
 
@@ -45,7 +47,8 @@ type Result struct {
 // becomes a sample from a distribution and a check can be silently skipped.
 func Run(opts Options) (*Result, error) {
 	tgt, err := target.Resolve(target.Options{
-		Dir: opts.Dir, PR: opts.PR, Branch: opts.Branch, Base: opts.Base,
+		Dir: opts.Dir, PR: opts.PR, Branch: opts.Branch,
+		Commit: opts.Commit, Range: opts.Range, Base: opts.Base,
 	})
 	if err != nil {
 		return nil, err

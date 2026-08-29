@@ -52,6 +52,20 @@ func TestApplyDedupesAndSorts(t *testing.T) {
 	}
 }
 
+func TestParseReviewFiles(t *testing.T) {
+	raw := `{"summary":"loopback serve","files":[{"path":"internal/report/serve.go","summary":"Serves the report over HTTP."}]}`
+	rev, err := ParseReview(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rev.Files) != 1 || rev.Files[0].Path != "internal/report/serve.go" {
+		t.Fatalf("%+v", rev.Files)
+	}
+	if rev.Files[0].Summary != "Serves the report over HTTP." {
+		t.Fatalf("summary: %q", rev.Files[0].Summary)
+	}
+}
+
 func TestParseReviewScreenshots(t *testing.T) {
 	raw := `{"summary":"ui","screenshots":[{"route":"/x","path":"/tmp/a.png","caption":"form"}]}`
 	rev, err := ParseReview(strings.NewReader(raw))

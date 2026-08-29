@@ -72,6 +72,12 @@ details>summary:hover{background:var(--code)}
 .file:last-child{border-bottom:none}
 .file .p{font-family:ui-monospace,monospace;font-size:13px;font-weight:600}
 .file .s{font-size:12px;color:var(--muted)}
+.file .note{font-size:14px;margin:4px 0 0;line-height:1.5}
+.walk{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin:12px 0;overflow:hidden}
+.walk-row{padding:12px 16px;border-bottom:1px solid var(--line)}
+.walk-row:last-child{border-bottom:none}
+.walk-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
+.walk-sum{margin-top:4px;font-size:14px;line-height:1.5}
 .plus{color:var(--ok)} .minus{color:var(--error)}
 .thread{padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
 .thread:last-child{border-bottom:none}
@@ -141,6 +147,21 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 </div>{{end}}
 {{end}}
 
+{{if .Files}}
+<h2>Files</h2>
+<div class="walk">
+{{range .Files}}
+<div class="walk-row">
+  <div class="walk-head">
+    <code class="p">{{.Path}}</code>
+    <span class="s">{{.Status}} · <span class="plus">+{{.Added}}</span> <span class="minus">−{{.Removed}}</span></span>
+  </div>
+  {{if .Summary}}<div class="walk-sum">{{.Summary}}</div>{{end}}
+</div>
+{{end}}
+</div>
+{{end}}
+
 <h2>Findings</h2>
 {{if .Findings}}
 {{range .Findings}}
@@ -177,6 +198,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
       <div class="s">{{.Status}} · <span class="plus">+{{.Added}}</span> <span class="minus">−{{.Removed}}</span>
         <label class="vw"><input type="checkbox" class="viewedbox"> viewed</label>
       </div>
+      {{if .Summary}}<div class="note">{{.Summary}}</div>{{end}}
       {{if .Diff}}<pre class="diff">{{.Diff}}</pre>{{end}}
     </div>
     {{end}}

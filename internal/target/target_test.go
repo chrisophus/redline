@@ -8,10 +8,14 @@ import (
 	"testing"
 )
 
-func TestResolveRejectsPRAndBranch(t *testing.T) {
+func TestResolveRejectsMultipleSelectors(t *testing.T) {
 	_, err := Resolve(Options{Dir: t.TempDir(), PR: "1", Branch: "main"})
-	if err == nil || !strings.Contains(err.Error(), "not both") {
-		t.Fatalf("expected not-both error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "only one") {
+		t.Fatalf("expected only-one error, got %v", err)
+	}
+	_, err = Resolve(Options{Dir: t.TempDir(), Commit: "HEAD", Range: "a..b"})
+	if err == nil || !strings.Contains(err.Error(), "only one") {
+		t.Fatalf("expected only-one error, got %v", err)
 	}
 }
 
@@ -51,6 +55,86 @@ func TestResolveBranchUsesDetachedWorktree(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(tgt.Dir, "README")); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestResolveCommitUsesParentAsBase(t *testing.T) {
+	dir := initRepo(t)
+	writeCommit(t, dir, "next.txt", "two\n", "second")
+	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
+	tgt, err := Resolve(Options{Dir: dir, Commit: "HEAD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tgt.Kind != KindCommit {
+		t.Fatalf("kind %q", tgt.Kind)
+	}
+	if tgt.Dir == dir {
+		t.Fatal("commit target must not be the user's checkout")
+	}
+	parent, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD^").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tgt.Base != strings.TrimSpace(string(parent)) {
+		t.Fatalf("base %q want parent %q", tgt.Base, strings.TrimSpace(string(parent)))
+	}
+}
+
+func TestResolveRangeSplitsADotDotB(t *testing.T) {
+	dir := initRepo(t)
+	writeCommit(t, dir, "next.txt", "two\n", "second")
+	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
+	tgt, err := Resolve(Options{Dir: dir, Range: "HEAD~1..HEAD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tgt.Kind != KindRange {
+		t.Fatalf("kind %q", tgt.Kind)
+	}
+	if tgt.Label != "HEAD~1..HEAD" {
+		t.Fatalf("label %q", tgt.Label)
+	}
+	start, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD~1").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tgt.Base != strings.TrimSpace(string(start)) && tgt.Base != "HEAD~1" {
+		t.Fatalf("base %q", tgt.Base)
+	}
+}
+
+func TestParseRange(t *testing.T) {
+	left, right, err := parseRange("abc..def")
+	if err != nil || left != "abc" || right != "def" {
+		t.Fatalf("got %q %q %v", left, right, err)
+	}
+	left, right, err = parseRange("abc..")
+	if err != nil || left != "abc" || right != "HEAD" {
+		t.Fatalf("open end: %q %q %v", left, right, err)
+	}
+	if _, _, err := parseRange("abc"); err == nil {
+		t.Fatal("bare ref must fail")
+	}
+	if _, _, err := parseRange("..def"); err == nil {
+		t.Fatal("missing start must fail")
+	}
+}
+
+func writeCommit(t *testing.T, dir, path, content, msg string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, path), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	run("add", "-A")
+	run("commit", "-m", msg)
 }
 
 func initRepo(t *testing.T) string {
