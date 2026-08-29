@@ -76,6 +76,14 @@ details>summary:hover{background:var(--code)}
 .walk{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin:12px 0;overflow:hidden}
 .walk-row{padding:12px 16px;border-bottom:1px solid var(--line)}
 .walk-row:last-child{border-bottom:none}
+/* The walk rows are buttons so a click opens the drawer. Without resetting the
+   button chrome they lay out as inline-blocks at their intrinsic width, which
+   turns the report's primary list into a two-column jumble of centred text. */
+.walk-row.jump{display:block;width:100%;text-align:left;background:none;border:0;
+  border-bottom:1px solid var(--line);font:inherit;color:inherit;cursor:pointer}
+.walk-row.jump:last-child{border-bottom:none}
+.walk-row.jump:hover{background:var(--code)}
+.walk-row.jump:focus-visible{outline:2px solid var(--llm);outline-offset:-2px}
 .walk-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
 .walk-sum{margin-top:4px;font-size:14px;line-height:1.5}
 .plus{color:var(--ok)} .minus{color:var(--error)}

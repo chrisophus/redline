@@ -602,6 +602,30 @@ func TestFileHeadersStillDetected(t *testing.T) {
 // The walk is the report's first screen. Rendering it as inert text while the
 // diffs sit inside a collapsed section below is what made the page look broken:
 // a reviewer clicks the file they care about and nothing happens.
+// The walk rows are buttons so clicking one opens the drawer. A button without
+// its chrome reset lays out at its intrinsic width, which turned the report's
+// primary list into a two-column jumble of centred text.
+func TestWalkRowsAreStyledAsRowsNotButtons(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{
+			{Path: "a.go", Areas: []string{"code"}},
+			{Path: "b.go", Areas: []string{"code"}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := html[:strings.Index(html, "</style>")]
+	rule := css[strings.Index(css, ".walk-row.jump{"):]
+	rule = rule[:strings.Index(rule, "}")]
+	for _, want := range []string{"display:block", "width:100%", "text-align:left"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".walk-row.jump must set %s, got %q", want, rule)
+		}
+	}
+}
+
 func TestWalkRowsAreControlsThatCarryFindingCounts(t *testing.T) {
 	rep := &findings.Report{
 		Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 0},
