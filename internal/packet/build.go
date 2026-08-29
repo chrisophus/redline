@@ -36,6 +36,8 @@ func Build(repo *gitx.Repo, tgt *target.Target, baseSHA string, changed []string
 			stats[st.Path] = st
 		}
 	}
+	baseBlobs, _ := repo.Blobs(baseSHA)
+	workBlobs, _ := repo.WorktreeBlobs()
 	for _, path := range changed {
 		fc := FileChange{
 			Path:     path,
@@ -49,12 +51,27 @@ func Build(repo *gitx.Repo, tgt *target.Target, baseSHA string, changed []string
 			diff = diff[:maxDiffBytes] + "\n... diff truncated; read the file directly\n"
 		}
 		fc.Diff = diff
-		fc.Status = status(diff)
+		fc.Status = fileStatus(path, baseBlobs, workBlobs)
+		if fc.Status == "" {
+			fc.Status = status(diff)
+		}
 		p.Files = append(p.Files, fc)
 	}
 	all := instructions.Discover(tgt.Dir)
 	p.Instructions = instructions.For(all, changed)
+	p.UITouched = touchesUI(p.Files)
 	return p
+}
+
+func touchesUI(files []FileChange) bool {
+	for _, f := range files {
+		for _, a := range f.Areas {
+			if a == "ui" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func headRev(t *target.Target) string {
@@ -69,6 +86,24 @@ func status(diff string) string {
 	case strings.Contains(diff, "\nnew file mode "):
 		return "added"
 	case strings.Contains(diff, "\ndeleted file mode "):
+		return "deleted"
+	default:
+		return "modified"
+	}
+}
+
+// fileStatus is presence in the base tree vs the worktree, not a parse of
+// unified-diff headers. An empty untracked diff used to read as "modified".
+func fileStatus(path string, base, work map[string]string) string {
+	if base == nil || work == nil {
+		return ""
+	}
+	_, inBase := base[path]
+	_, inWork := work[path]
+	switch {
+	case !inBase && inWork:
+		return "added"
+	case inBase && !inWork:
 		return "deleted"
 	default:
 		return "modified"
@@ -102,11 +137,15 @@ func Areas(path string) []string {
 		add("api")
 	}
 	switch ext {
-	case ".tsx", ".jsx", ".vue", ".svelte", ".css", ".scss":
+	case ".tsx", ".jsx", ".vue", ".svelte", ".css", ".scss", ".html", ".htm":
 		add("ui")
 	case ".ts", ".js":
 		if strings.Contains(lower, "/web/") || strings.Contains(lower, "/ui/") ||
 			strings.Contains(lower, "/frontend/") || strings.Contains(lower, "/components/") {
+			add("ui")
+		}
+	case ".tmpl":
+		if strings.Contains(lower, "html") {
 			add("ui")
 		}
 	}

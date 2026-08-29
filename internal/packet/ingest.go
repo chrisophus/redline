@@ -16,6 +16,9 @@ type Review struct {
 	// it lives in. Redline emits evidence; the agent supplies the sentence a
 	// reviewer reads first.
 	Summary string `json:"summary"`
+	// Files is the walkthrough: one sentence per changed path, what that file
+	// does in this change. The report leads with this even when no pane ran.
+	Files []FileNote `json:"files,omitempty"`
 	// APIChanges and SchemaChanges are the agent's reading of the contract
 	// surface this change moves, highlighted at the top of the report.
 	APIChanges    []Highlight `json:"apiChanges,omitempty"`
@@ -24,6 +27,23 @@ type Review struct {
 	// Unknowns are what the agent could not determine. Reported in the same
 	// section as Redline's own gaps, for the same reason.
 	Unknowns []string `json:"unknowns,omitempty"`
+	// Screenshots are routes the agent walked. They are not Redline's UI pane
+	// (checks 15–16); they are labelled as agent work when the report renders.
+	Screenshots []Shot `json:"screenshots,omitempty"`
+}
+
+// Shot is one captured page from an agent UI walk.
+type Shot struct {
+	Route   string `json:"route"`
+	Path    string `json:"path"`             // current (or after) image on disk
+	Before  string `json:"before,omitempty"` // optional before image
+	Caption string `json:"caption,omitempty"`
+}
+
+// FileNote is the agent's one-sentence account of a changed file.
+type FileNote struct {
+	Path    string `json:"path"`
+	Summary string `json:"summary"`
 }
 
 // Highlight is a called-out contract change.
@@ -77,6 +97,68 @@ func ParseReview(r io.Reader) (*Review, error) {
 		return nil, fmt.Errorf("review is not valid JSON: %w", err)
 	}
 	return &rev, nil
+}
+
+// Merge layers a new review onto the one already recorded for this session.
+// The reviewer-comments loop invites a second ingest carrying only the
+// findings that changed; the summary, the file walkthrough, and the contract
+// highlights live nowhere but here, so an omitted field must keep its
+// previous value rather than blank the section the report leads with. An
+// explicitly supplied field always wins.
+func Merge(prev, next *Review) *Review {
+	if next == nil {
+		return prev
+	}
+	if prev == nil {
+		return next
+	}
+	out := *next
+	if out.Summary == "" {
+		out.Summary = prev.Summary
+	}
+	if len(out.Files) == 0 {
+		out.Files = prev.Files
+	}
+	if len(out.APIChanges) == 0 {
+		out.APIChanges = prev.APIChanges
+	}
+	if len(out.SchemaChanges) == 0 {
+		out.SchemaChanges = prev.SchemaChanges
+	}
+	if len(out.Screenshots) == 0 {
+		out.Screenshots = prev.Screenshots
+	}
+	if len(out.Unknowns) == 0 {
+		out.Unknowns = prev.Unknowns
+	}
+	return &out
+}
+
+// Apply merges an agent's review into a report: LLM findings and unknowns
+// are appended, fingerprints stamped, duplicates dropped, then sorted so
+// a high-severity judgment is not buried under an earlier info finding.
+func Apply(rep *findings.Report, rev *Review) {
+	if rev == nil {
+		return
+	}
+	rep.Findings = append(rep.Findings, rev.ToFindings()...)
+	seen := map[string]bool{}
+	for _, u := range rep.Unknowns {
+		seen[u.Substrate+"\x00"+u.Message] = true
+	}
+	for _, msg := range rev.Unknowns {
+		key := Substrate + "\x00" + msg
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+			Substrate: Substrate, Message: msg, Reason: "reported by the reviewing agent",
+		})
+	}
+	rep.Finalize()
+	rep.Dedupe()
+	findings.Sort(rep.Findings)
 }
 
 // Substrate is the pane name agent findings are recorded under. They are a

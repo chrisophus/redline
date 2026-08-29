@@ -6,15 +6,17 @@ package report
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/ccason/redline/internal/findings"
+	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/pane"
 )
 
 // Markdown renders the report. Rung 1's visual output is markdown; report.html
 // arrives with the panes whose evidence is actually visual.
-func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]pane.Artifact) string {
+func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]pane.Artifact, p *packet.Packet, rev *packet.Review) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Redline\n\n")
 	fmt.Fprintf(&b, "Base `%s` (`%s`) — %d file(s) changed, %d examined.\n\n",
@@ -23,6 +25,7 @@ func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]p
 	banner(&b, rep)
 
 	section1(&b, renders)
+	fileSection(&b, p, rev)
 	section2(&b, rep)
 	section3(&b, rep)
 	section4(&b, rep, evidence)
@@ -47,6 +50,28 @@ func banner(b *strings.Builder, rep *findings.Report) {
 		fmt.Fprintf(b, "> **%d pane(s) applied to this change and did not run.** "+
 			"See _What could not be determined_.\n\n", len(rep.DarkSubstrates()))
 	}
+}
+
+// fileSection is the walkthrough: every changed file, with the agent's
+// sentence when they wrote one. Shown even when no pane ran — that is when
+// a reviewer most needs a file-by-file account.
+func fileSection(b *strings.Builder, p *packet.Packet, rev *packet.Review) {
+	if p == nil || len(p.Files) == 0 {
+		return
+	}
+	var notes []packet.FileNote
+	if rev != nil {
+		notes = rev.Files
+	}
+	fmt.Fprintf(b, "## Files\n\n")
+	for _, row := range fileWalk(p.Files, notes) {
+		fmt.Fprintf(b, "- `%s` (%s, +%d −%d)", row.Path, row.Status, row.Added, row.Removed)
+		if row.Summary != "" {
+			fmt.Fprintf(b, " — %s", row.Summary)
+		}
+		fmt.Fprintln(b)
+	}
+	fmt.Fprintln(b)
 }
 
 // section1 is the rendered evidence, in the domain of the change.
@@ -86,8 +111,12 @@ func section3(b *strings.Builder, rep *findings.Report) {
 	fmt.Fprintf(b, "## What could not be determined\n\n")
 	dark := rep.DarkSubstrates()
 	if len(rep.Unknowns) == 0 && len(dark) == 0 {
-		fmt.Fprintf(b, "Nothing. Every check that applies to these %d file(s) ran and answered.\n\n",
-			rep.Coverage.ExaminedFiles)
+		if n := len(rep.Coverage.Unexamined); n > 0 {
+			fmt.Fprintf(b, "Every pane that applies ran, but %d changed file(s) were not in any pane's scope.\n\n", n)
+		} else {
+			fmt.Fprintf(b, "Nothing. Every check that applies to these %d file(s) ran and answered.\n\n",
+				rep.Coverage.ExaminedFiles)
+		}
 	}
 	for _, s := range dark {
 		fmt.Fprintf(b, "- **%s did not run.** %s\n", s.Name, s.Detail)
@@ -186,8 +215,12 @@ func emitEvidence(b *strings.Builder, f findings.Finding, evidence map[string]pa
 
 // evidenceFile turns an observation ID into a filename under .redline/evidence/.
 func evidenceFile(id string) string {
-	repl := strings.NewReplacer("/", "_", ":", "_", " ", "_")
-	return repl.Replace(id)
+	repl := strings.NewReplacer("/", "_", ":", "_", " ", "_", "..", "_")
+	name := filepath.Base(repl.Replace(id))
+	if name == "" || name == "." {
+		return "artifact"
+	}
+	return name
 }
 
 // EvidenceFile is evidenceFile, exported for the writer that persists artifacts.

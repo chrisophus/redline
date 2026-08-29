@@ -72,6 +72,12 @@ details>summary:hover{background:var(--code)}
 .file:last-child{border-bottom:none}
 .file .p{font-family:ui-monospace,monospace;font-size:13px;font-weight:600}
 .file .s{font-size:12px;color:var(--muted)}
+.file .note{font-size:14px;margin:4px 0 0;line-height:1.5}
+.walk{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin:12px 0;overflow:hidden}
+.walk-row{padding:12px 16px;border-bottom:1px solid var(--line)}
+.walk-row:last-child{border-bottom:none}
+.walk-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
+.walk-sum{margin-top:4px;font-size:14px;line-height:1.5}
 .plus{color:var(--ok)} .minus{color:var(--error)}
 .thread{padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
 .thread:last-child{border-bottom:none}
@@ -79,6 +85,7 @@ details>summary:hover{background:var(--code)}
 ul.plain{margin:8px 0;padding-left:20px}
 ul.plain li{margin:4px 0}
 .shots{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+.shots.single{grid-template-columns:1fr;max-width:720px}
 .shots img{width:100%;border:1px solid var(--line);border-radius:6px}
 .shots .cap{font-size:12px;color:var(--muted);margin-bottom:4px}
 .empty{color:var(--muted);font-style:italic}
@@ -103,11 +110,11 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   border:1px solid var(--line);background:var(--bg);color:var(--ink);resize:vertical}
 </style>
 </head>
-<body>
+<body data-review="{{.Identity}}">
 <div class="wrap">
 
 <h1>Redline</h1>
-<p class="sub">{{.Subtitle}}{{if .Author}} · {{.Author}}{{end}}{{if .URL}} · <a href="{{.URL}}">{{.URL}}</a>{{end}}</p>
+<p class="sub">{{.Subtitle}}{{if .Author}} · {{.Author}}{{end}}{{if .Commits}} · {{.Commits}} commit{{if ne .Commits 1}}s{{end}}{{end}}{{if .URL}} · <a href="{{.URL}}">{{.URL}}</a>{{end}}</p>
 
 {{if .Banner}}<div class="banner">{{.Banner}}</div>{{end}}
 
@@ -138,6 +145,21 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   {{if .Detail}}<div class="d">{{.Detail}}</div>{{end}}
   {{if .File}}<div class="d"><code>{{.File}}</code></div>{{end}}
 </div>{{end}}
+{{end}}
+
+{{if .Files}}
+<h2>Files</h2>
+<div class="walk">
+{{range .Files}}
+<div class="walk-row">
+  <div class="walk-head">
+    <code class="p">{{.Path}}</code>
+    <span class="s">{{.Status}} · <span class="plus">+{{.Added}}</span> <span class="minus">−{{.Removed}}</span></span>
+  </div>
+  {{if .Summary}}<div class="walk-sum">{{.Summary}}</div>{{end}}
+</div>
+{{end}}
+</div>
 {{end}}
 
 <h2>Findings</h2>
@@ -176,6 +198,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
       <div class="s">{{.Status}} · <span class="plus">+{{.Added}}</span> <span class="minus">−{{.Removed}}</span>
         <label class="vw"><input type="checkbox" class="viewedbox"> viewed</label>
       </div>
+      {{if .Summary}}<div class="note">{{.Summary}}</div>{{end}}
       {{if .Diff}}<pre class="diff">{{.Diff}}</pre>{{end}}
     </div>
     {{end}}
@@ -188,13 +211,23 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 
 <h2>Interface</h2>
 {{if .Screenshots}}
+<p class="s">{{if .AgentWalk}}Walked by the reviewing agent. This is not Redline checks 15–16 (deterministic before/after and console capture).{{end}}</p>
 {{range .Screenshots}}
 <details open>
   <summary>{{.Route}}</summary>
-  <div class="body"><div class="shots">
-    <div><div class="cap">before</div><img src="{{.Before}}" alt="before {{.Route}}"></div>
-    <div><div class="cap">after</div><img src="{{.After}}" alt="after {{.Route}}"></div>
-  </div></div>
+  <div class="body">
+    {{if .Caption}}<p class="s">{{.Caption}}</p>{{end}}
+    {{if .Before}}
+    <div class="shots">
+      <div><div class="cap">before</div><img src="{{.Before}}" alt="before {{.Route}}"></div>
+      <div><div class="cap">after</div><img src="{{.After}}" alt="after {{.Route}}"></div>
+    </div>
+    {{else}}
+    <div class="shots single">
+      <div><div class="cap">current</div><img src="{{.After}}" alt="{{.Route}}"></div>
+    </div>
+    {{end}}
+  </div>
 </details>
 {{end}}
 {{else}}
@@ -221,6 +254,8 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <ul class="plain">
 {{range .Unknowns}}<li><b>{{.Substrate}}</b> — {{.Message}}{{if .Reason}} <span class="s">({{.Reason}})</span>{{end}}</li>{{end}}
 </ul>
+{{else if .Coverage.Unexamined}}
+<p>Every pane that applies ran, but {{len .Coverage.Unexamined}} changed file{{if ne (len .Coverage.Unexamined) 1}}s{{end}} were not in any pane's scope.</p>
 {{else}}
 <p>Nothing. Every check that applies to these {{.Coverage.ExaminedFiles}} file(s) ran and answered.</p>
 {{end}}
@@ -257,12 +292,13 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 
 </div>
 <script>
-// Review state lives in this browser, keyed by the report's own identity.
-// Redline never writes it: findings.json is regenerated every run and fully
-// deterministic, and merging the reviewer's decisions into it would mean every
-// re-run clobbers them.
+// Review state lives in this browser, keyed by the report's own identity
+// (base SHA + head), not by location.pathname — every run overwrites the
+// same report.html, and comments from the last review must not leak into
+// the next. Redline never writes this: findings.json is regenerated every
+// run and fully deterministic.
 (function () {
-  var KEY = "redline:" + location.pathname;
+  var KEY = "redline:" + (document.body.dataset.review || location.pathname);
   var state = load();
 
   function load() {
@@ -278,6 +314,24 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     document.getElementById("cmt-count").textContent =
       n ? n + " comment" + (n === 1 ? "" : "s") + " — hand them to the agent when you are done."
         : "No comments yet — click any diff line to leave one.";
+  }
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(fallback);
+    }
+    return fallback();
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      ta.remove();
+      return Promise.resolve();
+    }
   }
 
   // Restore viewed state.
@@ -312,10 +366,15 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     return el;
   }
 
+  function lineSelector(c) {
+    var sel = 'span[data-file="' + CSS.escape(c.file) + '"][data-line="' + c.line + '"]';
+    if (c.side) sel += '[data-side="' + CSS.escape(c.side) + '"]';
+    return sel;
+  }
+
   // Restore existing comments under their lines.
   state.comments.forEach(function (c) {
-    var line = document.querySelector(
-      'span[data-file="' + CSS.escape(c.file) + '"][data-line="' + c.line + '"]');
+    var line = document.querySelector(lineSelector(c));
     if (line) line.after(bubble(c));
   });
 
@@ -336,6 +395,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
           ta.remove();
           if (!text) return;
           var c = {file: line.dataset.file, line: +line.dataset.line,
+                   side: line.dataset.side || "new",
                    code: line.textContent, text: text};
           state.comments.push(c);
           line.after(bubble(c));
@@ -347,7 +407,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 
   document.getElementById("copy-cmts").addEventListener("click", function () {
     var payload = JSON.stringify({comments: state.comments}, null, 2);
-    navigator.clipboard.writeText(payload).then(function () {
+    copyText(payload).then(function () {
       var b = document.getElementById("copy-cmts");
       b.textContent = "Copied — paste into your agent session";
       setTimeout(function () { b.textContent = "Copy comments for the agent"; }, 2500);

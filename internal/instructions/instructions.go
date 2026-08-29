@@ -53,14 +53,32 @@ var sources = []struct {
 	{".github/instructions/*.instructions.md", "copilot"},
 	{"AGENTS.md", "agents"},
 	{"CLAUDE.md", "claude"},
-	{".cursor/rules/*.mdc", "cursor"},
 	{".cursorrules", "cursor"},
 	{"CONTRIBUTING.md", "contributing"},
+}
+
+// maxInstructionBytes caps one file in the packet. A 40KB CONTRIBUTING.md
+// would crowd out the change the agent is meant to review.
+const maxInstructionBytes = 16000
+
+func capContent(s string) string {
+	if len(s) <= maxInstructionBytes {
+		return s
+	}
+	return s[:maxInstructionBytes] + "\n... truncated; read the file directly\n"
 }
 
 // Discover reads every instruction file present in the repository root.
 func Discover(root string) []File {
 	var out []File
+	seen := map[string]bool{}
+	add := func(f File) {
+		if seen[f.Path] {
+			return
+		}
+		seen[f.Path] = true
+		out = append(out, f)
+	}
 	for _, src := range sources {
 		matches, err := filepath.Glob(filepath.Join(root, src.glob))
 		if err != nil {
@@ -68,22 +86,45 @@ func Discover(root string) []File {
 		}
 		sort.Strings(matches)
 		for _, m := range matches {
-			body, err := os.ReadFile(m)
-			if err != nil {
-				continue
+			if f, ok := readInstruction(root, m, src.format); ok {
+				add(f)
 			}
-			rel, err := filepath.Rel(root, m)
-			if err != nil {
-				rel = m
-			}
-			applyTo, content := splitFrontmatter(string(body))
-			if strings.TrimSpace(content) == "" {
-				continue
-			}
-			out = append(out, File{Path: rel, ApplyTo: applyTo, Content: content, Format: src.format})
 		}
 	}
+	walkCursorRules(root, add)
 	return out
+}
+
+func walkCursorRules(root string, add func(File)) {
+	dir := filepath.Join(root, ".cursor", "rules")
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		if !strings.HasSuffix(d.Name(), ".mdc") {
+			return nil
+		}
+		if f, ok := readInstruction(root, path, "cursor"); ok {
+			add(f)
+		}
+		return nil
+	})
+}
+
+func readInstruction(root, path, format string) (File, bool) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return File{}, false
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		rel = path
+	}
+	applyTo, content := splitFrontmatter(string(body))
+	if strings.TrimSpace(content) == "" {
+		return File{}, false
+	}
+	return File{Path: filepath.ToSlash(rel), ApplyTo: applyTo, Content: capContent(content), Format: format}, true
 }
 
 // For returns the instruction files governing at least one of the given paths.

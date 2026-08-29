@@ -727,8 +727,8 @@ empty, and a reviewer needs the whole change looked at.
 The boundary from "The agent boundary" holds unchanged. Redline emits a
 **packet** — target, commits, per-file diffs, the repository's own instruction
 files, deterministic findings, graph threads, and a versioned review brief —
-and takes back a **review**: summary, API and schema highlights, findings,
-unknowns. Redline calls no model. The same loop therefore runs in Claude Code,
+and takes back a **review**: summary, a file-by-file walkthrough, API and
+schema highlights, findings, unknowns. Redline calls no model. The same loop therefore runs in Claude Code,
 in Cursor, or anywhere else with an agent and a shell.
 
 Instruction discovery reads Copilot's conventions first

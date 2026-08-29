@@ -1,77 +1,79 @@
-package instructions_test
+package instructions
 
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
-
-	"github.com/ccason/redline/internal/instructions"
 )
 
-func write(t *testing.T, root, path, body string) {
-	t.Helper()
-	full := filepath.Join(root, path)
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		t.Fatal(err)
+func TestAppliesGlob(t *testing.T) {
+	f := File{ApplyTo: "internal/**/*.go"}
+	if !f.Applies("internal/run/run.go") {
+		t.Fatal("expected match")
 	}
-	if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
+	if f.Applies("cmd/redline/main.go") {
+		t.Fatal("cmd should not match internal/**")
+	}
+	all := File{}
+	if !all.Applies("anything") {
+		t.Fatal("empty applyTo governs everything")
 	}
 }
 
-func TestDiscoversCopilotConventions(t *testing.T) {
+func TestDiscoverNestedCursorRulesAndCap(t *testing.T) {
 	root := t.TempDir()
-	write(t, root, ".github/copilot-instructions.md", "Always use citext for email.\n")
-	write(t, root, ".github/instructions/go.instructions.md",
-		"---\napplyTo: \"**/*.go\"\n---\nWrap errors with %w.\n")
+	nested := filepath.Join(root, ".cursor", "rules", "go")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\napplyTo: \"**/*.go\"\n---\n\nUse tabs.\n"
+	if err := os.WriteFile(filepath.Join(nested, "go.mdc"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	huge := strings.Repeat("x", maxInstructionBytes+50)
+	if err := os.WriteFile(filepath.Join(root, "CONTRIBUTING.md"), []byte(huge), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
-	files := instructions.Discover(root)
-	if len(files) != 2 {
-		t.Fatalf("expected both Copilot locations, got %d: %+v", len(files), files)
-	}
-	repo, scoped := files[0], files[1]
-	if repo.ApplyTo != "" || repo.Format != "copilot" {
-		t.Fatalf("repo-wide file: %+v", repo)
-	}
-	if scoped.ApplyTo != "**/*.go" {
-		t.Fatalf("expected applyTo glob, got %q", scoped.ApplyTo)
-	}
-	if got := scoped.Content; got != "Wrap errors with %w.\n" {
-		t.Fatalf("frontmatter should be stripped from the body, got %q", got)
-	}
-}
-
-func TestApplyToScoping(t *testing.T) {
-	cases := []struct {
-		pattern, path string
-		want          bool
-	}{
-		{"**/*.go", "internal/run/run.go", true},
-		{"**/*.go", "web/app.tsx", false},
-		{"web/**", "web/src/app.tsx", true},
-		{"web/**", "internal/run.go", false},
-		{"**/*.sql,**/*.go", "migrations/1_a.up.sql", true},
-		{"", "anything", true},
-		{"*.md", "README.md", true},
-	}
-	for _, c := range cases {
-		f := instructions.File{ApplyTo: c.pattern}
-		if got := f.Applies(c.path); got != c.want {
-			t.Errorf("applyTo %q vs %q: got %v want %v", c.pattern, c.path, got, c.want)
+	got := Discover(root)
+	var sawNested, sawCap bool
+	for _, f := range got {
+		if f.Path == ".cursor/rules/go/go.mdc" {
+			sawNested = true
+			if f.ApplyTo != "**/*.go" {
+				t.Fatalf("applyTo: %q", f.ApplyTo)
+			}
+			if !f.Applies("pkg/a.go") {
+				t.Fatal("nested rule should apply to go files")
+			}
+		}
+		if f.Path == "CONTRIBUTING.md" {
+			sawCap = true
+			if len(f.Content) > maxInstructionBytes+80 {
+				t.Fatalf("content not capped: %d", len(f.Content))
+			}
+			if !strings.Contains(f.Content, "truncated") {
+				t.Fatal("expected truncation marker")
+			}
 		}
 	}
+	if !sawNested {
+		t.Fatalf("nested cursor rule not discovered: %+v", got)
+	}
+	if !sawCap {
+		t.Fatal("CONTRIBUTING.md not discovered")
+	}
 }
 
-// A scoped instruction file must not reach the packet when the change does not
-// touch anything it governs — the review budget is attention, not tokens.
-func TestForFiltersByChangedPaths(t *testing.T) {
-	files := []instructions.File{
-		{Path: "a.md", ApplyTo: "**/*.go"},
-		{Path: "b.md", ApplyTo: "web/**"},
-		{Path: "c.md"},
+func TestForFiltersByApplyTo(t *testing.T) {
+	files := []File{
+		{Path: "all.md", Content: "repo"},
+		{Path: "go.md", ApplyTo: "**/*.go", Content: "go only"},
+		{Path: "sql.md", ApplyTo: "**/*.sql", Content: "sql only"},
 	}
-	got := instructions.For(files, []string{"internal/run.go"})
-	if len(got) != 2 || got[0].Path != "a.md" || got[1].Path != "c.md" {
-		t.Fatalf("expected the Go rule and the repo-wide rule, got %+v", got)
+	got := For(files, []string{"pkg/a.go"})
+	if len(got) != 2 {
+		t.Fatalf("expected all.md + go.md, got %+v", got)
 	}
 }

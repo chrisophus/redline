@@ -1,5 +1,5 @@
-// Command redline reviews a change: the working tree, a branch, or a GitHub
-// pull request.
+// Command redline reviews a change: the working tree, a commit, a commit
+// range, a branch, or a GitHub pull request.
 //
 // The loop is three steps. `redline run` observes the change and reports what
 // it can establish deterministically. `redline review` emits a packet of facts
@@ -12,16 +12,17 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/pane"
 	"github.com/ccason/redline/internal/report"
 	"github.com/ccason/redline/internal/run"
+	"github.com/ccason/redline/internal/target"
 )
 
 const usage = `redline — review a change with evidence, not just by reading it
@@ -30,21 +31,27 @@ usage:
   redline run     [flags]   observe the change and report (the entry point)
   redline review  [flags]   emit the review packet for the agent to judge
   redline ingest  [flags]   merge the agent's review back in and open the report
-  redline open    [flags]   reopen the last report
+  redline open    [flags]   serve and open the last report
+  redline serve   [flags]   serve .redline over http (blocks; --stop ends it)
 
-target (all subcommands):
-  --pr N|URL        review a GitHub pull request (read-only; uses gh)
-  --branch REF      review a branch's tip
-  (default)         review the working tree, uncommitted work included
+target (all subcommands; pass only one):
+  (default)         working tree, uncommitted work included
+  --commit REF      that commit against its parent (HEAD for the latest)
+  --range A..B      commits reachable from B but not A (B defaults to HEAD)
+  --branch REF      a branch's tip against --base
+  --pr N|URL        a GitHub pull request (read-only; uses gh)
 
 flags:
-  --base REF        base revision (default: the PR's base, else origin/main)
+  --base REF        base revision (default: commit parent, range start, PR base, else origin/main)
   --upstream REF    branch new migrations must not collide with
   --migrations DIR  restrict migration checks to one directory
   --format FMT      report|json  (default report)
   --out DIR         evidence directory (default .redline)
   --open            open the HTML report when done (default for ingest)
   --no-open         never open a browser
+  --port N          loopback port for open/serve (default 8765; the next
+                    free port is used if it is taken)
+  --stop            with serve: stop the server running for --out
 `
 
 func main() {
@@ -55,8 +62,9 @@ func main() {
 }
 
 type opts struct {
-	base, upstream, migDir, format, out, pr, branch string
-	open, noOpen                                    bool
+	base, upstream, migDir, format, out, pr, branch, commit, revRange string
+	open, noOpen, stop                                                bool
+	port                                                              int
 }
 
 func runMain(args []string) error {
@@ -74,29 +82,45 @@ func runMain(args []string) error {
 	fs.StringVar(&o.out, "out", ".redline", "evidence directory")
 	fs.StringVar(&o.pr, "pr", "", "GitHub pull request number or URL")
 	fs.StringVar(&o.branch, "branch", "", "branch to review")
+	fs.StringVar(&o.commit, "commit", "", "commit to review against its parent")
+	fs.StringVar(&o.revRange, "range", "", "commit range A..B")
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
+	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")
+	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
 
 	switch cmd {
-	case "run", "sql":
+	case "run":
 		return cmdRun(o)
 	case "review":
 		return cmdReview(o)
 	case "ingest":
 		return cmdIngest(o)
 	case "open":
-		return report.Open(filepath.Join(o.out, "report.html"))
+		return announce(o.out, o.port, true)
+	case "serve":
+		if o.stop {
+			return report.Stop(o.out)
+		}
+		return report.Serve(o.out, o.port)
 	default:
 		return fmt.Errorf("unknown subcommand %q\n\n%s", cmd, usage)
 	}
 }
 
+// target is the subject the flags name, independent of any repository.
+func (o opts) target() target.Options {
+	return target.Options{PR: o.pr, Branch: o.branch, Commit: o.commit,
+		Range: o.revRange, Base: o.base}
+}
+
 func (o opts) toRun(dir string) run.Options {
 	return run.Options{Dir: dir, Base: o.base, Upstream: o.upstream,
-		MigDir: o.migDir, PR: o.pr, Branch: o.branch}
+		MigDir: o.migDir, PR: o.pr, Branch: o.branch, Commit: o.commit,
+		Range: o.revRange, Out: o.out}
 }
 
 func cmdRun(o opts) error {
@@ -110,11 +134,8 @@ func cmdRun(o opts) error {
 	if o.format == "json" {
 		return emitJSON(res.Report)
 	}
-	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence))
-	if o.open && !o.noOpen {
-		return report.Open(filepath.Join(o.out, "report.html"))
-	}
-	return nil
+	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence, res.Packet, nil))
+	return announce(o.out, o.port, o.open && !o.noOpen)
 }
 
 // cmdReview emits the packet. Redline stops here: what it hands over is facts,
@@ -127,6 +148,7 @@ func cmdReview(o opts) error {
 	if err := write(o, res, nil); err != nil {
 		return err
 	}
+	_ = announce(o.out, o.port, o.open && !o.noOpen)
 	return emitJSON(res.Packet)
 }
 
@@ -138,23 +160,54 @@ func cmdIngest(o opts) error {
 	if err != nil {
 		return err
 	}
-	res, err := execute(o)
+	res, err := run.LoadSession(o.out)
 	if err != nil {
 		return err
 	}
-	res.Report.Findings = append(res.Report.Findings, rev.ToFindings()...)
-	for _, u := range rev.Unknowns {
-		res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
-			Substrate: packet.Substrate, Message: u, Reason: "reported by the reviewing agent",
-		})
+	// Ingest merges into the packet the agent judged; it does not re-observe.
+	// A target flag that names something else is a mistake, not a request —
+	// silently merging a review of #456 into the session for #123 would put
+	// findings against the wrong change under a reviewer's name.
+	if o.target().Requested() {
+		if err := res.Target.Matches(o.target()); err != nil {
+			return fmt.Errorf("ingest: %w (run `redline review` for that target first)", err)
+		}
 	}
-	res.Report.Finalize()
-	if err := write(o, res, rev); err != nil {
+	packet.Apply(&res.Report, rev)
+	// Screenshots from an earlier ingest are carried forward only while their
+	// files still exist; a cleaned temp directory must not fail this run.
+	if res.Review != nil {
+		res.Review.Screenshots = report.PruneMissingShots(res.Review.Screenshots)
+	}
+	res.Review = packet.Merge(res.Review, rev)
+	if err := write(o, res, res.Review); err != nil {
 		return err
 	}
-	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence))
-	if !o.noOpen {
-		return report.Open(filepath.Join(o.out, "report.html"))
+	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence, res.Packet, res.Review))
+	return announce(o.out, o.port, !o.noOpen)
+}
+
+// announce prints where the report is and, when asked, opens it. Serving and
+// browsing are best effort: the report is already on disk by the time this
+// runs, and exiting non-zero because a port was taken would tell the agent
+// driving the session that a completed review failed.
+//
+// Only report.ErrNoReport is fatal, and it is matched explicitly. Inferring
+// it from an empty URL is what broke this once: failing to start a server
+// also yields no URL, so a review that had written its report exited 1 and
+// printed no path to it at all.
+func announce(out string, port int, browse bool) error {
+	url, err := report.OpenOn(out, browse, port)
+	if errors.Is(err, report.ErrNoReport) {
+		return err
+	}
+	if url == "" {
+		// Nothing is serving it, but it is on disk. Say where.
+		url = filepath.Join(out, "report.html")
+	}
+	fmt.Fprintf(os.Stderr, "Report: %s\n", url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "redline: %v\n", err)
 	}
 	return nil
 }
@@ -188,13 +241,24 @@ func write(o opts, res *run.Result, rev *packet.Review) error {
 	if err := writeJSON(filepath.Join(dir, "packet.json"), res.Packet); err != nil {
 		return err
 	}
-	md := report.Markdown(&res.Report, res.Renders, res.Evidence)
+	if err := run.SaveSession(dir, res); err != nil {
+		return err
+	}
+	md := report.Markdown(&res.Report, res.Renders, res.Evidence, res.Packet, rev)
 	if err := os.WriteFile(filepath.Join(dir, "report.md"), []byte(md), 0o644); err != nil {
 		return err
 	}
+	var shots []report.Screenshot
+	if rev != nil {
+		var err error
+		shots, err = report.MaterializeShots(dir, rev.Screenshots)
+		if err != nil {
+			return err
+		}
+	}
 	html, err := report.HTML(report.HTMLInput{
 		Report: &res.Report, Packet: res.Packet, Review: rev,
-		Renders: res.Renders, Evidence: res.Evidence,
+		Renders: res.Renders, Evidence: res.Evidence, Screenshots: shots,
 	})
 	if err != nil {
 		return err
