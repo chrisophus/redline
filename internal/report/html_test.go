@@ -306,6 +306,54 @@ func TestFindingsSplitByWhoIsAccountable(t *testing.T) {
 	}
 }
 
+// Two reviewers are shown side by side under their own names. Nothing decides
+// that two differently worded findings are the same defect: that guess, when
+// wrong, deletes a finding the reviewer never learns existed.
+func TestTwoReviewersStaySeparate(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Findings: []findings.Finding{
+				{File: "a.go", Line: 4, Rule: "review", Message: "claude says the retry is unbounded",
+					Severity: findings.SeverityWarning, Source: findings.SourceLLM, Reviewer: "claude"},
+				{File: "a.go", Line: 4, Rule: "review", Message: "cursor says this retries forever",
+					Severity: findings.SeverityWarning, Source: findings.SourceLLM, Reviewer: "cursor"},
+				{File: "a.go", Rule: "review", Message: "the session agent's own note",
+					Severity: findings.SeverityInfo, Source: findings.SourceLLM},
+			},
+		},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Both accounts survive, even though they describe one line.
+	for _, want := range []string{"claude says the retry is unbounded", "cursor says this retries forever"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %q — reviewer findings must never be merged away", want)
+		}
+	}
+	for _, want := range []string{`<h3 class="reviewer">claude`, `<h3 class="reviewer">cursor`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing group heading %q", want)
+		}
+	}
+	// No agreement or consensus badge: that claim cannot be made honestly.
+	for _, forbidden := range []string{"agree", "consensus", "both reviewers"} {
+		if strings.Contains(strings.ToLower(html), forbidden) {
+			t.Errorf("page claims %q, which requires guessing two findings are one defect", forbidden)
+		}
+	}
+	// The driving agent is a reviewer too, named plainly and ordered last.
+	if !strings.Contains(html, "the driving agent") {
+		t.Error("agent judgments need a group of their own")
+	}
+	if strings.Index(html, "the driving agent") < strings.Index(html, `<h3 class="reviewer">cursor`) {
+		t.Error("deliberately-run reviewers should come before the session agent's own notes")
+	}
+}
+
 func TestTestFilesAreCountedNotRendered(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 1}},

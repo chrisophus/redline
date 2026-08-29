@@ -128,6 +128,12 @@ body.drawer-open{overflow:hidden}
 .surface.idle{opacity:.8}
 .surface.unstated{border-left:3px solid var(--warn)}
 .surface.unstated .line{color:var(--warn)}
+/* One heading per reviewer. Two reviewers are shown side by side rather than
+   reconciled: deciding two differently worded findings are one defect is a
+   guess, and skimming each one's flavour is the point. */
+h3.reviewer{margin:24px 0 8px;font-size:14px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--llm);display:flex;gap:10px;align-items:baseline}
+h3.reviewer .s{text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400}
 pre.diff span[data-line]{cursor:text;position:relative}
 pre.diff span[data-line]:hover{outline:1px solid var(--info);outline-offset:-1px}
 .viewed{opacity:.45}
@@ -270,7 +276,10 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 
 <h2 id="findings">What the reviewers found</h2>
 {{if .Judged}}
-{{range .Judged}}{{template "finding" .}}{{end}}
+{{range .Judged}}
+<h3 class="reviewer">{{.Reviewer}} <span class="s">{{len .Findings}} finding{{if ne (len .Findings) 1}}s{{end}}</span></h3>
+{{range .Findings}}{{template "finding" .}}{{end}}
+{{end}}
 {{else}}
 <p class="empty">No reviewer has judged this change. Run <code>redline review --with claude</code>, or pipe a review to <code>redline ingest</code>.</p>
 {{end}}

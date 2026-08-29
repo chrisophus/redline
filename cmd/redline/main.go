@@ -7,7 +7,9 @@
 // agent's judgments back, merges them into the report labelled as agent-
 // authored, and opens the result.
 //
-// Redline makes no model calls of its own and never posts to GitHub.
+// Redline composes no judgment of its own and never posts to GitHub. It will
+// execute a reviewer's own review command when asked to (--with), and label
+// what comes back with that reviewer's name.
 package main
 
 import (
@@ -17,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/pane"
@@ -51,9 +54,12 @@ flags:
   --no-open         never open a browser
   --port N          loopback port for open/serve (default 8765; the next
                     free port is used if it is taken)
-  --with NAME       run an external reviewer and merge its findings:
-                    claude, cursor, none (default none). Adapters are
-                    configurable in <out>/reviewers.json
+  --with NAME       run an external reviewer and fold its findings in:
+                    claude, cursor, none (default none). Repeat the flag or
+                    comma-separate to run several — two reviewers from
+                    different vendors is a second opinion, and each is
+                    reported under its own name. --with none turns them all
+                    off. Adapters are configurable in <out>/reviewers.json
   --stop            with serve: stop the server running for --out
 `
 
@@ -65,9 +71,26 @@ func main() {
 }
 
 type opts struct {
-	base, upstream, migDir, format, out, pr, branch, commit, revRange, with string
-	open, noOpen, stop                                                      bool
-	port                                                                    int
+	base, upstream, migDir, format, out, pr, branch, commit, revRange string
+	with                                                              reviewerList
+	open, noOpen, stop                                                bool
+	port                                                              int
+}
+
+// reviewerList collects --with. It accepts the flag more than once and splits
+// on commas, because two reviewers in one run is the point: a second opinion
+// from a different vendor is what a second review pass used to be.
+type reviewerList []string
+
+func (l *reviewerList) String() string { return strings.Join(*l, ",") }
+
+func (l *reviewerList) Set(v string) error {
+	for _, name := range strings.Split(v, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			*l = append(*l, name)
+		}
+	}
+	return nil
 }
 
 func runMain(args []string) error {
@@ -90,7 +113,7 @@ func runMain(args []string) error {
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
 	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")
-	fs.StringVar(&o.with, "with", "", "run an external reviewer (claude, cursor, none)")
+	fs.Var(&o.with, "with", "run an external reviewer; repeat or comma-separate for several (claude, cursor, none)")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err

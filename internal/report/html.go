@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"html/template"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -80,7 +81,7 @@ type view struct {
 	// Judged and Observed are the same findings split by who is accountable
 	// for them. A skim of what the reviewers found is a different act from
 	// reading what Redline can prove.
-	Judged   []findingView
+	Judged   []reviewerGroup
 	Observed []findingView
 
 	Areas       []areaView
@@ -118,6 +119,18 @@ type surfaceView struct {
 	Line   string
 	Moved  bool
 	Stated bool
+}
+
+// reviewerGroup is one reviewer's findings, kept under its own name.
+//
+// Two reviewers are not reconciled into one list. Redline cannot tell whether
+// two differently worded sentences describe the same defect without guessing,
+// and a wrong guess deletes a finding silently. Grouping puts both accounts in
+// front of the reviewer, which is what skimming for a flavour of what each one
+// found actually needs.
+type reviewerGroup struct {
+	Reviewer string
+	Findings []findingView
 }
 
 type findingView struct {
@@ -240,6 +253,7 @@ func buildView(in HTMLInput) view {
 	}
 	v.Banner = bannerText(rep)
 
+	var judged []findingView
 	for _, f := range rep.Findings {
 		v.Counts[string(f.Severity)]++
 		fv := findingView{Finding: f, IsLLM: f.Source == findings.SourceLLM}
@@ -249,11 +263,12 @@ func buildView(in HTMLInput) view {
 			}
 		}
 		if fv.IsLLM {
-			v.Judged = append(v.Judged, fv)
+			judged = append(judged, fv)
 		} else {
 			v.Observed = append(v.Observed, fv)
 		}
 	}
+	v.Judged = groupByReviewer(judged)
 
 	if in.Packet != nil {
 		v.Files = fileWalk(in.Packet.Files, notes, rep.Findings)
@@ -280,6 +295,36 @@ func buildView(in HTMLInput) view {
 		}
 	}
 	return v
+}
+
+// groupByReviewer splits judged findings by who reported them, preserving the
+// order each reviewer's findings arrived in. The driving agent's own judgments
+// carry no reviewer name and are grouped last, after the tools that were run
+// deliberately.
+func groupByReviewer(judged []findingView) []reviewerGroup {
+	var order []string
+	byName := map[string][]findingView{}
+	for _, f := range judged {
+		if _, seen := byName[f.Reviewer]; !seen {
+			order = append(order, f.Reviewer)
+		}
+		byName[f.Reviewer] = append(byName[f.Reviewer], f)
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		if (order[i] == "") != (order[j] == "") {
+			return order[j] == ""
+		}
+		return order[i] < order[j]
+	})
+	out := make([]reviewerGroup, 0, len(order))
+	for _, name := range order {
+		label := name
+		if label == "" {
+			label = "the driving agent"
+		}
+		out = append(out, reviewerGroup{Reviewer: label, Findings: byName[name]})
+	}
+	return out
 }
 
 // surfaceViews returns the three surfaces in the order a reviewer checks them,
