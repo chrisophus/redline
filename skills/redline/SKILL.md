@@ -92,7 +92,10 @@ echo '<your review JSON>' | redline ingest --pr 123
 ```
 
 Same target flags as step 1. This merges your findings in, copies screenshots
-under `.redline/evidence/ui/`, writes the report, and opens the HTML UI.
+under `.redline/evidence/ui/`, writes the report, and prints
+`Report: http://127.0.0.1:8765/report.html` (then opens that URL). Do not pass
+`--no-open` unless the user asked. If ingest did not print a URL, run
+`redline open`.
 
 Review JSON shape:
 
@@ -127,8 +130,9 @@ optional; a walk of the current tree usually has only `path`.
 
 ## Presenting it
 
-The UI opens on its own. In the terminal, keep it short: the summary, the
-findings that matter, and **what went unexamined**. Check `coverage` — if
+Lead with the `Report:` URL from stderr so the user can click it. Then keep
+the terminal short: the summary, the findings that matter, and **what went
+unexamined**. Check `coverage` — if
 `examinedFiles` is less than `changedFiles`, say which parts nobody checked.
 An empty findings list from a pane that does not exist is not a pass, and the
 reviewer will read it as one unless you say otherwise.

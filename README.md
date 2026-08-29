@@ -31,7 +31,7 @@ go build ./cmd/redline
 ./redline run --format json       # findings schema on stdout
 ./redline review                  # packet of facts for the agent to judge
 echo '<review JSON>' | ./redline ingest   # merge judgments; open the HTML report
-./redline open                    # reopen .redline/report.html
+./redline open                    # serve and open http://127.0.0.1:8765/report.html
 ```
 
 When the packet's `uiTouched` is true, the skill walks the changed UI with
@@ -46,7 +46,11 @@ Target (all subcommands): the working tree by default, `--branch REF` for a
 branch tip, `--pr N|URL` for a GitHub pull request.
 
 Flags: `--base REF` (default: the PR's base, else origin/main), `--upstream REF`
-(default: same as base), `--migrations DIR`, `--out DIR`, `--open`, `--no-open`.
+(default: same as base), `--migrations DIR`, `--out DIR`, `--open`, `--no-open`,
+`--port N` (report server, default 8765).
+
+`review` and `ingest` print `Report: http://127.0.0.1:8765/report.html` on
+stderr. That URL works in Cursor and Claude; `file://` often does not.
 
 ## What use taught it
 

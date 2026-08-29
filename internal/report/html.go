@@ -10,10 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html/template"
-	"os"
-	"os/exec"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -300,20 +297,4 @@ func reviewIdentity(baseSHA, head string, p *packet.Packet) string {
 		_, _ = h.Write([]byte{0})
 	}
 	return id + ":" + hex.EncodeToString(h.Sum(nil)[:8])
-}
-
-// Open shows the report in the user's browser. A review nobody opens is a
-// review that did not happen.
-func Open(path string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", path)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", path)
-	default:
-		cmd = exec.Command("xdg-open", path)
-	}
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-	return cmd.Start()
 }

@@ -29,7 +29,8 @@ usage:
   redline run     [flags]   observe the change and report (the entry point)
   redline review  [flags]   emit the review packet for the agent to judge
   redline ingest  [flags]   merge the agent's review back in and open the report
-  redline open    [flags]   reopen the last report
+  redline open    [flags]   serve and open the last report
+  redline serve   [flags]   serve .redline over http (blocks)
 
 target (all subcommands):
   --pr N|URL        review a GitHub pull request (read-only; uses gh)
@@ -44,6 +45,7 @@ flags:
   --out DIR         evidence directory (default .redline)
   --open            open the HTML report when done (default for ingest)
   --no-open         never open a browser
+  --port N          loopback port for open/serve (default 8765)
 `
 
 func main() {
@@ -56,6 +58,7 @@ func main() {
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch string
 	open, noOpen                                    bool
+	port                                            int
 }
 
 func runMain(args []string) error {
@@ -75,6 +78,7 @@ func runMain(args []string) error {
 	fs.StringVar(&o.branch, "branch", "", "branch to review")
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
+	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -87,7 +91,9 @@ func runMain(args []string) error {
 	case "ingest":
 		return cmdIngest(o)
 	case "open":
-		return report.Open(filepath.Join(o.out, "report.html"))
+		return announce(o.out, o.port, true)
+	case "serve":
+		return report.Serve(o.out, o.port)
 	default:
 		return fmt.Errorf("unknown subcommand %q\n\n%s", cmd, usage)
 	}
@@ -110,10 +116,7 @@ func cmdRun(o opts) error {
 		return emitJSON(res.Report)
 	}
 	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence))
-	if o.open && !o.noOpen {
-		return report.Open(filepath.Join(o.out, "report.html"))
-	}
-	return nil
+	return announce(o.out, o.port, o.open && !o.noOpen)
 }
 
 // cmdReview emits the packet. Redline stops here: what it hands over is facts,
@@ -126,6 +129,7 @@ func cmdReview(o opts) error {
 	if err := write(o, res, nil); err != nil {
 		return err
 	}
+	_ = announce(o.out, o.port, o.open && !o.noOpen)
 	return emitJSON(res.Packet)
 }
 
@@ -146,10 +150,15 @@ func cmdIngest(o opts) error {
 		return err
 	}
 	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence))
-	if !o.noOpen {
-		return report.Open(filepath.Join(o.out, "report.html"))
+	return announce(o.out, o.port, !o.noOpen)
+}
+
+func announce(out string, port int, browse bool) error {
+	url, err := report.OpenOn(out, browse, port)
+	if url != "" {
+		fmt.Fprintf(os.Stderr, "Report: %s\n", url)
 	}
-	return nil
+	return err
 }
 
 func execute(o opts) (*run.Result, error) {
