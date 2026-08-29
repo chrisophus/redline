@@ -3,14 +3,16 @@
 Evidence from execution, not inference from source.
 
 Redline observes a change at two revisions, diffs the observations, and reports
-what it saw. It is pre-push, non-gating, and makes no network calls — the prose
-and the judgment come from the agent driving it.
+what it saw. It is pre-push and non-gating. It makes no model calls of its own
+and never posts to GitHub — the prose and the judgment come from the agent
+driving it. `--pr` fetches via `gh` (read-only).
 
 See `redline-design.md` for the full design.
 
 ## Status
 
-**Rung 1** of the build order: migration hygiene, no infrastructure at all.
+**Rung 1** of the check catalog: migration hygiene, no infrastructure at all.
+The review loop (packet → agent → HTML report) ships on top of that.
 
 | # | Check | State |
 |---|-------|-------|
@@ -25,15 +27,22 @@ See `redline-design.md` for the full design.
 
 ```
 go build ./cmd/redline
-./redline run                     # markdown report on stdout
+./redline run                     # observe; markdown report on stdout
 ./redline run --format json       # findings schema on stdout
+./redline review                  # packet of facts for the agent to judge
+echo '<review JSON>' | ./redline ingest   # merge judgments; open the HTML report
+./redline open                    # reopen .redline/report.html
 ```
 
-Both forms also write `.redline/findings.json`, `.redline/report.md`, and any
-captured artifacts under `.redline/evidence/`.
+`run` and `review` also write `.redline/findings.json`, `.redline/packet.json`,
+`.redline/report.md`, `.redline/report.html`, and any captured artifacts under
+`.redline/evidence/`.
 
-Flags: `--base REF` (default: origin/main, else main), `--upstream REF`
-(default: same as base), `--migrations DIR`, `--out DIR`.
+Target (all subcommands): the working tree by default, `--branch REF` for a
+branch tip, `--pr N|URL` for a GitHub pull request.
+
+Flags: `--base REF` (default: the PR's base, else origin/main), `--upstream REF`
+(default: same as base), `--migrations DIR`, `--out DIR`, `--open`, `--no-open`.
 
 ## What use taught it
 
@@ -55,9 +64,14 @@ support:
 ```
 cmd/redline           CLI
 internal/findings     wire format — doctor's schema, reimplemented and extended
-internal/gitx         read-only git layer
+internal/gitx         git layer (observe; fetch/worktrees for PR/branch)
+internal/graph        graphify threads through changed code
+internal/instructions repository review rules for the agent packet
+internal/packet       contract between Redline and the reviewing agent
 internal/pane         the observe/diff pane interface
 internal/pane/migrations   checks 1 and 2
-internal/report       four-section markdown renderer
+internal/report       markdown and self-contained HTML
+internal/run          dispatcher
+internal/target       working tree, branch, or PR
 skills/redline        the agent skill that drives the binary
 ```

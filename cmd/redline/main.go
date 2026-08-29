@@ -17,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/pane"
 	"github.com/ccason/redline/internal/report"
@@ -81,7 +80,7 @@ func runMain(args []string) error {
 	}
 
 	switch cmd {
-	case "run", "sql":
+	case "run":
 		return cmdRun(o)
 	case "review":
 		return cmdReview(o)
@@ -96,7 +95,7 @@ func runMain(args []string) error {
 
 func (o opts) toRun(dir string) run.Options {
 	return run.Options{Dir: dir, Base: o.base, Upstream: o.upstream,
-		MigDir: o.migDir, PR: o.pr, Branch: o.branch}
+		MigDir: o.migDir, PR: o.pr, Branch: o.branch, Out: o.out}
 }
 
 func cmdRun(o opts) error {
@@ -138,17 +137,11 @@ func cmdIngest(o opts) error {
 	if err != nil {
 		return err
 	}
-	res, err := execute(o)
+	res, err := run.LoadSession(o.out)
 	if err != nil {
 		return err
 	}
-	res.Report.Findings = append(res.Report.Findings, rev.ToFindings()...)
-	for _, u := range rev.Unknowns {
-		res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
-			Substrate: packet.Substrate, Message: u, Reason: "reported by the reviewing agent",
-		})
-	}
-	res.Report.Finalize()
+	packet.Apply(&res.Report, rev)
 	if err := write(o, res, rev); err != nil {
 		return err
 	}
@@ -186,6 +179,9 @@ func write(o opts, res *run.Result, rev *packet.Review) error {
 		return err
 	}
 	if err := writeJSON(filepath.Join(dir, "packet.json"), res.Packet); err != nil {
+		return err
+	}
+	if err := run.SaveSession(dir, res); err != nil {
 		return err
 	}
 	md := report.Markdown(&res.Report, res.Renders, res.Evidence)

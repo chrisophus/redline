@@ -79,6 +79,33 @@ func ParseReview(r io.Reader) (*Review, error) {
 	return &rev, nil
 }
 
+// Apply merges an agent's review into a report: LLM findings and unknowns
+// are appended, fingerprints stamped, duplicates dropped, then sorted so
+// a high-severity judgment is not buried under an earlier info finding.
+func Apply(rep *findings.Report, rev *Review) {
+	if rev == nil {
+		return
+	}
+	rep.Findings = append(rep.Findings, rev.ToFindings()...)
+	seen := map[string]bool{}
+	for _, u := range rep.Unknowns {
+		seen[u.Substrate+"\x00"+u.Message] = true
+	}
+	for _, msg := range rev.Unknowns {
+		key := Substrate + "\x00" + msg
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+			Substrate: Substrate, Message: msg, Reason: "reported by the reviewing agent",
+		})
+	}
+	rep.Finalize()
+	rep.Dedupe()
+	findings.Sort(rep.Findings)
+}
+
 // Substrate is the pane name agent findings are recorded under. They are a
 // substrate like any other, so a reviewer sees them ranked alongside observed
 // findings — but never mistakes one for the other.

@@ -6,6 +6,7 @@ package report
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/ccason/redline/internal/findings"
@@ -86,8 +87,12 @@ func section3(b *strings.Builder, rep *findings.Report) {
 	fmt.Fprintf(b, "## What could not be determined\n\n")
 	dark := rep.DarkSubstrates()
 	if len(rep.Unknowns) == 0 && len(dark) == 0 {
-		fmt.Fprintf(b, "Nothing. Every check that applies to these %d file(s) ran and answered.\n\n",
-			rep.Coverage.ExaminedFiles)
+		if n := len(rep.Coverage.Unexamined); n > 0 {
+			fmt.Fprintf(b, "Every pane that applies ran, but %d changed file(s) were not in any pane's scope.\n\n", n)
+		} else {
+			fmt.Fprintf(b, "Nothing. Every check that applies to these %d file(s) ran and answered.\n\n",
+				rep.Coverage.ExaminedFiles)
+		}
 	}
 	for _, s := range dark {
 		fmt.Fprintf(b, "- **%s did not run.** %s\n", s.Name, s.Detail)
@@ -186,8 +191,12 @@ func emitEvidence(b *strings.Builder, f findings.Finding, evidence map[string]pa
 
 // evidenceFile turns an observation ID into a filename under .redline/evidence/.
 func evidenceFile(id string) string {
-	repl := strings.NewReplacer("/", "_", ":", "_", " ", "_")
-	return repl.Replace(id)
+	repl := strings.NewReplacer("/", "_", ":", "_", " ", "_", "..", "_")
+	name := filepath.Base(repl.Replace(id))
+	if name == "" || name == "." {
+		return "artifact"
+	}
+	return name
 }
 
 // EvidenceFile is evidenceFile, exported for the writer that persists artifacts.

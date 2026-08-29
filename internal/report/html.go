@@ -5,12 +5,16 @@
 package report
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/ccason/redline/internal/findings"
@@ -63,6 +67,9 @@ type view struct {
 	Screenshots []Screenshot
 	Commits     int
 	HasReview   bool
+	// Identity keys browser-local comments to this review, not to the
+	// report.html path — every run overwrites the same file.
+	Identity string
 }
 
 type findingView struct {
@@ -126,17 +133,22 @@ func buildView(in HTMLInput) view {
 			v.Skipped = append(v.Skipped, s)
 		}
 	}
+	head := "worktree"
 	if p := in.Packet; p != nil {
 		v.Commits = len(p.Commits)
 		v.Threads = p.Threads
 		if p.Target != nil {
 			v.Subtitle = p.Target.Describe()
+			if p.Target.Head != "" {
+				head = p.Target.Head
+			}
 			if p.Target.PR != nil {
 				v.URL = p.Target.PR.URL
 				v.Author = p.Target.PR.Author
 			}
 		}
 	}
+	v.Identity = reviewIdentity(rep.BaseSHA, head, in.Packet)
 	if v.Subtitle == "" {
 		v.Subtitle = fmt.Sprintf("base %s", short(rep.BaseSHA))
 	}
@@ -202,37 +214,87 @@ func bannerText(rep *findings.Report) string {
 // must work with no network.
 func highlightDiff(diff string) string { return highlightDiffFor("", diff) }
 
+// hunkHeader captures the old and new starting line numbers of a unified-diff
+// hunk. Counts are optional (`@@ -1 +1 @@`).
+var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
+
 // highlightDiffFor marks up a diff and, when a path is given, makes each line
 // addressable so a reviewer can attach a comment to it — prequel's core
 // affordance, and the thing that turns reading a diff into reviewing one.
+//
+// data-line is the source line in the file, parsed from hunk headers: new-file
+// line for added and context lines, old-file line for deletions. A comment
+// copied for the agent therefore names path.go:48, not "row 17 of the dump".
 func highlightDiffFor(path, diff string) string {
 	if diff == "" {
 		return ""
 	}
 	var b strings.Builder
-	lineNo := 0
+	var cur diffCursor
 	for _, line := range strings.Split(diff, "\n") {
-		lineNo++
-		class := "ctx"
-		switch {
-		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"),
-			strings.HasPrefix(line, "diff "), strings.HasPrefix(line, "index "):
-			class = "meta"
-		case strings.HasPrefix(line, "@@"):
-			class = "hunk"
-		case strings.HasPrefix(line, "+"):
-			class = "add"
-		case strings.HasPrefix(line, "-"):
-			class = "del"
-		}
-		if path == "" || class == "meta" {
-			fmt.Fprintf(&b, `<span class="%s">%s</span>`+"\n", class, template.HTMLEscapeString(line))
+		class, side, src := cur.classify(line)
+		escaped := template.HTMLEscapeString(line)
+		if path == "" || class == "meta" || class == "hunk" || src == 0 {
+			fmt.Fprintf(&b, `<span class="%s">%s</span>`+"\n", class, escaped)
 			continue
 		}
-		fmt.Fprintf(&b, `<span class="%s" data-file="%s" data-line="%d">%s</span>`+"\n",
-			class, template.HTMLEscapeString(path), lineNo, template.HTMLEscapeString(line))
+		fmt.Fprintf(&b, `<span class="%s" data-file="%s" data-line="%d" data-side="%s">%s</span>`+"\n",
+			class, template.HTMLEscapeString(path), src, side, escaped)
 	}
 	return b.String()
+}
+
+// diffCursor walks a unified diff, tracking old and new file line numbers.
+type diffCursor struct{ old, new int }
+
+func (c *diffCursor) classify(line string) (class, side string, src int) {
+	switch {
+	case strings.HasPrefix(line, "diff "), strings.HasPrefix(line, "index "),
+		strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"),
+		strings.HasPrefix(line, `\`), strings.HasPrefix(line, "new file"),
+		strings.HasPrefix(line, "deleted file"), strings.HasPrefix(line, "old file"),
+		strings.HasPrefix(line, "similarity "), strings.HasPrefix(line, "rename "):
+		return "meta", "", 0
+	}
+	if m := hunkHeader.FindStringSubmatch(line); m != nil {
+		c.old, _ = strconv.Atoi(m[1])
+		c.new, _ = strconv.Atoi(m[2])
+		return "hunk", "", 0
+	}
+	switch {
+	case strings.HasPrefix(line, "+"):
+		n := c.new
+		c.new++
+		return "add", "new", n
+	case strings.HasPrefix(line, "-"):
+		n := c.old
+		c.old++
+		return "del", "old", n
+	default:
+		n := c.new
+		c.old++
+		c.new++
+		return "ctx", "new", n
+	}
+}
+
+// reviewIdentity keys browser comments to this change. Branch and PR reviews
+// are identified by base+head SHA. Working-tree reviews include a fingerprint
+// of the packet files so two dirty trees against the same base do not share
+// comments.
+func reviewIdentity(baseSHA, head string, p *packet.Packet) string {
+	id := short(baseSHA) + ":" + short(head)
+	if head != "worktree" || p == nil {
+		return id
+	}
+	h := sha256.New()
+	for _, f := range p.Files {
+		_, _ = h.Write([]byte(f.Path))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(f.Diff))
+		_, _ = h.Write([]byte{0})
+	}
+	return id + ":" + hex.EncodeToString(h.Sum(nil)[:8])
 }
 
 // Open shows the report in the user's browser. A review nobody opens is a

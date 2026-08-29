@@ -3,6 +3,8 @@
 // SchemaVersion 1), extended additively. Shared contract, not shared internals.
 package findings
 
+import "sort"
+
 // SchemaVersion guards the JSON encoding of Report. Kept in lockstep with
 // doctor's constant of the same name.
 const SchemaVersion = 1
@@ -188,4 +190,47 @@ func (r *Report) Finalize() {
 	if r.Substrates == nil {
 		r.Substrates = []SubstrateStatus{}
 	}
+}
+
+// Dedupe drops later findings that share a fingerprint with an earlier one.
+// Ingest can be run twice against the same session; without this the agent's
+// judgments stack. NewCount is recomputed so the header still matches.
+func (r *Report) Dedupe() {
+	seen := map[string]bool{}
+	out := r.Findings[:0]
+	for _, f := range r.Findings {
+		if f.Fingerprint == "" {
+			f.Fingerprint = Fingerprint(f)
+		}
+		if seen[f.Fingerprint] {
+			continue
+		}
+		seen[f.Fingerprint] = true
+		out = append(out, f)
+	}
+	r.Findings = out
+	r.NewCount = map[Severity]int{}
+	for _, f := range r.Findings {
+		r.NewCount[f.Severity]++
+	}
+}
+
+// Sort orders by severity, then substrate, then rule, then location, so
+// output is stable across runs. Surprise ranking decides emphasis within
+// the report; it never decides inclusion.
+func Sort(fs []Finding) {
+	rank := map[Severity]int{SeverityError: 0, SeverityWarning: 1, SeverityInfo: 2}
+	sort.SliceStable(fs, func(i, j int) bool {
+		a, b := fs[i], fs[j]
+		if rank[a.Severity] != rank[b.Severity] {
+			return rank[a.Severity] < rank[b.Severity]
+		}
+		if a.Substrate != b.Substrate {
+			return a.Substrate < b.Substrate
+		}
+		if a.Rule != b.Rule {
+			return a.Rule < b.Rule
+		}
+		return a.File < b.File
+	})
 }

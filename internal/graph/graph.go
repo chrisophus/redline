@@ -10,12 +10,9 @@ package graph
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/ccason/redline/internal/packet"
 )
 
 // Graph is the subset of graphify's graph.json Redline reads.
@@ -41,17 +38,33 @@ type Edge struct {
 	Type   string `json:"type,omitempty"`
 }
 
+// Thread is one graph-derived path through the change. Defined here so this
+// package does not depend on the agent packet contract.
+type Thread struct {
+	From        string
+	To          string
+	Nodes       []string
+	Explanation string
+}
+
 // Locate finds a graphify graph for a directory. Redline reads an existing
 // graph; it does not build one, because extraction is an expensive LLM pass
 // the user should choose to run.
 func Locate(dir string) string {
-	for _, candidate := range []string{
+	candidates := []string{
 		filepath.Join(dir, "graphify-out", "graph.json"),
 		filepath.Join(dir, "graph.json"),
-	} {
+		filepath.Join(dir, ".planning", "graphs", "graph.json"),
+	}
+	for _, candidate := range candidates {
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, ".planning", "graphs", "*", "graph.json"))
+	if err == nil && len(matches) > 0 {
+		sort.Strings(matches)
+		return matches[0]
 	}
 	return ""
 }
@@ -76,7 +89,7 @@ const maxThreads = 12
 // Threads returns paths through the graph anchored on the changed files:
 // for each node the change touches, its immediate neighbourhood, rendered as
 // a thread the reviewer can follow.
-func (g *Graph) Threads(changed []string) []packet.Thread {
+func (g *Graph) Threads(changed []string) []Thread {
 	touched := g.nodesFor(changed)
 	if len(touched) == 0 {
 		return nil
@@ -90,14 +103,14 @@ func (g *Graph) Threads(changed []string) []packet.Thread {
 		label[n.ID] = firstNonEmpty(n.Label, n.ID)
 	}
 
-	var threads []packet.Thread
+	var threads []Thread
 	for _, id := range touched {
 		for _, e := range adjacency[id] {
 			if len(threads) >= maxThreads {
 				sort.Slice(threads, func(i, j int) bool { return threads[i].From < threads[j].From })
 				return threads
 			}
-			threads = append(threads, packet.Thread{
+			threads = append(threads, Thread{
 				From:        label[id],
 				To:          firstNonEmpty(label[e.Target], e.Target),
 				Nodes:       []string{label[id], firstNonEmpty(label[e.Target], e.Target)},
@@ -110,19 +123,17 @@ func (g *Graph) Threads(changed []string) []packet.Thread {
 }
 
 // nodesFor returns the IDs of nodes whose file matches a changed path.
+// Matching requires a path-segment boundary: a node at cmd/redline/main.go
+// matches that path, not every other main.go, and a node file of "go" does
+// not match every *.go file.
 func (g *Graph) nodesFor(changed []string) []string {
-	want := map[string]bool{}
-	for _, c := range changed {
-		want[c] = true
-		want[filepath.Base(c)] = true
-	}
 	var ids []string
 	for _, n := range g.Nodes {
 		file := firstNonEmpty(n.File, n.Path)
 		if file == "" {
 			continue
 		}
-		if want[file] || want[filepath.Base(file)] || matchesAny(file, changed) {
+		if matchesAny(file, changed) {
 			ids = append(ids, n.ID)
 		}
 	}
@@ -132,24 +143,20 @@ func (g *Graph) nodesFor(changed []string) []string {
 
 func matchesAny(file string, changed []string) bool {
 	for _, c := range changed {
-		if strings.HasSuffix(c, file) || strings.HasSuffix(file, c) {
+		if samePath(file, c) {
 			return true
 		}
 	}
 	return false
 }
 
-// Explain shells out to graphify for a plain-language account of a node. Best
-// effort: an absent graphify is not an error, it is one fewer thread.
-func Explain(graphPath, node string) string {
-	if _, err := exec.LookPath("graphify"); err != nil {
-		return ""
+func samePath(a, b string) bool {
+	a = filepath.ToSlash(a)
+	b = filepath.ToSlash(b)
+	if a == b {
+		return true
 	}
-	out, err := exec.Command("graphify", "explain", node, "--graph", graphPath).Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
+	return strings.HasSuffix(a, "/"+b) || strings.HasSuffix(b, "/"+a)
 }
 
 func firstNonEmpty(vals ...string) string {

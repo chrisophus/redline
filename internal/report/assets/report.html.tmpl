@@ -103,11 +103,11 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   border:1px solid var(--line);background:var(--bg);color:var(--ink);resize:vertical}
 </style>
 </head>
-<body>
+<body data-review="{{.Identity}}">
 <div class="wrap">
 
 <h1>Redline</h1>
-<p class="sub">{{.Subtitle}}{{if .Author}} · {{.Author}}{{end}}{{if .URL}} · <a href="{{.URL}}">{{.URL}}</a>{{end}}</p>
+<p class="sub">{{.Subtitle}}{{if .Author}} · {{.Author}}{{end}}{{if .Commits}} · {{.Commits}} commit{{if ne .Commits 1}}s{{end}}{{end}}{{if .URL}} · <a href="{{.URL}}">{{.URL}}</a>{{end}}</p>
 
 {{if .Banner}}<div class="banner">{{.Banner}}</div>{{end}}
 
@@ -221,6 +221,8 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <ul class="plain">
 {{range .Unknowns}}<li><b>{{.Substrate}}</b> — {{.Message}}{{if .Reason}} <span class="s">({{.Reason}})</span>{{end}}</li>{{end}}
 </ul>
+{{else if .Coverage.Unexamined}}
+<p>Every pane that applies ran, but {{len .Coverage.Unexamined}} changed file{{if ne (len .Coverage.Unexamined) 1}}s{{end}} were not in any pane's scope.</p>
 {{else}}
 <p>Nothing. Every check that applies to these {{.Coverage.ExaminedFiles}} file(s) ran and answered.</p>
 {{end}}
@@ -257,12 +259,13 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 
 </div>
 <script>
-// Review state lives in this browser, keyed by the report's own identity.
-// Redline never writes it: findings.json is regenerated every run and fully
-// deterministic, and merging the reviewer's decisions into it would mean every
-// re-run clobbers them.
+// Review state lives in this browser, keyed by the report's own identity
+// (base SHA + head), not by location.pathname — every run overwrites the
+// same report.html, and comments from the last review must not leak into
+// the next. Redline never writes this: findings.json is regenerated every
+// run and fully deterministic.
 (function () {
-  var KEY = "redline:" + location.pathname;
+  var KEY = "redline:" + (document.body.dataset.review || location.pathname);
   var state = load();
 
   function load() {
@@ -278,6 +281,24 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     document.getElementById("cmt-count").textContent =
       n ? n + " comment" + (n === 1 ? "" : "s") + " — hand them to the agent when you are done."
         : "No comments yet — click any diff line to leave one.";
+  }
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(fallback);
+    }
+    return fallback();
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      ta.remove();
+      return Promise.resolve();
+    }
   }
 
   // Restore viewed state.
@@ -312,10 +333,15 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     return el;
   }
 
+  function lineSelector(c) {
+    var sel = 'span[data-file="' + CSS.escape(c.file) + '"][data-line="' + c.line + '"]';
+    if (c.side) sel += '[data-side="' + CSS.escape(c.side) + '"]';
+    return sel;
+  }
+
   // Restore existing comments under their lines.
   state.comments.forEach(function (c) {
-    var line = document.querySelector(
-      'span[data-file="' + CSS.escape(c.file) + '"][data-line="' + c.line + '"]');
+    var line = document.querySelector(lineSelector(c));
     if (line) line.after(bubble(c));
   });
 
@@ -336,6 +362,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
           ta.remove();
           if (!text) return;
           var c = {file: line.dataset.file, line: +line.dataset.line,
+                   side: line.dataset.side || "new",
                    code: line.textContent, text: text};
           state.comments.push(c);
           line.after(bubble(c));
@@ -347,7 +374,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 
   document.getElementById("copy-cmts").addEventListener("click", function () {
     var payload = JSON.stringify({comments: state.comments}, null, 2);
-    navigator.clipboard.writeText(payload).then(function () {
+    copyText(payload).then(function () {
       var b = document.getElementById("copy-cmts");
       b.textContent = "Copied — paste into your agent session";
       setTimeout(function () { b.textContent = "Copy comments for the agent"; }, 2500);
