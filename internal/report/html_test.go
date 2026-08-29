@@ -227,6 +227,35 @@ func TestAgentPullRequestUsedWhenRedlineHasNone(t *testing.T) {
 	}
 }
 
+// Comments are written against one tree. A payload that does not name it can be
+// applied to code the reviewer never saw.
+func TestCommentPayloadNamesTheChangeItBelongsTo(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{BaseSHA: "abcdef0123456789", Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{
+			Target: &target.Target{Kind: target.KindBranch, Head: "ffffffffffffffff", Label: "feat/x"},
+			Files:  []packet.FileChange{{Path: "a.go", Diff: "@@ -1 +1 @@\n-a\n+b\n", Areas: []string{"code"}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, `data-target=`) {
+		t.Error("the page must carry the target so the copied payload can name it")
+	}
+	if !strings.Contains(html, "redlineReviewComments") {
+		t.Error("the payload needs a key an agent can recognise")
+	}
+	for _, want := range []string{"instruction:", "review:", "target:", "comments:"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("payload missing %q", want)
+		}
+	}
+	if !strings.Contains(html, "Address every one") {
+		t.Error("the payload should tell the agent what to do with it")
+	}
+}
+
 // The UI screens are the one artifact no other tool hands you, so they sit in
 // pass position and their absence is stated in proportion to whether the
 // interface actually moved.

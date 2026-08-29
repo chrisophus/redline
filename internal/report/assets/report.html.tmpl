@@ -155,7 +155,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   border:1px solid var(--line);background:var(--bg);color:var(--ink);resize:vertical}
 </style>
 </head>
-<body data-review="{{.Identity}}">
+<body data-review="{{.Identity}}" data-target="{{.Subtitle}}">
 <div class="wrap">
 
 <h1>Redline</h1>
@@ -623,7 +623,17 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 })();
 
 document.getElementById("copy-cmts").addEventListener("click", function () {
-    var payload = JSON.stringify({comments: state.comments}, null, 2);
+    // The payload names the change it belongs to. A bare list of file:line
+    // comments pasted into a session that has since moved on would be applied
+    // to the wrong tree, and the agent cannot tell without being told.
+    var payload = JSON.stringify({redlineReviewComments: {
+      instruction: "A human reviewed this change and left the comments below, each on a specific line. " +
+        "Address every one: make the change, or reply saying why you did not. " +
+        "Do not re-review the rest of the diff. When you are done, re-run redline and ingest the result.",
+      review: document.body.dataset.review || "",
+      target: document.body.dataset.target || "",
+      comments: state.comments
+    }}, null, 2);
     copyText(payload).then(function () {
       var b = document.getElementById("copy-cmts");
       b.textContent = "Copied — paste into your agent session";
