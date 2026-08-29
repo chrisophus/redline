@@ -26,6 +26,7 @@ func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]p
 
 	orientation(&b, p, rev)
 	section1(&b, renders)
+	coverageSection(&b, rep)
 	fileSection(&b, p, rev)
 	section2(&b, rep)
 	section3(&b, rep)
@@ -135,6 +136,36 @@ func prLabel(n int) string {
 		return "PR"
 	}
 	return fmt.Sprintf("PR #%d", n)
+}
+
+// coverageSection is the number that stands in for reading the tests. An
+// absent profile is stated as absent: "no test executes these lines" and
+// "nobody measured" are different claims and only one is the author's problem.
+func coverageSection(b *strings.Builder, rep *findings.Report) {
+	fmt.Fprintf(b, "## Coverage\n\n")
+	c := rep.Coverage.Diff
+	if c == nil {
+		fmt.Fprintf(b, "_No coverage profile was found, so whether these changes are tested is unknown. "+
+			"That is not the same as untested — run the suite with `-coverprofile=coverage.out`._\n\n")
+		return
+	}
+	if c.Stale {
+		fmt.Fprintf(b, "> **The profile `%s` predates this change**, so its number does not describe "+
+			"the code under review. Re-run the suite with `-coverprofile`.\n\n", c.Profile)
+	}
+	if c.Percent < 0 {
+		fmt.Fprintf(b, "No added line is coverable, so there is nothing for a test to execute (`%s`).\n\n", c.Profile)
+	} else {
+		fmt.Fprintf(b, "**%.0f%%** of the %d coverable line(s) this change adds are executed by a test, "+
+			"according to `%s`. %d covered, %d not.\n\n",
+			c.Percent, c.Lines, c.Profile, c.Covered, c.Lines-c.Covered)
+	}
+	for _, gap := range c.Uncovered {
+		fmt.Fprintf(b, "- `%s` — %d uncovered added line(s)\n", gap.Path, len(gap.Lines))
+	}
+	if len(c.Uncovered) > 0 {
+		fmt.Fprintln(b)
+	}
 }
 
 // fileSection is the walkthrough: every changed file, with the agent's

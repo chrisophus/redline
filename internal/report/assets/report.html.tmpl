@@ -236,9 +236,34 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   <button type="button" class="tile" data-goto="findings" data-only="warning"><div class="n warning">{{with index .Counts "warning"}}{{.}}{{else}}0{{end}}</div><div class="l">warnings</div></button>
   <button type="button" class="tile" data-goto="findings" data-only="info"><div class="n">{{with index .Counts "info"}}{{.}}{{else}}0{{end}}</div><div class="l">info</div></button>
   <button type="button" class="tile" data-goto="files"><div class="n">{{.Coverage.ExaminedFiles}}/{{.Coverage.ChangedFiles}}</div><div class="l">files examined</div></button>
+  {{with .Coverage.Diff}}
+  <button type="button" class="tile" data-goto="coverage"><div class="n{{if .Stale}} warning{{end}}">{{if lt .Percent 0.0}}—{{else}}{{printf "%.0f" .Percent}}%{{end}}</div><div class="l">diff covered</div></button>
+  {{else}}
+  <button type="button" class="tile" data-goto="coverage"><div class="n warning">?</div><div class="l">diff covered</div></button>
+  {{end}}
   <button type="button" class="tile" data-goto="confirms"><div class="n">{{len .Confirms}}</div><div class="l">confirmed</div></button>
   <button type="button" class="tile" data-goto="unknowns"><div class="n">{{len .Unknowns}}</div><div class="l">undetermined</div></button>
 </div>
+
+<h2 id="coverage">Coverage</h2>
+{{with .Coverage.Diff}}
+{{if .Stale}}<div class="banner">The profile <code>{{.Profile}}</code> is older than a file in this change, so this number does not describe the code under review. Re-run the suite with <code>-coverprofile</code>.</div>{{end}}
+{{if lt .Percent 0.0}}
+<p class="empty">No added line in this change is coverable, so there is nothing for a test to execute. Read from <code>{{.Profile}}</code>.</p>
+{{else}}
+<p><b>{{printf "%.0f" .Percent}}%</b> of the {{.Lines}} coverable line{{if ne .Lines 1}}s{{end}} this change adds are executed by a test, according to <code>{{.Profile}}</code>. {{.Covered}} covered, {{sub .Lines .Covered}} not.</p>
+{{end}}
+{{if .Uncovered}}
+<details>
+  <summary>{{len .Uncovered}} file{{if ne (len .Uncovered) 1}}s{{end}} with added lines no test executes</summary>
+  <div class="body"><ul class="plain">
+  {{range .Uncovered}}<li><code>{{.Path}}</code> — {{len .Lines}} line{{if ne (len .Lines) 1}}s{{end}}: {{range $i, $l := .Lines}}{{if $i}}, {{end}}{{$l}}{{end}}</li>{{end}}
+  </ul></div>
+</details>
+{{end}}
+{{else}}
+<p class="empty">No coverage profile was found, so whether these changes are tested is unknown. That is not the same as untested — run the suite with <code>-coverprofile=coverage.out</code> to get the number.</p>
+{{end}}
 
 {{if .Files}}
 <h2 id="files">Files</h2>

@@ -173,6 +173,7 @@ var areaLabels = []struct{ Key, Label string }{
 func HTML(in HTMLInput) (string, error) {
 	tmpl, err := template.New("report.html.tmpl").Funcs(template.FuncMap{
 		"lower": func(v any) string { return strings.ToLower(fmt.Sprint(v)) },
+		"sub":   func(a, b int) int { return a - b },
 	}).ParseFS(assets, "assets/report.html.tmpl")
 	if err != nil {
 		return "", err

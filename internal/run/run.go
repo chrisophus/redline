@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ccason/redline/internal/cover"
 	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/gitx"
 	"github.com/ccason/redline/internal/graph"
@@ -160,7 +161,48 @@ func Run(opts Options) (*Result, error) {
 	// HTML report renders its drill-in sections from.
 	res.Packet = packet.Build(repo, tgt, baseSHA, changed, res.Report.Findings)
 	attachThreads(res.Packet, tgt.Dir, changed)
+	attachDiffCoverage(&res.Report, res.Packet, tgt.Dir)
 	return res, nil
+}
+
+// attachDiffCoverage computes the number that stands in for reading the tests.
+// It needs the packet's diffs, so it runs after Build.
+//
+// A missing profile is recorded as an unknown. This is the whole point of the
+// number: "no test executes these lines" and "nobody measured" look identical on
+// a page that only shows a percentage, and only one of them is a problem the
+// author can fix by writing a test.
+func attachDiffCoverage(rep *findings.Report, p *packet.Packet, dir string) {
+	if p == nil || len(p.Files) == 0 {
+		return
+	}
+	changed := make([]cover.Changed, 0, len(p.Files))
+	goFiles := 0
+	for _, f := range p.Files {
+		if filepath.Ext(f.Path) != ".go" {
+			continue
+		}
+		goFiles++
+		changed = append(changed, cover.Changed{Path: f.Path, Added: cover.AddedLines(f.Diff)})
+	}
+	if goFiles == 0 {
+		return
+	}
+	rep.Coverage.Diff = cover.Compute(dir, changed)
+	switch {
+	case rep.Coverage.Diff == nil:
+		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+			Substrate: "redline/tests",
+			Message:   fmt.Sprintf("no coverage profile was found, so whether any test executes the %d changed Go file(s) is unknown", goFiles),
+			Reason:    "looked for coverage.out, cover.out, coverage.txt and c.out; run the suite with -coverprofile to get this number",
+		})
+	case rep.Coverage.Diff.Stale:
+		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+			Substrate: "redline/tests",
+			Message:   fmt.Sprintf("the coverage profile %s is older than a file in this change, so its number does not describe the code under review", rep.Coverage.Diff.Profile),
+			Reason:    "re-run the suite with -coverprofile",
+		})
+	}
 }
 
 func runPane(p pane.Pane, baseSHA string) (pane.Result, error) {
@@ -275,7 +317,6 @@ var unbuilt = []struct{ Area, Detail string }{
 	// that serves the contract.
 	{"api", "vacuum spec linting, spec-vs-handler and observed-vs-declared response checks are not built"},
 	{"ui", "checks 15-16 (before/after route screenshots, console and network errors) are not built"},
-	{"tests", "diff coverage — added lines no test executes — is not built"},
 }
 
 // unbuiltPanes reports, per area, that a part of this change falls under a

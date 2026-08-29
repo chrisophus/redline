@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ccason/redline/internal/cover"
 	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/target"
@@ -378,6 +379,90 @@ func TestTestFilesAreCountedNotRendered(t *testing.T) {
 	}
 	if !strings.Contains(html, "+b") {
 		t.Error("non-test diffs must still render")
+	}
+}
+
+// The number stands in for reading the tests, so its absence has to be as
+// legible as its presence. A missing profile rendering as 0% would read as
+// "nothing is tested", which is a much stronger claim than "nobody measured".
+func TestMissingCoverageProfileReadsAsUnknownNotZero(t *testing.T) {
+	rep := &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}}
+	pkt := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+
+	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "No coverage profile was found") {
+		t.Error("the page must say the number is unknown")
+	}
+	if !strings.Contains(html, "not the same as untested") {
+		t.Error("the page must distinguish unmeasured from untested")
+	}
+	if strings.Contains(html, "% of the") {
+		t.Error("a missing profile must never render as a percentage")
+	}
+	// The tile reads as unanswered rather than as a score.
+	if !strings.Contains(html, `<div class="n warning">?</div><div class="l">diff covered</div>`) {
+		t.Error("the coverage tile must show ? when nothing measured it")
+	}
+
+	md := Markdown(rep, nil, nil, pkt, nil)
+	if !strings.Contains(md, "No coverage profile was found") {
+		t.Error("markdown must say the same")
+	}
+}
+
+func TestCoverageNumberNamesItsProfileAndGaps(t *testing.T) {
+	rep := &findings.Report{
+		Coverage: findings.Coverage{
+			ChangedFiles: 1, ExaminedFiles: 1,
+			Diff: &cover.Result{
+				Profile: "coverage.out", Lines: 10, Covered: 7, Percent: 70,
+				Uncovered: []cover.FileGap{{Path: "internal/run/run.go", Lines: []int{12, 13, 14}}},
+			},
+		},
+	}
+	pkt := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+
+	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"70%", "coverage.out", "internal/run/run.go", "7 covered, 3 not"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("coverage section missing %q", want)
+		}
+	}
+
+	md := Markdown(rep, nil, nil, pkt, nil)
+	for _, want := range []string{"70%", "coverage.out", "internal/run/run.go"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("markdown coverage missing %q", want)
+		}
+	}
+}
+
+func TestStaleCoverageProfileIsCalledOut(t *testing.T) {
+	rep := &findings.Report{
+		Coverage: findings.Coverage{
+			ChangedFiles: 1, ExaminedFiles: 1,
+			Diff: &cover.Result{Profile: "coverage.out", Lines: 4, Covered: 4, Percent: 100, Stale: true},
+		},
+	}
+	pkt := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+
+	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 100% from a profile that predates the change is the most misleading
+	// number on the page, so it gets a banner rather than a footnote.
+	if !strings.Contains(html, `class="banner">The profile`) {
+		t.Error("a stale profile needs a banner beside its number")
+	}
+	if !strings.Contains(Markdown(rep, nil, nil, pkt, nil), "predates this change") {
+		t.Error("markdown must flag the stale profile too")
 	}
 }
 

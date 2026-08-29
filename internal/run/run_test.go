@@ -280,6 +280,67 @@ func TestCoverageCountsExaminedFiles(t *testing.T) {
 	}
 }
 
+func TestDiffCoverageReadsAProfileFromTheTree(t *testing.T) {
+	r := baseline(t)
+	r.write("internal/x/x.go", "package x\n\nfunc A() int {\n\treturn 1\n}\n\nfunc B() int {\n\treturn 2\n}\n")
+	// A() ran, B() did not.
+	r.write("coverage.out", "mode: set\n"+
+		"github.com/ccason/redline/internal/x/x.go:3.14,5.2 1 1\n"+
+		"github.com/ccason/redline/internal/x/x.go:7.14,9.2 1 0\n")
+
+	rep := r.run(run.Options{Base: "main", Upstream: "upstream"}).Report
+	c := rep.Coverage.Diff
+	if c == nil {
+		t.Fatal("expected a diff coverage result")
+	}
+	if c.Profile != "coverage.out" {
+		t.Errorf("Profile = %q", c.Profile)
+	}
+	if c.Lines == 0 {
+		t.Fatal("expected coverable added lines")
+	}
+	if c.Covered == 0 || c.Covered == c.Lines {
+		t.Errorf("expected a partial number, got %d of %d", c.Covered, c.Lines)
+	}
+}
+
+// Absence has to be recorded, not merely omitted: an empty coverage section and
+// a fully covered change look the same to a reader who is scanning.
+func TestMissingCoverageProfileIsUndetermined(t *testing.T) {
+	r := baseline(t)
+	r.write("internal/x/x.go", "package x\n\nfunc A() int {\n\treturn 1\n}\n")
+
+	rep := r.run(run.Options{Base: "main", Upstream: "upstream"}).Report
+	if rep.Coverage.Diff != nil {
+		t.Fatalf("expected no coverage result, got %+v", rep.Coverage.Diff)
+	}
+	var found bool
+	for _, u := range rep.Unknowns {
+		if u.Substrate == "redline/tests" && strings.Contains(u.Message, "no coverage profile") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("a missing profile must be an unknown, got %+v", rep.Unknowns)
+	}
+}
+
+// A change with no Go files should not claim anything about test coverage.
+func TestNoGoFilesMeansNoCoverageClaim(t *testing.T) {
+	r := baseline(t)
+	r.write("migrations/000002_add_email.up.sql", "ALTER TABLE users ADD COLUMN email text;\n")
+
+	rep := r.run(run.Options{Base: "main", Upstream: "upstream"}).Report
+	if rep.Coverage.Diff != nil {
+		t.Errorf("no Go file changed, got %+v", rep.Coverage.Diff)
+	}
+	for _, u := range rep.Unknowns {
+		if u.Substrate == "redline/tests" {
+			t.Errorf("must not report a coverage gap for a SQL-only change: %+v", u)
+		}
+	}
+}
+
 // Generated output must leave the change before anything counts it, or the
 // coverage ratio measures files no reviewer would read.
 func TestGeneratedFilesLeaveTheChangeAndAreNamed(t *testing.T) {
