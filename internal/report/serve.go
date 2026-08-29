@@ -302,13 +302,19 @@ func waitServing(port int, abs string, d time.Duration) error {
 	return fmt.Errorf("report server did not become ready at %s", ReportURL(port))
 }
 
+// ErrNoReport means there is nothing to serve: the evidence directory holds
+// no report.html. Callers must tell this apart from a report that exists but
+// could not be served — the first is a run that produced nothing, the second
+// is a finished review whose URL is merely unavailable.
+var ErrNoReport = errors.New("no report to serve")
+
 func evidenceDir(outDir string) (string, error) {
 	abs, err := filepath.Abs(outDir)
 	if err != nil {
 		return "", err
 	}
 	if _, err := os.Stat(filepath.Join(abs, "report.html")); err != nil {
-		return "", fmt.Errorf("no report in %s (run `redline review` first): %w", abs, err)
+		return "", fmt.Errorf("%w in %s (run `redline review` first)", ErrNoReport, abs)
 	}
 	return abs, nil
 }
@@ -318,8 +324,35 @@ func startServe(outDir string, port int) error {
 	if err != nil {
 		return err
 	}
+	// Re-execing a test binary as `serve` is a fork bomb: Go's flag parser
+	// stops at the positional argument, ignores our flags, and runs the
+	// suite again — every announce spawning more children. No opt-out.
+	// cmd/redline's TestMain is a second lock if a child is invoked anyway.
+	if underGoTest() {
+		return fmt.Errorf("refusing to re-exec test binary %s as serve", filepath.Base(exe))
+	}
 	cmd := exec.Command(exe, "serve", "--out", outDir, "--port", fmt.Sprintf("%d", port))
 	cmd.Dir = filepath.Dir(outDir)
 	detach(cmd)
 	return cmd.Start()
+}
+
+func isTestBinaryName(path string) bool {
+	base := strings.TrimSuffix(filepath.Base(path), ".exe")
+	return strings.HasSuffix(base, ".test")
+}
+
+func underGoTest() bool {
+	if exe, err := os.Executable(); err == nil && isTestBinaryName(exe) {
+		return true
+	}
+	if isTestBinaryName(os.Args[0]) {
+		return true
+	}
+	for _, a := range os.Args[1:] {
+		if strings.HasPrefix(a, "-test.") {
+			return true
+		}
+	}
+	return false
 }

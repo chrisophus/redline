@@ -12,6 +12,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -190,11 +191,19 @@ func cmdIngest(o opts) error {
 // browsing are best effort: the report is already on disk by the time this
 // runs, and exiting non-zero because a port was taken would tell the agent
 // driving the session that a completed review failed.
+//
+// Only report.ErrNoReport is fatal, and it is matched explicitly. Inferring
+// it from an empty URL is what broke this once: failing to start a server
+// also yields no URL, so a review that had written its report exited 1 and
+// printed no path to it at all.
 func announce(out string, port int, browse bool) error {
 	url, err := report.OpenOn(out, browse, port)
-	if url == "" {
-		// No URL means the report itself is missing. That is a real failure.
+	if errors.Is(err, report.ErrNoReport) {
 		return err
+	}
+	if url == "" {
+		// Nothing is serving it, but it is on disk. Say where.
+		url = filepath.Join(out, "report.html")
 	}
 	fmt.Fprintf(os.Stderr, "Report: %s\n", url)
 	if err != nil {

@@ -194,3 +194,44 @@ func TestOpenDirMissingReport(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestTestBinaryName(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"/tmp/go-build/redline.test", true},
+		{`C:\Users\x\redline.test.exe`, true},
+		{"/usr/local/bin/redline", false},
+		{"/tmp/report.test", true},
+	}
+	for _, c := range cases {
+		if got := isTestBinaryName(c.path); got != c.want {
+			t.Fatalf("%s: got %v want %v", c.path, got, c.want)
+		}
+	}
+}
+
+// If this re-exec'd report.test, the child would run the suite again and
+// every announce would spawn more children. The machine would die. Prove
+// we refuse instead, and that nothing is listening afterward.
+func TestUnderGoTest(t *testing.T) {
+	if !underGoTest() {
+		t.Fatal("this process is a test binary")
+	}
+}
+
+func TestStartServeRefusesATestBinary(t *testing.T) {
+	dir := reportDir(t)
+	port, err := freePort(21000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := startServe(dir, port); err == nil {
+		t.Fatal("startServe must refuse to re-exec a test binary")
+	}
+	time.Sleep(100 * time.Millisecond)
+	if servesDir(port, dir) {
+		t.Fatal("a server started; the test binary was re-exec'd")
+	}
+}
