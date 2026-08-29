@@ -1,6 +1,7 @@
 package report
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -227,6 +228,115 @@ func TestAgentPullRequestUsedWhenRedlineHasNone(t *testing.T) {
 	}
 }
 
+// The sidebar and the page must agree. A section that gains or loses a heading
+// without its nav entry moving too leaves a dead link or an unreachable section,
+// and neither is visible from reading either file alone.
+func TestNavMatchesTheSectionsOnThePage(t *testing.T) {
+	full := HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 1,
+				Diff: &cover.Result{Profile: "coverage.out", Lines: 4, Covered: 2, Percent: 50}},
+			Findings: []findings.Finding{
+				{File: "a.go", Rule: "review", Message: "judged", Severity: findings.SeverityWarning,
+					Source: findings.SourceLLM, Reviewer: "claude"},
+				{File: "b.sql", Rule: "obs", Message: "observed", Severity: findings.SeverityError,
+					Source: findings.SourceDeterministic},
+			},
+			Confirmations: []findings.Confirmation{{Rule: "r", Message: "held"}},
+			Unknowns:      []findings.Unknown{{Substrate: "s", Message: "unknown"}},
+		},
+		Packet: &packet.Packet{
+			UITouched: true,
+			Files:     []packet.FileChange{{Path: "a.go", Areas: []string{"code"}, Diff: "@@ -1 +1 @@\n+x\n"}},
+			Threads:   []packet.Thread{{From: "a", To: "b"}},
+		},
+		Review: &packet.Review{
+			Summary:       "s",
+			APIChanges:    []packet.Highlight{{Title: "api moved"}},
+			SchemaChanges: []packet.Highlight{{Title: "schema moved"}},
+		},
+		Screenshots: []Screenshot{{Route: "/x", After: "data:image/png;base64,AAA"}},
+	}
+	// The pre-push minimum: no highlights, no threads, no captures, no profile.
+	bare := HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0}},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+	}
+
+	navHref := regexp.MustCompile(`data-nav="([^"]+)"`)
+	headID := regexp.MustCompile(`<h2 id="([^"]+)"`)
+
+	for name, in := range map[string]HTMLInput{"full": full, "bare": bare} {
+		html, err := HTML(in)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		var nav, heads []string
+		for _, m := range navHref.FindAllStringSubmatch(html, -1) {
+			nav = append(nav, m[1])
+		}
+		for _, m := range headID.FindAllStringSubmatch(html, -1) {
+			heads = append(heads, m[1])
+		}
+		if len(nav) == 0 {
+			t.Fatalf("%s: no sidebar rendered", name)
+		}
+		if strings.Join(nav, ",") != strings.Join(heads, ",") {
+			t.Errorf("%s: sidebar and sections disagree\n nav: %v\nheads: %v", name, nav, heads)
+		}
+	}
+}
+
+// The sidebar should show where the gaps are without scrolling to find them.
+func TestNavMarksSectionsThatAreGaps(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		// UI moved with nothing captured, and no coverage profile.
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0},
+			Unknowns: []findings.Unknown{{Substrate: "s", Message: "u"}},
+		},
+		Packet: &packet.Packet{
+			UITouched: true,
+			Files:     []packet.FileChange{{Path: "web/src/App.tsx", Areas: []string{"ui"}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"interface", "coverage", "unknowns"} {
+		re := regexp.MustCompile(`data-nav="` + id + `"[^>]*class="gap"`)
+		if !re.MatchString(html) {
+			t.Errorf("%s should be marked as a gap in the sidebar", id)
+		}
+	}
+	// A section with a real result is not a gap.
+	if regexp.MustCompile(`data-nav="change"[^>]*class="gap"`).MatchString(html) {
+		t.Error("the summary section is not a gap")
+	}
+}
+
+func TestNavIsSelfContainedAndSticky(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, `<nav class="nav" aria-label="Sections">`) {
+		t.Error("the sidebar should be a labelled nav landmark")
+	}
+	if !strings.Contains(html, ".nav{position:sticky") {
+		t.Error("the sidebar must stay put while the page scrolls — that is the whole point")
+	}
+	// Rendered server-side: the map must exist before any script runs.
+	navAt := strings.Index(html, `data-nav=`)
+	scriptAt := strings.Index(html, "<script>")
+	if navAt < 0 || navAt > scriptAt {
+		t.Error("the sidebar must be in the markup, not built by script")
+	}
+}
+
 // Comments are written against one tree. A payload that does not name it can be
 // applied to code the reviewer never saw.
 func TestCommentPayloadNamesTheChangeItBelongsTo(t *testing.T) {
@@ -326,8 +436,10 @@ func TestFindingsSplitByWhoIsAccountable(t *testing.T) {
 	if !strings.Contains(html, "What the reviewers found") || !strings.Contains(html, "What Redline observed") {
 		t.Fatal("judged and observed findings need their own sections")
 	}
+	// Anchor on the heading, not its label: the label also appears in the
+	// sidebar, above everything.
 	judged := strings.Index(html, "judged thing")
-	observedHead := strings.Index(html, "What Redline observed")
+	observedHead := strings.Index(html, `<h2 id="observed"`)
 	if judged > observedHead {
 		t.Error("a judged finding must render in the reviewers' section")
 	}

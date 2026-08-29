@@ -1,4 +1,8 @@
 /.redline/
 /redline
+# Redline reads a coverage profile to compute diff coverage. It is a local
+# artifact, and one that got committed once already.
+/coverage.out
+/cover.out
 .compound-engineering/*.local.yaml
 

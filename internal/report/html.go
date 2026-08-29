@@ -97,6 +97,11 @@ type view struct {
 	// how loud the absence of captures should be: no captures on a change that
 	// touches no UI is unremarkable, and on one that does it is a gap.
 	UITouched bool
+	// Nav is the sidebar: one entry per section actually rendered, in the order
+	// they appear. Built here rather than scanned out of the DOM so the page
+	// has a map before any script runs.
+	Nav []navLink
+
 	Commits   int
 	HasReview bool
 	// Identity keys browser-local comments to this review, not to the
@@ -119,6 +124,19 @@ type surfaceView struct {
 	Line   string
 	Moved  bool
 	Stated bool
+}
+
+// navLink is one sidebar entry.
+//
+// Count is shown when a section has a number worth knowing before you scroll to
+// it. Warn marks a section that is a gap rather than a result — no captures of a
+// UI that moved, no coverage profile, something undetermined — so the sidebar
+// answers "what is missing here" without reading the page.
+type navLink struct {
+	ID    string
+	Label string
+	Count int
+	Warn  bool
 }
 
 // reviewerGroup is one reviewer's findings, kept under its own name.
@@ -295,7 +313,52 @@ func buildView(in HTMLInput) view {
 			v.Areas = append(v.Areas, areaView{Key: al.Key, Label: al.Label, Files: files, Count: len(files)})
 		}
 	}
+	v.Nav = navFor(v)
 	return v
+}
+
+// navFor lists the sections this page will render, in page order. It must stay
+// in step with the template: TestNavMatchesTheSectionsOnThePage fails if a
+// section gains or loses a heading without its entry moving too.
+func navFor(v view) []navLink {
+	judged := 0
+	for _, g := range v.Judged {
+		judged += len(g.Findings)
+	}
+	// A UI that moved with nothing captured is a gap; a change with no UI files
+	// is not.
+	uiGap := v.UITouched && len(v.Screenshots) == 0
+	coverageGap := v.Coverage.Diff == nil || v.Coverage.Diff.Stale
+
+	nav := []navLink{
+		{ID: "change", Label: "What this change is"},
+		{ID: "interface", Label: "What it looks like", Count: len(v.Screenshots), Warn: uiGap},
+	}
+	if len(v.API) > 0 {
+		nav = append(nav, navLink{ID: "api", Label: "API contract", Count: len(v.API)})
+	}
+	if len(v.Schema) > 0 {
+		nav = append(nav, navLink{ID: "schema", Label: "Schema", Count: len(v.Schema)})
+	}
+	nav = append(nav, navLink{ID: "coverage", Label: "Coverage", Warn: coverageGap})
+	if len(v.Files) > 0 {
+		nav = append(nav, navLink{ID: "files", Label: "Files", Count: len(v.Files)})
+	}
+	nav = append(nav,
+		navLink{ID: "findings", Label: "What the reviewers found", Count: judged},
+		navLink{ID: "observed", Label: "What Redline observed", Count: len(v.Observed)},
+	)
+	if len(v.Areas) > 0 {
+		nav = append(nav, navLink{ID: "drill", Label: "Drill in", Count: len(v.Areas)})
+	}
+	if len(v.Threads) > 0 {
+		nav = append(nav, navLink{ID: "threads", Label: "Threads", Count: len(v.Threads)})
+	}
+	nav = append(nav,
+		navLink{ID: "unknowns", Label: "Undetermined", Count: len(v.Unknowns) + len(v.Dark), Warn: len(v.Unknowns)+len(v.Dark) > 0},
+		navLink{ID: "confirms", Label: "Checked and held", Count: len(v.Confirms)},
+	)
+	return nav
 }
 
 // groupByReviewer splits judged findings by who reported them, preserving the
