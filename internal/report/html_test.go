@@ -87,7 +87,7 @@ func TestHTMLFileWalkUsesPacketAndAgentNotes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(html, "<h2>Files</h2>") {
+	if !strings.Contains(html, `<h2 id="files">Files</h2>`) {
 		t.Fatal("report must lead with a file walkthrough")
 	}
 	if !strings.Contains(html, "Prints the Report: URL after ingest.") {
