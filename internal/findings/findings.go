@@ -149,6 +149,12 @@ type Coverage struct {
 	ChangedFiles  int      `json:"changedFiles"`
 	ExaminedFiles int      `json:"examinedFiles"`
 	Unexamined    []string `json:"unexamined,omitempty"`
+
+	// Generated are paths dropped from the change as machine output before any
+	// pane ran. They are listed rather than merely counted: excluding a file a
+	// human actually wrote is the one way this feature can hide a real change,
+	// and naming every exclusion is what makes that recoverable.
+	Generated []string `json:"generated,omitempty"`
 }
 
 // Report is the merged result of one Redline run.

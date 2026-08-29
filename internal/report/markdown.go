@@ -138,6 +138,16 @@ func section3(b *strings.Builder, rep *findings.Report) {
 		}
 		fmt.Fprintf(b, "\n</details>\n\n")
 	}
+	if n := len(rep.Coverage.Generated); n > 0 {
+		// Named, not just counted. Excluding a file a human wrote is the one
+		// way suppression can hide a real change, and the reader can only
+		// catch that if the list is here.
+		fmt.Fprintf(b, "<details>\n<summary>%d generated file(s) excluded from this review</summary>\n\n", n)
+		for _, path := range rep.Coverage.Generated {
+			fmt.Fprintf(b, "- `%s`\n", path)
+		}
+		fmt.Fprintf(b, "\n</details>\n\n")
+	}
 	skipped := 0
 	for _, s := range rep.Substrates {
 		if s.State == findings.SubstrateSkipped {

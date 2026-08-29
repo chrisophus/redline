@@ -170,8 +170,6 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   <button type="button" class="tile" data-goto="confirms"><div class="n">{{len .Confirms}}</div><div class="l">confirmed</div></button>
   <button type="button" class="tile" data-goto="unknowns"><div class="n">{{len .Unknowns}}</div><div class="l">undetermined</div></button>
 </div>
-/div>
-</div>
 
 {{if .Schema}}
 <h2>Schema changes</h2>
@@ -287,6 +285,12 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <details>
   <summary>{{len .Coverage.Unexamined}} changed file{{if ne (len .Coverage.Unexamined) 1}}s{{end}} no pane examined</summary>
   <div class="body"><ul class="plain">{{range .Coverage.Unexamined}}<li><code>{{.}}</code></li>{{end}}</ul></div>
+</details>
+{{end}}
+{{if .Coverage.Generated}}
+<details>
+  <summary>{{len .Coverage.Generated}} generated file{{if ne (len .Coverage.Generated) 1}}s{{end}} excluded from this review</summary>
+  <div class="body"><ul class="plain">{{range .Coverage.Generated}}<li><code>{{.}}</code></li>{{end}}</ul></div>
 </details>
 {{end}}
 {{if .Skipped}}

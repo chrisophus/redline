@@ -85,6 +85,12 @@ func Run(opts Options) (*Result, error) {
 	}
 	changed = excludeOwnOutput(changed, opts.Out, repo.Root)
 
+	// Generated output leaves the change here, before any pane or the packet
+	// sees it, so the coverage denominator counts files a reviewer would
+	// actually read. What was dropped is recorded and shown: an exclusion the
+	// reader cannot see is indistinguishable from a file that never changed.
+	changed, generated := packet.Generated(tgt.Dir, changed, repo.AttrSet("linguist-generated", changed))
+
 	res := &Result{Evidence: map[string]pane.Artifact{}, Target: tgt, Report: findings.Report{
 		BaseRef: baseRef,
 		BaseSHA: baseSHA,
@@ -134,6 +140,7 @@ func Run(opts Options) (*Result, error) {
 	}
 
 	res.Report.Coverage = coverage(changed, examined)
+	res.Report.Coverage.Generated = generated
 	res.Report.Unknowns = append(res.Report.Unknowns, unbuiltPanes(changed, examined)...)
 	if res.Report.Coverage.ExaminedFiles == 0 && len(changed) > 0 {
 		// No pane looked at any of it. This is not a clean review and must

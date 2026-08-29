@@ -101,6 +101,51 @@ func TestHTMLFileWalkUsesPacketAndAgentNotes(t *testing.T) {
 	}
 }
 
+func TestGeneratedExclusionsAreNamedOnBothReports(t *testing.T) {
+	rep := &findings.Report{
+		Coverage: findings.Coverage{
+			ChangedFiles: 1, ExaminedFiles: 1,
+			Generated: []string{"internal/api/oas_schemas_gen.go", "go.sum"},
+		},
+	}
+	pkt := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+
+	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"2 generated files excluded", "oas_schemas_gen.go", "go.sum"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("HTML must name every exclusion; missing %q", want)
+		}
+	}
+
+	md := Markdown(rep, nil, nil, pkt, nil)
+	for _, want := range []string{"2 generated file(s) excluded", "oas_schemas_gen.go", "go.sum"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("markdown must name every exclusion; missing %q", want)
+		}
+	}
+}
+
+// The tiles block once closed .wrap early, so every section below it rendered
+// outside the page's max-width and padding.
+func TestPageWrapperClosesOnce(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "\n/div>") {
+		t.Error("stray /div> renders as literal text on the page")
+	}
+	if opens, closes := strings.Count(html, "<div"), strings.Count(html, "</div>"); opens != closes {
+		t.Errorf("unbalanced divs: %d opened, %d closed", opens, closes)
+	}
+}
+
 func TestMarkdownFileSection(t *testing.T) {
 	md := Markdown(&findings.Report{Coverage: findings.Coverage{ChangedFiles: 1}}, nil, nil,
 		&packet.Packet{Files: []packet.FileChange{{Path: "a.go", Status: "added", Added: 4}}},
