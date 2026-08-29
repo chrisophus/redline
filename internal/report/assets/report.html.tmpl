@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redline — {{.Subtitle}}</title>
+<style>
+:root{
+  --bg:#fbfbfa; --panel:#fff; --ink:#1a1a19; --muted:#6b6b68; --line:#e4e4e1;
+  --error:#b4241f; --warn:#a1660a; --info:#3a6ea5; --ok:#2f6b45;
+  --add-bg:#e9f5ec; --del-bg:#fdeceb; --llm:#6b4ea1; --code:#f6f6f4;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#161615; --panel:#1e1e1d; --ink:#e8e8e5; --muted:#9a9a95; --line:#333331;
+  --error:#f08a84; --warn:#e0b060; --info:#87b3e0; --ok:#7cc79a;
+  --add-bg:#1b2f22; --del-bg:#33201f; --llm:#b79ce8; --code:#232322;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",system-ui,sans-serif;}
+.wrap{max-width:1080px;margin:0 auto;padding:32px 24px 96px}
+h1{font-size:24px;margin:0;letter-spacing:-.01em}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+  margin:40px 0 12px;font-weight:600}
+h3{font-size:16px;margin:0 0 4px}
+a{color:inherit}
+.sub{color:var(--muted);margin:4px 0 0}
+.banner{background:var(--del-bg);border-left:3px solid var(--error);padding:14px 16px;
+  margin:20px 0;border-radius:0 6px 6px 0}
+.summary{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:18px 20px;margin:20px 0;font-size:16px;line-height:1.6}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:16px 0}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.tile .n{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.tile .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.n.error{color:var(--error)} .n.warning{color:var(--warn)} .n.ok{color:var(--ok)}
+.hl{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--info);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:8px 0}
+.hl.breaking{border-left-color:var(--error)}
+.hl .t{font-weight:600}
+.hl .d{color:var(--muted);font-size:14px;margin-top:2px}
+.f{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:16px 18px;margin:12px 0}
+.f.error{border-left:3px solid var(--error)}
+.f.warning{border-left:3px solid var(--warn)}
+.f.info{border-left:3px solid var(--info)}
+.tag{display:inline-block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+  padding:2px 7px;border-radius:4px;background:var(--code);color:var(--muted);
+  font-weight:600;vertical-align:2px}
+.tag.llm{background:color-mix(in srgb,var(--llm) 15%,transparent);color:var(--llm)}
+.tag.det{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.meta-row{color:var(--muted);font-size:13px;margin-top:8px}
+.meta-row b{color:var(--ink);font-weight:600}
+blockquote{margin:12px 0 0;padding:10px 14px;background:var(--code);border-radius:6px;
+  font-size:14px;color:var(--muted)}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+pre.diff{background:var(--code);border:1px solid var(--line);border-radius:8px;
+  padding:12px;overflow-x:auto;margin:12px 0 0;line-height:1.45}
+pre.diff span{display:block;white-space:pre}
+.add{background:var(--add-bg)} .del{background:var(--del-bg)}
+.hunk{color:var(--info)} .meta{color:var(--muted)}
+details{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:0;margin:10px 0;overflow:hidden}
+details>summary{cursor:pointer;padding:13px 18px;font-weight:600;list-style:none;
+  display:flex;justify-content:space-between;gap:12px;align-items:center}
+details>summary::-webkit-details-marker{display:none}
+details>summary::after{content:"▸";color:var(--muted);font-weight:400}
+details[open]>summary::after{content:"▾"}
+details>summary:hover{background:var(--code)}
+.body{padding:0 18px 16px;border-top:1px solid var(--line)}
+.file{padding:12px 0;border-bottom:1px solid var(--line)}
+.file:last-child{border-bottom:none}
+.file .p{font-family:ui-monospace,monospace;font-size:13px;font-weight:600}
+.file .s{font-size:12px;color:var(--muted)}
+.plus{color:var(--ok)} .minus{color:var(--error)}
+.thread{padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.thread:last-child{border-bottom:none}
+.thread .arrow{color:var(--muted);margin:0 8px}
+ul.plain{margin:8px 0;padding-left:20px}
+ul.plain li{margin:4px 0}
+.shots{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+.shots img{width:100%;border:1px solid var(--line);border-radius:6px}
+.shots .cap{font-size:12px;color:var(--muted);margin-bottom:4px}
+.empty{color:var(--muted);font-style:italic}
+pre.diff span[data-line]{cursor:text;position:relative}
+pre.diff span[data-line]:hover{outline:1px solid var(--info);outline-offset:-1px}
+.viewed{opacity:.45}
+.viewed .p{text-decoration:line-through}
+label.vw{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;
+  cursor:pointer;user-select:none;font-weight:400}
+.cmt{background:color-mix(in srgb,var(--info) 8%,var(--panel));border:1px solid var(--info);
+  border-radius:6px;padding:8px 10px;margin:6px 0;font-size:13px}
+.cmt .w{font-size:11px;color:var(--muted);font-family:ui-monospace,monospace}
+.cmt button{float:right;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px}
+.bar{position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line);
+  margin:32px -24px -96px;padding:12px 24px;display:flex;gap:12px;align-items:center;
+  justify-content:space-between;font-size:13px}
+.bar button{font:inherit;font-weight:600;padding:7px 14px;border-radius:6px;
+  border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+.bar button:hover{background:var(--code)}
+.bar .n{color:var(--muted)}
+textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6px;
+  border:1px solid var(--line);background:var(--bg);color:var(--ink);resize:vertical}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Redline</h1>
+<p class="sub">{{.Subtitle}}{{if .Author}} · {{.Author}}{{end}}{{if .URL}} · <a href="{{.URL}}">{{.URL}}</a>{{end}}</p>
+
+{{if .Banner}}<div class="banner">{{.Banner}}</div>{{end}}
+
+<h2>What this change is</h2>
+<div class="summary">{{.Summary}}</div>
+
+<div class="tiles">
+  <div class="tile"><div class="n {{if index .Counts "error"}}error{{else}}ok{{end}}">{{with index .Counts "error"}}{{.}}{{else}}0{{end}}</div><div class="l">errors</div></div>
+  <div class="tile"><div class="n warning">{{with index .Counts "warning"}}{{.}}{{else}}0{{end}}</div><div class="l">warnings</div></div>
+  <div class="tile"><div class="n">{{.Coverage.ExaminedFiles}}/{{.Coverage.ChangedFiles}}</div><div class="l">files examined</div></div>
+  <div class="tile"><div class="n">{{len .Confirms}}</div><div class="l">confirmed</div></div>
+  <div class="tile"><div class="n">{{len .Unknowns}}</div><div class="l">undetermined</div></div>
+</div>
+
+{{if .Schema}}
+<h2>Schema changes</h2>
+{{range .Schema}}<div class="hl{{if .Breaking}} breaking{{end}}">
+  <div class="t">{{.Title}}{{if .Breaking}} — breaking{{end}}</div>
+  {{if .Detail}}<div class="d">{{.Detail}}</div>{{end}}
+  {{if .File}}<div class="d"><code>{{.File}}</code></div>{{end}}
+</div>{{end}}
+{{end}}
+
+{{if .API}}
+<h2>API changes</h2>
+{{range .API}}<div class="hl{{if .Breaking}} breaking{{end}}">
+  <div class="t">{{.Title}}{{if .Breaking}} — breaking{{end}}</div>
+  {{if .Detail}}<div class="d">{{.Detail}}</div>{{end}}
+  {{if .File}}<div class="d"><code>{{.File}}</code></div>{{end}}
+</div>{{end}}
+{{end}}
+
+<h2>Findings</h2>
+{{if .Findings}}
+{{range .Findings}}
+<div class="f {{lower .Severity}}">
+  <h3>{{.Message}}</h3>
+  <div>
+    <span class="tag">{{.Severity}}</span>
+    <span class="tag">{{.Rule}}</span>
+    {{if .IsLLM}}<span class="tag llm">agent judgment</span>{{else}}<span class="tag det">observed</span>{{end}}
+  </div>
+  <div class="meta-row">
+    {{if .File}}<b>{{.File}}</b>{{if .Line}}:{{.Line}}{{end}}{{else if .Anchor}}<b>{{.Anchor.Kind}} {{.Anchor.ID}}</b>{{end}}
+    {{if .Expected}}<br>expected: {{.Expected}}{{end}}
+    {{if .Observed}}<br>observed: {{.Observed}}{{end}}
+    {{if .FixCmd}}<br>fix: {{.FixCmd}}{{end}}
+  </div>
+  {{if .Evidence}}<pre class="diff">{{.Evidence}}</pre>{{end}}
+  {{if .Context}}<blockquote>{{.Context}}</blockquote>{{end}}
+</div>
+{{end}}
+{{else}}
+<p class="empty">{{if eq .Coverage.ExaminedFiles 0}}None — because nothing was checked. See the note above.{{else}}None.{{end}}</p>
+{{end}}
+
+<h2>Drill in</h2>
+{{if .Areas}}
+{{range .Areas}}
+<details>
+  <summary>{{.Label}}<span class="s">{{.Count}} file{{if ne .Count 1}}s{{end}}</span></summary>
+  <div class="body">
+    {{range .Files}}
+    <div class="file" data-path="{{.Path}}">
+      <div class="p">{{.Path}}</div>
+      <div class="s">{{.Status}} · <span class="plus">+{{.Added}}</span> <span class="minus">−{{.Removed}}</span>
+        <label class="vw"><input type="checkbox" class="viewedbox"> viewed</label>
+      </div>
+      {{if .Diff}}<pre class="diff">{{.Diff}}</pre>{{end}}
+    </div>
+    {{end}}
+  </div>
+</details>
+{{end}}
+{{else}}
+<p class="empty">No file-level detail captured.</p>
+{{end}}
+
+<h2>Interface</h2>
+{{if .Screenshots}}
+{{range .Screenshots}}
+<details open>
+  <summary>{{.Route}}</summary>
+  <div class="body"><div class="shots">
+    <div><div class="cap">before</div><img src="{{.Before}}" alt="before {{.Route}}"></div>
+    <div><div class="cap">after</div><img src="{{.After}}" alt="after {{.Route}}"></div>
+  </div></div>
+</details>
+{{end}}
+{{else}}
+<p class="empty">The UI pane did not run — no routes were captured. This is not a statement that the interface is unchanged.</p>
+{{end}}
+
+{{if .Threads}}
+<h2>Threads through the code</h2>
+<details>
+  <summary>{{len .Threads}} connection{{if ne (len .Threads) 1}}s{{end}} from the code graph</summary>
+  <div class="body">
+    {{range .Threads}}
+    <div class="thread"><b>{{.From}}</b><span class="arrow">→</span>{{.To}}
+      {{if .Explanation}}<div class="s">{{.Explanation}}</div>{{end}}
+    </div>
+    {{end}}
+  </div>
+</details>
+{{end}}
+
+<h2>What could not be determined</h2>
+{{if or .Unknowns .Dark}}
+{{range .Dark}}<div class="hl breaking"><div class="t">{{.Name}} did not run</div><div class="d">{{.Detail}}</div></div>{{end}}
+<ul class="plain">
+{{range .Unknowns}}<li><b>{{.Substrate}}</b> — {{.Message}}{{if .Reason}} <span class="s">({{.Reason}})</span>{{end}}</li>{{end}}
+</ul>
+{{else}}
+<p>Nothing. Every check that applies to these {{.Coverage.ExaminedFiles}} file(s) ran and answered.</p>
+{{end}}
+{{if .Coverage.Unexamined}}
+<details>
+  <summary>{{len .Coverage.Unexamined}} changed file{{if ne (len .Coverage.Unexamined) 1}}s{{end}} no pane examined</summary>
+  <div class="body"><ul class="plain">{{range .Coverage.Unexamined}}<li><code>{{.}}</code></li>{{end}}</ul></div>
+</details>
+{{end}}
+{{if .Skipped}}
+<details>
+  <summary>{{len .Skipped}} pane{{if ne (len .Skipped) 1}}s{{end}} did not apply</summary>
+  <div class="body"><ul class="plain">{{range .Skipped}}<li><code>{{.Name}}</code> — {{.Detail}}</li>{{end}}</ul></div>
+</details>
+{{end}}
+
+<h2>What was checked and held</h2>
+{{if .Confirms}}
+<details>
+  <summary>{{len .Confirms}} confirmation{{if ne (len .Confirms) 1}}s{{end}}</summary>
+  <div class="body"><ul class="plain">{{range .Confirms}}<li><b>{{.Rule}}</b> — {{.Message}}</li>{{end}}</ul></div>
+</details>
+{{else}}
+<p class="empty">Nothing was confirmed — no check reached a clean answer on this change.</p>
+{{end}}
+
+<div class="bar">
+  <span class="n" id="cmt-count">No comments yet — click any diff line to leave one.</span>
+  <span>
+    <button id="copy-cmts">Copy comments for the agent</button>
+    <button id="clear-cmts">Clear</button>
+  </span>
+</div>
+
+</div>
+<script>
+// Review state lives in this browser, keyed by the report's own identity.
+// Redline never writes it: findings.json is regenerated every run and fully
+// deterministic, and merging the reviewer's decisions into it would mean every
+// re-run clobbers them.
+(function () {
+  var KEY = "redline:" + location.pathname;
+  var state = load();
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || {comments: [], viewed: {}}; }
+    catch (e) { return {comments: [], viewed: {}}; }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    render();
+  }
+  function render() {
+    var n = state.comments.length;
+    document.getElementById("cmt-count").textContent =
+      n ? n + " comment" + (n === 1 ? "" : "s") + " — hand them to the agent when you are done."
+        : "No comments yet — click any diff line to leave one.";
+  }
+
+  // Restore viewed state.
+  document.querySelectorAll(".file").forEach(function (f) {
+    var box = f.querySelector(".viewedbox");
+    if (!box) return;
+    if (state.viewed[f.dataset.path]) { box.checked = true; f.classList.add("viewed"); }
+    box.addEventListener("change", function () {
+      f.classList.toggle("viewed", box.checked);
+      state.viewed[f.dataset.path] = box.checked;
+      save();
+    });
+  });
+
+  function bubble(c) {
+    var el = document.createElement("div");
+    el.className = "cmt";
+    var b = document.createElement("button");
+    b.textContent = "×";
+    b.title = "delete";
+    b.addEventListener("click", function () {
+      state.comments = state.comments.filter(function (x) { return x !== c; });
+      el.remove();
+      save();
+    });
+    var w = document.createElement("div");
+    w.className = "w";
+    w.textContent = c.file + " line " + c.line;
+    var t = document.createElement("div");
+    t.textContent = c.text;
+    el.appendChild(b); el.appendChild(w); el.appendChild(t);
+    return el;
+  }
+
+  // Restore existing comments under their lines.
+  state.comments.forEach(function (c) {
+    var line = document.querySelector(
+      'span[data-file="' + CSS.escape(c.file) + '"][data-line="' + c.line + '"]');
+    if (line) line.after(bubble(c));
+  });
+
+  document.querySelectorAll("pre.diff").forEach(function (pre) {
+    pre.addEventListener("click", function (e) {
+      var line = e.target.closest("span[data-line]");
+      if (!line || pre.querySelector("textarea.new")) return;
+      var ta = document.createElement("textarea");
+      ta.className = "new";
+      ta.rows = 3;
+      ta.placeholder = "Comment on this line — ⌘/Ctrl+Enter to save, Esc to cancel";
+      line.after(ta);
+      ta.focus();
+      ta.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape") { ta.remove(); return; }
+        if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
+          var text = ta.value.trim();
+          ta.remove();
+          if (!text) return;
+          var c = {file: line.dataset.file, line: +line.dataset.line,
+                   code: line.textContent, text: text};
+          state.comments.push(c);
+          line.after(bubble(c));
+          save();
+        }
+      });
+    });
+  });
+
+  document.getElementById("copy-cmts").addEventListener("click", function () {
+    var payload = JSON.stringify({comments: state.comments}, null, 2);
+    navigator.clipboard.writeText(payload).then(function () {
+      var b = document.getElementById("copy-cmts");
+      b.textContent = "Copied — paste into your agent session";
+      setTimeout(function () { b.textContent = "Copy comments for the agent"; }, 2500);
+    });
+  });
+  document.getElementById("clear-cmts").addEventListener("click", function () {
+    if (!confirm("Delete all comments and viewed marks for this report?")) return;
+    state = {comments: [], viewed: {}};
+    document.querySelectorAll(".cmt").forEach(function (e) { e.remove(); });
+    document.querySelectorAll(".viewedbox").forEach(function (b) {
+      b.checked = false; b.closest(".file").classList.remove("viewed");
+    });
+    save();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

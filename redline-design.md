@@ -199,7 +199,15 @@ port-range/healthz discovery machinery are all out.
   Postgres / web stack.
 - **A plugin API.** Extension happens by adding a pane to the binary or a slot to
   the config schema, not by letting repos ship arbitrary code.
-- **A web application.** No local server, no port discovery, no frontend
+- ~~**A web application.**~~ **Superseded 2026-08-29.** Prequel is Redline's
+  stated premise, and prequel is a local review UI: the value it demonstrated
+  was not diff rendering but that a GitHub-shaped interface shifts the reviewer
+  into review mode. Cutting the UI cut the premise. Redline now ships a
+  self-contained `report.html` that opens on completion, carrying per-file
+  viewed state and inline line comments handed back to the agent via the
+  clipboard. A local server remains the follow-on if the static file proves
+  insufficient; that is a decision to make from use, not in advance. The rest
+  of this entry is kept for the record: ~~ No local server, no port discovery, no frontend
   framework, no interactive comment lifecycle. A static HTML report file covers
   the visual need; an app can come later over the same JSON if the file proves
   insufficient.
@@ -695,6 +703,39 @@ gated on `[toolchain]`.
 
 Checks 17–19 are expensive to build and to run, and 18 in particular is well
 covered by general-purpose tools. They are listed for completeness, not planned.
+
+## Cross-cutting: coverage of the change
+
+Distinct from per-pane status, and learned by using rung 1. A report states how
+much of the change at least one pane examined. Without that number a report
+covering none of a change renders identically to one covering all of it, and
+the reader takes the flattering reading. Three obligations follow:
+
+- `coverage{changedFiles, examinedFiles, unexamined[]}` in the schema.
+- The report leads with a banner when `examinedFiles` is zero.
+- A check family in the catalog but not yet built emits an unknown naming the
+  files it would have covered. "The API pane found nothing" and "there is no
+  API pane" must never look the same.
+
+## The review pane
+
+`redline/review` is the agent's own reading of the change, and the one pane
+whose findings carry `source: "llm"`. It exists because the execution panes
+cover a narrow slice: a report with only deterministic findings is mostly
+empty, and a reviewer needs the whole change looked at.
+
+The boundary from "The agent boundary" holds unchanged. Redline emits a
+**packet** — target, commits, per-file diffs, the repository's own instruction
+files, deterministic findings, graph threads, and a versioned review brief —
+and takes back a **review**: summary, API and schema highlights, findings,
+unknowns. Redline calls no model. The same loop therefore runs in Claude Code,
+in Cursor, or anywhere else with an agent and a shell.
+
+Instruction discovery reads Copilot's conventions first
+(`.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`,
+including `applyTo` globs), then the agent-native equivalents a repo may carry
+instead. A review that contradicts the house rules spends the reviewer's
+attention arguing about settled questions.
 
 ## Build order
 

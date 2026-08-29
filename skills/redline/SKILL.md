@@ -1,81 +1,106 @@
 ---
 name: redline
-description: Review a pending change with evidence rather than by reading the diff. Use before pushing, when asked to review a branch or working tree, or whenever a change touches database migrations. Runs `redline run` and presents its report.
+description: Review a change — the working tree, a branch, or a GitHub PR — combining Redline's observed evidence with your own reading of the code, and open a report UI when done. Use when asked to review a branch or PR, before pushing, or whenever a change touches migrations, an API contract, or the UI.
 ---
 
 # redline
 
-Redline observes a change and reports **evidence**, not inference from source.
-You supply the prose and the judgment; Redline supplies the facts.
+Redline observes a change and reports **evidence**. You supply the reading and
+the judgment. Both halves go into one report, labelled so the reviewer always
+knows which is which.
 
 ## When to use
 
-- The user asks for a review of the working tree or the current branch.
-- The user is about to push or open a PR.
-- A change touches database migrations.
+- "Review this PR" / "review branch X" / "review what I've got".
+- Before a push or opening a PR.
+- Any change touching migrations, an API spec, or the interface.
 
-## Invoke
+## The loop
+
+Three steps. Do not skip step 2 — Redline's own checks cover a narrow slice
+today, and a report with no agent review is mostly empty.
+
+**1. Get the packet.**
 
 ```
-redline run --format json
+redline review --pr 123          # or --branch feat/x, or nothing for the working tree
 ```
 
-`run` is the entry point. **Do not choose which checks to run** — applicability
-is computed from the diff. Choosing yourself turns coverage into a sample from
-a distribution, and a check can be silently skipped without anyone noticing.
+This prints JSON: the target, the commits, every changed file with its diff,
+the repository's own instruction files, what Redline established by
+observation, and graph threads through the touched code. It makes no model
+calls — you are the model.
 
-Useful flags: `--base REF` (defaults to origin/main), `--upstream REF` (branch
-new migrations must not collide with), `--migrations DIR`.
+**2. Review it.** Read `guidance` in the packet and follow it. In short:
 
-Every run also writes `.redline/findings.json` and `.redline/report.md`.
-`redline sql` drills into one pane after the fact; reach for it only when the
-user asks about that pane specifically.
+- Follow `instructions[]` — the repo's `.github/copilot-instructions.md`,
+  `.github/instructions/*.instructions.md`, `AGENTS.md`, Cursor rules. Cite the
+  file in `instruction` when a finding rests on a house rule.
+- Do not re-report anything in `deterministic[]`. Those are observed and are
+  already in the report.
+- Read the actual files when the diff is not enough. The packet gives you
+  paths; open them.
+- Correctness, contracts, error paths, concurrency, security, missing tests.
+  Not style — the repo's linters own that.
+- Volume is the failure mode. Ten real findings beat forty padded ones. Use
+  `confidence` rather than either suppressing a genuine concern or asserting a
+  shaky one.
 
-## Read the output
+**3. Hand back your review.**
 
-The report has four sections and **you must present all four**:
+```
+echo '<your review JSON>' | redline ingest --pr 123
+```
 
-1. **What changed** — the change in its own domain (which migration versions
-   this branch adds, which merged ones it touches).
-2. **What was checked and held** (`confirmations`) — questions the reviewer no
-   longer has to ask. Summarize these; do not drop them. A clean check is the
-   deliverable, not silence.
-3. **What could not be determined** — start here, before the findings. (`unknowns`, plus any substrate whose
-   `state` is `failed`) — **never omit this**. A report that silently covers
-   60% of a change reads exactly like one that covers all of it. Say plainly
-   which checks did not answer and why.
-4. **Findings** — lead with these. Each carries `expected` and `observed`; the
-   gap between them is the point. `context` explains why it matters.
+Same target flags as step 1. This merges your findings in, writes the report,
+and opens the HTML UI in the browser.
 
-**Check `coverage` first, every time.** It reports `changedFiles` and
-`examinedFiles`. If `examinedFiles` is 0, Redline looked at none of the change
-and an empty findings list means nothing — say so plainly and review by hand.
-If it is less than `changedFiles`, name what went unexamined; the reviewer's
-attention belongs there.
+Review JSON shape:
 
-A substrate with `state: skipped` did not apply to this change — that is
-normal. A substrate with `state: failed` is a **dark sensor**: it applied and
-did not run, and must be reported loudly, never read as a pass.
+```json
+{
+  "summary": "One or two sentences: what this change does, in its own domain.",
+  "apiChanges":    [{"title": "...", "detail": "...", "file": "...", "breaking": true}],
+  "schemaChanges": [{"title": "...", "detail": "...", "file": "...", "breaking": false}],
+  "findings": [{
+    "file": "path.go", "line": 42, "rule": "kebab-case-slug",
+    "category": "schema|contract|cover|ui|review",
+    "severity": "error|warning|info",
+    "message": "The defect, in one sentence.",
+    "context": "The concrete failure: given these inputs, this goes wrong.",
+    "fix": "What to do instead.",
+    "confidence": "high|medium|low",
+    "instruction": ".github/copilot-instructions.md — the rule this rests on"
+  }],
+  "unknowns": ["What you could not determine, and why."]
+}
+```
 
-## Present
+`summary`, `apiChanges` and `schemaChanges` are what the report leads with.
+Write them for someone who has not read the diff.
 
-Every finding carries `source`. `deterministic` means Redline observed it and
-it reproduces. Anything you add from reading the code yourself is your own
-inference — label it as such and keep it visually separate from Redline's
-findings. The determinism guarantee is worthless if the reviewer cannot tell
-which is which at the point of use.
+## Presenting it
 
-Findings carry `evidence` — observation IDs resolving to artifacts under
-`.redline/evidence/`, such as the actual SQL a migration edit changed. Show the
-artifact beside the claim. A finding the reviewer cannot check for themselves
-is inference wearing evidence's clothes.
+The UI opens on its own. In the terminal, keep it short: the summary, the
+findings that matter, and **what went unexamined**. Check `coverage` — if
+`examinedFiles` is less than `changedFiles`, say which parts nobody checked.
+An empty findings list from a pane that does not exist is not a pass, and the
+reviewer will read it as one unless you say otherwise.
 
-Do not restate the JSON. Lead with what the reviewer must act on, then the
-confirmations in one line, then the gaps.
+The report also carries `unknowns` naming check families Redline specifies but
+has not built (OpenAPI diffing, screenshots, diff coverage). Do not present
+those areas as reviewed.
+
+## Reviewer comments come back to you
+
+The report UI lets the reviewer comment on diff lines and click **Copy comments
+for the agent**. When they paste that JSON in, treat each comment as a request
+against the file and line it names, and act on it.
 
 ## Do not
 
-- Do not treat Redline as a linter to satisfy — it is non-gating by design and
-  blocks nothing.
-- Do not re-run a pane hoping for a different answer.
-- Do not fill a gap in section 3 by guessing. Say it is unknown.
+- Do not post anything to GitHub. Redline is read-only there.
+- Do not claim to have executed, run, or tested anything. Everything you emit
+  is recorded as `source: "llm"` and rendered apart from observed findings —
+  keep that honest.
+- Do not treat Redline as a gate. It blocks nothing, by design.

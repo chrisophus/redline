@@ -26,6 +26,7 @@ const (
 	CategoryContract Category = "contract" // HTTP/OpenAPI contract
 	CategoryCover    Category = "cover"    // diff coverage
 	CategoryUI       Category = "ui"       // rendered interface
+	CategoryReview   Category = "review"   // agent-authored judgment with no more specific category
 )
 
 // DefaultSeverity derives a finding's severity from its category. Redline's
