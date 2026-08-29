@@ -1,10 +1,13 @@
-// Package gitx is the thin git layer Redline's rung-1 panes run on: revision
-// resolution, blob listing at a revision, and the working-tree equivalent.
-// Everything here is read-only; Redline never mutates the repository.
+// Package gitx is the thin git layer Redline's panes run on: revision
+// resolution, blob listing, diffs, and (for PR/branch targets) fetch and
+// detached worktrees. Fetch and AddWorktree mutate refs and worktrees
+// outside the user's checkout; they never move HEAD of the repo under review.
 package gitx
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -150,38 +153,105 @@ func (r *Repo) hashObjects(paths []string) (map[string]string, error) {
 	return out, nil
 }
 
-// Fetch runs a read-only fetch from a remote.
+// Fetch records a remote ref locally. It does not update the current branch.
 func (r *Repo) Fetch(remote, refspec string) error {
 	_, err := r.git("fetch", "--quiet", remote, refspec)
 	return err
 }
 
-// AddWorktree materializes a detached worktree at rev, content-addressed by
-// the revision so a second run against the same commit reuses it. Reviewing a
-// branch or a PR must never move the user off their own checkout.
+// AddWorktree materializes a detached worktree at rev, cached by repository
+// identity and commit SHA. A second run against the same commit reuses it.
+// Reviewing a branch or a PR must never move the user off their own checkout.
+//
+// Worktrees persist under ~/.redline/worktrees/<repo>/<sha> as a content-
+// addressed cache. They are not removed after a run: the revision is
+// immutable, so the checkout is reusable. A leftover directory that does
+// not belong to this repository is discarded and recreated.
 func (r *Repo) AddWorktree(rev string) (string, error) {
 	root, err := worktreeRoot()
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(root, rev)
-	// A worktree for this exact commit is reusable: the revision is immutable,
-	// so its checkout is content-addressed by definition.
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+	common, err := r.commonDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(root, repoKey(common), rev)
+	if r.worktreeReusable(dir, common) {
 		return dir, nil
 	}
-	if err := os.MkdirAll(root, 0o755); err != nil {
+	if _, err := os.Stat(dir); err == nil {
+		r.dropWorktree(dir)
+	}
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return "", err
 	}
 	if _, err := r.git("worktree", "add", "--detach", "--quiet", dir, rev); err != nil {
+		// Another process may have won the race; reuse if the result is ours.
+		if r.worktreeReusable(dir, common) {
+			return dir, nil
+		}
 		return "", fmt.Errorf("materializing worktree at %s: %w", short(rev), err)
 	}
 	return dir, nil
 }
 
+func (r *Repo) commonDir() (string, error) {
+	out, err := r.git("rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	dir := strings.TrimSpace(out)
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(r.Root, dir)
+	}
+	return absClean(dir), nil
+}
+
+func repoKey(commonDir string) string {
+	sum := sha256.Sum256([]byte(commonDir))
+	return hex.EncodeToString(sum[:8])
+}
+
+func (r *Repo) worktreeReusable(dir, common string) bool {
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		return false
+	}
+	got, err := run(dir, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return false
+	}
+	gotDir := strings.TrimSpace(got)
+	if !filepath.IsAbs(gotDir) {
+		gotDir = filepath.Join(dir, gotDir)
+	}
+	return absClean(gotDir) == absClean(common)
+}
+
+func (r *Repo) dropWorktree(dir string) {
+	_, _ = r.git("worktree", "remove", "--force", dir)
+	_ = os.RemoveAll(dir)
+	_, _ = r.git("worktree", "prune")
+}
+
+func absClean(p string) string {
+	p = filepath.Clean(p)
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	if real, err := filepath.EvalSymlinks(p); err == nil {
+		return real
+	}
+	return p
+}
+
 // worktreeRoot is where detached worktrees live. Outside the repository, so a
 // review never appears as untracked files in the tree being reviewed.
+// REDLINE_WORKTREE_ROOT overrides the location (tests).
 func worktreeRoot() (string, error) {
+	if d := os.Getenv("REDLINE_WORKTREE_ROOT"); d != "" {
+		return d, nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return filepath.Join(os.TempDir(), "redline-worktrees"), nil
@@ -235,7 +305,7 @@ type DiffStat struct {
 // Stat returns per-file line counts between rev and head. An empty head means
 // the working tree.
 func (r *Repo) Stat(rev, head string) ([]DiffStat, error) {
-	args := []string{"diff", "--numstat", "--no-color", rev}
+	args := []string{"diff", "--numstat", "-z", "--no-color", rev}
 	if head != "" {
 		args = append(args, head)
 	}
@@ -244,14 +314,62 @@ func (r *Repo) Stat(rev, head string) ([]DiffStat, error) {
 		return nil, err
 	}
 	var stats []DiffStat
-	for _, line := range strings.Split(out, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
+	seen := map[string]bool{}
+	for _, rec := range strings.Split(out, "\x00") {
+		if rec == "" {
 			continue
 		}
-		stats = append(stats, DiffStat{Path: fields[2], Added: atoi(fields[0]), Removed: atoi(fields[1])})
+		st, ok := parseNumstat(rec)
+		if !ok {
+			continue
+		}
+		stats = append(stats, st)
+		seen[st.Path] = true
+	}
+	if head != "" {
+		return stats, nil
+	}
+	// Untracked files are absent from numstat. Count their lines from the
+	// same diff the packet will show, so the +N −0 in the report matches.
+	changed, err := r.ChangedPaths(rev)
+	if err != nil {
+		return stats, nil
+	}
+	for _, path := range changed {
+		if seen[path] {
+			continue
+		}
+		added, removed := countDiffLines(r.DiffPath(rev, path))
+		stats = append(stats, DiffStat{Path: path, Added: added, Removed: removed})
 	}
 	return stats, nil
+}
+
+func countDiffLines(diff string) (added, removed int) {
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---") {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "+"):
+			added++
+		case strings.HasPrefix(line, "-"):
+			removed++
+		}
+	}
+	return
+}
+
+func parseNumstat(rec string) (DiffStat, bool) {
+	added, rest, ok := strings.Cut(rec, "\t")
+	if !ok {
+		return DiffStat{}, false
+	}
+	removed, path, ok := strings.Cut(rest, "\t")
+	if !ok || path == "" {
+		return DiffStat{}, false
+	}
+	return DiffStat{Path: path, Added: atoi(added), Removed: atoi(removed)}, true
 }
 
 func atoi(s string) int {
@@ -275,12 +393,48 @@ func short(s string) string {
 
 // DiffPath returns the unified diff of one path between rev and the working
 // tree. Best-effort: evidence capture must never fail a run.
+//
+// `git diff REV -- path` is empty for untracked files. Those still belong in
+// the change — Redline is pre-push — so they are compared against /dev/null.
 func (r *Repo) DiffPath(rev, path string) string {
 	out, err := r.git("diff", "--no-color", "-U3", rev, "--", path)
-	if err != nil {
+	if err == nil && strings.TrimSpace(out) != "" {
+		return out
+	}
+	full := filepath.Join(r.Root, path)
+	if _, statErr := os.Stat(full); statErr != nil {
+		if out != "" {
+			return out
+		}
 		return ""
 	}
-	return out
+	ni, niErr := r.diffNoIndex(path)
+	if niErr != nil || strings.TrimSpace(ni) == "" {
+		return out
+	}
+	return ni
+}
+
+// diffNoIndex compares path to an empty file. git exits 1 when the files
+// differ, which is the successful "here is the diff" case.
+func (r *Repo) diffNoIndex(path string) (string, error) {
+	cmd := exec.Command("git", "diff", "--no-color", "-U3", "--no-index", "--", os.DevNull, path)
+	cmd.Dir = r.Root
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		return stdout.String(), nil
+	}
+	if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
+		return stdout.String(), nil
+	}
+	msg := strings.TrimSpace(stderr.String())
+	if msg == "" && err != nil {
+		msg = err.Error()
+	}
+	return "", fmt.Errorf("git diff --no-index: %s", msg)
 }
 
 // ChangedPaths returns the paths that differ between rev and the working tree,

@@ -3,7 +3,7 @@ package run
 
 import (
 	"fmt"
-	"sort"
+	"path/filepath"
 	"strings"
 
 	"github.com/ccason/redline/internal/findings"
@@ -27,6 +27,7 @@ type Options struct {
 	// is never moved.
 	PR     string
 	Branch string
+	Out    string // evidence directory; excluded from the change like .redline/
 }
 
 // Result is a report plus the per-pane renders backing section 1 and the
@@ -74,7 +75,7 @@ func Run(opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	changed = excludeOwnOutput(changed)
+	changed = excludeOwnOutput(changed, opts.Out, repo.Root)
 
 	res := &Result{Evidence: map[string]pane.Artifact{}, Target: tgt, Report: findings.Report{
 		BaseRef: baseRef,
@@ -135,8 +136,8 @@ func Run(opts Options) (*Result, error) {
 			Reason:    "this change is entirely unexamined; the empty findings list below is not evidence of correctness",
 		})
 	}
-	sortFindings(res.Report.Findings)
 	res.Report.Finalize()
+	findings.Sort(res.Report.Findings)
 
 	// The packet is built on every run, not only for `review`: it is what the
 	// HTML report renders its drill-in sections from.
@@ -190,22 +191,63 @@ func attachThreads(p *packet.Packet, dir string, changed []string) {
 	if err != nil {
 		return
 	}
-	p.Threads = g.Threads(changed)
+	p.Threads = toPacketThreads(g.Threads(changed))
+}
+
+func toPacketThreads(ts []graph.Thread) []packet.Thread {
+	out := make([]packet.Thread, len(ts))
+	for i, t := range ts {
+		out[i] = packet.Thread{From: t.From, To: t.To, Nodes: t.Nodes, Explanation: t.Explanation}
+	}
+	return out
 }
 
 // excludeOwnOutput drops Redline's own evidence directory from the change.
 // Without this a second run reviews the first run's output, which inflates
 // coverage with files nobody wrote and shows the reviewer their own report as
 // part of the diff.
-func excludeOwnOutput(changed []string) []string {
+func excludeOwnOutput(changed []string, outDir, repoRoot string) []string {
+	skip := ownOutputPrefixes(outDir, repoRoot)
 	out := changed[:0:0]
 	for _, path := range changed {
-		if path == ".redline" || strings.HasPrefix(path, ".redline/") {
+		if skippedPath(path, skip) {
 			continue
 		}
 		out = append(out, path)
 	}
 	return out
+}
+
+func ownOutputPrefixes(outDir, repoRoot string) []string {
+	prefixes := []string{".redline"}
+	if outDir == "" {
+		return prefixes
+	}
+	rel := filepath.ToSlash(filepath.Clean(outDir))
+	if filepath.IsAbs(outDir) && repoRoot != "" {
+		if r, err := filepath.Rel(repoRoot, outDir); err == nil && !strings.HasPrefix(r, "..") {
+			rel = filepath.ToSlash(r)
+		} else {
+			// Evidence directory is outside the repo; nothing in the change
+			// can be it.
+			return prefixes
+		}
+	}
+	rel = strings.TrimPrefix(rel, "./")
+	if rel != "" && rel != ".redline" {
+		prefixes = append(prefixes, rel)
+	}
+	return prefixes
+}
+
+func skippedPath(path string, prefixes []string) bool {
+	path = filepath.ToSlash(path)
+	for _, p := range prefixes {
+		if path == p || strings.HasPrefix(path, p+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // unbuilt names the check families the catalog specifies but Redline does not
@@ -254,24 +296,4 @@ func coverage(changed []string, examined map[string]bool) findings.Coverage {
 		}
 	}
 	return c
-}
-
-// sortFindings orders by severity, then substrate, then rule, then location,
-// so output is stable across runs. Surprise ranking decides emphasis within
-// the report; it never decides inclusion.
-func sortFindings(fs []findings.Finding) {
-	rank := map[findings.Severity]int{findings.SeverityError: 0, findings.SeverityWarning: 1, findings.SeverityInfo: 2}
-	sort.SliceStable(fs, func(i, j int) bool {
-		a, b := fs[i], fs[j]
-		if rank[a.Severity] != rank[b.Severity] {
-			return rank[a.Severity] < rank[b.Severity]
-		}
-		if a.Substrate != b.Substrate {
-			return a.Substrate < b.Substrate
-		}
-		if a.Rule != b.Rule {
-			return a.Rule < b.Rule
-		}
-		return a.File < b.File
-	})
 }

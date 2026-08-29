@@ -36,6 +36,8 @@ func Build(repo *gitx.Repo, tgt *target.Target, baseSHA string, changed []string
 			stats[st.Path] = st
 		}
 	}
+	baseBlobs, _ := repo.Blobs(baseSHA)
+	workBlobs, _ := repo.WorktreeBlobs()
 	for _, path := range changed {
 		fc := FileChange{
 			Path:     path,
@@ -49,7 +51,10 @@ func Build(repo *gitx.Repo, tgt *target.Target, baseSHA string, changed []string
 			diff = diff[:maxDiffBytes] + "\n... diff truncated; read the file directly\n"
 		}
 		fc.Diff = diff
-		fc.Status = status(diff)
+		fc.Status = fileStatus(path, baseBlobs, workBlobs)
+		if fc.Status == "" {
+			fc.Status = status(diff)
+		}
 		p.Files = append(p.Files, fc)
 	}
 	all := instructions.Discover(tgt.Dir)
@@ -69,6 +74,24 @@ func status(diff string) string {
 	case strings.Contains(diff, "\nnew file mode "):
 		return "added"
 	case strings.Contains(diff, "\ndeleted file mode "):
+		return "deleted"
+	default:
+		return "modified"
+	}
+}
+
+// fileStatus is presence in the base tree vs the worktree, not a parse of
+// unified-diff headers. An empty untracked diff used to read as "modified".
+func fileStatus(path string, base, work map[string]string) string {
+	if base == nil || work == nil {
+		return ""
+	}
+	_, inBase := base[path]
+	_, inWork := work[path]
+	switch {
+	case !inBase && inWork:
+		return "added"
+	case inBase && !inWork:
 		return "deleted"
 	default:
 		return "modified"

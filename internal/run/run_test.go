@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ccason/redline/internal/findings"
+	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/report"
 	"github.com/ccason/redline/internal/run"
 )
@@ -321,5 +322,62 @@ func TestPartialImmutabilityIsNotConfirmed(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected the denominator to be stated, got %+v", rep.Unknowns)
+	}
+}
+
+// Untracked files are in the change (pre-push) but `git diff REV -- path`
+// emits nothing for them. The packet must still carry the new file so a
+// reviewer can read it.
+func TestUntrackedFileHasDiffInPacket(t *testing.T) {
+	r := newRepo(t)
+	r.write("keep.go", "package keep\n")
+	r.commit("init")
+	r.write("new_test.go", "package keep\n\nfunc TestX() {}\n")
+
+	res := r.run(run.Options{})
+	var found *packet.FileChange
+	for i := range res.Packet.Files {
+		if res.Packet.Files[i].Path == "new_test.go" {
+			found = &res.Packet.Files[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("untracked file must appear in the packet")
+	}
+	if found.Status != "added" {
+		t.Fatalf("untracked file status: got %q, want added", found.Status)
+	}
+	if !strings.Contains(found.Diff, "+package keep") {
+		t.Fatalf("packet diff for untracked file was empty: %q", found.Diff)
+	}
+	if found.Added == 0 {
+		t.Fatalf("untracked add must have a line count, got %+v", found)
+	}
+}
+
+// A custom --out directory is Redline's own evidence, same as .redline/.
+// Leaving it in scope makes the next run review its own previous report.
+func TestCustomOutIsExcluded(t *testing.T) {
+	r := newRepo(t)
+	r.write("keep.go", "package keep\n")
+	r.commit("init")
+	r.write("artifacts/report.html", "<html>prior run</html>\n")
+	r.write("real.go", "package real\n")
+
+	res := r.run(run.Options{Out: "artifacts"})
+	for _, path := range res.Report.Scope {
+		if path == "artifacts/report.html" || strings.HasPrefix(path, "artifacts/") {
+			t.Fatalf("custom --out leaked into scope: %v", res.Report.Scope)
+		}
+	}
+	var sawReal bool
+	for _, path := range res.Report.Scope {
+		if path == "real.go" {
+			sawReal = true
+		}
+	}
+	if !sawReal {
+		t.Fatalf("real change was dropped with the out dir: %v", res.Report.Scope)
 	}
 }
