@@ -101,12 +101,6 @@ type Finding struct {
 	// Useful for ranking when the same defect is reported by multiple reviewers
 	// with different confidence levels.
 	Confidence string `json:"confidence,omitempty"`
-
-	// Reporters records every reviewer that independently reported this defect after
-	// merging findings. Agreement between independent reviewers is the strongest
-	// available confidence signal. This field is populated by Merge() and used by
-	// Rank() to order findings by consensus strength. Must be sorted and deduplicated.
-	Reporters []string `json:"reporters,omitempty"`
 }
 
 // SubstrateState records whether a pane produced findings this run.

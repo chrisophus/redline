@@ -76,9 +76,14 @@ func withReviewer(o opts, res *run.Result) error {
 		State:  findings.SubstrateRan,
 		Detail: fmt.Sprintf("%d findings", len(found)),
 	})
-	res.Report.Findings = findings.Merge(res.Report.Findings, toFindings(name, found))
+	// Appended, not merged. Deciding that two differently worded findings are
+	// the same defect means guessing, and a wrong guess deletes a finding the
+	// reviewer never learns existed. Exact duplicates are already collapsed by
+	// Report.Dedupe on fingerprint.
+	res.Report.Findings = append(res.Report.Findings, toFindings(name, found)...)
 	findings.Sort(res.Report.Findings)
 	res.Report.Finalize()
+	res.Report.Dedupe()
 	return nil
 }
 
