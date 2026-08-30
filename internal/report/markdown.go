@@ -24,7 +24,9 @@ func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]p
 	fmt.Fprintf(&b, "%d finding(s).\n\n", len(rep.Findings))
 	banner(&b, rep)
 
+	orientation(&b, p, rev)
 	section1(&b, renders)
+	coverageSection(&b, rep)
 	fileSection(&b, p, rev)
 	section2(&b, rep)
 	section3(&b, rep)
@@ -49,6 +51,120 @@ func banner(b *strings.Builder, rep *findings.Report) {
 	case len(rep.DarkSubstrates()) > 0:
 		fmt.Fprintf(b, "> **%d pane(s) applied to this change and did not run.** "+
 			"See _What could not be determined_.\n\n", len(rep.DarkSubstrates()))
+	}
+}
+
+// orientation is why the change exists, and one line per contract surface. It
+// comes before the evidence because it is what a reviewer reads first and the
+// only part a diff cannot supply.
+func orientation(b *strings.Builder, p *packet.Packet, rev *packet.Review) {
+	var intent *packet.Intent
+	var surfaces *packet.Surfaces
+	if rev != nil {
+		intent = rev.Intent
+		surfaces = rev.Surfaces
+	}
+	if rev != nil && rev.Summary != "" {
+		fmt.Fprintf(b, "## What this change is\n\n%s\n\n", rev.Summary)
+	}
+
+	var links []string
+	if intent != nil && intent.Ticket != nil {
+		links = append(links, describeLink(intent.Ticket.ID, intent.Ticket.Title, intent.Ticket.URL))
+	}
+	pr := prLink(intent, p)
+	if pr != "" {
+		links = append(links, pr)
+	}
+	if len(links) > 0 {
+		fmt.Fprintf(b, "%s\n\n", strings.Join(links, " · "))
+	}
+	if intent != nil && intent.Fit != nil {
+		if intent.Fit.Thing != "" {
+			fmt.Fprintf(b, "- **Right thing** — %s\n", intent.Fit.Thing)
+		}
+		if intent.Fit.Way != "" {
+			fmt.Fprintf(b, "- **Right way** — %s\n", intent.Fit.Way)
+		}
+		fmt.Fprintln(b)
+	}
+
+	fmt.Fprintf(b, "## Surfaces\n\n")
+	for _, s := range surfaceViews(surfaces) {
+		state := "did not move"
+		switch {
+		case !s.Stated:
+			state = "**not reported**"
+		case s.Moved:
+			state = "**moved**"
+		}
+		fmt.Fprintf(b, "- **%s** (%s) — %s\n", s.Label, state, s.Line)
+	}
+	fmt.Fprintln(b)
+}
+
+func describeLink(id, title, url string) string {
+	label := id
+	if label == "" {
+		label = "link"
+	}
+	if url != "" {
+		label = fmt.Sprintf("[%s](%s)", label, url)
+	}
+	if title != "" {
+		label += " " + title
+	}
+	return label
+}
+
+// prLink prefers the pull request Redline fetched over the agent's account of
+// it. The agent's is used only when Redline was not pointed at one.
+func prLink(intent *packet.Intent, p *packet.Packet) string {
+	if p != nil && p.Target != nil && p.Target.PR != nil {
+		pr := p.Target.PR
+		return describeLink(prLabel(pr.Number), pr.Title, pr.URL)
+	}
+	if intent != nil && intent.PR != nil {
+		pr := intent.PR
+		return describeLink(prLabel(pr.Number), pr.Title, pr.URL)
+	}
+	return ""
+}
+
+func prLabel(n int) string {
+	if n == 0 {
+		return "PR"
+	}
+	return fmt.Sprintf("PR #%d", n)
+}
+
+// coverageSection is the number that stands in for reading the tests. An
+// absent profile is stated as absent: "no test executes these lines" and
+// "nobody measured" are different claims and only one is the author's problem.
+func coverageSection(b *strings.Builder, rep *findings.Report) {
+	fmt.Fprintf(b, "## Coverage\n\n")
+	c := rep.Coverage.Diff
+	if c == nil {
+		fmt.Fprintf(b, "_No coverage profile was found, so whether these changes are tested is unknown. "+
+			"That is not the same as untested — run the suite with `-coverprofile=coverage.out`._\n\n")
+		return
+	}
+	if c.Stale {
+		fmt.Fprintf(b, "> **The profile `%s` predates this change**, so its number does not describe "+
+			"the code under review. Re-run the suite with `-coverprofile`.\n\n", c.Profile)
+	}
+	if c.Percent < 0 {
+		fmt.Fprintf(b, "No added line is coverable, so there is nothing for a test to execute (`%s`).\n\n", c.Profile)
+	} else {
+		fmt.Fprintf(b, "**%.0f%%** of the %d coverable line(s) this change adds are executed by a test, "+
+			"according to `%s`. %d covered, %d not.\n\n",
+			c.Percent, c.Lines, c.Profile, c.Covered, c.Lines-c.Covered)
+	}
+	for _, gap := range c.Uncovered {
+		fmt.Fprintf(b, "- `%s` — %d uncovered added line(s)\n", gap.Path, len(gap.Lines))
+	}
+	if len(c.Uncovered) > 0 {
+		fmt.Fprintln(b)
 	}
 }
 
@@ -134,6 +250,16 @@ func section3(b *strings.Builder, rep *findings.Report) {
 	if n := len(rep.Coverage.Unexamined); n > 0 && rep.Coverage.ExaminedFiles > 0 {
 		fmt.Fprintf(b, "<details>\n<summary>%d changed file(s) no pane examined</summary>\n\n", n)
 		for _, path := range rep.Coverage.Unexamined {
+			fmt.Fprintf(b, "- `%s`\n", path)
+		}
+		fmt.Fprintf(b, "\n</details>\n\n")
+	}
+	if n := len(rep.Coverage.Generated); n > 0 {
+		// Named, not just counted. Excluding a file a human wrote is the one
+		// way suppression can hide a real change, and the reader can only
+		// catch that if the list is here.
+		fmt.Fprintf(b, "<details>\n<summary>%d generated file(s) excluded from this review</summary>\n\n", n)
+		for _, path := range rep.Coverage.Generated {
 			fmt.Fprintf(b, "- `%s`\n", path)
 		}
 		fmt.Fprintf(b, "\n</details>\n\n")

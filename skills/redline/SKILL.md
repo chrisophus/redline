@@ -114,6 +114,18 @@ Review JSON shape:
 ```json
 {
   "summary": "One or two sentences: what this change does, in its own domain.",
+  "intent": {
+    "ticket": {"id": "REL-24", "title": "...", "url": "https://..."},
+    "fit": {
+      "thing": "Is this what the ticket asked for? Say so plainly.",
+      "way": "Is this the right way to build it? Name the reservation if you have one."
+    }
+  },
+  "surfaces": {
+    "interface": {"line": "One line: what moved on the UI.", "moved": true},
+    "api":       {"line": "No spec in this change.", "moved": false},
+    "schema":    {"line": "One migration adds a nullable column.", "moved": true}
+  },
   "files": [
     {"path": "internal/foo.go", "summary": "What this file does in the change, one sentence."}
   ],
@@ -139,11 +151,28 @@ Review JSON shape:
 }
 ```
 
-`summary` and `files` are what the report leads with. Cover every path in
-the packet — a reviewer who has not opened the diff should still know what
-each file does. `apiChanges` and `schemaChanges` sit beside that. Write all
-of them in the domain of the change. `screenshots[].before` is optional; a
-walk of the current tree usually has only `path`.
+`summary`, `intent` and `surfaces` are the top of the screen — the reviewer
+reads them before anything else, and none of them can be derived from the diff.
+
+- **`intent.fit`** is the judgment the reviewer most wants and the diff cannot
+  carry: is this the thing the ticket asked for, and is this the way to build
+  it. Answer both. "Yes" is a fine answer; so is naming a reservation.
+- **`intent.ticket`** only if you actually know it. Do not invent an id.
+- **`surfaces`** takes all three keys every time. A surface that did not move
+  still gets a line saying what you looked at — an omitted surface renders as
+  *unreported*, which tells the reviewer nobody checked. `{"moved": false}`
+  with no line is treated as saying nothing.
+
+`files` covers every path in the packet: a reviewer who has not opened the diff
+should still know what each file does. `apiChanges` and `schemaChanges` are
+drill-in evidence beneath the surface lines. Write all of it in the domain of
+the change. `screenshots[].before` is optional; a walk of the current tree
+usually has only `path`.
+
+Do not write findings about generated files or lockfiles — they are excluded
+from the packet before you see it. Do not spend findings on style or on lint
+that CI already gates at warning or error; an **info**-level remark worth
+acting on is welcome.
 
 ## Presenting it
 
@@ -155,15 +184,48 @@ An empty findings list from a pane that does not exist is not a pass, and the
 reviewer will read it as one unless you say otherwise.
 
 The report also carries `unknowns` naming check families Redline specifies but
-has not built (OpenAPI diffing, **checks 15–16 screenshots/console**, diff
-coverage). An agent UI walk does not retire those. Do not present those areas
+has not built (**checks 15–16 screenshots/console**, spec-vs-handler
+agreement). An agent UI walk does not retire those. Do not present those areas
 as reviewed by Redline.
+
+Two numbers on the report are absences rather than results, and both read as a
+pass if you let them. `diffCoverage` is null when no coverage profile was found
+— that is "nobody measured", not "nothing is tested", and it is worth telling
+the user which one they are looking at. `coverage.generated` lists files
+excluded as machine output; if something there looks hand-written, say so.
 
 ## Reviewer comments come back to you
 
-The report UI lets the reviewer comment on diff lines and click **Copy comments
-for the agent**. When they paste that JSON in, treat each comment as a request
-against the file and line it names, and act on it.
+The report lets the reviewer click any diff line, leave a comment, and press
+**Copy comments for the agent**. What they paste looks like this:
+
+```json
+{"redlineReviewComments": {
+  "instruction": "...",
+  "review": "abc12345:def67890",
+  "target": "PR #123 · owner/repo",
+  "comments": [
+    {"file": "internal/foo.go", "line": 42, "side": "new",
+     "code": "	return nil", "text": "this swallows the error"}
+  ]
+}}
+```
+
+When you receive it:
+
+1. **Check `target` is the change you are working on.** These comments were
+   written against one tree. If the session has moved on — a different branch,
+   a rebase, new commits — say so and stop rather than applying them to code
+   the reviewer never saw.
+2. **Address every comment.** Make the change, or reply saying why you did not.
+   `code` is the line as the reviewer saw it; use it to find the right place
+   when line numbers have shifted.
+3. **Do not re-review the rest of the diff.** They asked about these lines.
+4. **Re-run and ingest** when you are done, so the report reflects the new
+   state. Use the same target flags.
+
+A comment is not a finding. Do not put it in `findings` — it is the reviewer's
+instruction to you, and echoing it back as a defect you discovered is noise.
 
 ## Do not
 

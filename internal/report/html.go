@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"html/template"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -52,19 +53,39 @@ type Screenshot struct {
 
 // view is the flattened shape the template consumes.
 type view struct {
-	Title       string
-	Subtitle    string
-	Summary     string
-	URL         string
-	Author      string
-	Coverage    findings.Coverage
-	Banner      string
-	Counts      map[string]int
-	API         []packet.Highlight
-	Schema      []packet.Highlight
-	Files       []fileWalkRow
-	Findings    []findingView
+	Title    string
+	Subtitle string
+	Summary  string
+	URL      string
+	Author   string
+	Coverage findings.Coverage
+	Banner   string
+	Counts   map[string]int
+
+	// Orientation: why this change exists. Every field is optional because the
+	// screen opens pre-push, where there is no pull request and often no
+	// ticket, as well as on an open one.
+	Ticket *packet.IntentTicket
+	PR     *prView
+	Fit    *packet.IntentFit
+
+	// Surfaces always has three entries, in the order a reviewer checks them.
+	// A surface the agent said nothing about renders as unreported rather than
+	// as unchanged.
+	Surfaces []surfaceView
+
+	API    []packet.Highlight
+	Schema []packet.Highlight
+	Files  []fileWalkRow
+
+	// Judged and Observed are the same findings split by who is accountable
+	// for them. A skim of what the reviewers found is a different act from
+	// reading what Redline can prove.
+	Judged   []reviewerGroup
+	Observed []findingView
+
 	Areas       []areaView
+	TestFiles   int
 	Confirms    []findings.Confirmation
 	Unknowns    []findings.Unknown
 	Dark        []findings.SubstrateStatus
@@ -72,11 +93,62 @@ type view struct {
 	Threads     []packet.Thread
 	Screenshots []Screenshot
 	AgentWalk   bool
-	Commits     int
-	HasReview   bool
+	// UITouched is whether the change moves the interface at all. It decides
+	// how loud the absence of captures should be: no captures on a change that
+	// touches no UI is unremarkable, and on one that does it is a gap.
+	UITouched bool
+	// Nav is the sidebar: one entry per section actually rendered, in the order
+	// they appear. Built here rather than scanned out of the DOM so the page
+	// has a map before any script runs.
+	Nav []navLink
+
+	Commits   int
+	HasReview bool
 	// Identity keys browser-local comments to this review, not to the
 	// report.html path — every run overwrites the same file.
 	Identity string
+}
+
+// prView is the pull request as the screen shows it, from whichever source
+// knew about it.
+type prView struct {
+	Number int
+	Title  string
+	URL    string
+}
+
+// surfaceView is one contract-surface tile. Stated separates "the agent looked
+// and nothing moved" from "nobody said" — the second must never read as a pass.
+type surfaceView struct {
+	Label  string
+	Line   string
+	Moved  bool
+	Stated bool
+}
+
+// navLink is one sidebar entry.
+//
+// Count is shown when a section has a number worth knowing before you scroll to
+// it. Warn marks a section that is a gap rather than a result — no captures of a
+// UI that moved, no coverage profile, something undetermined — so the sidebar
+// answers "what is missing here" without reading the page.
+type navLink struct {
+	ID    string
+	Label string
+	Count int
+	Warn  bool
+}
+
+// reviewerGroup is one reviewer's findings, kept under its own name.
+//
+// Two reviewers are not reconciled into one list. Redline cannot tell whether
+// two differently worded sentences describe the same defect without guessing,
+// and a wrong guess deletes a finding silently. Grouping puts both accounts in
+// front of the reviewer, which is what skimming for a flavour of what each one
+// found actually needs.
+type reviewerGroup struct {
+	Reviewer string
+	Findings []findingView
 }
 
 type findingView struct {
@@ -102,18 +174,24 @@ type fileView struct {
 }
 
 // areaLabels names the drill-in sections, in the order they are shown.
+//
+// Tests are deliberately absent. A reviewer does not read test bodies; they
+// read a coverage number and expect the tests to have been run. Rendering the
+// diff of every table-driven case buries the change that needed testing. The
+// files still appear in the walkthrough and are counted, so the reviewer knows
+// tests moved — they just do not have to scroll past them.
 var areaLabels = []struct{ Key, Label string }{
 	{"sql", "Schema & migrations"},
 	{"api", "API contract"},
 	{"ui", "Interface"},
 	{"code", "Code"},
-	{"tests", "Tests"},
 }
 
 // HTML renders the report page.
 func HTML(in HTMLInput) (string, error) {
 	tmpl, err := template.New("report.html.tmpl").Funcs(template.FuncMap{
 		"lower": func(v any) string { return strings.ToLower(fmt.Sprint(v)) },
+		"sub":   func(a, b int) int { return a - b },
 	}).ParseFS(assets, "assets/report.html.tmpl")
 	if err != nil {
 		return "", err
@@ -146,6 +224,7 @@ func buildView(in HTMLInput) view {
 	if p := in.Packet; p != nil {
 		v.Commits = len(p.Commits)
 		v.Threads = p.Threads
+		v.UITouched = p.UITouched
 		if p.Target != nil {
 			v.Subtitle = p.Target.Describe()
 			if p.Target.Head != "" {
@@ -162,18 +241,38 @@ func buildView(in HTMLInput) view {
 		v.Subtitle = fmt.Sprintf("base %s", short(rep.BaseSHA))
 	}
 	var notes []packet.FileNote
+	var surfaces *packet.Surfaces
 	if r := in.Review; r != nil {
 		v.HasReview = true
 		v.Summary = r.Summary
 		v.API = r.APIChanges
 		v.Schema = r.SchemaChanges
 		notes = r.Files
+		surfaces = r.Surfaces
+		if r.Intent != nil {
+			v.Ticket = r.Intent.Ticket
+			v.Fit = r.Intent.Fit
+			if p := r.Intent.PR; p != nil {
+				v.PR = &prView{Number: p.Number, Title: p.Title, URL: p.URL}
+			}
+		}
 	}
+	// When the target is a pull request, Redline fetched it and that is the
+	// pull request under review. The agent's copy is hearsay about the same
+	// thing, and rendering it instead would contradict the subtitle two lines
+	// above. It is used only when Redline was not pointed at a pull request at
+	// all — the pre-push case where the agent knows one exists.
+	if in.Packet != nil && in.Packet.Target != nil && in.Packet.Target.PR != nil {
+		pr := in.Packet.Target.PR
+		v.PR = &prView{Number: pr.Number, Title: pr.Title, URL: pr.URL}
+	}
+	v.Surfaces = surfaceViews(surfaces)
 	if v.Summary == "" {
 		v.Summary = "No agent summary. Redline emits evidence; the plain-language account of the change comes from the agent driving it — run `redline review` and pipe the result to `redline ingest`."
 	}
 	v.Banner = bannerText(rep)
 
+	var judged []findingView
 	for _, f := range rep.Findings {
 		v.Counts[string(f.Severity)]++
 		fv := findingView{Finding: f, IsLLM: f.Source == findings.SourceLLM}
@@ -182,8 +281,13 @@ func buildView(in HTMLInput) view {
 				fv.Evidence = template.HTML(highlightDiff(a.Content))
 			}
 		}
-		v.Findings = append(v.Findings, fv)
+		if fv.IsLLM {
+			judged = append(judged, fv)
+		} else {
+			v.Observed = append(v.Observed, fv)
+		}
 	}
+	v.Judged = groupByReviewer(judged)
 
 	if in.Packet != nil {
 		v.Files = fileWalk(in.Packet.Files, notes, rep.Findings)
@@ -200,6 +304,7 @@ func buildView(in HTMLInput) view {
 				byArea[a] = append(byArea[a], fv)
 			}
 		}
+		v.TestFiles = len(byArea["tests"])
 		for _, al := range areaLabels {
 			files := byArea[al.Key]
 			if len(files) == 0 {
@@ -208,7 +313,113 @@ func buildView(in HTMLInput) view {
 			v.Areas = append(v.Areas, areaView{Key: al.Key, Label: al.Label, Files: files, Count: len(files)})
 		}
 	}
+	v.Nav = navFor(v)
 	return v
+}
+
+// navFor lists the sections this page will render, in page order. It must stay
+// in step with the template: TestNavMatchesTheSectionsOnThePage fails if a
+// section gains or loses a heading without its entry moving too.
+func navFor(v view) []navLink {
+	judged := 0
+	for _, g := range v.Judged {
+		judged += len(g.Findings)
+	}
+	// A UI that moved with nothing captured is a gap; a change with no UI files
+	// is not.
+	uiGap := v.UITouched && len(v.Screenshots) == 0
+	coverageGap := v.Coverage.Diff == nil || v.Coverage.Diff.Stale
+
+	nav := []navLink{
+		{ID: "change", Label: "What this change is"},
+		{ID: "interface", Label: "What it looks like", Count: len(v.Screenshots), Warn: uiGap},
+	}
+	if len(v.API) > 0 {
+		nav = append(nav, navLink{ID: "api", Label: "API contract", Count: len(v.API)})
+	}
+	if len(v.Schema) > 0 {
+		nav = append(nav, navLink{ID: "schema", Label: "Schema", Count: len(v.Schema)})
+	}
+	nav = append(nav, navLink{ID: "coverage", Label: "Coverage", Warn: coverageGap})
+	if len(v.Files) > 0 {
+		nav = append(nav, navLink{ID: "files", Label: "Files", Count: len(v.Files)})
+	}
+	nav = append(nav,
+		navLink{ID: "findings", Label: "What the reviewers found", Count: judged},
+		navLink{ID: "observed", Label: "What Redline observed", Count: len(v.Observed)},
+	)
+	if len(v.Areas) > 0 {
+		nav = append(nav, navLink{ID: "drill", Label: "Drill in", Count: len(v.Areas)})
+	}
+	if len(v.Threads) > 0 {
+		nav = append(nav, navLink{ID: "threads", Label: "Threads", Count: len(v.Threads)})
+	}
+	nav = append(nav,
+		navLink{ID: "unknowns", Label: "Undetermined", Count: len(v.Unknowns) + len(v.Dark), Warn: len(v.Unknowns)+len(v.Dark) > 0},
+		navLink{ID: "confirms", Label: "Checked and held", Count: len(v.Confirms)},
+	)
+	return nav
+}
+
+// groupByReviewer splits judged findings by who reported them, preserving the
+// order each reviewer's findings arrived in. The driving agent's own judgments
+// carry no reviewer name and are grouped last, after the tools that were run
+// deliberately.
+func groupByReviewer(judged []findingView) []reviewerGroup {
+	var order []string
+	byName := map[string][]findingView{}
+	for _, f := range judged {
+		if _, seen := byName[f.Reviewer]; !seen {
+			order = append(order, f.Reviewer)
+		}
+		byName[f.Reviewer] = append(byName[f.Reviewer], f)
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		if (order[i] == "") != (order[j] == "") {
+			return order[j] == ""
+		}
+		return order[i] < order[j]
+	})
+	out := make([]reviewerGroup, 0, len(order))
+	for _, name := range order {
+		label := name
+		if label == "" {
+			label = "the driving agent"
+		}
+		out = append(out, reviewerGroup{Reviewer: label, Findings: byName[name]})
+	}
+	return out
+}
+
+// surfaceViews returns the three surfaces in the order a reviewer checks them,
+// always all three. A missing surface is rendered as unreported: the whole
+// point of the strip is that a surface nobody spoke about looks different from
+// one that was checked and had not moved.
+func surfaceViews(s *packet.Surfaces) []surfaceView {
+	labels := []struct {
+		label string
+		get   func(*packet.Surfaces) *packet.Surface
+	}{
+		{"Interface", func(x *packet.Surfaces) *packet.Surface { return x.Interface }},
+		{"API", func(x *packet.Surfaces) *packet.Surface { return x.API }},
+		{"Schema", func(x *packet.Surfaces) *packet.Surface { return x.Schema }},
+	}
+	out := make([]surfaceView, 0, len(labels))
+	for _, l := range labels {
+		sv := surfaceView{Label: l.label}
+		if s != nil {
+			if got := l.get(s); got != nil && (got.Line != "" || got.Moved) {
+				sv.Line = got.Line
+				sv.Moved = got.Moved
+				sv.Stated = true
+			}
+		}
+		if !sv.Stated {
+			sv.Line = "Not reported. Nobody said whether this surface moved."
+		}
+		out = append(out, sv)
+	}
+	return out
 }
 
 // bannerText is the same honesty check the markdown report makes. An empty

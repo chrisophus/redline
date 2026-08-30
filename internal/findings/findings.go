@@ -3,7 +3,11 @@
 // SchemaVersion 1), extended additively. Shared contract, not shared internals.
 package findings
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/ccason/redline/internal/cover"
+)
 
 // SchemaVersion guards the JSON encoding of Report. Kept in lockstep with
 // doctor's constant of the same name.
@@ -149,6 +153,17 @@ type Coverage struct {
 	ChangedFiles  int      `json:"changedFiles"`
 	ExaminedFiles int      `json:"examinedFiles"`
 	Unexamined    []string `json:"unexamined,omitempty"`
+
+	// Generated are paths dropped from the change as machine output before any
+	// pane ran. They are listed rather than merely counted: excluding a file a
+	// human actually wrote is the one way this feature can hide a real change,
+	// and naming every exclusion is what makes that recoverable.
+	Generated []string `json:"generated,omitempty"`
+
+	// Diff is the share of added lines a test profile shows executed. Nil when
+	// no profile was found, which must render as "nobody knows" rather than as
+	// zero per cent — those are very different claims.
+	Diff *cover.Result `json:"diffCoverage,omitempty"`
 }
 
 // Report is the merged result of one Redline run.

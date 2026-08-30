@@ -88,6 +88,42 @@ func TestParentOfHEAD(t *testing.T) {
 	}
 }
 
+func TestAttrSetReadsGitattributesIncludingOverrides(t *testing.T) {
+	r := newRepo(t)
+	// The later pattern un-sets the attribute for one file. A hand-rolled
+	// .gitattributes matcher gets this precedence wrong; check-attr does not.
+	r.write(".gitattributes", "*.gen.go linguist-generated=true\nkeep.gen.go -linguist-generated\n")
+	r.write("api.gen.go", "package api\n")
+	r.write("keep.gen.go", "package api\n")
+	r.write("hand.go", "package api\n")
+	r.commit("init")
+
+	set := r.open().AttrSet("linguist-generated", []string{"api.gen.go", "keep.gen.go", "hand.go"})
+
+	if !set["api.gen.go"] {
+		t.Error("api.gen.go should be marked linguist-generated")
+	}
+	if set["keep.gen.go"] {
+		t.Error("keep.gen.go un-sets the attribute and must not be marked")
+	}
+	if set["hand.go"] {
+		t.Error("hand.go matches no pattern and must not be marked")
+	}
+}
+
+func TestAttrSetIsEmptyWithoutGitattributes(t *testing.T) {
+	r := newRepo(t)
+	r.write("hand.go", "package api\n")
+	r.commit("init")
+
+	if got := r.open().AttrSet("linguist-generated", []string{"hand.go"}); len(got) != 0 {
+		t.Fatalf("expected no attributes, got %v", got)
+	}
+	if got := r.open().AttrSet("linguist-generated", nil); len(got) != 0 {
+		t.Fatalf("no paths means no work, got %v", got)
+	}
+}
+
 func TestDiffPathUntrackedFileIsANewFileDiff(t *testing.T) {
 	r := newRepo(t)
 	r.write("keep.go", "package keep\n")

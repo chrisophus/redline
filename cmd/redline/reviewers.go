@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/reviewer"
@@ -19,72 +20,115 @@ import (
 // for one run without editing config.
 const noReviewer = "none"
 
-// withReviewer runs the external reviewer named by --with and folds what it
-// found into the report. Redline does not compose the judgment: the adapter
-// invokes the tool's own review command, and every finding it returns is
-// stamped with the reviewer's name and source "llm" so a reader can tell it
-// from the deterministic panes.
+// withReviewer runs the external reviewers named by --with and folds what they
+// found into the report. Redline does not compose the judgment: each adapter
+// invokes its tool's own review command, and every finding is stamped with the
+// reviewer's name and source "llm" so a reader can tell it from the
+// deterministic panes.
 //
-// It returns an error only for a mistake the operator can fix before the run
-// is worth repeating — an unknown reviewer name. A reviewer that ran and
-// failed is recorded, not raised: the review still produced observed evidence,
-// and exiting non-zero would tell the agent driving the session that the whole
-// review failed.
+// Several reviewers can run in one pass. Two reviewers from different vendors
+// is what a second review round used to be, now that a PR does not arrive with
+// one already attached. Their findings are kept side by side under their own
+// names rather than reconciled — see below.
+//
+// It returns an error only for a mistake the operator can fix before the run is
+// worth repeating: an unknown reviewer name, checked for every name before any
+// reviewer runs. A reviewer that ran and failed is recorded, not raised. The
+// review still produced observed evidence, exiting non-zero would tell the
+// driving agent the whole review failed, and one vendor being down must not
+// discard what the other found.
 func withReviewer(o opts, res *run.Result) error {
-	name := strings.TrimSpace(o.with)
-	if name == "" || name == noReviewer {
-		return nil
+	names, err := reviewersToRun(o)
+	if err != nil || len(names) == 0 {
+		return err
 	}
 
 	adapters, err := reviewer.Load(o.out)
 	if err != nil {
 		return err
 	}
-	a, ok := adapters[name]
-	if !ok {
-		return fmt.Errorf("unknown reviewer %q (known: %s; add your own in %s)",
-			name, strings.Join(adapterNames(adapters), ", "), filepath.Join(o.out, "reviewers.json"))
+	chosen := make([]reviewer.Adapter, 0, len(names))
+	for _, name := range names {
+		a, ok := adapters[name]
+		if !ok {
+			return fmt.Errorf("unknown reviewer %q (known: %s; add your own in %s)",
+				name, strings.Join(adapterNames(adapters), ", "), filepath.Join(o.out, "reviewers.json"))
+		}
+		chosen = append(chosen, a)
 	}
 
 	dir, err := reviewDir(res.Packet.Target)
 	if err != nil {
 		return err
 	}
+	tgt := reviewTarget(res.Packet.Target)
 
-	found, runErr := reviewer.Run(context.Background(), a, dir, reviewTarget(res.Packet.Target), o.out)
-	if runErr != nil {
-		// A reviewer that did not run must not read as a reviewer that found
-		// nothing. Recording it as a failed substrate puts it in the report's
-		// "did not run" section, which is the same treatment a pane that could
-		// not execute gets, and for the same reason.
+	status := newStatus(os.Stderr)
+	for _, a := range chosen {
+		started := time.Now()
+		found, runErr := reviewer.Run(context.Background(), a, dir, tgt, o.out,
+			reviewer.WithProgress(status.interval, status.update))
+		if runErr != nil {
+			// A reviewer that did not run must not read as a reviewer that
+			// found nothing. Recording it as a failed substrate puts it in the
+			// report's "did not run" section, the same treatment a pane that
+			// could not execute gets, and for the same reason.
+			res.Report.Substrates = append(res.Report.Substrates, findings.SubstrateStatus{
+				Name:   "reviewer:" + a.Name,
+				State:  findings.SubstrateFailed,
+				Detail: runErr.Error(),
+			})
+			res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
+				Substrate: "reviewer:" + a.Name,
+				Message:   "the " + a.Name + " review did not run, so nothing it would have caught is in this report",
+				Reason:    runErr.Error(),
+			})
+			status.fail(a.Name, time.Since(started), runErr)
+			continue
+		}
+		status.done(a.Name, time.Since(started), len(found))
+
 		res.Report.Substrates = append(res.Report.Substrates, findings.SubstrateStatus{
-			Name:   "reviewer:" + name,
-			State:  findings.SubstrateFailed,
-			Detail: runErr.Error(),
+			Name:   "reviewer:" + a.Name,
+			State:  findings.SubstrateRan,
+			Detail: fmt.Sprintf("%d findings", len(found)),
 		})
-		res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
-			Substrate: "reviewer:" + name,
-			Message:   "the " + name + " review did not run, so nothing it would have caught is in this report",
-			Reason:    runErr.Error(),
-		})
-		fmt.Fprintf(os.Stderr, "redline: reviewer %s failed: %v\n", name, runErr)
-		return nil
+		// Appended, not merged, and that stays true with two reviewers. It is
+		// tempting to badge the ones both of them reported, but deciding that
+		// two differently worded sentences describe one defect is a guess, and
+		// a wrong guess deletes a finding the reviewer never learns existed.
+		// The report groups by reviewer instead and lets the reader compare.
+		// Exact duplicates still collapse in Report.Dedupe on fingerprint.
+		res.Report.Findings = append(res.Report.Findings, toFindings(a.Name, found)...)
 	}
 
-	res.Report.Substrates = append(res.Report.Substrates, findings.SubstrateStatus{
-		Name:   "reviewer:" + name,
-		State:  findings.SubstrateRan,
-		Detail: fmt.Sprintf("%d findings", len(found)),
-	})
-	// Appended, not merged. Deciding that two differently worded findings are
-	// the same defect means guessing, and a wrong guess deletes a finding the
-	// reviewer never learns existed. Exact duplicates are already collapsed by
-	// Report.Dedupe on fingerprint.
-	res.Report.Findings = append(res.Report.Findings, toFindings(name, found)...)
 	findings.Sort(res.Report.Findings)
 	res.Report.Finalize()
 	res.Report.Dedupe()
 	return nil
+}
+
+// reviewersToRun resolves --with into the names to run, in the order given and
+// without repeats. "none" is an explicit off switch and wins over everything
+// else, so a configured default can be silenced for one run.
+func reviewersToRun(o opts) ([]string, error) {
+	seen := map[string]bool{}
+	var names []string
+	for _, raw := range o.with {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		if name == noReviewer {
+			return nil, nil
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	return names, nil
 }
 
 // toFindings converts one reviewer's output into Redline's schema. Severity

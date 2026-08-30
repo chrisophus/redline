@@ -1,27 +1,46 @@
 # Redline
 
-Evidence from execution, not inference from source.
+The reviewer's screen.
 
-Redline observes a change at two revisions, diffs the observations, and reports
-what it saw. It is pre-push and non-gating. It makes no model calls of its own
-and never posts to GitHub — the prose and the judgment come from the agent
-driving it. `--pr` fetches via `gh` (read-only).
+Redline assembles, in one browser view, what a reviewer actually looks at — the
+ticket, the UI screens, the `openapi.yaml` diff, the migrations, a coverage
+number, and a skim of what the reviewers found — and suppresses what they skip.
+Generated code, test bodies, and lint CI already gates never appear.
 
-See `redline-design.md` for the full design.
+It is pre-push and non-gating, and it works at both moments: on your own
+uncommitted work, and on an open pull request. It composes no judgment of its
+own — the prose and the judgment come from the agent driving it or from a
+reviewer you asked it to run. It never posts to GitHub; `--pr` fetches via `gh`
+(read-only).
+
+See `redline-design.md` for the design, and `.planning/PROJECT.md` for what the
+screen is for.
+
+## The pass
+
+The page is ordered as the review, not as a findings dump:
+
+1. **Orientation** — the ticket, the pull request, and whether this is the right
+   thing built the right way
+2. **UI screens** — before / after for the routes the change touches
+3. **API contract** — the `openapi.yaml` diff, with breaking changes named
+4. **Schema** — the migrations
+5. **Coverage** — the number, never the tests
+6. **What the reviewers found** — grouped by reviewer, so a skim shows each one
+7. **What Redline observed** — the deterministic findings
 
 ## Status
 
-**Rung 1** of the check catalog: migration hygiene, no infrastructure at all.
-The review loop (packet → agent → HTML report) ships on top of that.
-
-| # | Check | State |
-|---|-------|-------|
-| 1 | Diff modifies a migration that exists at merge-base | shipped |
-| 2 | New migration's version prefix already exists upstream | shipped |
-| 3–8 | Migration execution against a real Postgres | not started |
-| 9–13 | sqlc staleness, OpenAPI contract | not started |
-| 14 | Diff coverage | not started |
-| 15–16 | UI pane | not started |
+| Check | State |
+|-------|-------|
+| Diff modifies a migration that exists at merge-base | shipped |
+| New migration's version prefix already exists upstream | shipped |
+| OpenAPI breaking-change diff (removed operations, removed response codes, newly required inputs) | shipped |
+| Diff coverage from an existing profile | shipped |
+| Generated-file suppression | shipped |
+| Migration execution against a real Postgres | not started |
+| sqlc staleness, spec-vs-handler agreement, vacuum linting | not started |
+| Deterministic UI capture (checks 15–16) | not started — agent walks the UI instead |
 
 ## Install
 
@@ -74,15 +93,43 @@ Target (all subcommands; pass only one): the working tree by default,
 
 ## Reviewers
 
-`--with NAME` runs an external code reviewer and merges its findings into the
+`--with NAME` runs an external code reviewer and folds its findings into the
 report. Redline composes no judgment of its own: the adapter invokes the tool's
 *own* review command — `claude` runs Claude Code's `/code-review` — so what you
 get is that tool's review, labelled with its name and its stated confidence.
 
+Repeat the flag or comma-separate to run several. Two reviewers from different
+vendors is a second opinion, which is what a second review round used to be when
+one arrived on the pull request already.
+
 ```
 ./redline review --with claude --commit HEAD
-./redline review --with none              # observed evidence only (the default)
+./redline review --with claude --with cursor      # both, each under its own name
+./redline review --with claude,cursor             # same thing
+./redline review --with none                      # observed evidence only (the default)
 ```
+
+A reviewer can take minutes and most print nothing until they finish, so
+progress goes to stderr: what started, a tick carrying elapsed time, how much
+the reviewer has written, and its own most recent line, then what it produced.
+On a terminal the tick rewrites one line; in a pipe it prints every 30 seconds
+so a log stays readable.
+
+```
+redline: claude is reviewing…
+redline: claude reviewing — 45s elapsed, 2 KB out · reading internal/run/run.go
+redline: claude finished in 1m32s — 6 findings
+```
+
+Elapsed time against bytes written is what separates slow from stuck, which is
+why both are on the line. A reviewer that times out reports what it managed to
+write first, and one that leaves a child process holding its output open is cut
+off rather than allowed to hang past its own deadline.
+
+Findings are grouped by reviewer and never merged across them. Redline cannot
+tell whether two differently worded sentences describe the same defect without
+guessing, and a wrong guess deletes a finding you never learn existed. Exact
+duplicates collapse on fingerprint; the rest sit side by side for you to compare.
 
 Built-in adapters: `claude`, `cursor`. Add or override one in
 `<out>/reviewers.json` — no Redline release required:
@@ -123,6 +170,21 @@ disk either way, and a completed review must not report failure.
 tree. If you pass a target flag it must name that same session; ingesting
 `--pr 456` into a run of `--pr 123` is an error, not a silent merge.
 
+## What never reaches the screen
+
+Generated files leave the change before any pane or the review packet sees them,
+so the coverage denominator counts files a reviewer would actually read and the
+reviewing agent does not spend its context on `oas_*_gen.go`. Detection prefers
+what generators say about themselves — `git check-attr linguist-generated`, then
+`Code generated ... DO NOT EDIT` and `@generated` markers, then filenames only a
+generator produces.
+
+Every exclusion is **named** on the report. Hiding a hand-written file is the one
+way this can go wrong, and listing them is what makes that recoverable.
+
+Test file contents are not rendered either; they are counted, and the coverage
+number stands in for reading them.
+
 ## What use taught it
 
 Dogfooding rung 1 on its own repository changed three things, all the same
@@ -142,14 +204,18 @@ support:
 
 ```
 cmd/redline           CLI
+internal/cover        diff coverage from an existing profile
 internal/findings     wire format — doctor's schema, reimplemented and extended
 internal/gitx         git layer (observe; fetch/worktrees for PR/branch)
 internal/graph        graphify threads through changed code
 internal/instructions repository review rules for the agent packet
-internal/packet       contract between Redline and the reviewing agent
+internal/packet       contract between Redline and the reviewing agent;
+                      generated-file detection
 internal/pane         the observe/diff pane interface
-internal/pane/migrations   checks 1 and 2
+internal/pane/migrations   migration hygiene
+internal/pane/openapi      contract breaking-change diff
 internal/report       markdown and self-contained HTML
+internal/reviewer     adapters that run a vendor's own review command
 internal/run          dispatcher
 internal/target       working tree, branch, or PR
 skills/redline        the agent skill that drives the binary

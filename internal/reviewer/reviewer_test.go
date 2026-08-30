@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -507,6 +508,138 @@ func TestRunDropsEmptyTitles(t *testing.T) {
 	}
 	if findings[0].Title != "Valid title" {
 		t.Fatalf("wrong finding returned: %q", findings[0].Title)
+	}
+}
+
+// The complaint this answers: --with printed nothing, so a running reviewer and
+// a hung one looked identical.
+func TestRunReportsProgressWhileTheReviewerWorks(t *testing.T) {
+	tmpDir := t.TempDir()
+	outDir := filepath.Join(tmpDir, "out")
+	if err := os.Mkdir(outDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Writes a line, waits, writes another, then produces findings.
+	a := Adapter{
+		Name: "chatty",
+		Command: []string{"sh", "-c",
+			`echo "scanning files"; sleep 0.25; echo "writing findings"; sleep 0.25; ` +
+				`printf '{"findings":[{"title":"x","severity":"warning"}]}' > "$0"`,
+			filepath.Join(outDir, "reviewer-chatty.json")},
+		Timeout: Duration(10 * time.Second),
+	}
+
+	var mu sync.Mutex
+	var updates []Update
+	_, err := Run(context.Background(), a, tmpDir, tmpDir, outDir,
+		WithProgress(50*time.Millisecond, func(u Update) {
+			mu.Lock()
+			defer mu.Unlock()
+			updates = append(updates, u)
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(updates) < 3 {
+		t.Fatalf("expected a start and several ticks, got %d: %+v", len(updates), updates)
+	}
+	// The first update is the start, so something appears immediately rather
+	// than one interval later.
+	if updates[0].Elapsed != 0 {
+		t.Errorf("first update should be the start, got elapsed %v", updates[0].Elapsed)
+	}
+	if updates[0].Name != "chatty" {
+		t.Errorf("update should name the reviewer, got %q", updates[0].Name)
+	}
+
+	last := updates[len(updates)-1]
+	if last.Elapsed <= 0 {
+		t.Error("ticks should carry elapsed time")
+	}
+	if last.Bytes == 0 {
+		t.Error("ticks should carry how much the reviewer has written")
+	}
+	// The reviewer's own output is the most useful progress there is.
+	if last.Last != "writing findings" {
+		t.Errorf("last line = %q, want the reviewer's most recent output", last.Last)
+	}
+	// Elapsed must increase, or the caller cannot tell a live tick from a stuck one.
+	for i := 2; i < len(updates); i++ {
+		if updates[i].Elapsed < updates[i-1].Elapsed {
+			t.Fatalf("elapsed went backwards: %v then %v", updates[i-1].Elapsed, updates[i].Elapsed)
+		}
+	}
+}
+
+// A reviewer that produced nothing at all is the case worth distinguishing, and
+// the timeout message is where the reader looks for it.
+func TestTimeoutSaysWhatTheReviewerManagedToDo(t *testing.T) {
+	tmpDir := t.TempDir()
+	outDir := filepath.Join(tmpDir, "out")
+	if err := os.Mkdir(outDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	silent := Adapter{
+		Name:    "silent",
+		Command: []string{"sh", "-c", "sleep 10"},
+		Timeout: Duration(150 * time.Millisecond),
+	}
+	_, err := Run(context.Background(), silent, tmpDir, tmpDir, outDir)
+	if err == nil {
+		t.Fatal("expected a timeout")
+	}
+	if !strings.Contains(err.Error(), "wrote 0 byte") {
+		t.Errorf("a silent reviewer should be reported as silent: %v", err)
+	}
+
+	talkative := Adapter{
+		Name:    "talkative",
+		Command: []string{"sh", "-c", "echo working on it; sleep 10"},
+		Timeout: Duration(300 * time.Millisecond),
+	}
+	_, err = Run(context.Background(), talkative, tmpDir, tmpDir, outDir)
+	if err == nil {
+		t.Fatal("expected a timeout")
+	}
+	if !strings.Contains(err.Error(), "working on it") {
+		t.Errorf("the timeout should quote what it last said: %v", err)
+	}
+}
+
+// A reviewer that leaves a child running must not hang Redline past its own
+// timeout. Killing the reviewer does not kill what it spawned, and the output
+// pipe stays open while any of them holds it — so without a wait delay the
+// deadline does not bound anything, which is the failure it exists to prevent.
+func TestTimeoutIsBoundedEvenWhenTheReviewerLeavesChildrenBehind(t *testing.T) {
+	tmpDir := t.TempDir()
+	outDir := filepath.Join(tmpDir, "out")
+	if err := os.Mkdir(outDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	a := Adapter{
+		Name: "forker",
+		// The shell exits immediately; the background sleep inherits its
+		// stdout and would hold the pipe open for a minute.
+		Command: []string{"sh", "-c", "sleep 60 & exit 0"},
+		Timeout: Duration(200 * time.Millisecond),
+	}
+
+	start := time.Now()
+	_, err := Run(context.Background(), a, tmpDir, tmpDir, outDir)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected an error: the reviewer wrote no findings file")
+	}
+	// Generous bound: the point is seconds, not the full sixty.
+	if elapsed > 10*time.Second {
+		t.Fatalf("Run took %v — the orphaned child held it open past the deadline", elapsed)
 	}
 }
 

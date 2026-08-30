@@ -450,6 +450,58 @@ func (r *Repo) diffNoIndex(path string) (string, error) {
 	return "", fmt.Errorf("git diff --no-index: %s", msg)
 }
 
+// File returns one path's contents at a revision. The empty revision, or the
+// Worktree sentinel a pane passes for the head side, reads from disk instead —
+// uncommitted work is part of the change Redline reviews.
+//
+// A missing path is not an error: a spec that does not exist at the base is
+// exactly how an added spec looks, and the caller distinguishes the two by the
+// empty result.
+func (r *Repo) File(rev, path string) string {
+	if rev == "" {
+		buf, err := os.ReadFile(filepath.Join(r.Root, path))
+		if err != nil {
+			return ""
+		}
+		return string(buf)
+	}
+	out, err := r.git("show", rev+":"+path)
+	if err != nil {
+		return ""
+	}
+	return out
+}
+
+// AttrSet returns the paths for which a git attribute is explicitly set.
+//
+// `git check-attr` is asked rather than .gitattributes parsed because the file
+// is not the whole answer: attributes come from nested .gitattributes, from
+// $GIT_DIR/info/attributes, and later patterns override earlier ones. A
+// hand-rolled matcher gets the precedence wrong on exactly the repositories
+// that bothered to configure this.
+//
+// Best-effort: a repository with no attributes at all is the common case, and
+// failing the run over it would be absurd.
+func (r *Repo) AttrSet(attr string, paths []string) map[string]bool {
+	set := map[string]bool{}
+	if attr == "" || len(paths) == 0 {
+		return set
+	}
+	args := append([]string{"check-attr", "-z", attr, "--"}, paths...)
+	out, err := r.git(args...)
+	if err != nil {
+		return set
+	}
+	// -z output is NUL-separated triples: path, attribute, value.
+	fields := strings.Split(out, "\x00")
+	for i := 0; i+2 < len(fields); i += 3 {
+		if fields[i+2] == "set" || fields[i+2] == "true" {
+			set[fields[i]] = true
+		}
+	}
+	return set
+}
+
 // ChangedPaths returns the paths that differ between rev and the working tree,
 // including untracked non-ignored files.
 func (r *Repo) ChangedPaths(rev string) ([]string, error) {

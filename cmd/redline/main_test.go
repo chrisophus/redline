@@ -151,6 +151,47 @@ func TestIngestAcceptsTheSessionsOwnTarget(t *testing.T) {
 // `redline.test serve …` — Go's flag parser would stop at "serve", ignore
 // the flags, and run the suite again. Route those arguments to runMain so
 // the child is a real server and nothing recurses.
+func TestWithAcceptsSeveralReviewers(t *testing.T) {
+	parse := func(args ...string) reviewerList {
+		t.Helper()
+		var l reviewerList
+		for _, a := range args {
+			if err := l.Set(a); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return l
+	}
+
+	cases := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{"repeated flag", []string{"claude", "cursor"}, []string{"claude", "cursor"}},
+		{"comma separated", []string{"claude,cursor"}, []string{"claude", "cursor"}},
+		{"mixed with spaces", []string{"claude, cursor", "bugbot"}, []string{"claude", "cursor", "bugbot"}},
+		{"repeats collapse", []string{"claude,claude"}, []string{"claude"}},
+		{"empty entries ignored", []string{"claude,,"}, []string{"claude"}},
+		// none is an off switch, so a configured default can be silenced for
+		// one run. It wins wherever it appears.
+		{"none alone", []string{"none"}, nil},
+		{"none wins", []string{"claude", "none"}, nil},
+		{"nothing given", nil, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := reviewersToRun(opts{with: parse(tc.args...)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestMain(m *testing.M) {
 	if args := os.Args[1:]; len(args) > 0 && isSubcommand(args[0]) {
 		if err := runMain(args); err != nil {

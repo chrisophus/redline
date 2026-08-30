@@ -1,9 +1,11 @@
 package report
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/ccason/redline/internal/cover"
 	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/target"
@@ -101,6 +103,555 @@ func TestHTMLFileWalkUsesPacketAndAgentNotes(t *testing.T) {
 	}
 }
 
+func TestOrientationLeadsTheScreen(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+		Review: &packet.Review{
+			Summary: "Serve the report over loopback.",
+			Intent: &packet.Intent{
+				Ticket: &packet.IntentTicket{ID: "REL-24", Title: "Serve the report", URL: "https://example.test/REL-24"},
+				Fit:    &packet.IntentFit{Thing: "Yes, this is what REL-24 asked for.", Way: "Mostly — the port scan is undocumented."},
+			},
+			Surfaces: &packet.Surfaces{
+				Interface: &packet.Surface{Line: "Comment bar added to the report.", Moved: true},
+				Schema:    &packet.Surface{Line: "No migrations touched.", Moved: false},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"REL-24", "https://example.test/REL-24", "Serve the report",
+		"Right thing", "Yes, this is what REL-24 asked for.",
+		"Right way", "the port scan is undocumented",
+		"Comment bar added to the report.", "No migrations touched.",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("orientation missing %q", want)
+		}
+	}
+
+	// The API surface was never spoken about. That must not read the same as a
+	// surface someone checked and found unmoved.
+	if !strings.Contains(html, "Not reported.") {
+		t.Error("an unreported surface must say so")
+	}
+	if !strings.Contains(html, "surface unstated") {
+		t.Error("an unreported surface must be visually distinct from an idle one")
+	}
+	if !strings.Contains(html, "surface idle") {
+		t.Error("a checked-but-unmoved surface should render as idle")
+	}
+
+	// Orientation precedes the evidence.
+	if strings.Index(html, "REL-24") > strings.Index(html, `id="findings"`) {
+		t.Error("orientation must come before the findings")
+	}
+}
+
+func TestPrePushScreenHasNoTicketOrPR(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+		Review: &packet.Review{Summary: "Uncommitted work."},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, `class="intent"`) {
+		t.Error("with no ticket and no PR the orientation links must be omitted entirely")
+	}
+	if !strings.Contains(html, "Uncommitted work.") {
+		t.Error("the summary still leads")
+	}
+	// All three surfaces still appear, all unreported.
+	if got := strings.Count(html, "Not reported."); got != 3 {
+		t.Errorf("expected three unreported surfaces, got %d", got)
+	}
+}
+
+// A --pr review knows its pull request without the agent restating it, and
+// what Redline fetched outranks what the agent says about it.
+func TestPullRequestPrefersWhatRedlineObserved(t *testing.T) {
+	in := HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{
+			Target: &target.Target{Kind: target.KindPR, PR: &target.PullRequest{
+				Number: 42, Title: "Add the briefing", URL: "https://example.test/pr/42",
+			}},
+			Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}},
+		},
+		Review: &packet.Review{Summary: "s"},
+	}
+	html, err := HTML(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "https://example.test/pr/42") {
+		t.Error("the PR the target names must appear without agent help")
+	}
+
+	// The agent claiming a different pull request must not override the one
+	// Redline fetched, or the orientation contradicts the subtitle.
+	in.Review = &packet.Review{Summary: "s", Intent: &packet.Intent{
+		PR: &packet.IntentPR{Number: 7, Title: "Agent said seven", URL: "https://example.test/pr/7"},
+	}}
+	html, err = HTML(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "https://example.test/pr/7") {
+		t.Error("hearsay must not outrank the fetched pull request")
+	}
+	if !strings.Contains(html, "https://example.test/pr/42") {
+		t.Error("the observed pull request must still render")
+	}
+}
+
+// Pre-push there is no --pr target, so the agent's account is all there is.
+func TestAgentPullRequestUsedWhenRedlineHasNone(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+		Review: &packet.Review{Summary: "s", Intent: &packet.Intent{
+			PR: &packet.IntentPR{Number: 7, Title: "Seven", URL: "https://example.test/pr/7"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "PR #7") {
+		t.Error("with no fetched PR the agent's account should show")
+	}
+}
+
+// The sidebar and the page must agree. A section that gains or loses a heading
+// without its nav entry moving too leaves a dead link or an unreachable section,
+// and neither is visible from reading either file alone.
+func TestNavMatchesTheSectionsOnThePage(t *testing.T) {
+	full := HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 1,
+				Diff: &cover.Result{Profile: "coverage.out", Lines: 4, Covered: 2, Percent: 50}},
+			Findings: []findings.Finding{
+				{File: "a.go", Rule: "review", Message: "judged", Severity: findings.SeverityWarning,
+					Source: findings.SourceLLM, Reviewer: "claude"},
+				{File: "b.sql", Rule: "obs", Message: "observed", Severity: findings.SeverityError,
+					Source: findings.SourceDeterministic},
+			},
+			Confirmations: []findings.Confirmation{{Rule: "r", Message: "held"}},
+			Unknowns:      []findings.Unknown{{Substrate: "s", Message: "unknown"}},
+		},
+		Packet: &packet.Packet{
+			UITouched: true,
+			Files:     []packet.FileChange{{Path: "a.go", Areas: []string{"code"}, Diff: "@@ -1 +1 @@\n+x\n"}},
+			Threads:   []packet.Thread{{From: "a", To: "b"}},
+		},
+		Review: &packet.Review{
+			Summary:       "s",
+			APIChanges:    []packet.Highlight{{Title: "api moved"}},
+			SchemaChanges: []packet.Highlight{{Title: "schema moved"}},
+		},
+		Screenshots: []Screenshot{{Route: "/x", After: "data:image/png;base64,AAA"}},
+	}
+	// The pre-push minimum: no highlights, no threads, no captures, no profile.
+	bare := HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0}},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+	}
+
+	navHref := regexp.MustCompile(`data-nav="([^"]+)"`)
+	headID := regexp.MustCompile(`<h2 id="([^"]+)"`)
+
+	for name, in := range map[string]HTMLInput{"full": full, "bare": bare} {
+		html, err := HTML(in)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		var nav, heads []string
+		for _, m := range navHref.FindAllStringSubmatch(html, -1) {
+			nav = append(nav, m[1])
+		}
+		for _, m := range headID.FindAllStringSubmatch(html, -1) {
+			heads = append(heads, m[1])
+		}
+		if len(nav) == 0 {
+			t.Fatalf("%s: no sidebar rendered", name)
+		}
+		if strings.Join(nav, ",") != strings.Join(heads, ",") {
+			t.Errorf("%s: sidebar and sections disagree\n nav: %v\nheads: %v", name, nav, heads)
+		}
+	}
+}
+
+// The sidebar should show where the gaps are without scrolling to find them.
+func TestNavMarksSectionsThatAreGaps(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		// UI moved with nothing captured, and no coverage profile.
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0},
+			Unknowns: []findings.Unknown{{Substrate: "s", Message: "u"}},
+		},
+		Packet: &packet.Packet{
+			UITouched: true,
+			Files:     []packet.FileChange{{Path: "web/src/App.tsx", Areas: []string{"ui"}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"interface", "coverage", "unknowns"} {
+		re := regexp.MustCompile(`data-nav="` + id + `"[^>]*class="gap"`)
+		if !re.MatchString(html) {
+			t.Errorf("%s should be marked as a gap in the sidebar", id)
+		}
+	}
+	// A section with a real result is not a gap.
+	if regexp.MustCompile(`data-nav="change"[^>]*class="gap"`).MatchString(html) {
+		t.Error("the summary section is not a gap")
+	}
+}
+
+func TestNavIsSelfContainedAndSticky(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, `<nav class="nav" aria-label="Sections">`) {
+		t.Error("the sidebar should be a labelled nav landmark")
+	}
+	if !strings.Contains(html, ".nav{position:sticky") {
+		t.Error("the sidebar must stay put while the page scrolls — that is the whole point")
+	}
+	// Rendered server-side: the map must exist before any script runs.
+	navAt := strings.Index(html, `data-nav=`)
+	scriptAt := strings.Index(html, "<script>")
+	if navAt < 0 || navAt > scriptAt {
+		t.Error("the sidebar must be in the markup, not built by script")
+	}
+}
+
+// Comments are written against one tree. A payload that does not name it can be
+// applied to code the reviewer never saw.
+func TestCommentPayloadNamesTheChangeItBelongsTo(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{BaseSHA: "abcdef0123456789", Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{
+			Target: &target.Target{Kind: target.KindBranch, Head: "ffffffffffffffff", Label: "feat/x"},
+			Files:  []packet.FileChange{{Path: "a.go", Diff: "@@ -1 +1 @@\n-a\n+b\n", Areas: []string{"code"}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, `data-target=`) {
+		t.Error("the page must carry the target so the copied payload can name it")
+	}
+	if !strings.Contains(html, "redlineReviewComments") {
+		t.Error("the payload needs a key an agent can recognise")
+	}
+	for _, want := range []string{"instruction:", "review:", "target:", "comments:"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("payload missing %q", want)
+		}
+	}
+	if !strings.Contains(html, "Address every one") {
+		t.Error("the payload should tell the agent what to do with it")
+	}
+}
+
+// The UI screens are the one artifact no other tool hands you, so they sit in
+// pass position and their absence is stated in proportion to whether the
+// interface actually moved.
+func TestInterfaceSectionIsInPassPositionAndHonestWhenEmpty(t *testing.T) {
+	uiChange := &packet.Packet{
+		UITouched: true,
+		Files:     []packet.FileChange{{Path: "web/src/App.tsx", Areas: []string{"ui"}}},
+	}
+	rep := &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0}}
+
+	html, err := HTML(HTMLInput{Report: rep, Packet: uiChange})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "touches the interface and no routes were captured") {
+		t.Error("a UI change with no captures must read as a gap")
+	}
+	// Loud, not a footnote.
+	if !strings.Contains(html, `<div class="banner">This change touches the interface`) {
+		t.Error("that gap belongs in a banner, not italic small print")
+	}
+
+	noUI := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+	html, err = HTML(HTMLInput{Report: rep, Packet: noUI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "touches the interface and no routes were captured") {
+		t.Error("a change with no UI files must not claim a UI gap")
+	}
+	if !strings.Contains(html, "absence of looking") {
+		t.Error("even then, absence must not read as a finding of no change")
+	}
+
+	// With captures, the section leads and says whose walk it was.
+	html, err = HTML(HTMLInput{
+		Report:      rep,
+		Packet:      uiChange,
+		Screenshots: []Screenshot{{Route: "/login", After: "data:image/png;base64,AAA", Caption: "form"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "Walked by the reviewing agent") {
+		t.Error("agent captures must be labelled as the agent's work")
+	}
+	if strings.Index(html, `id="interface"`) > strings.Index(html, `id="findings"`) {
+		t.Error("the interface section belongs before the findings")
+	}
+}
+
+func TestFindingsSplitByWhoIsAccountable(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Findings: []findings.Finding{
+				{File: "a.go", Rule: "review", Message: "judged thing",
+					Severity: findings.SeverityWarning, Source: findings.SourceLLM, Reviewer: "claude"},
+				{File: "b.sql", Rule: "migration-modified", Message: "observed thing",
+					Severity: findings.SeverityError, Source: findings.SourceDeterministic},
+			},
+		},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "What the reviewers found") || !strings.Contains(html, "What Redline observed") {
+		t.Fatal("judged and observed findings need their own sections")
+	}
+	// Anchor on the heading, not its label: the label also appears in the
+	// sidebar, above everything.
+	judged := strings.Index(html, "judged thing")
+	observedHead := strings.Index(html, `<h2 id="observed"`)
+	if judged > observedHead {
+		t.Error("a judged finding must render in the reviewers' section")
+	}
+	if !strings.Contains(html, "judged by claude") {
+		t.Error("reviewer provenance must survive the split")
+	}
+}
+
+// Two reviewers are shown side by side under their own names. Nothing decides
+// that two differently worded findings are the same defect: that guess, when
+// wrong, deletes a finding the reviewer never learns existed.
+func TestTwoReviewersStaySeparate(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Findings: []findings.Finding{
+				{File: "a.go", Line: 4, Rule: "review", Message: "claude says the retry is unbounded",
+					Severity: findings.SeverityWarning, Source: findings.SourceLLM, Reviewer: "claude"},
+				{File: "a.go", Line: 4, Rule: "review", Message: "cursor says this retries forever",
+					Severity: findings.SeverityWarning, Source: findings.SourceLLM, Reviewer: "cursor"},
+				{File: "a.go", Rule: "review", Message: "the session agent's own note",
+					Severity: findings.SeverityInfo, Source: findings.SourceLLM},
+			},
+		},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Both accounts survive, even though they describe one line.
+	for _, want := range []string{"claude says the retry is unbounded", "cursor says this retries forever"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %q — reviewer findings must never be merged away", want)
+		}
+	}
+	for _, want := range []string{`<h3 class="reviewer">claude`, `<h3 class="reviewer">cursor`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing group heading %q", want)
+		}
+	}
+	// No agreement or consensus badge: that claim cannot be made honestly.
+	for _, forbidden := range []string{"agree", "consensus", "both reviewers"} {
+		if strings.Contains(strings.ToLower(html), forbidden) {
+			t.Errorf("page claims %q, which requires guessing two findings are one defect", forbidden)
+		}
+	}
+	// The driving agent is a reviewer too, named plainly and ordered last.
+	if !strings.Contains(html, "the driving agent") {
+		t.Error("agent judgments need a group of their own")
+	}
+	if strings.Index(html, "the driving agent") < strings.Index(html, `<h3 class="reviewer">cursor`) {
+		t.Error("deliberately-run reviewers should come before the session agent's own notes")
+	}
+}
+
+func TestTestFilesAreCountedNotRendered(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{
+			{Path: "internal/run/run.go", Areas: []string{"code"}, Diff: "@@ -1 +1 @@\n-a\n+b\n"},
+			{Path: "internal/run/run_test.go", Areas: []string{"tests"},
+				Diff: "@@ -1 +1 @@\n-func TestOld\n+func TestNew\n"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "1 test file changed") {
+		t.Error("changed tests must be counted so the reviewer knows they moved")
+	}
+	// The path appears in the walkthrough; the diff body must not.
+	if !strings.Contains(html, "run_test.go") {
+		t.Error("the test file should still be listed")
+	}
+	if strings.Contains(html, "func TestNew") {
+		t.Error("test file contents must not render")
+	}
+	if !strings.Contains(html, "+b") {
+		t.Error("non-test diffs must still render")
+	}
+}
+
+// The number stands in for reading the tests, so its absence has to be as
+// legible as its presence. A missing profile rendering as 0% would read as
+// "nothing is tested", which is a much stronger claim than "nobody measured".
+func TestMissingCoverageProfileReadsAsUnknownNotZero(t *testing.T) {
+	rep := &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}}
+	pkt := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+
+	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "No coverage profile was found") {
+		t.Error("the page must say the number is unknown")
+	}
+	if !strings.Contains(html, "not the same as untested") {
+		t.Error("the page must distinguish unmeasured from untested")
+	}
+	if strings.Contains(html, "% of the") {
+		t.Error("a missing profile must never render as a percentage")
+	}
+	// The tile reads as unanswered rather than as a score.
+	if !strings.Contains(html, `<div class="n warning">?</div><div class="l">diff covered</div>`) {
+		t.Error("the coverage tile must show ? when nothing measured it")
+	}
+
+	md := Markdown(rep, nil, nil, pkt, nil)
+	if !strings.Contains(md, "No coverage profile was found") {
+		t.Error("markdown must say the same")
+	}
+}
+
+func TestCoverageNumberNamesItsProfileAndGaps(t *testing.T) {
+	rep := &findings.Report{
+		Coverage: findings.Coverage{
+			ChangedFiles: 1, ExaminedFiles: 1,
+			Diff: &cover.Result{
+				Profile: "coverage.out", Lines: 10, Covered: 7, Percent: 70,
+				Uncovered: []cover.FileGap{{Path: "internal/run/run.go", Lines: []int{12, 13, 14}}},
+			},
+		},
+	}
+	pkt := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+
+	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"70%", "coverage.out", "internal/run/run.go", "7 covered, 3 not"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("coverage section missing %q", want)
+		}
+	}
+
+	md := Markdown(rep, nil, nil, pkt, nil)
+	for _, want := range []string{"70%", "coverage.out", "internal/run/run.go"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("markdown coverage missing %q", want)
+		}
+	}
+}
+
+func TestStaleCoverageProfileIsCalledOut(t *testing.T) {
+	rep := &findings.Report{
+		Coverage: findings.Coverage{
+			ChangedFiles: 1, ExaminedFiles: 1,
+			Diff: &cover.Result{Profile: "coverage.out", Lines: 4, Covered: 4, Percent: 100, Stale: true},
+		},
+	}
+	pkt := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+
+	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 100% from a profile that predates the change is the most misleading
+	// number on the page, so it gets a banner rather than a footnote.
+	if !strings.Contains(html, `class="banner">The profile`) {
+		t.Error("a stale profile needs a banner beside its number")
+	}
+	if !strings.Contains(Markdown(rep, nil, nil, pkt, nil), "predates this change") {
+		t.Error("markdown must flag the stale profile too")
+	}
+}
+
+func TestGeneratedExclusionsAreNamedOnBothReports(t *testing.T) {
+	rep := &findings.Report{
+		Coverage: findings.Coverage{
+			ChangedFiles: 1, ExaminedFiles: 1,
+			Generated: []string{"internal/api/oas_schemas_gen.go", "go.sum"},
+		},
+	}
+	pkt := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+
+	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"2 generated files excluded", "oas_schemas_gen.go", "go.sum"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("HTML must name every exclusion; missing %q", want)
+		}
+	}
+
+	md := Markdown(rep, nil, nil, pkt, nil)
+	for _, want := range []string{"2 generated file(s) excluded", "oas_schemas_gen.go", "go.sum"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("markdown must name every exclusion; missing %q", want)
+		}
+	}
+}
+
+// The tiles block once closed .wrap early, so every section below it rendered
+// outside the page's max-width and padding.
+func TestPageWrapperClosesOnce(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "\n/div>") {
+		t.Error("stray /div> renders as literal text on the page")
+	}
+	if opens, closes := strings.Count(html, "<div"), strings.Count(html, "</div>"); opens != closes {
+		t.Errorf("unbalanced divs: %d opened, %d closed", opens, closes)
+	}
+}
+
 func TestMarkdownFileSection(t *testing.T) {
 	md := Markdown(&findings.Report{Coverage: findings.Coverage{ChangedFiles: 1}}, nil, nil,
 		&packet.Packet{Files: []packet.FileChange{{Path: "a.go", Status: "added", Added: 4}}},
@@ -163,6 +714,30 @@ func TestFileHeadersStillDetected(t *testing.T) {
 // The walk is the report's first screen. Rendering it as inert text while the
 // diffs sit inside a collapsed section below is what made the page look broken:
 // a reviewer clicks the file they care about and nothing happens.
+// The walk rows are buttons so clicking one opens the drawer. A button without
+// its chrome reset lays out at its intrinsic width, which turned the report's
+// primary list into a two-column jumble of centred text.
+func TestWalkRowsAreStyledAsRowsNotButtons(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 1}},
+		Packet: &packet.Packet{Files: []packet.FileChange{
+			{Path: "a.go", Areas: []string{"code"}},
+			{Path: "b.go", Areas: []string{"code"}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := html[:strings.Index(html, "</style>")]
+	rule := css[strings.Index(css, ".walk-row.jump{"):]
+	rule = rule[:strings.Index(rule, "}")]
+	for _, want := range []string{"display:block", "width:100%", "text-align:left"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".walk-row.jump must set %s, got %q", want, rule)
+		}
+	}
+}
+
 func TestWalkRowsAreControlsThatCarryFindingCounts(t *testing.T) {
 	rep := &findings.Report{
 		Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 0},

@@ -16,6 +16,14 @@ type Review struct {
 	// it lives in. Redline emits evidence; the agent supplies the sentence a
 	// reviewer reads first.
 	Summary string `json:"summary"`
+	// Intent is why the change exists: the ticket, the pull request, and
+	// whether this is the right thing built the right way. It is the first
+	// thing a reviewer reads and the last thing a diff can tell them.
+	Intent *Intent `json:"intent,omitempty"`
+	// Surfaces is one line per contract surface — what moved on the
+	// interface, the API, and the schema. The tile copy, not the evidence:
+	// APIChanges, SchemaChanges and Screenshots remain the drill-in.
+	Surfaces *Surfaces `json:"surfaces,omitempty"`
 	// Files is the walkthrough: one sentence per changed path, what that file
 	// does in this change. The report leads with this even when no pane ran.
 	Files []FileNote `json:"files,omitempty"`
@@ -30,6 +38,87 @@ type Review struct {
 	// Screenshots are routes the agent walked. They are not Redline's UI pane
 	// (checks 15–16); they are labelled as agent work when the report renders.
 	Screenshots []Shot `json:"screenshots,omitempty"`
+}
+
+// Intent is the orientation block. Every field is optional because the screen
+// opens at two moments: before a push, when there is no pull request and
+// possibly no ticket, and on an open pull request, when there is both.
+type Intent struct {
+	Ticket *IntentTicket `json:"ticket,omitempty"`
+	// PR is what the agent knows about the pull request. It is only shown when
+	// Redline was not pointed at one itself: a `--pr` run fetched the real
+	// thing, and preferring hearsay over it would contradict the target named
+	// at the top of the screen. A disagreement is not an error — failing an
+	// ingest over a mismatched title would be absurd.
+	PR  *IntentPR  `json:"pr,omitempty"`
+	Fit *IntentFit `json:"fit,omitempty"`
+}
+
+// IntentTicket is the ticket, as the agent read it. Redline fetches nothing:
+// it has no ticket-host client and no credentials, and a URL here is stored,
+// never requested.
+type IntentTicket struct {
+	ID    string `json:"id,omitempty"`
+	Title string `json:"title,omitempty"`
+	URL   string `json:"url,omitempty"`
+}
+
+// IntentPR identifies a pull request.
+type IntentPR struct {
+	Number int    `json:"number,omitempty"`
+	Title  string `json:"title,omitempty"`
+	URL    string `json:"url,omitempty"`
+}
+
+// IntentFit is the judgment a diff cannot carry: is this the thing the ticket
+// asked for, and is this the way to build it. Both are the agent's words and
+// are labelled as such.
+type IntentFit struct {
+	Thing string `json:"thing,omitempty"`
+	Way   string `json:"way,omitempty"`
+}
+
+// Surfaces is the three contract surfaces a reviewer checks, keyed rather than
+// mapped so a stray key cannot silently bind to nothing.
+type Surfaces struct {
+	Interface *Surface `json:"interface,omitempty"`
+	API       *Surface `json:"api,omitempty"`
+	Schema    *Surface `json:"schema,omitempty"`
+}
+
+// Surface is one line about one surface. Moved is explicit rather than
+// inferred from a non-empty line, so "did not move" can still carry a sentence
+// explaining what was looked at.
+type Surface struct {
+	Line  string `json:"line,omitempty"`
+	Moved bool   `json:"moved"`
+}
+
+func (i *Intent) empty() bool {
+	return i == nil || (i.Ticket.empty() && i.PR.empty() && i.Fit.empty())
+}
+
+func (t *IntentTicket) empty() bool {
+	return t == nil || (t.ID == "" && t.Title == "" && t.URL == "")
+}
+
+func (p *IntentPR) empty() bool {
+	return p == nil || (p.Number == 0 && p.Title == "" && p.URL == "")
+}
+
+func (f *IntentFit) empty() bool {
+	return f == nil || (f.Thing == "" && f.Way == "")
+}
+
+func (s *Surfaces) empty() bool {
+	return s == nil || (s.Interface.empty() && s.API.empty() && s.Schema.empty())
+}
+
+// empty is false for idle copy: a surface that did not move but says why is
+// worth keeping, while a bare `{"moved": false}` carries nothing and must not
+// overwrite a previous line.
+func (s *Surface) empty() bool {
+	return s == nil || (s.Line == "" && !s.Moved)
 }
 
 // Shot is one captured page from an agent UI walk.
@@ -115,6 +204,15 @@ func Merge(prev, next *Review) *Review {
 	out := *next
 	if out.Summary == "" {
 		out.Summary = prev.Summary
+	}
+	// Whole-object replace, the same rule Files follows. A supplied intent is
+	// the agent's current account and wins entirely; merging it key by key
+	// would leave a stale ticket attached to a new pull request.
+	if out.Intent.empty() {
+		out.Intent = prev.Intent
+	}
+	if out.Surfaces.empty() {
+		out.Surfaces = prev.Surfaces
 	}
 	if len(out.Files) == 0 {
 		out.Files = prev.Files
