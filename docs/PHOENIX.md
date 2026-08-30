@@ -6,9 +6,10 @@ rebuilder is a competent Go engineer (or an agent) with git on PATH. Read it
 together with the two files that are themselves part of the phoenix set and
 should be preserved verbatim:
 
-- `redline-design.md` — the why: premise, goals, consistency matrix, check
-  catalog, agent boundary, build order. Everything below implements a slice
-  of it.
+- `redline-design.md` — the why and the roadmap: the three jobs (postable
+  verified reviews, evidence panes, the review page), what the tool keeps
+  and what it dropped, the check backlog. Everything below implements a
+  slice of it.
 - `skills/redline/SKILL.md` — the agent-facing half of the product. The
   binary and the skill are one system; the skill's JSON shapes are contracts
   the binary must honour.
