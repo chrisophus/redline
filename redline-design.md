@@ -1,10 +1,7 @@
 # Redline — Design Doc
 
-Status: active. This version supersedes the earlier design (in git history),
-which framed Redline around a determinism thesis and a strict agent boundary.
-Redline is not a bet about how agentic review should work. It is a tool to
-make reviewing pull requests easier, built for use, and the design keeps
-exactly the machinery that serves that.
+Status: active. Supersedes the earlier design (in git history); the
+decisions reversed from it are listed under "Reversed decisions" below.
 
 ## What it is
 
@@ -52,8 +49,6 @@ never touches the code path the ticket names").
 
 ## What Redline provides
 
-The tool earns its keep with four mundane pieces:
-
 - **Target resolution and worktrees.** Point it at a PR number, a branch, a
   commit, a range, or nothing (the working tree, uncommitted work included)
   and get a checkout to review that never disturbs your own. Non-worktree
@@ -73,20 +68,18 @@ The tool earns its keep with four mundane pieces:
   comments exported as JSON for the agent. Served over loopback HTTP
   (`redline open`) because editor webviews reject `file://`.
 
-- **The honesty line.** Every report states what was checked and what was
-  not: `coverage{changedFiles, examinedFiles, unexamined[]}`, a banner when
+- **Coverage.** Every report states what was checked and what was not:
+  `coverage{changedFiles, examinedFiles, unexamined[]}`, a banner when
   coverage is hollow, and an explicit note when a check that exists in the
-  catalog did not run. This is cheap to keep and it is the audit trail job 1
-  is sold on. A report that silently covers none of a change reads exactly
-  like one that covers all of it, and the reader takes the flattering
-  reading.
+  catalog did not run. This is the audit trail job 1 depends on. A report
+  that silently covers none of a change reads exactly like one that covers
+  all of it, and the reader takes the flattering reading.
 
-One rule survives from the old design on pure utility grounds: **observed
-findings and model findings stay labelled** (`source: "deterministic" |
-"llm"`, plus `reviewer` when an external tool produced it). Not for purity —
-because when the report says "this migration was edited after it merged," a
-teammate should trust it without wondering whether a model made it up. One
-field, already built, zero ongoing cost.
+- **Provenance.** Observed findings and model findings are labelled
+  (`source: "deterministic" | "llm"`, plus `reviewer` when an external tool
+  produced it), so when the report says "this migration was edited after it
+  merged," a teammate can trust it without wondering whether a model made
+  it up.
 
 ## What Redline does not do
 
@@ -107,23 +100,18 @@ field, already built, zero ongoing cost.
   in Redline's surface. If a check someday needs a direct API path, that is
   a new decision, not a default.
 
-Superseded from the earlier design:
+## Reversed decisions
 
-- ~~**Never posts to GitHub.**~~ Job 1 requires posting. The rule becomes:
-  read-only by default; posting is a separate, explicit subcommand
-  (`redline post`), never a side effect of reviewing.
-- ~~**Strict agent boundary / packet as the product's spine.**~~ Agents may
-  explore the repo; Claude Code and Cursor are good at it, and a fixed
-  evidence bundle is a floor, not a cage. The packet remains as the data
-  source for the report's drill-ins and as a convenience for skill-driven
-  reviews — it is no longer load-bearing doctrine. Slightly different
-  reviews on re-run are acceptable; observed checks stay reproducible
-  because they are ordinary deterministic code, not because a boundary
-  enforces it.
-- ~~**Determinism as the organizing thesis.**~~ Kept where it is free
-  (labels, coverage honesty, stable fingerprints), dropped where it is
-  ceremony (packet curation guarantees, guidance-brief versioning arguments,
-  ingest target-matching as a design pillar).
+Changed from the earlier design:
+
+- **Posting to GitHub was forbidden; now it is job 1.** Read-only by
+  default; posting is a separate, explicit subcommand (`redline post`),
+  never a side effect of reviewing.
+- **Agents were confined to the packet; now they may explore the repo.**
+  Claude Code and Cursor are good at it. The packet remains as the data
+  source for the report's drill-ins and as input for skill-driven reviews.
+  Slightly different reviews on re-run are acceptable; observed checks stay
+  reproducible because they are ordinary deterministic code.
 
 ## Current state
 
@@ -239,7 +227,7 @@ without cloud credentials. Two properties are load-bearing for job 2: the
 Makefile is already a bring-up contract, and mock adapters make standing the
 stack up cheap enough to do twice per run.
 
-## Practical decisions kept, with reasons
+## Standing decisions
 
 - **Fresh throwaway container, every run.** A couple of seconds of startup
   buys a clean baseline and makes "no production data" true by construction.
