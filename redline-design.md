@@ -18,7 +18,7 @@ a GitHub PR — by combining two kinds of output in one report:
 Both land in one findings file and one report, labelled so a reader can tell
 which is which.
 
-## The three jobs, in build order
+## The three phases, in build order
 
 **1. Reviews on GitHub you can verify happened.** Replace Copilot code
 review: an agent reviews the PR and Redline posts the result to GitHub. The
@@ -41,10 +41,10 @@ way first — the report is a single self-contained HTML file, so CI can
 publish it as a build artifact per PR. A server only if that proves
 insufficient.
 
-Job 1 is days of work on top of what exists. Job 2 is the real investment.
-Job 3 is rendering over the same JSON and starves without job 2's evidence,
+Phase 1 is days of work on top of what exists. Phase 2 is the real investment.
+Phase 3 is rendering over the same JSON and starves without phase 2's evidence,
 so it goes last — except the Jira fetcher, which is small, independent, and
-improves job 1's reviews immediately ("the PR claims JIRA-123's fix but
+improves phase 1's reviews immediately ("the PR claims JIRA-123's fix but
 never touches the code path the ticket names").
 
 ## What Redline provides
@@ -71,7 +71,7 @@ never touches the code path the ticket names").
 - **Coverage.** Every report states what was checked and what was not:
   `coverage{changedFiles, examinedFiles, unexamined[]}`, a banner when
   coverage is hollow, and an explicit note when a check that exists in the
-  catalog did not run. This is the audit trail job 1 depends on. A report
+  catalog did not run. This is the audit trail phase 1 depends on. A report
   that silently covers none of a change reads exactly like one that covers
   all of it, and the reader takes the flattering reading.
 
@@ -104,7 +104,7 @@ never touches the code path the ticket names").
 
 Changed from the earlier design:
 
-- **Posting to GitHub was forbidden; now it is job 1.** Read-only by
+- **Posting to GitHub was forbidden; now it is phase 1.** Read-only by
   default; posting is a separate, explicit subcommand (`redline post`),
   never a side effect of reviewing.
 - **Agents were confined to the packet; now they may explore the repo.**
@@ -130,26 +130,46 @@ Built and working today:
 - The report: markdown + self-contained HTML with diffs, comments, viewed
   state, screenshots; loopback server with identity checks.
 
-## Job 1: post to GitHub (next)
+## Phase 1: post to GitHub (next)
 
-`redline post --pr N` takes the current session's findings and posts one PR
-review via `gh api`:
+Replace Copilot review: one command reviews a teammate's PR with an agent
+and posts the result to GitHub, with proof of what was and wasn't checked.
+The review pipeline already works (`redline review --pr N --with claude`
+checks the PR out, runs the agent, merges labelled findings); phase 1 is
+the three pieces on top of it.
+
+**1. `redline post --pr N`** takes the current session's findings and posts
+one PR review via `gh api`:
 
 - Line-anchored comments for findings that carry file:line; the rest in the
   review body.
-- The body leads with the audit line (who reviewed, what was checked, what
-  was not) and links the full report (CI artifact URL when available).
 - Severity maps to nothing gating — the review is COMMENT, not
   REQUEST_CHANGES, unless asked.
 - Idempotent per (PR, head SHA): re-posting updates rather than duplicates.
-- Posting is never implicit. `review`/`run` stay read-only.
+  The fingerprint already identifies a finding across runs and is the key.
+- Posting is never implicit. `review`/`run` stay read-only, and `post`
+  refuses when the session's target is not the PR named.
 
-Alongside it, the Jira fetcher: given a ticket key (from the branch name, PR
-title, or a flag), pull the ticket summary/description into the review input
+**2. The audit line**, leading the posted review body: who reviewed, what
+was checked, what was not ("reviewed by claude; lint delta, diff coverage,
+and UI not checked"), and a link to the full report (CI artifact URL when
+available). The data already exists in `findings.json` (coverage,
+substrates); this is rendering it where a reader will see it. Decide early
+whether `post` also updates a check-run — that puts "reviewed" in the merge
+box rather than buried in comments, and it is the cheapest form of the
+verification phase 1 exists for.
+
+**3. The Jira fetcher**: resolve a ticket key from the branch name, the PR
+title, or a flag; pull the ticket summary/description into the review input
 and the report header as **intent**, so both the agent and the reader can
-compare claim against change.
+compare claim against change from day one.
 
-## Job 2: the evidence panes
+Done means: a teammate's PR goes through one command and a review appears
+on GitHub that a reader can act on and can verify the scope of. Everything
+else — including the ignored-lint triage, diff coverage, and the formalized
+agent UI walk below — is phase 2.
+
+## Phase 2: the evidence panes
 
 The backlog, roughly cheapest first. Each pane emits into the same findings
 file and renders a section of the report; a pane that applies but cannot run
@@ -188,7 +208,7 @@ reports "did not run" loudly.
 - Down-migration round trip; rows violating newly added constraints (seed
   data plus a small generated adversarial set — the NULL going NOT NULL, the
   65-char string into the narrowed column).
-- These sample rows are also job 3's "show me the data" section.
+- These sample rows are also phase 3's "show me the data" section.
 
 **Agent UI walk (partly exists; make it first-class):**
 - The skill already sends the agent through the changed journeys with
@@ -227,14 +247,14 @@ seed, migrate; routes; normalizers) gets designed when the first runtime
 pane is built, from what it actually needs — not before. The checks built so
 far run off convention and flags, and that has held.
 
-## Job 3: the review page
+## Phase 3: the review page
 
 The existing `report.html` is the seed. It grows:
 
 - **Intent vs. actual**, at the top: the Jira ticket and PR description on
   one side, the agent's account of what the change actually does on the
   other, with mismatches called out.
-- Screenshots and database sample rows from job 2's panes.
+- Screenshots and database sample rows from phase 2's panes.
 - Lint/coverage/perf status at a glance.
 - The existing affordances kept: file walkthrough with findings-per-file,
   viewed checkboxes, click-a-line comments handed back to the agent.
@@ -250,7 +270,7 @@ Redline is designed against a specific project shape, which breaks ties: Go
 service, TypeScript/React UI, Postgres, golang-migrate, sqlc, ogen from an
 OpenAPI 3 spec, a Makefile as the de-facto interface (`build`, `run`,
 `seed`, `test`, `generate`), and a mock/offline mode so the stack starts
-without cloud credentials. Two properties are load-bearing for job 2: the
+without cloud credentials. Two properties are load-bearing for phase 2: the
 Makefile is already a bring-up contract, and mock adapters make standing the
 stack up cheap enough to do twice per run.
 
@@ -277,11 +297,9 @@ stack up cheap enough to do twice per run.
 
 ## Open questions
 
-- How far artifact-hosted reports get before job 3 needs real comment
+- How far artifact-hosted reports get before phase 3 needs real comment
   persistence (and therefore a server).
 - Where the Jira credential lives (likely: the `jira` CLI or an env token,
   same posture as `gh` — Redline never stores it).
-- Whether `redline post` should also update a check-run so "reviewed" is
-  visible in the merge box, not just in a comment.
 - Base revision for re-review: merge-base is right for a first pass; "since
   the last Redline run" may be better when iterating.
