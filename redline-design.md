@@ -158,8 +158,21 @@ reports "did not run" loudly.
 **No runtime needed:**
 - Lint delta — run the repo's linters at base and head, set-diff, report
   only what this change introduces.
-- Diff coverage — map the test cover profile onto added lines: which new
-  lines no test executes. Per-change, not the repo-wide number.
+- Ignored-lint triage — collect the lint output nobody looks at: info-level
+  findings, rules the config downgrades, baseline-suppressed findings, all
+  scoped to changed lines, plus any suppression directives the diff itself
+  adds (`//nolint`, `eslint-disable`). The agent judges each — worth fixing
+  here, defensible, or noise — and promotes the few that matter as labelled
+  model findings citing the lint rule. Collection is deterministic;
+  judgment is the agent's. A suppression added by the diff is the
+  high-signal case: the author explicitly told the linter to shut up, and
+  someone should check whether that was justified.
+- Diff coverage — run the tests with a cover profile and map it onto the
+  lines this change adds or modifies: which new code no test executes.
+  Per-change, not the repo-wide number, which can look healthy while an
+  entire new function ships untested. Findings name the uncovered
+  behaviour and anchor to file:line; the per-file covered/uncovered split
+  renders in the walkthrough.
 - OpenAPI breaking-change diff via `libopenapi` what-changed; spec lint
   (vacuum) filtered to newly violated rules.
 - sqlc generation staleness.
@@ -176,6 +189,20 @@ reports "did not run" loudly.
   data plus a small generated adversarial set — the NULL going NOT NULL, the
   65-char string into the narrowed column).
 - These sample rows are also job 3's "show me the data" section.
+
+**Agent UI walk (partly exists; make it first-class):**
+- The skill already sends the agent through the changed journeys with
+  agent-browser when the diff touches UI: open, interact, screenshot,
+  check console errors, judge correctness and experience — diff-scoped,
+  never a whole-app crawl. Screenshots ingest into the report today.
+- The missing half is setup: Redline should stand the app up (or find the
+  running dev server) and hand the agent the URL and the routes the diff
+  touches, so every walk starts from the same place instead of the agent
+  re-deriving bring-up each time.
+- The walk assesses one revision and is labelled as the agent's work. It
+  does not replace the deterministic captures below, which compare two
+  revisions; it ships first because it needs no browser infrastructure of
+  Redline's own.
 
 **UI (pinned Chrome for Testing, driven in-process via go-rod):**
 - Before/after screenshots per changed route, side by side. No perceptual
