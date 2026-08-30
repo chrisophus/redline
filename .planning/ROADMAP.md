@@ -6,7 +6,7 @@ Grow the existing review loop — packet, ingest, loopback HTML — into the loc
 
 ## Phases
 
-- [ ] **Phase 1: Briefing contract** - Ingest carries intent and surface lines; merge rules match `summary`
+- [x] **Phase 1: Briefing contract** - Ingest carries intent and surface lines; merge rules match `summary`
 - [ ] **Phase 2: Briefing page** - Opening split (001-B) and drawer (002-B) in `report.html`
 - [ ] **Phase 3: Fix queue** - Queue JSON, copyable brief, skills fill the new fields
 
@@ -26,8 +26,8 @@ Grow the existing review loop — packet, ingest, loopback HTML — into the loc
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Persist intent and surfaces through parse and omit-keep merge
-- [ ] 01-02-PLAN.md — Fail closed on bad types; empty objects and omitted links keep prior values
+- [x] 01-01-PLAN.md — Persist intent and surfaces through parse and omit-keep merge
+- [x] 01-02-PLAN.md — Fail closed on bad types; empty objects and omitted links keep prior values
 
 ### Phase 2: Briefing page
 **Goal:** Opening the report orients in about ten seconds; drill is a drawer, not a new page.
@@ -71,6 +71,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Briefing contract | 0/2 | Not started | - |
+| 1. Briefing contract | 2/2 | Complete | 2026-08-30 |
 | 2. Briefing page | 0/3 | Not started | - |
 | 3. Fix queue | 0/2 | Not started | - |

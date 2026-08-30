@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 current_phase: 1
 current_phase_name: Briefing contract
-status: planning
-stopped_at: Phase 1 plans written
-last_updated: "2026-08-29T20:00:00.000Z"
-last_activity: 2026-08-29
-last_activity_desc: Planned Phase 1 briefing contract (01-01 persist/merge, 01-02 parse edges)
+status: complete
+stopped_at: Phase 1 complete
+last_updated: "2026-08-30T00:00:00.000Z"
+last_activity: 2026-08-30
+last_activity_desc: Built Phase 1 briefing contract (01-01 persist/merge, 01-02 parse edges) — all packet tests green
 state_head: d5abb63
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 0
-  percent: 0
+  completed_plans: 2
+  percent: 33
 ---
 
 # Project State
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-08-29)
 
 ## Current Position
 
-Phase: 1 of 3 (Briefing contract)
-Plan: 0 of 2 in current phase
-Status: Ready to execute
-Last activity: 2026-08-29 — Phase 1 plans written (01-01-PLAN.md, 01-02-PLAN.md)
+Phase: 1 of 3 (Briefing contract) — complete
+Plan: 2 of 2 in current phase
+Status: Phase 1 complete; ready to start Phase 2 (Briefing page)
+Last activity: 2026-08-30 — Phase 1 built (01-01 persist/merge, 01-02 parse edges); go test ./... green
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -84,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-29T19:33:12.990Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-briefing-contract/01-01-PLAN.md
+Last session: 2026-08-30
+Stopped at: Phase 1 complete (contract shipped, tests green)
+Resume file: .planning/phases/02-briefing-page/ (Phase 2 not yet planned)

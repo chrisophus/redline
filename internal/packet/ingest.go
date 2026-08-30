@@ -14,8 +14,17 @@ import (
 type Review struct {
 	// Summary is one or two sentences: what this change does, in the domain
 	// it lives in. Redline emits evidence; the agent supplies the sentence a
-	// reviewer reads first.
+	// reviewer reads first. It stays the briefing headline; Intent and
+	// Surfaces frame it, they do not replace it.
 	Summary string `json:"summary"`
+	// Intent is why the change exists: the pull request and ticket the
+	// briefing can open. Both links are optional and agent-supplied; Redline
+	// never fetches them.
+	Intent *Intent `json:"intent,omitempty"`
+	// Surfaces is one line per product surface — Interface, API, Schema — the
+	// tiles the opening briefing reads across. A surface may carry a quiet
+	// line and report Moved false; that is "did not move," not absent.
+	Surfaces *Surfaces `json:"surfaces,omitempty"`
 	// Files is the walkthrough: one sentence per changed path, what that file
 	// does in this change. The report leads with this even when no pane ran.
 	Files []FileNote `json:"files,omitempty"`
@@ -52,6 +61,48 @@ type Highlight struct {
 	Detail   string `json:"detail,omitempty"`
 	File     string `json:"file,omitempty"`
 	Breaking bool   `json:"breaking,omitempty"`
+}
+
+// Intent is the agent's framing for why the change exists: the pull request
+// and the ticket a reviewer can open. Both are optional. The PR here is an
+// overlay on any --pr target Redline already resolved; Redline stores these
+// links and never fetches them.
+type Intent struct {
+	PR     *IntentPR     `json:"pr,omitempty"`
+	Ticket *IntentTicket `json:"ticket,omitempty"`
+}
+
+// IntentPR is the pull request the change lives on. Number matches
+// target.PullRequest.Number; all fields are optional so a bare link parses.
+type IntentPR struct {
+	Number int    `json:"number,omitempty"`
+	Title  string `json:"title,omitempty"`
+	URL    string `json:"url,omitempty"`
+}
+
+// IntentTicket is the tracker item the change answers to. ID is a string
+// (e.g. REL-24), not a number; Redline does not fetch the ticket host.
+type IntentTicket struct {
+	ID    string `json:"id,omitempty"`
+	Title string `json:"title,omitempty"`
+	URL   string `json:"url,omitempty"`
+}
+
+// Surfaces carries one line per product surface the briefing reads across.
+// The keys are fixed — Interface, API, Schema — so a surface cannot bind to
+// an unexpected name.
+type Surfaces struct {
+	Interface *Surface `json:"interface,omitempty"`
+	API       *Surface `json:"api,omitempty"`
+	Schema    *Surface `json:"schema,omitempty"`
+}
+
+// Surface is one tile's one-liner. Moved carries no omitempty: a surface that
+// did not move reports Moved false explicitly, and a quiet Line beside it is
+// still real content, not an absence.
+type Surface struct {
+	Line  string `json:"line,omitempty"`
+	Moved bool   `json:"moved"`
 }
 
 // Judgment is one agent-authored finding, before it becomes a Finding.
@@ -131,7 +182,38 @@ func Merge(prev, next *Review) *Review {
 	if len(out.Unknowns) == 0 {
 		out.Unknowns = prev.Unknowns
 	}
+	if intentEmpty(out.Intent) {
+		out.Intent = prev.Intent
+	}
+	if surfacesEmpty(out.Surfaces) {
+		out.Surfaces = prev.Surfaces
+	}
 	return &out
+}
+
+// intentEmpty reports whether an Intent carries no briefing link, so an
+// omitted or empty intent keeps the previous one rather than blanking it.
+func intentEmpty(i *Intent) bool {
+	return i == nil || (intentPREmpty(i.PR) && intentTicketEmpty(i.Ticket))
+}
+
+func intentPREmpty(pr *IntentPR) bool {
+	return pr == nil || (pr.Number == 0 && pr.Title == "" && pr.URL == "")
+}
+
+func intentTicketEmpty(t *IntentTicket) bool {
+	return t == nil || (t.ID == "" && t.Title == "" && t.URL == "")
+}
+
+// surfacesEmpty reports whether a Surfaces carries no tile content. A surface
+// with a quiet Line, or one reporting Moved true, is not empty; only an
+// absent or Moved-false-with-no-line surface counts as empty.
+func surfacesEmpty(s *Surfaces) bool {
+	return s == nil || (surfaceEmpty(s.Interface) && surfaceEmpty(s.API) && surfaceEmpty(s.Schema))
+}
+
+func surfaceEmpty(s *Surface) bool {
+	return s == nil || (s.Line == "" && !s.Moved)
 }
 
 // Apply merges an agent's review into a report: LLM findings and unknowns
