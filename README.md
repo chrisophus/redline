@@ -7,11 +7,15 @@ ticket, the UI screens, the `openapi.yaml` diff, the migrations, a coverage
 number, and a skim of what the reviewers found — and suppresses what they skip.
 Generated code, test bodies, and lint CI already gates never appear.
 
+Reviewing is read-only; posting is not, and never happens on its own. `redline
+post` is the one command that writes to GitHub: it submits the session's
+findings as one pull request review, led by a preamble that says what was and
+was not checked. `run`, `review`, and `ingest` never post.
+
 It is pre-push and non-gating, and it works at both moments: on your own
 uncommitted work, and on an open pull request. It composes no judgment of its
 own — the prose and the judgment come from the agent driving it or from a
-reviewer you asked it to run. It never posts to GitHub; `--pr` fetches via `gh`
-(read-only).
+reviewer you asked it to run. `--pr` fetches via `gh` (read-only).
 
 See `redline-design.md` for the design, and `.planning/PROJECT.md` for what the
 screen is for.
@@ -74,9 +78,21 @@ go build ./cmd/redline
 ./redline review                  # packet of facts for the agent to judge
 ./redline review --with claude    # run Claude Code's /code-review and merge it
 echo '<review JSON>' | ./redline ingest   # merge judgments; open the HTML report
+./redline post --pr 42            # post the session's findings as one PR review
+./redline post --pr 42 --dry-run  # print the review payload instead of posting
 ./redline open                    # serve and open http://127.0.0.1:8765/report.html
 ./redline serve --stop            # stop the server for this .redline
 ```
+
+`post` submits one review (event `COMMENT` — it reports, it never requests
+changes or approves) against the PR the session reviewed. Findings that carry a
+`file:line` become line-anchored comments; the rest, and the coverage preamble,
+go in the review body. It refuses unless the loaded session is that same PR.
+Posting is idempotent per `(PR, head SHA)`: each finding carries a hidden
+fingerprint marker, so a re-post never duplicates a comment, and a re-run with
+no new findings on an already-reviewed commit posts nothing. `gh` supplies the
+credentials; Redline never handles a token. `--report-url` links the full
+report (e.g. a CI artifact) from the review body.
 
 When the packet's `uiTouched` is true, the skill walks the changed UI with
 `agent-browser` and ingest embeds those screenshots in the HTML Interface
