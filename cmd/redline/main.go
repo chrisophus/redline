@@ -7,9 +7,15 @@
 // agent's judgments back, merges them into the report labelled as agent-
 // authored, and opens the result.
 //
-// Redline composes no judgment of its own and never posts to GitHub. It will
-// execute a reviewer's own review command when asked to (--with), and label
-// what comes back with that reviewer's name.
+// `redline post` is the one command that writes to GitHub: it submits the
+// session's findings as one pull request review. It is always explicit — the
+// other commands stay read-only — and it makes no model calls. Redline still
+// composes no judgment of its own; it posts what the agent and its own
+// deterministic panes found, with a preamble stating what was and was not
+// checked.
+//
+// It will execute a reviewer's own review command when asked to (--with), and
+// label what comes back with that reviewer's name.
 package main
 
 import (
@@ -34,6 +40,7 @@ usage:
   redline run     [flags]   observe the change and report (the entry point)
   redline review  [flags]   emit the review packet for the agent to judge
   redline ingest  [flags]   merge the agent's review back in and open the report
+  redline post    [flags]   post the session's findings as one PR review (--pr)
   redline open    [flags]   serve and open the last report
   redline serve   [flags]   serve .redline over http (blocks; --stop ends it)
 
@@ -60,6 +67,8 @@ flags:
                     different vendors is a second opinion, and each is
                     reported under its own name. --with none turns them all
                     off. Adapters are configurable in <out>/reviewers.json
+  --report-url URL  with post: link to the full report in the review body
+  --dry-run         with post: print the review payload instead of posting
   --stop            with serve: stop the server running for --out
 `
 
@@ -73,7 +82,8 @@ func main() {
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
 	with                                                              reviewerList
-	open, noOpen, stop                                                bool
+	reportURL                                                         string
+	open, noOpen, stop, dryRun                                        bool
 	port                                                              int
 }
 
@@ -114,6 +124,8 @@ func runMain(args []string) error {
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
 	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")
 	fs.Var(&o.with, "with", "run an external reviewer; repeat or comma-separate for several (claude, cursor, none)")
+	fs.StringVar(&o.reportURL, "report-url", "", "with post: link to the full report in the review body (e.g. a CI artifact URL)")
+	fs.BoolVar(&o.dryRun, "dry-run", false, "with post: print the review payload as JSON instead of posting")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -126,6 +138,8 @@ func runMain(args []string) error {
 		return cmdReview(o)
 	case "ingest":
 		return cmdIngest(o)
+	case "post":
+		return cmdPost(o)
 	case "open":
 		return announce(o.out, o.port, true)
 	case "serve":
