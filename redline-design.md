@@ -185,6 +185,11 @@ Still open on this phase:
   review input and the report header as intent, so the agent and the reader
   can compare claim against change from day one. Not built.
 
+`--profile` on `post` is shipped: a YAML file names the hidden markers a
+merge gate already understands, treats error and warning as fail, and still
+posts COMMENT. Redline does not approve. A consuming repo (Marketplace
+`/review-bot`) owns the block.
+
 Done means: a teammate's PR goes through one command and a review appears
 on GitHub that a reader can act on and can verify the scope of. That path
 works today; the check-run and Jira pieces sharpen it. Everything else,

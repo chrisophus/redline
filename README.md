@@ -79,6 +79,7 @@ go build ./cmd/redline
 ./redline review --with claude    # run Claude Code's /code-review and merge it
 echo '<review JSON>' | ./redline ingest   # merge judgments; open the HTML report
 ./redline post --pr 42            # post the session's findings as one PR review
+./redline post --pr 42 --profile .github/redline-review.yml
 ./redline post --pr 42 --dry-run  # print the review payload instead of posting
 ./redline open                    # serve and open http://127.0.0.1:8765/report.html
 ./redline serve --stop            # stop the server for this .redline
@@ -98,6 +99,14 @@ nothing, while a new push still gets comments for findings that are still
 live. `gh` supplies the
 credentials; Redline never handles a token. `--report-url` links the full
 report (e.g. a CI artifact) from the review body.
+
+`--profile PATH` is how a repo's merge gate reads the review. The YAML names
+the hidden markers, which severities fail (default: error and warning), and
+whether posting is author-only and must match current PR HEAD. `post` still
+uses event `COMMENT` and never approves. A `pass` review with no blocking
+findings still posts, so a later HEAD can clear a previous `fail`. Info
+findings stay visible but do not get the gate's finding marker. See
+`redline-review.yml.example`.
 
 When the packet's `uiTouched` is true, the skill walks the changed UI with
 `agent-browser` and ingest embeds those screenshots in the HTML Interface

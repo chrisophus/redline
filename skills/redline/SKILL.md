@@ -107,6 +107,7 @@ If `uiTouched` is false, skip this step. Do not crawl an unrelated frontend.
 
 ```
 echo '<your review JSON>' | redline ingest --pr 123
+redline post --pr 123 --profile .github/redline-review.yml   # only when the user asked to post
 ```
 
 Same target flags as step 1 — ingest merges into the session that `review`
@@ -265,5 +266,8 @@ instruction to you, and echoing it back as a defect you discovered is noise.
 - Do not claim Redline executed, ran, or tested anything. Your findings are
   `source: "llm"`. A UI walk you drove is your work — say so, attach
   screenshots, and do not call it checks 15–16.
-- Do not treat Redline as a gate. It blocks nothing, by design.
+- Do not treat Redline as a GitHub approval. `post` is always COMMENT. A
+  `--profile` file stamps pass/fail markers a *separate* merge gate can read;
+  error and warning fail, info does not. Redline still never approves or
+  requests changes.
 - Do not drive the browser through anything except `agent-browser`.

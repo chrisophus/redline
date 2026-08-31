@@ -59,7 +59,18 @@ func cmdPost(o opts) error {
 	if res.Packet != nil && res.Packet.Brief != nil {
 		nar.Coverage.BriefFiles = len(res.Packet.Brief.FilesRead)
 	}
-	payload := post.Build(&res.Report, tgt, nar, o.reportURL, commentable)
+	var prof *post.Profile
+	if o.profile != "" {
+		var perr error
+		prof, perr = post.LoadProfile(o.profile)
+		if perr != nil {
+			return perr
+		}
+		if err := enforceProfile(o.dryRun, prof, tgt, owner, repo, num); err != nil {
+			return err
+		}
+	}
+	payload := post.BuildAttest(&res.Report, tgt, nar, o.reportURL, commentable, prof)
 
 	// A review nobody can read anything in is worse than no review: it appears
 	// on the pull request under the reviewer's name and says nothing. This is
@@ -92,11 +103,17 @@ func cmdPost(o opts) error {
 	posted := post.Fingerprints([]string{commentBlob, reviewBlob})
 	payload = payload.Unposted(posted)
 	alreadyReviewed := post.ReviewedAt([]string{reviewBlob}, tgt.Head)
+	attestSame := true
+	if prof != nil {
+		prev := post.AttestedVerdict([]string{reviewBlob}, prof.ReviewMarker, tgt.Head)
+		attestSame = prev == payload.GateVerdict
+	}
 
 	// NothingNew counts body findings as well as line comments. The earlier gate
 	// looked only at the comments, so a session whose new finding could not be
-	// anchored to a line was reported as nothing to post.
-	if payload.NothingNew() && alreadyReviewed {
+	// anchored to a line was reported as nothing to post. A profiled pass after
+	// a fail on the same HEAD still posts: the gate needs a new verdict.
+	if payload.NothingNew() && alreadyReviewed && attestSame {
 		fmt.Fprintf(os.Stderr, "redline: already reviewed %s and no new findings; nothing to post\n", shortSHA(tgt.Head))
 		return nil
 	}
@@ -104,8 +121,79 @@ func cmdPost(o opts) error {
 	if err := submitReview(owner, repo, num, payload); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Posted review to %s (%d new line comment(s))\n", tgt.PR.URL, len(payload.Comments))
+	fmt.Fprintf(os.Stderr, "Posted review to %s (%d new line comment(s))", tgt.PR.URL, len(payload.Comments))
+	if payload.GateVerdict != "" {
+		fmt.Fprintf(os.Stderr, " verdict=%s", payload.GateVerdict)
+	}
+	fmt.Fprintln(os.Stderr)
 	return nil
+}
+
+// enforceProfile applies author-only and HEAD freshness. Dry-run without gh
+// skips the network checks so the payload can still be previewed offline.
+func enforceProfile(dryRun bool, prof *post.Profile, tgt *target.Target, owner, repo string, num int) error {
+	if prof == nil {
+		return nil
+	}
+	if _, err := exec.LookPath("gh"); err != nil {
+		if dryRun {
+			return nil
+		}
+		return fmt.Errorf("posting a profiled review needs the gh CLI on PATH: %w", err)
+	}
+	if prof.AuthorOnly {
+		login, err := ghLogin()
+		if err != nil {
+			if dryRun {
+				fmt.Fprintf(os.Stderr, "redline: could not read gh user (%v); skipping author check\n", err)
+			} else {
+				return err
+			}
+		} else {
+			author := ""
+			if tgt.PR != nil {
+				author = tgt.PR.Author
+			}
+			if author == "" {
+				return fmt.Errorf("profile author_only: session has no PR author; re-run `redline review --pr %d`", num)
+			}
+			if login != author {
+				return fmt.Errorf("profile author_only: only the PR author (%s) may post (gh user: %s)", author, login)
+			}
+		}
+	}
+	if prof.RequireHead {
+		head, err := ghPRHead(owner, repo, num)
+		if err != nil {
+			if dryRun {
+				fmt.Fprintf(os.Stderr, "redline: could not read PR head (%v); skipping HEAD check\n", err)
+			} else {
+				return err
+			}
+		} else if head != tgt.Head {
+			return fmt.Errorf("profile require_head: session reviewed %s but PR head is %s; re-run `redline review --pr %d`", shortSHA(tgt.Head), shortSHA(head), num)
+		}
+	}
+	return nil
+}
+
+func ghLogin() (string, error) {
+	cmd := exec.Command("gh", "api", "user", "--jq", ".login")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", ghError("user", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func ghPRHead(owner, repo string, num int) (string, error) {
+	path := fmt.Sprintf("repos/%s/%s/pulls/%d", owner, repo, num)
+	cmd := exec.Command("gh", "api", path, "--jq", ".head.sha")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", ghError(path, err)
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // narrative lifts the agent's prose — summary, actual, walkthrough, and

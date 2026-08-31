@@ -87,6 +87,8 @@ type Payload struct {
 	CommitID string
 	Body     string
 	Comments []Comment
+	// GateVerdict is pass or fail when a Profile was supplied, else empty.
+	GateVerdict string
 
 	// What the body was rendered from, kept so Unposted can drop already-posted
 	// body findings and render it again. A body finding is tracked the same way
@@ -94,6 +96,7 @@ type Payload struct {
 	nar          Narrative
 	reportURL    string
 	bodyFindings []findings.Finding
+	profile      *Profile
 }
 
 // NothingNew reports that this payload has no finding Redline has not already
@@ -166,6 +169,13 @@ type Narrative struct {
 // nil commentable means "do not filter" — used offline, where there is no diff
 // to check against and the payload is only being previewed.
 func Build(rep *findings.Report, tgt *target.Target, nar Narrative, reportURL string, commentable map[string]map[int]bool) Payload {
+	return BuildAttest(rep, tgt, nar, reportURL, commentable, nil)
+}
+
+// BuildAttest is Build with a merge-gate profile. A nil profile is identical
+// to Build. When set, the body and blocking comments carry the profile's
+// hidden markers, and GateVerdict is pass or fail.
+func BuildAttest(rep *findings.Report, tgt *target.Target, nar Narrative, reportURL string, commentable map[string]map[int]bool, prof *Profile) Payload {
 	head := ""
 	if tgt != nil {
 		head = tgt.Head
@@ -186,7 +196,7 @@ func Build(rep *findings.Report, tgt *target.Target, nar Narrative, reportURL st
 		nar.Coverage.ExaminedFiles = rep.Coverage.ExaminedFiles
 	}
 
-	p := Payload{CommitID: head}
+	p := Payload{CommitID: head, GateVerdict: GateVerdict(rep, prof), profile: prof}
 
 	var inBody []findings.Finding
 	findingsList := []findings.Finding(nil)
@@ -205,7 +215,7 @@ func Build(rep *findings.Report, tgt *target.Target, nar Narrative, reportURL st
 				Path:        f.File,
 				Line:        f.Line,
 				StartLine:   start,
-				Body:        commentBody(f, head),
+				Body:        commentBody(f, head, prof),
 				Fingerprint: f.Fingerprint,
 			})
 			continue
@@ -220,7 +230,7 @@ func Build(rep *findings.Report, tgt *target.Target, nar Narrative, reportURL st
 	p.nar = nar
 	p.reportURL = reportURL
 	p.bodyFindings = inBody
-	p.Body = buildBody(nar, head, reportURL, inBody)
+	p.Body = buildBody(nar, head, reportURL, inBody, prof, p.GateVerdict)
 	return p
 }
 
@@ -279,8 +289,12 @@ func lineCommentable(m map[string]map[int]bool, file string, line int) bool {
 
 // commentBody renders one finding as a line comment, ending in its hidden
 // fingerprint marker so a re-post against the same head can skip it.
-func commentBody(f findings.Finding, head string) string {
+func commentBody(f findings.Finding, head string, prof *Profile) string {
 	var b strings.Builder
+	if m := findingAttestMarker(prof, f.Severity); m != "" {
+		b.WriteString(m)
+		b.WriteByte('\n')
+	}
 	fmt.Fprintf(&b, "**%s** — %s", severityLabel(f.Severity), f.Message)
 	if f.Reviewer != "" {
 		fmt.Fprintf(&b, " _(%s", f.Reviewer)
@@ -322,7 +336,7 @@ func threadMarker(fingerprint string) string {
 // from the PR, what the change actually does, discrepancies (threaded to their
 // inline comments after POST), the walkthrough, unanchored findings, then a
 // coverage footer and the report link.
-func buildBody(nar Narrative, head, reportURL string, inBody []findings.Finding) string {
+func buildBody(nar Narrative, head, reportURL string, inBody []findings.Finding, prof *Profile, gateVerdict string) string {
 	var b strings.Builder
 	if v := strings.TrimSpace(nar.Verdict); v != "" {
 		fmt.Fprintf(&b, "### %s\n\n", v)
@@ -375,6 +389,9 @@ func buildBody(nar Narrative, head, reportURL string, inBody []findings.Finding)
 	if len(inBody) > 0 {
 		b.WriteString("### Findings not shown inline\n\n")
 		for _, f := range inBody {
+			if m := findingAttestMarker(prof, f.Severity); m != "" {
+				fmt.Fprintf(&b, "%s\n", m)
+			}
 			fmt.Fprintf(&b, "- **%s** — %s", severityLabel(f.Severity), f.Message)
 			if loc := bodyLocation(f); loc != "" {
 				fmt.Fprintf(&b, " _(%s)_", loc)
@@ -391,6 +408,10 @@ func buildBody(nar Narrative, head, reportURL string, inBody []findings.Finding)
 		fmt.Fprintf(&b, "[Full report](%s)\n\n", reportURL)
 	}
 	b.WriteString(marker(reviewMarkerPrefix + head))
+	if m := reviewAttestMarker(prof, gateVerdict, head); m != "" {
+		b.WriteByte('\n')
+		b.WriteString(m)
+	}
 	return b.String()
 }
 
@@ -490,7 +511,7 @@ func (p Payload) Unposted(posted map[string]bool) Payload {
 		}
 		out.bodyFindings = append(out.bodyFindings, f)
 	}
-	out.Body = buildBody(out.nar, out.CommitID, out.reportURL, out.bodyFindings)
+	out.Body = buildBody(out.nar, out.CommitID, out.reportURL, out.bodyFindings, out.profile, out.GateVerdict)
 	return out
 }
 
