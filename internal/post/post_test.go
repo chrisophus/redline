@@ -35,7 +35,7 @@ func prTarget() *target.Target {
 }
 
 func TestBuildSplitsLocatedFromBodyFindings(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), "https://ci/report.html")
+	p := Build(sampleReport(), prTarget(), "https://ci/report.html", nil)
 
 	if p.CommitID != "deadbeef" {
 		t.Fatalf("commit id should be the head SHA: %q", p.CommitID)
@@ -62,8 +62,59 @@ func TestBuildSplitsLocatedFromBodyFindings(t *testing.T) {
 	}
 }
 
+func TestCommentableLinesParsesHunks(t *testing.T) {
+	// A patch touching new-file lines 12–13 (one context, one added) and, in a
+	// second hunk, line 40 (added). Line 20 is nowhere in the diff.
+	patch := "@@ -10,3 +12,4 @@ func a()\n" +
+		" ctx line 12\n" +
+		"+added line 13\n" +
+		"-removed old line\n" +
+		" ctx line 14\n" +
+		"@@ -38,2 +40,2 @@ func b()\n" +
+		"+added line 40\n" +
+		" ctx line 41\n"
+	got := CommentableLines(map[string]string{"a.go": patch})["a.go"]
+	for _, ln := range []int{12, 13, 14, 40, 41} {
+		if !got[ln] {
+			t.Fatalf("line %d should be commentable: %v", ln, got)
+		}
+	}
+	if got[20] {
+		t.Fatalf("line 20 is not in the diff and must not be commentable: %v", got)
+	}
+	// A removed line never advances the new-side counter, so line 15 (which does
+	// not exist on the new side) is not commentable.
+	if got[15] {
+		t.Fatalf("no phantom commentable line from a removal: %v", got)
+	}
+}
+
+func TestBuildDemotesOutOfDiffFindingToBody(t *testing.T) {
+	// The report's line comment is on a.go:12, but the diff only touches a.go:99.
+	commentable := map[string]map[int]bool{"a.go": {99: true}}
+	p := Build(sampleReport(), prTarget(), "", commentable)
+
+	if len(p.Comments) != 0 {
+		t.Fatalf("a finding off the diff must not become a line comment: %+v", p.Comments)
+	}
+	if !strings.Contains(p.Body, "nil deref") {
+		t.Fatalf("the demoted finding should appear in the body:\n%s", p.Body)
+	}
+	if !strings.Contains(p.Body, "a.go:12 — not on a changed line") {
+		t.Fatalf("the body should say why it is not inline:\n%s", p.Body)
+	}
+}
+
+func TestBuildKeepsInDiffFindingAsComment(t *testing.T) {
+	commentable := map[string]map[int]bool{"a.go": {12: true}}
+	p := Build(sampleReport(), prTarget(), "", commentable)
+	if len(p.Comments) != 1 || p.Comments[0].Line != 12 {
+		t.Fatalf("a finding on a changed line stays a line comment: %+v", p.Comments)
+	}
+}
+
 func TestBuildPreambleStatesCoverageAndProvenance(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), "https://ci/report.html")
+	p := Build(sampleReport(), prTarget(), "https://ci/report.html", nil)
 
 	for _, want := range []string{
 		"Reviewed by claude.",    // reviewer that ran
@@ -87,14 +138,14 @@ func TestBuildPreambleStatesCoverageAndProvenance(t *testing.T) {
 }
 
 func TestBuildOmitsReportLinkWhenEmpty(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), "")
+	p := Build(sampleReport(), prTarget(), "", nil)
 	if strings.Contains(p.Body, "Full report") {
 		t.Fatalf("no link should render when reportURL is empty:\n%s", p.Body)
 	}
 }
 
 func TestUnpostedDropsAlreadyPostedComments(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), "")
+	p := Build(sampleReport(), prTarget(), "", nil)
 	if len(p.Comments) != 1 {
 		t.Fatalf("precondition: one comment, got %d", len(p.Comments))
 	}
@@ -116,7 +167,7 @@ func TestUnpostedDropsAlreadyPostedComments(t *testing.T) {
 }
 
 func TestFingerprintsRoundTripFromBodies(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), "")
+	p := Build(sampleReport(), prTarget(), "", nil)
 	bodies := []string{p.Comments[0].Body, "an unrelated human comment"}
 	got := Fingerprints(bodies)
 	if !got[p.Comments[0].Fingerprint] {
@@ -128,7 +179,7 @@ func TestFingerprintsRoundTripFromBodies(t *testing.T) {
 }
 
 func TestReviewedAtMatchesHeadSHA(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), "")
+	p := Build(sampleReport(), prTarget(), "", nil)
 	if !ReviewedAt([]string{p.Body}, "deadbeef") {
 		t.Fatal("should recognize the review marker for this head")
 	}

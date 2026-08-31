@@ -69,33 +69,46 @@ type Payload struct {
 // Build assembles the review from a finished report. reportURL is a link to the
 // full HTML report (a CI artifact URL when the caller has one); it is omitted
 // from the body when empty rather than rendered as a dead link.
-func Build(rep *findings.Report, tgt *target.Target, reportURL string) Payload {
+//
+// commentable is the set of line numbers per file that a review comment may
+// anchor to — GitHub's diff, from CommentableLines. A finding becomes a line
+// comment only when its line is in that set; every other finding rides in the
+// body, so one finding pointing off the diff can never 422 the whole review. A
+// nil commentable means "do not filter" — used offline, where there is no diff
+// to check against and the payload is only being previewed.
+func Build(rep *findings.Report, tgt *target.Target, reportURL string, commentable map[string]map[int]bool) Payload {
 	head := ""
 	if tgt != nil {
 		head = tgt.Head
 	}
 	p := Payload{CommitID: head}
 
-	var located, unlocated []findings.Finding
+	var inBody []findings.Finding
 	for _, f := range rep.Findings {
-		if f.File != "" && f.Line > 0 {
-			located = append(located, f)
-		} else {
-			unlocated = append(unlocated, f)
+		if f.File != "" && f.Line > 0 && lineCommentable(commentable, f.File, f.Line) {
+			p.Comments = append(p.Comments, Comment{
+				Path:        f.File,
+				Line:        f.Line,
+				Body:        commentBody(f),
+				Fingerprint: f.Fingerprint,
+			})
+			continue
 		}
+		inBody = append(inBody, f)
 	}
 
-	for _, f := range located {
-		p.Comments = append(p.Comments, Comment{
-			Path:        f.File,
-			Line:        f.Line,
-			Body:        commentBody(f),
-			Fingerprint: f.Fingerprint,
-		})
-	}
-
-	p.Body = buildBody(rep, head, reportURL, unlocated)
+	p.Body = buildBody(rep, head, reportURL, inBody)
 	return p
+}
+
+// lineCommentable reports whether a finding's line is one GitHub will accept a
+// comment on. A nil map means no diff was fetched (offline preview), so nothing
+// is filtered.
+func lineCommentable(m map[string]map[int]bool, file string, line int) bool {
+	if m == nil {
+		return true
+	}
+	return m[file][line]
 }
 
 // commentBody renders one finding as a line comment, ending in its hidden
@@ -122,19 +135,20 @@ func commentBody(f findings.Finding) string {
 }
 
 // buildBody is the review body: the coverage preamble that is the whole reason
-// this beats a bare Copilot review, then any findings with no file:line to
-// anchor to, then the report link and the head-SHA marker.
-func buildBody(rep *findings.Report, head, reportURL string, unlocated []findings.Finding) string {
+// this beats a bare Copilot review, then the findings that could not be anchored
+// to a changed line (no file:line, or a line outside this PR's diff), then the
+// report link and the head-SHA marker.
+func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.Finding) string {
 	var b strings.Builder
 	b.WriteString("## Redline review\n\n")
 	b.WriteString(preamble(rep))
 
-	if len(unlocated) > 0 {
-		b.WriteString("\n\n### Findings without a line to anchor to\n\n")
-		for _, f := range unlocated {
+	if len(inBody) > 0 {
+		b.WriteString("\n\n### Findings not shown inline\n\n")
+		for _, f := range inBody {
 			fmt.Fprintf(&b, "- **%s** — %s", severityLabel(f.Severity), f.Message)
-			if f.Substrate != "" {
-				fmt.Fprintf(&b, " _(%s)_", f.Substrate)
+			if loc := bodyLocation(f); loc != "" {
+				fmt.Fprintf(&b, " _(%s)_", loc)
 			}
 			b.WriteString("\n")
 		}
@@ -248,6 +262,16 @@ func ReviewedAt(bodies []string, head string) bool {
 		}
 	}
 	return false
+}
+
+// bodyLocation explains why a finding is in the body rather than on a line: it
+// names the changed-file line that is not in the diff, or falls back to the
+// substrate for a finding that never had a line.
+func bodyLocation(f findings.Finding) string {
+	if f.File != "" && f.Line > 0 {
+		return fmt.Sprintf("%s:%d — not on a changed line in this PR", f.File, f.Line)
+	}
+	return f.Substrate
 }
 
 func marker(s string) string { return "<!-- " + s + " -->" }
