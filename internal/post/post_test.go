@@ -310,6 +310,9 @@ func TestBuildBodyCarriesWalkthrough(t *testing.T) {
 		Files: []FileNote{
 			{Path: "cmd/redline/post.go", Summary: "Submits the review."},
 			{Path: "internal/post/diff.go", Summary: "Finds commentable lines | safely."},
+			// A pipe in a path must not break the row either; both cells come
+			// from the same agent JSON.
+			{Path: "docs/a|b.md", Summary: "Named oddly."},
 		},
 	}
 	p := Build(sampleReport(), prTarget(), nar, "", nil)
@@ -319,6 +322,7 @@ func TestBuildBodyCarriesWalkthrough(t *testing.T) {
 		"| `cmd/redline/post.go` | Submits the review. |",
 		// A pipe in a summary must not break the row.
 		"Finds commentable lines \\| safely.",
+		"| `docs/a\\|b.md` | Named oddly. |",
 	} {
 		if !strings.Contains(p.Body, want) {
 			t.Fatalf("body missing %q:\n%s", want, p.Body)

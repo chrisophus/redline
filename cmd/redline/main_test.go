@@ -320,6 +320,100 @@ func TestPostRequiresGhForARealPost(t *testing.T) {
 	}
 }
 
+// fakeGh puts a stand-in `gh` on PATH that answers the three reads post makes
+// (files, comments, reviews) and refuses a write. commentBodies and reviewBodies
+// are what `-q .[].body` would print: one body per line.
+func fakeGh(t *testing.T, commentBodies, reviewBodies []string) {
+	t.Helper()
+	bin := t.TempDir()
+	script := filepath.Join(bin, "gh")
+	// The stand-in is a shell script so the test does not need to compile a
+	// second Go binary. Arguments arrive as "$@"; the path is the last one.
+	var b strings.Builder
+	b.WriteString("#!/bin/sh\n")
+	b.WriteString("set -e\n")
+	b.WriteString("# Refuse a write: already-posted must never reach submitReview.\n")
+	b.WriteString("for a in \"$@\"; do\n")
+	b.WriteString("  case \"$a\" in POST|--method) echo 'fake gh: unexpected write' >&2; exit 2;; esac\n")
+	b.WriteString("done\n")
+	b.WriteString("path=\"\"\n")
+	b.WriteString("for a in \"$@\"; do path=\"$a\"; done\n")
+	b.WriteString("case \"$path\" in\n")
+	b.WriteString("  *'/files'*)\n")
+	// An empty page: every finding rides in the body. That is enough for the
+	// already-posted gate, which keys on markers rather than on anchors.
+	b.WriteString("    printf '%s\\n' '[[]]'\n")
+	b.WriteString("    ;;\n")
+	b.WriteString("  *'/comments'*)\n")
+	for _, body := range commentBodies {
+		fmt.Fprintf(&b, "    printf '%%s\\n' %q\n", body)
+	}
+	b.WriteString("    ;;\n")
+	b.WriteString("  *'/reviews'*)\n")
+	for _, body := range reviewBodies {
+		fmt.Fprintf(&b, "    printf '%%s\\n' %q\n", body)
+	}
+	b.WriteString("    ;;\n")
+	b.WriteString("  *) echo \"fake gh: unexpected path $path\" >&2; exit 3;;\n")
+	b.WriteString("esac\n")
+	if err := os.WriteFile(script, []byte(b.String()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+}
+
+// A re-post against a commit Redline has already reviewed, with every finding
+// already marked in those bodies, must exit cleanly and must not call
+// submitReview.
+func TestPostSkipsWhenAlreadyReviewedWithNoNewFindings(t *testing.T) {
+	dir := prSession(t)
+
+	// Build the same payload post would, then feed its markers back through the
+	// stand-in so the gate sees exactly what a prior successful post left.
+	res, err := run.LoadSession(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := post.Build(&res.Report, res.Packet.Target, post.Narrative{Summary: res.Review.Summary}, "", nil)
+	if len(payload.Comments) != 1 {
+		t.Fatalf("precondition: one line comment, got %d", len(payload.Comments))
+	}
+	fakeGh(t, []string{payload.Comments[0].Body}, []string{payload.Body})
+
+	stderr := captureStderr(t, func() {
+		err = cmdPost(opts{out: dir, pr: "7", port: 41100, noOpen: true})
+	})
+	if err != nil {
+		t.Fatalf("already-posted should succeed with nothing to do: %v", err)
+	}
+	if !strings.Contains(stderr, "nothing to post") {
+		t.Fatalf("stderr should say nothing to post, got: %q", stderr)
+	}
+}
+
+// captureStderr runs fn with os.Stderr replaced and returns what it wrote.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := os.Stderr
+	os.Stderr = w
+	done := make(chan string, 1)
+	go func() {
+		var b strings.Builder
+		_, _ = io.Copy(&b, r)
+		done <- b.String()
+	}()
+	fn()
+	os.Stderr = orig
+	_ = w.Close()
+	out := <-done
+	_ = r.Close()
+	return out
+}
+
 // startServe refuses to re-exec this binary. If a child is invoked anyway —
 // `redline.test serve …` — Go's flag parser would stop at "serve", ignore
 // the flags, and run the suite again. Route those arguments to runMain so
