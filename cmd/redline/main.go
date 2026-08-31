@@ -49,7 +49,7 @@ target (all subcommands; pass only one):
   --commit REF      that commit against its parent (HEAD for the latest)
   --range A..B      commits reachable from B but not A (B defaults to HEAD)
   --branch REF      a branch's tip against --base
-  --pr N|URL        a GitHub pull request (read-only; uses gh)
+  --pr N|URL        a GitHub pull request (uses gh; read-only except post)
 
 flags:
   --base REF        base revision (default: commit parent, range start, PR base, else origin/main)
