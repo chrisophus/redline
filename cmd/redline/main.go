@@ -11,8 +11,7 @@
 // session's findings as one pull request review. It is always explicit — the
 // other commands stay read-only — and it makes no model calls. Redline still
 // composes no judgment of its own; it posts what the agent and its own
-// deterministic panes found, with a preamble stating what was and was not
-// checked.
+// deterministic panes found.
 //
 // It will execute a reviewer's own review command when asked to (--with), and
 // label what comes back with that reviewer's name.

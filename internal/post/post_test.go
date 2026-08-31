@@ -35,7 +35,7 @@ func prTarget() *target.Target {
 }
 
 func TestBuildSplitsLocatedFromBodyFindings(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), "https://ci/report.html", nil)
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "https://ci/report.html", nil)
 
 	if p.CommitID != "deadbeef" {
 		t.Fatalf("commit id should be the head SHA: %q", p.CommitID)
@@ -92,7 +92,7 @@ func TestCommentableLinesParsesHunks(t *testing.T) {
 func TestBuildDemotesOutOfDiffFindingToBody(t *testing.T) {
 	// The report's line comment is on a.go:12, but the diff only touches a.go:99.
 	commentable := map[string]map[int]bool{"a.go": {99: true}}
-	p := Build(sampleReport(), prTarget(), "", commentable)
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", commentable)
 
 	if len(p.Comments) != 0 {
 		t.Fatalf("a finding off the diff must not become a line comment: %+v", p.Comments)
@@ -107,45 +107,54 @@ func TestBuildDemotesOutOfDiffFindingToBody(t *testing.T) {
 
 func TestBuildKeepsInDiffFindingAsComment(t *testing.T) {
 	commentable := map[string]map[int]bool{"a.go": {12: true}}
-	p := Build(sampleReport(), prTarget(), "", commentable)
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", commentable)
 	if len(p.Comments) != 1 || p.Comments[0].Line != 12 {
 		t.Fatalf("a finding on a changed line stays a line comment: %+v", p.Comments)
 	}
 }
 
-func TestBuildPreambleStatesCoverageAndProvenance(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), "https://ci/report.html", nil)
+func TestBuildBodyLeadsWithSummaryNotCoverage(t *testing.T) {
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: "Adds a post command."}, "https://ci/report.html", nil)
 
+	if !strings.HasPrefix(p.Body, "Adds a post command.") {
+		t.Fatalf("body should lead with the agent's summary:\n%s", p.Body)
+	}
 	for _, want := range []string{
-		"Reviewed by claude.",    // reviewer that ran
-		"does not gate",          // reports, never blocks
-		"3 of 5 changed file(s)", // coverage numerator/denominator
-		"1 error, 1 warning",     // finding counts
 		"[Full report](https://ci/report.html)",
+		reviewMarkerPrefix + "deadbeef",
 	} {
 		if !strings.Contains(p.Body, want) {
 			t.Fatalf("body missing %q:\n%s", want, p.Body)
 		}
 	}
-	// "what was not checked" must name the skipped pane.
-	if !strings.Contains(p.Body, "diff-coverage") {
-		t.Fatalf("body should list the skipped check:\n%s", p.Body)
+	// The coverage preamble is gone: a review body describes the change, not
+	// the reviewer's own reach. See the package comment.
+	for _, gone := range []string{
+		"Reviewed by", "does not gate", "changed file(s)",
+		"Not checked", "Coverage:", "Findings:",
+	} {
+		if strings.Contains(p.Body, gone) {
+			t.Fatalf("body should no longer carry preamble text %q:\n%s", gone, p.Body)
+		}
 	}
-	// The head-SHA marker makes the summary idempotent per commit.
-	if !strings.Contains(p.Body, reviewMarkerPrefix+"deadbeef") {
-		t.Fatalf("body should carry the review marker:\n%s", p.Body)
+}
+
+func TestBuildBodyOmitsSummaryWhenAbsent(t *testing.T) {
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: "   "}, "", nil)
+	if strings.HasPrefix(p.Body, "\n") {
+		t.Fatalf("a blank summary should not leave leading whitespace:\n%q", p.Body)
 	}
 }
 
 func TestBuildOmitsReportLinkWhenEmpty(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), "", nil)
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
 	if strings.Contains(p.Body, "Full report") {
 		t.Fatalf("no link should render when reportURL is empty:\n%s", p.Body)
 	}
 }
 
 func TestUnpostedDropsAlreadyPostedComments(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), "", nil)
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
 	if len(p.Comments) != 1 {
 		t.Fatalf("precondition: one comment, got %d", len(p.Comments))
 	}
@@ -167,7 +176,7 @@ func TestUnpostedDropsAlreadyPostedComments(t *testing.T) {
 }
 
 func TestFingerprintsRoundTripFromBodies(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), "", nil)
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
 	bodies := []string{p.Comments[0].Body, "an unrelated human comment"}
 	got := Fingerprints(bodies)
 	if !got[p.Comments[0].Fingerprint] {
@@ -179,7 +188,7 @@ func TestFingerprintsRoundTripFromBodies(t *testing.T) {
 }
 
 func TestReviewedAtMatchesHeadSHA(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), "", nil)
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
 	if !ReviewedAt([]string{p.Body}, "deadbeef") {
 		t.Fatal("should recognize the review marker for this head")
 	}
@@ -191,5 +200,34 @@ func TestReviewedAtMatchesHeadSHA(t *testing.T) {
 	}
 	if ReviewedAt([]string{p.Body}, "") {
 		t.Fatal("an empty head is never 'already reviewed'")
+	}
+}
+
+func TestBuildBodyCarriesWalkthrough(t *testing.T) {
+	nar := Narrative{
+		Summary: "Adds a post command.",
+		Files: []FileNote{
+			{Path: "cmd/redline/post.go", Summary: "Submits the review."},
+			{Path: "internal/post/diff.go", Summary: "Finds commentable lines | safely."},
+		},
+	}
+	p := Build(sampleReport(), prTarget(), nar, "", nil)
+
+	for _, want := range []string{
+		"<summary>Walkthrough</summary>",
+		"| `cmd/redline/post.go` | Submits the review. |",
+		// A pipe in a summary must not break the row.
+		"Finds commentable lines \\| safely.",
+	} {
+		if !strings.Contains(p.Body, want) {
+			t.Fatalf("body missing %q:\n%s", want, p.Body)
+		}
+	}
+}
+
+func TestBuildBodyOmitsWalkthroughWhenNoFiles(t *testing.T) {
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: "x"}, "", nil)
+	if strings.Contains(p.Body, "Walkthrough") {
+		t.Fatalf("no file notes should mean no walkthrough section:\n%s", p.Body)
 	}
 }

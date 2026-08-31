@@ -9,8 +9,9 @@ Generated code, test bodies, and lint CI already gates never appear.
 
 Reviewing is read-only; posting is not, and never happens on its own. `redline
 post` is the one command that writes to GitHub: it submits the session's
-findings as one pull request review, led by a preamble that says what was and
-was not checked. `run`, `review`, and `ingest` never post.
+findings as one pull request review — a summary, a file-by-file walkthrough,
+and line comments — the shape Copilot's review put on a PR, for when that is
+no longer available to you. `run`, `review`, and `ingest` never post.
 
 It is pre-push and non-gating, and it works at both moments: on your own
 uncommitted work, and on an open pull request. It composes no judgment of its

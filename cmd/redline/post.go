@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/post"
 	"github.com/ccason/redline/internal/run"
 	"github.com/ccason/redline/internal/target"
@@ -53,7 +54,7 @@ func cmdPost(o opts) error {
 	if err != nil {
 		return err
 	}
-	payload := post.Build(&res.Report, tgt, o.reportURL, commentable)
+	payload := post.Build(&res.Report, tgt, narrative(res.Review), o.reportURL, commentable)
 
 	if o.dryRun {
 		return emitJSON(reviewRequest(payload))
@@ -85,6 +86,21 @@ func cmdPost(o opts) error {
 	}
 	fmt.Fprintf(os.Stderr, "Posted review to %s (%d new line comment(s))\n", tgt.PR.URL, len(payload.Comments))
 	return nil
+}
+
+// narrative lifts the agent's prose — the summary and the file walkthrough —
+// out of the ingested review. Both are source "llm"; Redline derives neither.
+// A session posted before any ingest has no review, and the body degrades to
+// the findings alone.
+func narrative(r *packet.Review) post.Narrative {
+	if r == nil {
+		return post.Narrative{}
+	}
+	nar := post.Narrative{Summary: r.Summary}
+	for _, f := range r.Files {
+		nar.Files = append(nar.Files, post.FileNote{Path: f.Path, Summary: f.Summary})
+	}
+	return nar
 }
 
 // ghReviewComment and ghReviewRequest mirror the GitHub "create a review" API.
