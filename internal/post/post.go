@@ -5,10 +5,15 @@
 // reach it.
 //
 // The review a reviewer reads has two parts. Findings that carry a file and a
-// line become line-anchored comments; the rest, and the coverage preamble that
-// says what was and was not checked, go in the review body. The body is the
-// part no free reviewer provides — a Copilot comment tells you what it found,
-// never what it looked at.
+// line become line-anchored comments; the body carries the agent's summary of
+// the change and any finding that could not be anchored to a line in the diff.
+//
+// The body says nothing about Redline itself. An earlier version led with a
+// preamble naming the panes that ran and the share of files they examined;
+// on a change with no migrations and no spec it rendered as "none of the 16
+// changed file(s) were examined", which reads as an apology and buries the
+// review under it. What a reviewer wants at the top of a review is the
+// change, not the reviewer's own coverage.
 //
 // This file is the payload: pure functions from a Report to what should be
 // posted, with no knowledge of gh or the network. The command layer does the
@@ -19,7 +24,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/ccason/redline/internal/findings"
@@ -66,6 +70,22 @@ type Payload struct {
 	Comments []Comment
 }
 
+// FileNote is one line of the walkthrough: what a changed file does in this
+// change. Redline never derives these; they come from the agent.
+type FileNote struct {
+	Path    string
+	Summary string
+}
+
+// Narrative is the agent's prose half of the review — the part a reviewer
+// reads before any individual comment. It is what a Copilot review put at the
+// top of a PR, and the reason this is a replacement for one rather than a
+// findings dump beside it.
+type Narrative struct {
+	Summary string
+	Files   []FileNote
+}
+
 // Build assembles the review from a finished report. reportURL is a link to the
 // full HTML report (a CI artifact URL when the caller has one); it is omitted
 // from the body when empty rather than rendered as a dead link.
@@ -76,7 +96,7 @@ type Payload struct {
 // body, so one finding pointing off the diff can never 422 the whole review. A
 // nil commentable means "do not filter" — used offline, where there is no diff
 // to check against and the payload is only being previewed.
-func Build(rep *findings.Report, tgt *target.Target, reportURL string, commentable map[string]map[int]bool) Payload {
+func Build(rep *findings.Report, tgt *target.Target, nar Narrative, reportURL string, commentable map[string]map[int]bool) Payload {
 	head := ""
 	if tgt != nil {
 		head = tgt.Head
@@ -97,7 +117,7 @@ func Build(rep *findings.Report, tgt *target.Target, reportURL string, commentab
 		inBody = append(inBody, f)
 	}
 
-	p.Body = buildBody(rep, head, reportURL, inBody)
+	p.Body = buildBody(nar, head, reportURL, inBody)
 	return p
 }
 
@@ -134,17 +154,36 @@ func commentBody(f findings.Finding) string {
 	return b.String()
 }
 
-// buildBody is the review body: the coverage preamble that is the whole reason
-// this beats a bare Copilot review, then the findings that could not be anchored
-// to a changed line (no file:line, or a line outside this PR's diff), then the
-// report link and the head-SHA marker.
-func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.Finding) string {
+// buildBody is the review body a reviewer reads first: the agent's summary of
+// the change, the file-by-file walkthrough, then any finding that could not be
+// anchored to a changed line (no file:line, or a line outside the PR's diff),
+// then the report link.
+//
+// Summary and walkthrough together are the shape of the review this replaces.
+// A findings list alone is not a review: it tells a reviewer what is wrong
+// without telling them what arrived.
+func buildBody(nar Narrative, head, reportURL string, inBody []findings.Finding) string {
 	var b strings.Builder
-	b.WriteString("## Redline review\n\n")
-	b.WriteString(preamble(rep))
-
+	if summary := strings.TrimSpace(nar.Summary); summary != "" {
+		b.WriteString(summary)
+		b.WriteString("\n")
+	}
+	if len(nar.Files) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("<details>\n<summary>Walkthrough</summary>\n\n")
+		b.WriteString("| File | What changed |\n|---|---|\n")
+		for _, f := range nar.Files {
+			fmt.Fprintf(&b, "| `%s` | %s |\n", f.Path, escapeCell(f.Summary))
+		}
+		b.WriteString("\n</details>\n")
+	}
 	if len(inBody) > 0 {
-		b.WriteString("\n\n### Findings not shown inline\n\n")
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("### Findings not shown inline\n\n")
 		for _, f := range inBody {
 			fmt.Fprintf(&b, "- **%s** — %s", severityLabel(f.Severity), f.Message)
 			if loc := bodyLocation(f); loc != "" {
@@ -153,73 +192,21 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.F
 			b.WriteString("\n")
 		}
 	}
-
 	if reportURL != "" {
 		fmt.Fprintf(&b, "\n[Full report](%s)\n", reportURL)
 	}
-
 	b.WriteString("\n")
 	b.WriteString(marker(reviewMarkerPrefix + head))
 	return b.String()
 }
 
-// preamble states who reviewed, what was checked, and what was not. It reads
-// this off the report's own substrate and coverage records rather than a fixed
-// catalog, so it can never claim a check ran that did not.
-func preamble(rep *findings.Report) string {
-	var reviewers, checked, notChecked []string
-	for _, s := range rep.Substrates {
-		name := humanSubstrate(s.Name)
-		if r, ok := strings.CutPrefix(s.Name, "reviewer:"); ok {
-			if s.State == findings.SubstrateRan {
-				reviewers = append(reviewers, r)
-			}
-		}
-		switch s.State {
-		case findings.SubstrateRan:
-			checked = append(checked, name)
-		case findings.SubstrateSkipped, findings.SubstrateFailed:
-			notChecked = append(notChecked, name)
-		}
-	}
-	sort.Strings(reviewers)
-	checked = dedupeSorted(checked)
-	notChecked = dedupeSorted(notChecked)
-
-	var b strings.Builder
-	if len(reviewers) > 0 {
-		fmt.Fprintf(&b, "Reviewed by %s.", oxford(reviewers))
-	} else {
-		b.WriteString("Reviewed with Redline's observed checks.")
-	}
-	b.WriteString(" This review reports; it does not gate.\n")
-
-	if len(checked) > 0 {
-		fmt.Fprintf(&b, "\n**Checked:** %s.\n", strings.Join(checked, ", "))
-	}
-	if len(notChecked) > 0 {
-		fmt.Fprintf(&b, "\n**Not checked:** %s.\n", strings.Join(notChecked, ", "))
-	}
-
-	cov := rep.Coverage
-	switch {
-	case cov.ChangedFiles == 0:
-		b.WriteString("\n**Coverage:** no files changed.\n")
-	case cov.ExaminedFiles == 0:
-		fmt.Fprintf(&b, "\n**Coverage:** none of the %d changed file(s) were examined — this review is the agent's read, not observed evidence.\n", cov.ChangedFiles)
-	default:
-		fmt.Fprintf(&b, "\n**Coverage:** %d of %d changed file(s) examined.\n", cov.ExaminedFiles, cov.ChangedFiles)
-	}
-
-	n := rep.NewCount
-	fmt.Fprintf(&b, "\n**Findings:** %d error, %d warning, %d info.\n",
-		n[findings.SeverityError], n[findings.SeverityWarning], n[findings.SeverityInfo])
-	return b.String()
+// escapeCell keeps a summary containing a pipe or a newline from breaking the
+// walkthrough table out of its row.
+func escapeCell(s string) string {
+	s = strings.ReplaceAll(s, "|", "\\|")
+	return strings.Join(strings.Fields(s), " ")
 }
 
-// Unposted drops the comments whose fingerprint is already present on the PR,
-// leaving only what this post would newly add. The body is left intact: it
-// carries the current coverage summary, which is worth restating.
 func (p Payload) Unposted(posted map[string]bool) Payload {
 	out := p
 	out.Comments = nil
@@ -286,50 +273,5 @@ func severityLabel(s findings.Severity) string {
 		return "Info"
 	default:
 		return string(s)
-	}
-}
-
-// humanSubstrate turns an internal substrate name into review prose:
-// "reviewer:claude" reads as "claude review", "redline/review" as the agent's
-// review, and a pane name is left as it is.
-func humanSubstrate(name string) string {
-	if r, ok := strings.CutPrefix(name, "reviewer:"); ok {
-		return r + " review"
-	}
-	switch name {
-	case "redline/review":
-		return "agent review"
-	default:
-		return name
-	}
-}
-
-func dedupeSorted(in []string) []string {
-	if len(in) == 0 {
-		return nil
-	}
-	seen := map[string]bool{}
-	var out []string
-	for _, s := range in {
-		if seen[s] {
-			continue
-		}
-		seen[s] = true
-		out = append(out, s)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func oxford(in []string) string {
-	switch len(in) {
-	case 0:
-		return ""
-	case 1:
-		return in[0]
-	case 2:
-		return in[0] + " and " + in[1]
-	default:
-		return strings.Join(in[:len(in)-1], ", ") + ", and " + in[len(in)-1]
 	}
 }
