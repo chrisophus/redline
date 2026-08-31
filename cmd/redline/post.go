@@ -55,7 +55,11 @@ func cmdPost(o opts) error {
 	if err != nil {
 		return err
 	}
-	payload := post.Build(&res.Report, tgt, narrative(res.Review), o.reportURL, commentable)
+	nar := narrative(res.Review)
+	if res.Packet != nil && res.Packet.Brief != nil {
+		nar.Coverage.BriefFiles = len(res.Packet.Brief.FilesRead)
+	}
+	payload := post.Build(&res.Report, tgt, nar, o.reportURL, commentable)
 
 	// A review nobody can read anything in is worse than no review: it appears
 	// on the pull request under the reviewer's name and says nothing. This is
@@ -104,27 +108,35 @@ func cmdPost(o opts) error {
 	return nil
 }
 
-// narrative lifts the agent's prose — the summary and the file walkthrough —
-// out of the ingested review. Both are source "llm"; Redline derives neither.
-// A session posted before any ingest has no review, and the body degrades to
-// the findings alone.
+// narrative lifts the agent's prose — summary, actual, walkthrough, and
+// discrepancies — out of the ingested review. Stated intent is not here: Build
+// reads it off the pull request Redline already fetched. A session posted
+// before any ingest has no review, and the body degrades to the findings alone.
 func narrative(r *packet.Review) post.Narrative {
 	if r == nil {
 		return post.Narrative{}
 	}
-	nar := post.Narrative{Summary: r.Summary}
+	nar := post.Narrative{Summary: r.Summary, Actual: r.Actual}
 	for _, f := range r.Files {
 		nar.Files = append(nar.Files, post.FileNote{Path: f.Path, Summary: f.Summary})
+	}
+	for _, d := range r.Discrepancies {
+		nar.Discrepancies = append(nar.Discrepancies, post.DiscrepancyNote{
+			Claim:  d.Claim,
+			Actual: d.Actual,
+		})
 	}
 	return nar
 }
 
 // ghReviewComment and ghReviewRequest mirror the GitHub "create a review" API.
 type ghReviewComment struct {
-	Path string `json:"path"`
-	Line int    `json:"line"`
-	Side string `json:"side"`
-	Body string `json:"body"`
+	Path      string `json:"path"`
+	Line      int    `json:"line"`
+	Side      string `json:"side"`
+	StartLine int    `json:"start_line,omitempty"`
+	StartSide string `json:"start_side,omitempty"`
+	Body      string `json:"body"`
 }
 
 type ghReviewRequest struct {
@@ -137,15 +149,23 @@ type ghReviewRequest struct {
 func reviewRequest(p post.Payload) ghReviewRequest {
 	req := ghReviewRequest{CommitID: p.CommitID, Body: p.Body, Event: post.Event}
 	for _, c := range p.Comments {
-		req.Comments = append(req.Comments, ghReviewComment{
+		gc := ghReviewComment{
 			Path: c.Path, Line: c.Line, Side: "RIGHT", Body: c.Body,
-		})
+		}
+		if c.StartLine > 0 && c.StartLine <= c.Line {
+			gc.StartLine = c.StartLine
+			gc.StartSide = "RIGHT"
+		}
+		req.Comments = append(req.Comments, gc)
 	}
 	return req
 }
 
-// submitReview posts one review via `gh api`, handing gh the request as JSON on
-// stdin. gh holds the user's credentials; Redline never handles a token.
+// submitReview posts one review via `gh api`, then patches the body so
+// discrepancy placeholders become permalinks to the inline comments. Comment
+// IDs do not exist until the review is created, so the overview cannot thread
+// them in one shot. A failed PATCH leaves the posted review intact and warns;
+// retrying into a second review would duplicate comments.
 func submitReview(owner, repo string, num int, p post.Payload) error {
 	body, err := json.Marshal(reviewRequest(p))
 	if err != nil {
@@ -154,10 +174,74 @@ func submitReview(owner, repo string, num int, p post.Payload) error {
 	path := fmt.Sprintf("repos/%s/%s/pulls/%d/reviews", owner, repo, num)
 	cmd := exec.Command("gh", "api", "--method", "POST", path, "--input", "-")
 	cmd.Stdin = bytes.NewReader(body)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := cmd.CombinedOutput()
+	if err != nil {
 		return fmt.Errorf("gh api POST %s: %s", path, strings.TrimSpace(string(out)))
 	}
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	if jsonErr := json.Unmarshal(out, &created); jsonErr != nil || created.ID == 0 {
+		// The review landed; we just cannot thread. Say so and stop.
+		fmt.Fprintf(os.Stderr, "redline: posted review but could not read its id; discrepancy links were not threaded\n")
+		return nil
+	}
+	if err := threadReview(owner, repo, num, created.ID, p); err != nil {
+		fmt.Fprintf(os.Stderr, "redline: posted review #%d but could not thread discrepancy links: %v\n", created.ID, err)
+	}
 	return nil
+}
+
+// threadReview fetches the comments on a just-created review, maps them to
+// finding fingerprints, and patches the review body with permalinks.
+func threadReview(owner, repo string, num int, reviewID int64, p post.Payload) error {
+	ids, err := reviewCommentIDs(owner, repo, num, reviewID)
+	if err != nil {
+		return err
+	}
+	threaded := post.ThreadBody(p.Body, ids)
+	if threaded == p.Body {
+		return nil
+	}
+	patch, err := json.Marshal(map[string]string{"body": threaded})
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("repos/%s/%s/pulls/%d/reviews/%d", owner, repo, num, reviewID)
+	cmd := exec.Command("gh", "api", "--method", "PUT", path, "--input", "-")
+	cmd.Stdin = bytes.NewReader(patch)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("gh api PUT %s: %s", path, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// reviewCommentIDs maps finding fingerprint to GitHub review-comment id for the
+// comments belonging to one review.
+func reviewCommentIDs(owner, repo string, num int, reviewID int64) (map[string]int64, error) {
+	path := fmt.Sprintf("repos/%s/%s/pulls/%d/reviews/%d/comments", owner, repo, num, reviewID)
+	cmd := exec.Command("gh", "api", "--paginate", path)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, ghError(path, err)
+	}
+	var comments []struct {
+		ID   int64  `json:"id"`
+		Body string `json:"body"`
+	}
+	if err := json.Unmarshal(out, &comments); err != nil {
+		return nil, err
+	}
+	ids := map[string]int64{}
+	for _, c := range comments {
+		for fp := range post.Fingerprints([]string{c.Body}) {
+			// Fingerprints keys are head\x00fingerprint; recover the fingerprint.
+			if i := strings.IndexByte(fp, 0); i >= 0 {
+				ids[fp[i+1:]] = c.ID
+			}
+		}
+	}
+	return ids, nil
 }
 
 // prCommentable resolves the lines GitHub will accept comments on for this PR.

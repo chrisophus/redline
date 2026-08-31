@@ -33,6 +33,7 @@ const (
 	CategoryCover    Category = "cover"    // diff coverage
 	CategoryUI       Category = "ui"       // rendered interface
 	CategoryReview   Category = "review"   // agent-authored judgment with no more specific category
+	CategoryIntent   Category = "intent"   // stated intent of the change does not match what it does
 )
 
 // DefaultSeverity derives a finding's severity from its category. Redline's
@@ -78,6 +79,9 @@ func (a *Anchor) Key() string {
 type Finding struct {
 	File        string   `json:"file,omitempty"`
 	Line        int      `json:"line,omitempty"`
+	// StartLine is the first line of a ranged comment. Zero means the comment
+	// anchors on Line alone. When set it must be less than or equal to Line.
+	StartLine   int      `json:"startLine,omitempty"`
 	Rule        string   `json:"rule"`
 	Substrate   string   `json:"substrate"`
 	Category    Category `json:"category"`
@@ -86,7 +90,12 @@ type Finding struct {
 	New         bool     `json:"new"`
 	Fingerprint string   `json:"fingerprint"`
 	FixCmd      string   `json:"fixCmd,omitempty"`
-	Context     string   `json:"context,omitempty"`
+	// Suggestion is a literal single-file replacement for the anchored lines,
+	// rendered as a GitHub suggestion block when short enough. Empty means no
+	// proposed fix; a suggestion that would need more than one file is refused
+	// rather than emitted wrong.
+	Suggestion string `json:"suggestion,omitempty"`
+	Context    string `json:"context,omitempty"`
 
 	Anchor   *Anchor  `json:"anchor,omitempty"`   // pane-relative location; file:line often absent
 	Evidence []string `json:"evidence,omitempty"` // observation IDs backing the claim

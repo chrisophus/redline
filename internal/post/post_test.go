@@ -150,8 +150,11 @@ func TestBuildKeepsInDiffFindingAsComment(t *testing.T) {
 func TestBuildBodyLeadsWithSummaryNotCoverage(t *testing.T) {
 	p := Build(sampleReport(), prTarget(), Narrative{Summary: "Adds a post command."}, "https://ci/report.html", nil)
 
-	if !strings.HasPrefix(p.Body, "Adds a post command.") {
-		t.Fatalf("body should lead with the agent's summary:\n%s", p.Body)
+	if !strings.HasPrefix(p.Body, "### Changes recommended\n") {
+		t.Fatalf("body should lead with a verdict:\n%s", p.Body)
+	}
+	if !strings.Contains(p.Body, "Adds a post command.") {
+		t.Fatalf("body should carry the agent's summary:\n%s", p.Body)
 	}
 	for _, want := range []string{
 		"[Full report](https://ci/report.html)",
@@ -261,7 +264,7 @@ func TestUnpostedDropsAlreadyPostedBodyFinding(t *testing.T) {
 		t.Fatalf("an already-posted body finding must not render again:\n%s", got.Body)
 	}
 	// The narrative is not a finding and still leads the body.
-	if !strings.HasPrefix(got.Body, "Adds a post command.") {
+	if !strings.Contains(got.Body, "Adds a post command.") {
 		t.Fatalf("the summary survives filtering:\n%s", got.Body)
 	}
 }
@@ -334,5 +337,83 @@ func TestBuildBodyOmitsWalkthroughWhenNoFiles(t *testing.T) {
 	p := Build(sampleReport(), prTarget(), Narrative{Summary: "x"}, "", nil)
 	if strings.Contains(p.Body, "Walkthrough") {
 		t.Fatalf("no file notes should mean no walkthrough section:\n%s", p.Body)
+	}
+}
+
+func TestBuildBodyStatedIntentActualAndDiscrepancies(t *testing.T) {
+	tgt := prTarget()
+	tgt.PR.Title = "Bring post to main"
+	tgt.PR.Body = "Adds redline post and rewrites the docs.\n\n## Test plan\n- [ ] build"
+	nar := Narrative{
+		Actual: "Adds post, drops the coverage preamble, and deletes PHOENIX.md.",
+		Discrepancies: []DiscrepancyNote{{
+			Claim: "The coverage preamble leads the body.",
+			Actual: "The preamble was removed in this branch.",
+			Fingerprint: "fp-intent-1",
+		}},
+	}
+	p := Build(sampleReport(), tgt, nar, "", nil)
+	for _, want := range []string{
+		"**Stated intent.** Bring post to main. Adds redline post and rewrites the docs.",
+		"**What it does.** Adds post, drops the coverage preamble",
+		"**Discrepancies.**",
+		"The coverage preamble leads the body.",
+		threadMarkerPrefix + hexEncode("fp-intent-1"),
+	} {
+		if !strings.Contains(p.Body, want) {
+			t.Fatalf("body missing %q:\n%s", want, p.Body)
+		}
+	}
+}
+
+func hexEncode(s string) string {
+	const hexdigits = "0123456789abcdef"
+	out := make([]byte, len(s)*2)
+	for i := 0; i < len(s); i++ {
+		out[i*2] = hexdigits[s[i]>>4]
+		out[i*2+1] = hexdigits[s[i]&0x0f]
+	}
+	return string(out)
+}
+
+func TestThreadBodyReplacesMarkers(t *testing.T) {
+	body := "1. Drift " + threadMarker("abc") + "\n"
+	got := ThreadBody(body, map[string]int64{"abc": 42})
+	if !strings.Contains(got, "→ [#](#discussion_r42)") {
+		t.Fatalf("expected permalink, got: %q", got)
+	}
+	if strings.Contains(got, threadMarkerPrefix) {
+		t.Fatalf("placeholder should be gone: %q", got)
+	}
+}
+
+func TestCommentBodyIncludesSuggestion(t *testing.T) {
+	rep := sampleReport()
+	rep.Findings[0].Suggestion = "return err"
+	p := Build(rep, prTarget(), Narrative{}, "", nil)
+	if !strings.Contains(p.Comments[0].Body, "```suggestion\nreturn err\n```") {
+		t.Fatalf("comment should carry a suggestion block:\n%s", p.Comments[0].Body)
+	}
+}
+
+func TestCommentKeepsStartLineWhenCommentable(t *testing.T) {
+	rep := sampleReport()
+	rep.Findings[0].StartLine = 10
+	rep.Findings[0].Line = 12
+	commentable := map[string]map[int]bool{"a.go": {10: true, 11: true, 12: true}}
+	p := Build(rep, prTarget(), Narrative{}, "", commentable)
+	if len(p.Comments) != 1 || p.Comments[0].StartLine != 10 || p.Comments[0].Line != 12 {
+		t.Fatalf("ranged comment: %+v", p.Comments)
+	}
+}
+
+func TestCommentDropsStartLineOutsideDiff(t *testing.T) {
+	rep := sampleReport()
+	rep.Findings[0].StartLine = 1
+	rep.Findings[0].Line = 12
+	commentable := map[string]map[int]bool{"a.go": {12: true}}
+	p := Build(rep, prTarget(), Narrative{}, "", commentable)
+	if len(p.Comments) != 1 || p.Comments[0].StartLine != 0 {
+		t.Fatalf("start outside the diff must fall back to a single line: %+v", p.Comments)
 	}
 }

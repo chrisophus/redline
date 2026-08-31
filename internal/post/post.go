@@ -5,15 +5,9 @@
 // reach it.
 //
 // The review a reviewer reads has two parts. Findings that carry a file and a
-// line become line-anchored comments; the body carries the agent's summary of
-// the change and any finding that could not be anchored to a line in the diff.
-//
-// The body says nothing about Redline itself. An earlier version led with a
-// preamble naming the panes that ran and the share of files they examined;
-// on a change with no migrations and no spec it rendered as "none of the 16
-// changed file(s) were examined", which reads as an apology and buries the
-// review under it. What a reviewer wants at the top of a review is the
-// change, not the reviewer's own coverage.
+// line become line-anchored comments; the body opens with stated intent (from
+// the PR), what the change actually does, and any discrepancies between them,
+// then the walkthrough and any finding that could not be anchored to a line.
 //
 // This file is the payload: pure functions from a Report to what should be
 // posted, with no knowledge of gh or the network. The command layer does the
@@ -55,6 +49,11 @@ const fpMarkerPrefix = "redline:fp:"
 // from "reviewing a new push."
 const reviewMarkerPrefix = "redline:review:"
 
+// threadMarkerPrefix marks a spot in the body that should become a permalink to
+// an inline comment once the review exists. Comment IDs are not known until
+// after the POST, so the body is written with these placeholders and patched.
+const threadMarkerPrefix = "redline:thread:"
+
 var (
 	// Two hex runs separated by a colon: the head SHA, then the encoded
 	// fingerprint. A marker written before the SHA was part of the key has only
@@ -62,6 +61,7 @@ var (
 	// against the current head rather than being read as posted for it.
 	fpMarkerRe     = regexp.MustCompile(regexp.QuoteMeta(fpMarkerPrefix) + `([0-9a-fA-F]+):([0-9a-fA-F]+)`)
 	reviewMarkerRe = regexp.MustCompile(regexp.QuoteMeta(reviewMarkerPrefix) + `([0-9a-fA-F]+)`)
+	threadMarkerRe = regexp.MustCompile(`<!-- ` + regexp.QuoteMeta(threadMarkerPrefix) + `([0-9a-fA-F]+) -->`)
 )
 
 // postedKey is the identity a re-post checks against: a finding is already said
@@ -76,6 +76,7 @@ func postedKey(head, fingerprint string) string {
 type Comment struct {
 	Path        string
 	Line        int
+	StartLine   int // zero means Line alone; otherwise the range start
 	Body        string
 	Fingerprint string
 }
@@ -104,16 +105,16 @@ func (p Payload) NothingNew() bool {
 }
 
 // Blank reports that a reader would see nothing in this review: no summary, no
-// walkthrough, no findings in the body or on a line, and no report link. It
-// happens when post runs on a session that was never ingested, where the body
-// renders as the head-SHA marker and nothing else. The string is not empty, so
-// this has to be a question about what went into the body rather than its
-// length.
+// actual, no walkthrough, no findings, and no report link. It happens when post
+// runs on a session that was never ingested, where the body renders as the
+// head-SHA marker and nothing else.
 func (p Payload) Blank() bool {
 	return len(p.Comments) == 0 &&
 		len(p.bodyFindings) == 0 &&
 		strings.TrimSpace(p.nar.Summary) == "" &&
+		strings.TrimSpace(p.nar.Actual) == "" &&
 		len(p.nar.Files) == 0 &&
+		len(p.nar.Discrepancies) == 0 &&
 		p.reportURL == ""
 }
 
@@ -124,13 +125,34 @@ type FileNote struct {
 	Summary string
 }
 
+// DiscrepancyNote is one intent-versus-actual gap for the overview. Fingerprint
+// joins it to the inline comment after the review is created.
+type DiscrepancyNote struct {
+	Claim       string
+	Actual      string
+	Fingerprint string
+}
+
+// CoverageNote is the provenance footer: how much of the change was examined.
+type CoverageNote struct {
+	ChangedFiles  int
+	ExaminedFiles int
+	BriefFiles    int // files the context brief opened outside the diff
+}
+
 // Narrative is the agent's prose half of the review — the part a reviewer
-// reads before any individual comment. It is what a Copilot review put at the
-// top of a PR, and the reason this is a replacement for one rather than a
-// findings dump beside it.
+// reads before any individual comment. Stated intent is not agent prose: it
+// comes from the pull request Redline already fetched, so the comparison
+// stays a check rather than a paraphrase.
 type Narrative struct {
-	Summary string
-	Files   []FileNote
+	Summary       string
+	Actual        string
+	StatedTitle   string
+	StatedBody    string
+	Files         []FileNote
+	Discrepancies []DiscrepancyNote
+	Coverage      CoverageNote
+	Verdict       string // set by Build from finding severities when empty
 }
 
 // Build assembles the review from a finished report. reportURL is a link to the
@@ -148,14 +170,41 @@ func Build(rep *findings.Report, tgt *target.Target, nar Narrative, reportURL st
 	if tgt != nil {
 		head = tgt.Head
 	}
+	if tgt != nil && tgt.PR != nil {
+		if nar.StatedTitle == "" {
+			nar.StatedTitle = tgt.PR.Title
+		}
+		if nar.StatedBody == "" {
+			nar.StatedBody = tgt.PR.Body
+		}
+	}
+	if nar.Verdict == "" {
+		nar.Verdict = verdictFor(rep)
+	}
+	if rep != nil && nar.Coverage.ChangedFiles == 0 && nar.Coverage.ExaminedFiles == 0 {
+		nar.Coverage.ChangedFiles = rep.Coverage.ChangedFiles
+		nar.Coverage.ExaminedFiles = rep.Coverage.ExaminedFiles
+	}
+
 	p := Payload{CommitID: head}
 
 	var inBody []findings.Finding
-	for _, f := range rep.Findings {
+	findingsList := []findings.Finding(nil)
+	if rep != nil {
+		findingsList = rep.Findings
+	}
+	for _, f := range findingsList {
 		if f.File != "" && f.Line > 0 && lineCommentable(commentable, f.File, f.Line) {
+			start := f.StartLine
+			if start > 0 && (start > f.Line || !lineCommentable(commentable, f.File, start)) {
+				// A start line outside the diff, or past the end line, would
+				// 422 the whole review. Fall back to the end line alone.
+				start = 0
+			}
 			p.Comments = append(p.Comments, Comment{
 				Path:        f.File,
 				Line:        f.Line,
+				StartLine:   start,
 				Body:        commentBody(f, head),
 				Fingerprint: f.Fingerprint,
 			})
@@ -164,11 +213,58 @@ func Build(rep *findings.Report, tgt *target.Target, nar Narrative, reportURL st
 		inBody = append(inBody, f)
 	}
 
+	// Attach fingerprints to discrepancy notes that share a rule with a finding,
+	// so the overview can thread them after the review is created.
+	nar.Discrepancies = bindDiscrepancyFingerprints(nar.Discrepancies, findingsList)
+
 	p.nar = nar
 	p.reportURL = reportURL
 	p.bodyFindings = inBody
 	p.Body = buildBody(nar, head, reportURL, inBody)
 	return p
+}
+
+func verdictFor(rep *findings.Report) string {
+	if rep == nil || len(rep.Findings) == 0 {
+		return "No findings"
+	}
+	for _, f := range rep.Findings {
+		if f.Severity == findings.SeverityError {
+			return "Changes recommended"
+		}
+	}
+	for _, f := range rep.Findings {
+		if f.Severity == findings.SeverityWarning {
+			return "Changes recommended"
+		}
+	}
+	return "Comments"
+}
+
+func bindDiscrepancyFingerprints(notes []DiscrepancyNote, fs []findings.Finding) []DiscrepancyNote {
+	if len(notes) == 0 {
+		return notes
+	}
+	byMsg := map[string]string{}
+	for _, f := range fs {
+		if f.Category == findings.CategoryIntent || f.Rule == "intent-drift" || strings.HasPrefix(f.Rule, "intent") {
+			byMsg[f.Message] = f.Fingerprint
+		}
+		if f.Fingerprint != "" {
+			byMsg[f.Rule+"\x00"+f.Message] = f.Fingerprint
+		}
+	}
+	out := make([]DiscrepancyNote, len(notes))
+	for i, n := range notes {
+		out[i] = n
+		if n.Fingerprint != "" {
+			continue
+		}
+		if fp := byMsg[n.Claim]; fp != "" {
+			out[i].Fingerprint = fp
+		}
+	}
+	return out
 }
 
 // lineCommentable reports whether a finding's line is one GitHub will accept a
@@ -199,7 +295,15 @@ func commentBody(f findings.Finding, head string) string {
 		b.WriteString("\n\n")
 		b.WriteString(ctx)
 	}
-	b.WriteString("\n\n")
+	if sug := strings.TrimSpace(f.Suggestion); sug != "" {
+		b.WriteString("\n\n```suggestion\n")
+		b.WriteString(sug)
+		if !strings.HasSuffix(sug, "\n") {
+			b.WriteByte('\n')
+		}
+		b.WriteString("```\n")
+	}
+	b.WriteString("\n")
 	b.WriteString(fpMarker(head, f.Fingerprint))
 	return b.String()
 }
@@ -210,56 +314,149 @@ func fpMarker(head, fingerprint string) string {
 	return marker(fpMarkerPrefix + head + ":" + hex.EncodeToString([]byte(fingerprint)))
 }
 
-// buildBody is the review body a reviewer reads first: the agent's summary of
-// the change, the file-by-file walkthrough, then any finding that could not be
-// anchored to a changed line (no file:line, or a line outside the PR's diff),
-// then the report link.
-//
-// Summary and walkthrough together are the shape of the review this replaces.
-// A findings list alone is not a review: it tells a reviewer what is wrong
-// without telling them what arrived.
+func threadMarker(fingerprint string) string {
+	return marker(threadMarkerPrefix + hex.EncodeToString([]byte(fingerprint)))
+}
+
+// buildBody is the review body a reviewer reads first: verdict, stated intent
+// from the PR, what the change actually does, discrepancies (threaded to their
+// inline comments after POST), the walkthrough, unanchored findings, then a
+// coverage footer and the report link.
 func buildBody(nar Narrative, head, reportURL string, inBody []findings.Finding) string {
 	var b strings.Builder
-	if summary := strings.TrimSpace(nar.Summary); summary != "" {
+	if v := strings.TrimSpace(nar.Verdict); v != "" {
+		fmt.Fprintf(&b, "### %s\n\n", v)
+	}
+	if title := strings.TrimSpace(nar.StatedTitle); title != "" || strings.TrimSpace(nar.StatedBody) != "" {
+		b.WriteString("**Stated intent.** ")
+		if title != "" {
+			b.WriteString(title)
+			if strings.TrimSpace(nar.StatedBody) != "" {
+				b.WriteString(". ")
+			}
+		}
+		if body := compactIntent(nar.StatedBody); body != "" {
+			b.WriteString(body)
+		}
+		b.WriteString("\n\n")
+	}
+	if actual := strings.TrimSpace(nar.Actual); actual != "" {
+		b.WriteString("**What it does.** ")
+		b.WriteString(actual)
+		b.WriteString("\n\n")
+	} else if summary := strings.TrimSpace(nar.Summary); summary != "" {
+		// A review that only has Summary still leads with it: older ingests
+		// and dry-runs without Actual keep working.
 		b.WriteString(summary)
+		b.WriteString("\n\n")
+	}
+	if len(nar.Discrepancies) > 0 {
+		b.WriteString("**Discrepancies.**\n")
+		for i, d := range nar.Discrepancies {
+			fmt.Fprintf(&b, "%d. %s", i+1, strings.TrimSpace(d.Claim))
+			if a := strings.TrimSpace(d.Actual); a != "" {
+				fmt.Fprintf(&b, " — %s", a)
+			}
+			if d.Fingerprint != "" {
+				fmt.Fprintf(&b, " %s", threadMarker(d.Fingerprint))
+			}
+			b.WriteString("\n")
+		}
 		b.WriteString("\n")
 	}
 	if len(nar.Files) > 0 {
-		if b.Len() > 0 {
-			b.WriteString("\n")
-		}
 		b.WriteString("<details>\n<summary>Walkthrough</summary>\n\n")
 		b.WriteString("| File | What changed |\n|---|---|\n")
 		for _, f := range nar.Files {
-			// Both cells are escaped. Path and Summary arrive from the same
-			// agent JSON, and a pipe in either one breaks the row.
 			fmt.Fprintf(&b, "| `%s` | %s |\n", escapeCell(f.Path), escapeCell(f.Summary))
 		}
-		b.WriteString("\n</details>\n")
+		b.WriteString("\n</details>\n\n")
 	}
 	if len(inBody) > 0 {
-		if b.Len() > 0 {
-			b.WriteString("\n")
-		}
 		b.WriteString("### Findings not shown inline\n\n")
 		for _, f := range inBody {
 			fmt.Fprintf(&b, "- **%s** — %s", severityLabel(f.Severity), f.Message)
 			if loc := bodyLocation(f); loc != "" {
 				fmt.Fprintf(&b, " _(%s)_", loc)
 			}
-			// The same marker a line comment carries. Without it only located
-			// findings were tracked, so a later ingest that added an unlocated
-			// one produced no new comments, the command read that as nothing to
-			// post, and the finding never reached the pull request.
 			fmt.Fprintf(&b, " %s\n", fpMarker(head, f.Fingerprint))
 		}
+		b.WriteString("\n")
+	}
+	if foot := coverageFooter(nar.Coverage); foot != "" {
+		b.WriteString(foot)
+		b.WriteString("\n")
 	}
 	if reportURL != "" {
-		fmt.Fprintf(&b, "\n[Full report](%s)\n", reportURL)
+		fmt.Fprintf(&b, "[Full report](%s)\n\n", reportURL)
 	}
-	b.WriteString("\n")
 	b.WriteString(marker(reviewMarkerPrefix + head))
 	return b.String()
+}
+
+// compactIntent collapses a PR body to a short prose claim for the overview.
+// It keeps the first non-empty paragraph and flattens whitespace so a markdown
+// PR description does not explode the review body.
+func compactIntent(body string) string {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return ""
+	}
+	parts := strings.Split(body, "\n\n")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" || strings.HasPrefix(p, "#") {
+			continue
+		}
+		// Skip pure list / checkbox lead-ins that are not the claim.
+		if strings.HasPrefix(p, "- [") || strings.HasPrefix(p, "* [") {
+			continue
+		}
+		return strings.Join(strings.Fields(p), " ")
+	}
+	return strings.Join(strings.Fields(body), " ")
+}
+
+func coverageFooter(c CoverageNote) string {
+	if c.ChangedFiles == 0 && c.ExaminedFiles == 0 && c.BriefFiles == 0 {
+		return ""
+	}
+	var b strings.Builder
+	if c.ChangedFiles > 0 {
+		fmt.Fprintf(&b, "Files reviewed %d/%d", c.ExaminedFiles, c.ChangedFiles)
+	}
+	if c.BriefFiles > 0 {
+		if b.Len() > 0 {
+			b.WriteString(" · ")
+		}
+		fmt.Fprintf(&b, "brief read %d file(s) outside the diff", c.BriefFiles)
+	}
+	return b.String()
+}
+
+// ThreadBody replaces discrepancy placeholders with permalinks to the inline
+// comments created by the review. ids maps finding fingerprint to the GitHub
+// pull-request review comment id. Placeholders with no matching id are left
+// alone so a partial match still improves the body.
+func ThreadBody(body string, ids map[string]int64) string {
+	if len(ids) == 0 {
+		return body
+	}
+	return threadMarkerRe.ReplaceAllStringFunc(body, func(m string) string {
+		sub := threadMarkerRe.FindStringSubmatch(m)
+		if len(sub) < 2 {
+			return m
+		}
+		raw, err := hex.DecodeString(sub[1])
+		if err != nil {
+			return m
+		}
+		id, ok := ids[string(raw)]
+		if !ok {
+			return m
+		}
+		return fmt.Sprintf("→ [#](#discussion_r%d)", id)
+	})
 }
 
 // escapeCell keeps a summary containing a pipe or a newline from breaking the
