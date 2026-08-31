@@ -477,3 +477,81 @@ func isSubcommand(arg string) bool {
 	}
 	return false
 }
+
+// --brief is opt-in. An empty value and "none" both mean skip.
+func TestBriefDefaultsOff(t *testing.T) {
+	dir := worktreeSession(t)
+	res, err := run.LoadSession(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Packet = &packet.Packet{
+		Target: &target.Target{Kind: target.KindWorktree},
+		Files:  []packet.FileChange{{Path: "a.go"}},
+	}
+	if err := runBrief(opts{out: dir}, res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Packet.Brief != nil {
+		t.Fatal("no --brief means no brief on the packet")
+	}
+	if err := runBrief(opts{out: dir, brief: "none"}, res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Packet.Brief != nil {
+		t.Fatal("--brief none means no brief on the packet")
+	}
+}
+
+func TestBriefRejectsUnknownName(t *testing.T) {
+	dir := worktreeSession(t)
+	res, err := run.LoadSession(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Packet = &packet.Packet{Target: &target.Target{Kind: target.KindWorktree}}
+	err = runBrief(opts{out: dir, brief: "nope"}, res)
+	if err == nil {
+		t.Fatal("unknown brief name should error")
+	}
+	if !strings.Contains(err.Error(), "unknown brief") {
+		t.Fatalf("error should name the problem, got: %v", err)
+	}
+}
+
+// A brief that runs and fails is recorded, not raised: the packet still
+// emits, and the failure shows up as a substrate and an unknown.
+func TestBriefFailureIsRecordedNotRaised(t *testing.T) {
+	dir := worktreeSession(t)
+	// Override the builtin with a command that exits without writing.
+	reviewers := []byte(`{"reviewers":{"brief":{"command":["false"],"timeout":"2s"}}}`)
+	if err := os.WriteFile(filepath.Join(dir, "reviewers.json"), reviewers, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := run.LoadSession(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Packet = &packet.Packet{
+		Target: &target.Target{Kind: target.KindWorktree, Dir: dir},
+		Files:  []packet.FileChange{{Path: "a.go"}},
+	}
+	if err := runBrief(opts{out: dir, brief: "brief"}, res); err != nil {
+		t.Fatalf("a failed brief must not fail the review: %v", err)
+	}
+	if res.Packet.Brief != nil {
+		t.Fatal("a failed brief must not attach a partial brief")
+	}
+	found := false
+	for _, s := range res.Report.Substrates {
+		if s.Name == "brief:brief" && s.State == findings.SubstrateFailed {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("failed brief should be a failed substrate: %+v", res.Report.Substrates)
+	}
+	if len(res.Report.Unknowns) == 0 {
+		t.Fatal("failed brief should leave an unknown")
+	}
+}

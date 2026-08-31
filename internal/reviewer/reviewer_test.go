@@ -84,14 +84,13 @@ func mustGetwd(t *testing.T) string {
 
 func TestBuiltins(t *testing.T) {
 	builtins := Builtins()
-	if _, ok := builtins["claude"]; !ok {
-		t.Fatal("claude adapter missing")
+	for _, name := range []string{"claude", "cursor", "brief"} {
+		if _, ok := builtins[name]; !ok {
+			t.Fatalf("%s adapter missing", name)
+		}
 	}
-	if _, ok := builtins["cursor"]; !ok {
-		t.Fatal("cursor adapter missing")
-	}
-	if len(builtins) != 2 {
-		t.Fatalf("expected 2 builtins, got %d", len(builtins))
+	if len(builtins) != 3 {
+		t.Fatalf("expected 3 builtins, got %d", len(builtins))
 	}
 }
 
@@ -101,8 +100,8 @@ func TestLoadNoFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load should not error on missing file: %v", err)
 	}
-	if len(adapters) != 2 {
-		t.Fatalf("expected 2 builtin adapters, got %d", len(adapters))
+	if len(adapters) != 3 {
+		t.Fatalf("expected 3 builtin adapters, got %d", len(adapters))
 	}
 	if _, ok := adapters["claude"]; !ok {
 		t.Fatal("claude adapter missing")
@@ -667,5 +666,100 @@ func TestRunTimeout(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "slow") {
 		t.Fatalf("error should name the reviewer: %v", err)
+	}
+}
+
+func TestBriefBuiltinIsReadOnlyAndCheap(t *testing.T) {
+	a := Builtins()["brief"]
+	joined := strings.Join(a.Command, " ")
+	if !strings.Contains(joined, "--model") || !strings.Contains(joined, "haiku") {
+		t.Fatalf("brief should use the cheap model: %v", a.Command)
+	}
+	if !strings.Contains(joined, "Read") || !strings.Contains(joined, "Grep") {
+		t.Fatalf("brief needs read tools: %v", a.Command)
+	}
+	if strings.Contains(joined, "Bash") {
+		t.Fatalf("brief must not get a shell; Copilot found its out-of-diff findings by reading: %v", a.Command)
+	}
+	prompt := a.promptBrief("HEAD", "/o.json", "cmd/redline/post.go\ninternal/post/post.go")
+	if !strings.Contains(prompt, "cmd/redline/post.go") {
+		t.Fatalf("changed files must reach the prompt: %s", prompt)
+	}
+	if !strings.Contains(prompt, "repoShape") || !strings.Contains(prompt, "filesRead") {
+		t.Fatalf("brief schema must reach the prompt: %s", prompt)
+	}
+	if strings.Contains(prompt, `"findings"`) {
+		t.Fatalf("brief must not ask for the findings schema: %s", prompt)
+	}
+}
+
+func TestBriefPlaceholderSubstitution(t *testing.T) {
+	a := Adapter{
+		Name:    "brief",
+		Command: []string{"cmd", "{prompt}", "{out}", "{target}", "{schema}", "{files}"},
+		Prompt:  "brief {target}\n{files}",
+	}
+	cmd := a.argvBrief("/my/target", "/my/out.json", "a.go\nb.go")
+	if cmd[2] != "/my/out.json" || cmd[3] != "/my/target" {
+		t.Fatalf("out/target wrong: %q %q", cmd[2], cmd[3])
+	}
+	if !strings.Contains(cmd[4], "repoShape") {
+		t.Fatalf("schema should be the brief schema: %s", cmd[4])
+	}
+	if cmd[5] != "a.go\nb.go" {
+		t.Fatalf("files placeholder wrong: %q", cmd[5])
+	}
+	if !strings.Contains(cmd[1], "a.go") {
+		t.Fatalf("files should also expand inside the prompt: %s", cmd[1])
+	}
+}
+
+func TestRunBriefWithFakeAdapter(t *testing.T) {
+	tmpDir := t.TempDir()
+	outDir := filepath.Join(tmpDir, "out")
+	if err := os.Mkdir(outDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fixture := `{"repoShape":"a Go CLI","references":[{"symbol":"Unposted","definedIn":"internal/post/post.go","alsoIn":["cmd/redline/post.go"]}],"docsNaming":[{"path":"skills/redline/SKILL.md","line":230,"quote":"Do not post","about":"post"}],"testsCovering":[{"path":"cmd/redline/main_test.go","line":206,"note":"omits post"}],"filesRead":["README.md","skills/redline/SKILL.md"]}`
+	a := Adapter{
+		Name:    "fakebrief",
+		Command: []string{"sh", "-c", `printf '%s' "$1" > "$0"`, "{out}", fixture},
+		Timeout: Duration(5 * time.Second),
+	}
+	got, err := RunBrief(context.Background(), a, tmpDir, "HEAD", outDir, "a.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RepoShape != "a Go CLI" {
+		t.Fatalf("repoShape: %q", got.RepoShape)
+	}
+	if len(got.References) != 1 || got.References[0].Symbol != "Unposted" {
+		t.Fatalf("references: %+v", got.References)
+	}
+	if len(got.FilesRead) != 2 {
+		t.Fatalf("filesRead: %v", got.FilesRead)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "brief-fakebrief.json")); err != nil {
+		t.Fatalf("brief should land in out dir: %v", err)
+	}
+}
+
+func TestRunBriefMissingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	outDir := filepath.Join(tmpDir, "out")
+	if err := os.Mkdir(outDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a := Adapter{
+		Name:    "silent",
+		Command: []string{"sh", "-c", "true"},
+		Timeout: Duration(5 * time.Second),
+	}
+	_, err := RunBrief(context.Background(), a, tmpDir, "HEAD", outDir, "a.go")
+	if err == nil {
+		t.Fatal("missing brief file should error")
+	}
+	if !strings.Contains(err.Error(), "silent") {
+		t.Fatalf("error should name the adapter: %v", err)
 	}
 }

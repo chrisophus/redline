@@ -1,11 +1,12 @@
 // Package packet is the contract between Redline and the agent reviewing a
 // change. Redline emits a packet of facts; the agent returns judgments.
 //
-// The boundary is deliberate and narrow. Redline never calls a model — the
-// prose and the judgment come from the session driving it, which is why this
-// works identically in Claude Code and in Cursor. Redline's half is
-// reproducible; the agent's half is labelled `source: "llm"` at every point of
-// use so a reviewer always knows which is which.
+// The boundary is deliberate and narrow. Redline does not call a model unless
+// asked to (`--with` for a reviewer, `--brief` for a context pass). The prose
+// and the judgment come from the session driving it, which is why this works
+// identically in Claude Code and in Cursor. Redline's half is reproducible;
+// the agent's half is labelled `source: "llm"` at every point of use so a
+// reviewer always knows which is which.
 package packet
 
 import (
@@ -45,6 +46,11 @@ type Packet struct {
 
 	// Guidance is the review brief: what to look for and what to leave alone.
 	Guidance Guidance `json:"guidance"`
+
+	// Brief is the context-gathering pass, present when `--brief` was asked for
+	// and the pass wrote something. It is what lets the reviewing agent see
+	// callers, docs, and tests outside the diff without rediscovering them.
+	Brief *Brief `json:"brief,omitempty"`
 
 	// UITouched is true when at least one changed file is classified as UI.
 	// The skill uses this to decide whether to walk the interface; it is a
@@ -100,6 +106,7 @@ func DefaultGuidance() Guidance {
 			"Tests: behaviour the change introduces that no test exercises. Name the behaviour, not the coverage number.",
 			"When `uiTouched` is true: drive the changed journeys in a real browser with agent-browser, capture screenshots, and report defects you actually saw. Diff-scoped — not a whole-app crawl. Attach them as `screenshots`. Category `ui`.",
 			"A one-sentence summary of every path in this packet's `files[]`, returned as review `files` (`path` + `summary`). This is the walkthrough a reviewer reads first — what each file does in this change, not a restatement of the hunk.",
+			"When `brief` is present: act on it. Follow `brief.references` to the callers and callees outside the diff, read `brief.docsNaming` for contradictions between the docs and the code, and check `brief.testsCovering` for gaps. Findings that rest on the brief should cite the path they came from. Report in `unknowns` any brief item you could not check.",
 		},
 		Avoid: []string{
 			"Style, formatting, and naming, unless an instruction file demands it — the repository's linters own these.",
