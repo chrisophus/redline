@@ -417,3 +417,46 @@ func TestCommentDropsStartLineOutsideDiff(t *testing.T) {
 		t.Fatalf("start outside the diff must fall back to a single line: %+v", p.Comments)
 	}
 }
+
+func TestBuildAttestStampsFailMarkers(t *testing.T) {
+	prof := &Profile{
+		ReviewMarker:  "mct-agent-review:v1",
+		FindingMarker: "mct-agent-finding:v1",
+		Blocking:      []findings.Severity{findings.SeverityError, findings.SeverityWarning},
+	}
+	p := BuildAttest(sampleReport(), prTarget(), Narrative{Summary: "Adds a post command."}, "", nil, prof)
+	if p.GateVerdict != "fail" {
+		t.Fatalf("error and warning should fail, got %q", p.GateVerdict)
+	}
+	if !strings.Contains(p.Comments[0].Body, "mct-agent-finding:v1 severity=high") {
+		t.Fatalf("error comment needs finding marker:\n%s", p.Comments[0].Body)
+	}
+	if !strings.Contains(p.Body, "mct-agent-finding:v1 severity=medium") {
+		t.Fatalf("warning in the body needs finding marker:\n%s", p.Body)
+	}
+	if !strings.Contains(p.Body, "mct-agent-review:v1 verdict=fail head=deadbeef") {
+		t.Fatalf("review body needs fail marker:\n%s", p.Body)
+	}
+}
+
+func TestBuildAttestPassHasNoFindingMarkers(t *testing.T) {
+	prof := &Profile{
+		ReviewMarker:  "mct-agent-review:v1",
+		FindingMarker: "mct-agent-finding:v1",
+		Blocking:      []findings.Severity{findings.SeverityError, findings.SeverityWarning},
+	}
+	rep := &findings.Report{Findings: []findings.Finding{{
+		File: "a.go", Line: 1, Rule: "note", Severity: findings.SeverityInfo, Message: "coverage unknown",
+	}}}
+	rep.Finalize()
+	p := BuildAttest(rep, prTarget(), Narrative{Summary: "Clean."}, "", nil, prof)
+	if p.GateVerdict != "pass" {
+		t.Fatalf("info-only should pass, got %q", p.GateVerdict)
+	}
+	if strings.Contains(p.Comments[0].Body, "mct-agent-finding:v1") {
+		t.Fatalf("info must not carry a gate finding marker:\n%s", p.Comments[0].Body)
+	}
+	if !strings.Contains(p.Body, "verdict=pass head=deadbeef") {
+		t.Fatalf("pass marker missing:\n%s", p.Body)
+	}
+}

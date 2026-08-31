@@ -72,6 +72,10 @@ flags:
                     brief. Opt-in for the same reason post is: review does not
                     spend a model call unless asked.
   --report-url URL  with post: link to the full report in the review body
+  --profile PATH    with post: YAML that stamps pass/fail markers a merge
+                    gate can read (error and warning fail unless the file
+                    says otherwise). Without it, post still comments and
+                    never approves.
   --dry-run         with post: print the review payload instead of posting
   --stop            with serve: stop the server running for --out
 `
@@ -86,7 +90,7 @@ func main() {
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
 	with                                                              reviewerList
-	brief, reportURL                                                  string
+	brief, reportURL, profile                                         string
 	open, noOpen, stop, dryRun                                        bool
 	port                                                              int
 }
@@ -130,6 +134,7 @@ func runMain(args []string) error {
 	fs.Var(&o.with, "with", "run an external reviewer; repeat or comma-separate for several (claude, cursor, none)")
 	fs.StringVar(&o.brief, "brief", "", "run a context-gathering pass (brief, none); default off")
 	fs.StringVar(&o.reportURL, "report-url", "", "with post: link to the full report in the review body (e.g. a CI artifact URL)")
+	fs.StringVar(&o.profile, "profile", "", "with post: YAML profile for merge-gate pass/fail markers")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "with post: print the review payload as JSON instead of posting")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 	if err := fs.Parse(args[1:]); err != nil {

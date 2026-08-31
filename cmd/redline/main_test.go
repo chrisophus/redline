@@ -239,6 +239,72 @@ func TestPostDryRunEmitsThePayloadWithoutPosting(t *testing.T) {
 	}
 }
 
+func writeCmdProfile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "redline-review.yml")
+	body := "review_marker: mct-agent-review:v1\nfinding_marker: mct-agent-finding:v1\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func passSession(t *testing.T) string {
+	t.Helper()
+	dir := reportDir(t)
+	rep := findings.Report{BaseRef: "origin/main", BaseSHA: "abc123"}
+	rep.Finalize()
+	res := &run.Result{
+		Report: rep,
+		Packet: &packet.Packet{Target: prSessionTarget()},
+		Review: &packet.Review{Summary: "Looks good."},
+	}
+	if err := run.SaveSession(dir, res); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestPostDryRunProfileEmitsFailMarker(t *testing.T) {
+	t.Setenv("PATH", "")
+	dir := prSession(t)
+	var err error
+	out := captureStdout(t, func() {
+		err = cmdPost(opts{out: dir, pr: "7", profile: writeCmdProfile(t), dryRun: true, port: 41200, noOpen: true})
+	})
+	if err != nil {
+		t.Fatalf("dry run with profile should succeed offline: %v", err)
+	}
+	if !strings.Contains(out, "mct-agent-review:v1 verdict=fail head=deadbeef") {
+		t.Fatalf("profiled fail should stamp the gate marker:\n%s", out)
+	}
+	if !strings.Contains(out, "mct-agent-finding:v1 severity=high") {
+		t.Fatalf("blocking finding should stamp the finding marker:\n%s", out)
+	}
+}
+
+func TestPostDryRunProfilePassWithNoFindings(t *testing.T) {
+	t.Setenv("PATH", "")
+	dir := passSession(t)
+	var err error
+	out := captureStdout(t, func() {
+		err = cmdPost(opts{out: dir, pr: "7", profile: writeCmdProfile(t), dryRun: true, port: 41300, noOpen: true})
+	})
+	if err != nil {
+		t.Fatalf("a profiled pass still posts: %v", err)
+	}
+	var req ghReviewRequest
+	if jsonErr := json.Unmarshal([]byte(out), &req); jsonErr != nil {
+		t.Fatalf("dry run JSON: %v\n%s", jsonErr, out)
+	}
+	if len(req.Comments) != 0 {
+		t.Fatalf("pass has no inline findings: %+v", req.Comments)
+	}
+	if !strings.Contains(req.Body, "verdict=pass head=deadbeef") {
+		t.Fatalf("pass marker missing:\n%s", req.Body)
+	}
+}
+
 // Posting a review of one change onto another pull request puts words in the
 // reviewer's mouth. It is a hard error, not a warning.
 func TestPostRejectsAMismatchedTarget(t *testing.T) {
