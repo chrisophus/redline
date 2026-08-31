@@ -124,6 +124,13 @@ Review JSON shape:
 ```json
 {
   "summary": "One or two sentences: what this change does, in its own domain.",
+  "actual": "What the change does, as read from the code — compared to the PR body.",
+  "discrepancies": [{
+    "claim": "Words from the PR that this change does not keep.",
+    "actual": "What the code does instead.",
+    "file": "path.go", "line": 42, "startLine": 40,
+    "rule": "intent-preamble-removed"
+  }],
   "intent": {
     "ticket": {"id": "REL-24", "title": "...", "url": "https://..."},
     "fit": {
@@ -142,12 +149,13 @@ Review JSON shape:
   "apiChanges":    [{"title": "...", "detail": "...", "file": "...", "breaking": true}],
   "schemaChanges": [{"title": "...", "detail": "...", "file": "...", "breaking": false}],
   "findings": [{
-    "file": "path.go", "line": 42, "rule": "kebab-case-slug",
-    "category": "schema|contract|cover|ui|review",
+    "file": "path.go", "line": 42, "startLine": 40, "rule": "kebab-case-slug",
+    "category": "schema|contract|cover|ui|review|intent",
     "severity": "error|warning|info",
     "message": "The defect, in one sentence.",
     "context": "The concrete failure: given these inputs, this goes wrong.",
     "fix": "What to do instead.",
+    "suggestion": "literal replacement for the anchored lines, single file, at most 20 lines",
     "confidence": "high|medium|low",
     "instruction": ".github/copilot-instructions.md — the rule this rests on"
   }],
@@ -161,9 +169,21 @@ Review JSON shape:
 }
 ```
 
-`summary`, `intent` and `surfaces` are the top of the screen — the reviewer
-reads them before anything else, and none of them can be derived from the diff.
+`summary`, `actual`, `intent` and `surfaces` are the top of the screen — the
+reviewer reads them before anything else. Stated intent is the PR title and
+body Redline already fetched; do not paraphrase it into `intent.pr`. Put what
+the code does in `actual`, and every place they disagree in `discrepancies`
+(and as a finding with `category: "intent"` and the same `rule`).
 
+- **`actual`** is required when reviewing a PR: what the change does, from the
+  code. The posted review leads with stated intent then this.
+- **`discrepancies`** are the gaps Copilot caught as
+  `discrepancy_with_pr_description`. Name the claim, what the code does, and
+  the file:line. Reuse the same `rule` on the finding so the overview can
+  thread to the inline comment.
+- **`suggestion`** is a literal single-file fix for the anchored lines, at most
+  twenty lines. Skip it when the fix spans files; say what to do in `context`
+  instead.
 - **`intent.fit`** is the judgment the reviewer most wants and the diff cannot
   carry: is this the thing the ticket asked for, and is this the way to build
   it. Answer both. "Yes" is a fine answer; so is naming a reservation.

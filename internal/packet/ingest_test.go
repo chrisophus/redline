@@ -279,3 +279,38 @@ func TestMergeHandlesNils(t *testing.T) {
 		t.Fatal("expected the previous review")
 	}
 }
+
+func TestToFindingsIncludesDiscrepanciesAsIntent(t *testing.T) {
+	rev := &Review{
+		Findings: []Judgment{{
+			File: "a.go", Line: 12, Rule: "intent-preamble", Category: findings.CategoryIntent,
+			Message: "The coverage preamble leads the body.",
+		}},
+		Discrepancies: []Discrepancy{{
+			Claim: "The coverage preamble leads the body.",
+			Actual: "It was removed.",
+			File: "README.md", Line: 91, Rule: "intent-preamble",
+		}},
+	}
+	fs := rev.ToFindings()
+	if len(fs) != 1 {
+		t.Fatalf("discrepancy sharing a rule with a finding must not duplicate: %+v", fs)
+	}
+	rev2 := &Review{Discrepancies: []Discrepancy{{
+		Claim: "Skill says read-only.", Actual: "post writes.", File: "skills/redline/SKILL.md", Line: 230,
+	}}}
+	fs2 := rev2.ToFindings()
+	if len(fs2) != 1 || fs2[0].Category != findings.CategoryIntent || fs2[0].Rule != "intent-drift" {
+		t.Fatalf("orphan discrepancy should become an intent finding: %+v", fs2)
+	}
+}
+
+func TestClipSuggestionDropsLongFixes(t *testing.T) {
+	long := strings.Repeat("x\n", 21)
+	if clipSuggestion(long) != "" {
+		t.Fatal("suggestions longer than 20 lines must be refused")
+	}
+	if clipSuggestion("return err") != "return err" {
+		t.Fatal("short suggestions must pass through")
+	}
+}

@@ -16,6 +16,14 @@ type Review struct {
 	// it lives in. Redline emits evidence; the agent supplies the sentence a
 	// reviewer reads first.
 	Summary string `json:"summary"`
+	// Actual is what the change does, as read from the code. Stated intent
+	// comes from the pull request body Redline already fetched; Actual is the
+	// half the agent must supply so the posted review can name the gap.
+	Actual string `json:"actual,omitempty"`
+	// Discrepancies are places the change does not do what it claims. Each
+	// one should also appear in findings (category intent) so it can ride as
+	// a line comment; Rule joins the body entry to that finding for threading.
+	Discrepancies []Discrepancy `json:"discrepancies,omitempty"`
 	// Intent is why the change exists: the ticket, the pull request, and
 	// whether this is the right thing built the right way. It is the first
 	// thing a reviewer reads and the last thing a diff can tell them.
@@ -38,6 +46,20 @@ type Review struct {
 	// Screenshots are routes the agent walked. They are not Redline's UI pane
 	// (checks 15–16); they are labelled as agent work when the report renders.
 	Screenshots []Shot `json:"screenshots,omitempty"`
+}
+
+// Discrepancy is one place the change diverges from what it said it would do.
+// Claim is the words from the PR (or ticket); Actual is what the code does.
+type Discrepancy struct {
+	Claim  string `json:"claim"`
+	Actual string `json:"actual"`
+	File   string `json:"file,omitempty"`
+	Line   int    `json:"line,omitempty"`
+	// StartLine begins a ranged anchor when the claim spans more than one line.
+	StartLine int `json:"startLine,omitempty"`
+	// Rule joins this entry to the finding that carries it inline. When empty,
+	// ToFindings invents one from the claim so the body can still thread it.
+	Rule string `json:"rule,omitempty"`
 }
 
 // Intent is the orientation block. Every field is optional because the screen
@@ -145,14 +167,19 @@ type Highlight struct {
 
 // Judgment is one agent-authored finding, before it becomes a Finding.
 type Judgment struct {
-	File     string            `json:"file"`
-	Line     int               `json:"line,omitempty"`
-	Rule     string            `json:"rule"`
-	Category findings.Category `json:"category,omitempty"`
-	Severity findings.Severity `json:"severity,omitempty"`
-	Message  string            `json:"message"`
-	Context  string            `json:"context,omitempty"`
-	FixCmd   string            `json:"fix,omitempty"`
+	File      string            `json:"file"`
+	Line      int               `json:"line,omitempty"`
+	StartLine int               `json:"startLine,omitempty"`
+	Rule      string            `json:"rule"`
+	Category  findings.Category `json:"category,omitempty"`
+	Severity  findings.Severity `json:"severity,omitempty"`
+	Message   string            `json:"message"`
+	Context   string            `json:"context,omitempty"`
+	FixCmd    string            `json:"fix,omitempty"`
+	// Suggestion is a literal replacement for the anchored lines, single file,
+	// at most twenty lines. Longer or multi-file fixes are omitted rather than
+	// posted wrong; say what to do in context instead.
+	Suggestion string `json:"suggestion,omitempty"`
 	// Confidence lets the agent say it is unsure rather than either
 	// suppressing a real concern or asserting a shaky one.
 	Confidence string `json:"confidence,omitempty"` // high | medium | low
@@ -204,6 +231,12 @@ func Merge(prev, next *Review) *Review {
 	out := *next
 	if out.Summary == "" {
 		out.Summary = prev.Summary
+	}
+	if out.Actual == "" {
+		out.Actual = prev.Actual
+	}
+	if len(out.Discrepancies) == 0 {
+		out.Discrepancies = prev.Discrepancies
 	}
 	// Whole-object replace, the same rule Files follows. A supplied intent is
 	// the agent's current account and wins entirely; merging it key by key
@@ -266,8 +299,13 @@ const Substrate = "redline/review"
 
 // ToFindings converts judgments into schema findings, stamping every one as
 // LLM-sourced. Nothing else in Redline may set this field to "llm".
+//
+// Discrepancies become category-intent findings too, so they are countable and
+// can ride as line comments. A discrepancy whose Rule already appears in
+// findings is left as narrative only — the finding carries the inline comment.
 func (r *Review) ToFindings() []findings.Finding {
-	out := make([]findings.Finding, 0, len(r.Findings))
+	out := make([]findings.Finding, 0, len(r.Findings)+len(r.Discrepancies))
+	seenRule := map[string]bool{}
 	for _, j := range r.Findings {
 		category := j.Category
 		if category == "" {
@@ -285,17 +323,64 @@ func (r *Review) ToFindings() []findings.Finding {
 			context = strings.TrimSpace(context + fmt.Sprintf("\n\nThe agent reported %s confidence in this finding.", j.Confidence))
 		}
 		out = append(out, findings.Finding{
-			File:      j.File,
-			Line:      j.Line,
-			Rule:      j.Rule,
+			File:       j.File,
+			Line:       j.Line,
+			StartLine:  j.StartLine,
+			Rule:       j.Rule,
+			Substrate:  Substrate,
+			Category:   category,
+			Severity:   severity,
+			Message:    j.Message,
+			Context:    context,
+			FixCmd:     j.FixCmd,
+			Suggestion: clipSuggestion(j.Suggestion),
+			Source:     findings.SourceLLM,
+		})
+		if j.Rule != "" {
+			seenRule[j.Rule] = true
+		}
+	}
+	for _, d := range r.Discrepancies {
+		rule := strings.TrimSpace(d.Rule)
+		if rule == "" {
+			rule = "intent-drift"
+		}
+		if seenRule[rule] {
+			continue
+		}
+		msg := strings.TrimSpace(d.Claim)
+		if msg == "" {
+			msg = "the change does not match its stated intent"
+		}
+		out = append(out, findings.Finding{
+			File:      d.File,
+			Line:      d.Line,
+			StartLine: d.StartLine,
+			Rule:      rule,
 			Substrate: Substrate,
-			Category:  category,
-			Severity:  severity,
-			Message:   j.Message,
-			Context:   context,
-			FixCmd:    j.FixCmd,
+			Category:  findings.CategoryIntent,
+			Severity:  findings.SeverityWarning,
+			Message:   msg,
+			Context:   strings.TrimSpace(d.Actual),
 			Source:    findings.SourceLLM,
 		})
 	}
 	return out
+}
+
+// maxSuggestionLines is Copilot's FixGeneratorMaxExpansionLines. Longer
+// replacements are dropped: a wrong fix is worse than no fix.
+const maxSuggestionLines = 20
+
+// clipSuggestion keeps a single-file suggestion that fits the GitHub block
+// budget and drops anything longer.
+func clipSuggestion(s string) string {
+	s = strings.TrimRight(s, "\n")
+	if s == "" {
+		return ""
+	}
+	if strings.Count(s, "\n")+1 > maxSuggestionLines {
+		return ""
+	}
+	return s
 }

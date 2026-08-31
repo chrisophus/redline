@@ -7,3 +7,5 @@
 .compound-engineering/*.local.yaml
 
 /.planning/
+scratch/
+.claude

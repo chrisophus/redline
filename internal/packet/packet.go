@@ -95,6 +95,7 @@ func DefaultGuidance() Guidance {
 	return Guidance{
 		Focus: []string{
 			"Orientation, as review `intent`: the ticket this change serves (`intent.ticket`), and `intent.fit` — whether this is the thing the ticket asked for (`thing`) and whether this is the way to build it (`way`). The reviewer reads that before anything else and the diff cannot supply it.",
+			"What the change actually does, as review `actual`, compared to the pull request body already in `target.pr`. Every place they disagree goes in `discrepancies` and as a finding with `category: \"intent\"` and the same `rule`, so the posted overview can thread to the inline comment.",
 			"One line per contract surface, as review `surfaces`: `interface`, `api`, `schema`, each `{line, moved}`. A surface that did not move still takes a line saying what you looked at — silence there reads as a pass and must not.",
 			"Info-level findings worth addressing. Warning and error lint is gated in CI and already fixed before this review; what is useful here is the info-level remark a reviewer would want to know about.",
 			"Correctness defects: logic that does not do what the surrounding code and the PR description say it should.",
