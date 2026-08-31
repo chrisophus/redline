@@ -66,6 +66,11 @@ flags:
                     different vendors is a second opinion, and each is
                     reported under its own name. --with none turns them all
                     off. Adapters are configurable in <out>/reviewers.json
+  --brief NAME      run a context-gathering pass before the packet is emitted:
+                    brief, none (default none). Reads outside the diff for
+                    callers, docs, and tests; attaches the result as packet
+                    brief. Opt-in for the same reason post is: review does not
+                    spend a model call unless asked.
   --report-url URL  with post: link to the full report in the review body
   --dry-run         with post: print the review payload instead of posting
   --stop            with serve: stop the server running for --out
@@ -81,7 +86,7 @@ func main() {
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
 	with                                                              reviewerList
-	reportURL                                                         string
+	brief, reportURL                                                  string
 	open, noOpen, stop, dryRun                                        bool
 	port                                                              int
 }
@@ -123,6 +128,7 @@ func runMain(args []string) error {
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
 	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")
 	fs.Var(&o.with, "with", "run an external reviewer; repeat or comma-separate for several (claude, cursor, none)")
+	fs.StringVar(&o.brief, "brief", "", "run a context-gathering pass (brief, none); default off")
 	fs.StringVar(&o.reportURL, "report-url", "", "with post: link to the full report in the review body (e.g. a CI artifact URL)")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "with post: print the review payload as JSON instead of posting")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
@@ -171,6 +177,9 @@ func cmdRun(o opts) error {
 	if err := withReviewer(o, res); err != nil {
 		return err
 	}
+	if err := runBrief(o, res); err != nil {
+		return err
+	}
 	if err := write(o, res, nil); err != nil {
 		return err
 	}
@@ -183,13 +192,16 @@ func cmdRun(o opts) error {
 
 // cmdReview emits the packet. Redline stops here: what it hands over is facts,
 // and the judgment is the agent's. Nothing in this path talks to a model unless
-// asked to, which is what `--with` does.
+// asked to, which is what `--with` and `--brief` do.
 func cmdReview(o opts) error {
 	res, err := execute(o)
 	if err != nil {
 		return err
 	}
 	if err := withReviewer(o, res); err != nil {
+		return err
+	}
+	if err := runBrief(o, res); err != nil {
 		return err
 	}
 	if err := write(o, res, nil); err != nil {

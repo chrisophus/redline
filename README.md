@@ -130,6 +130,20 @@ one arrived on the pull request already.
 ./redline review --with none                      # observed evidence only (the default)
 ```
 
+## Context brief
+
+`--brief brief` runs a cheap, read-only context pass before the packet is
+emitted. It greps for identifiers the change introduces, reads docs and skills
+that name the changed commands, finds the tests that cover them, and attaches
+the result as `packet.brief` so the reviewing agent starts with what Copilot's
+context-search pass used to gather on its own. Default is off: `review` does
+not spend a model call unless asked, for the same reason `post` is never a side
+effect of `run`.
+
+```
+./redline review --pr 123 --brief brief
+```
+
 A reviewer can take minutes and most print nothing until they finish, so
 progress goes to stderr: what started, a tick carrying elapsed time, how much
 the reviewer has written, and its own most recent line, then what it produced.

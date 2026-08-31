@@ -10,7 +10,8 @@ the judgment. Both halves go into one report, labelled so the reviewer always
 knows which is which.
 
 This skill is the driver. It works the same in Claude Code and in Cursor:
-`redline` is on PATH, this file is the brief, the binary never calls a model.
+`redline` is on PATH, this file is the brief. The binary does not call a model
+unless you pass `--with` or `--brief`.
 
 ## When to use
 
@@ -33,12 +34,15 @@ redline review --commit HEAD     # latest commit only
 redline review --range HEAD~3..HEAD
 redline review --branch feat/x
 redline review --pr 123
+redline review --pr 123 --brief brief   # also gather callers, docs, tests outside the diff
 ```
 
 This prints JSON: the target, the commits, every changed file with its diff,
 `uiTouched`, the repository's own instruction files, what Redline established
-by observation, and graph threads through the touched code. It makes no model
-calls — you are the model.
+by observation, graph threads through the touched code, and — when `--brief`
+was set — a `brief` of references, docs, and tests outside the diff. It makes
+no model calls unless you asked for `--with` or `--brief`; you are the model
+doing the review.
 
 **2. Review the packet.** Read `guidance` and follow it. In short:
 
@@ -47,6 +51,12 @@ calls — you are the model.
   file in `instruction` when a finding rests on a house rule.
 - Do not re-report anything in `deterministic[]`. Those are observed and are
   already in the report.
+- When `brief` is present, act on it before diving into the diffs on your own:
+  follow `brief.references` to callers and callees outside the diff, read
+  `brief.docsNaming` for contradictions between the docs and the code, and
+  check `brief.testsCovering` for gaps. Cite the path a brief item came from
+  when a finding rests on it. Put any brief item you could not check in
+  `unknowns`.
 - Read the actual files when the diff is not enough. The packet gives you
   paths; open them.
 - Correctness, contracts, error paths, concurrency, security, missing tests.

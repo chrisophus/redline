@@ -87,6 +87,10 @@ func Builtins() map[string]Adapter {
 			Prompt:  "Review the change at {target} for correctness bugs, security issues and contract breaks.\n\n" + contract,
 			Timeout: Duration(10 * time.Minute),
 		},
+		// brief is the context-gathering pass, not a findings reviewer. It is
+		// looked up by --brief, not --with; listing it here lets reviewers.json
+		// override the command or model the same way the others do.
+		"brief": briefAdapter(),
 	}
 }
 
