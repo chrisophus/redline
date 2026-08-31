@@ -120,6 +120,13 @@ never touches the code path the ticket names").
   upstream.
 - The review loop: `redline review` emits the change as JSON for an agent;
   `redline ingest` merges the agent's review back, labelled.
+- Posting: `redline post --pr N` submits the session's findings as one PR
+  review (event COMMENT), led by a preamble stating what was and was not
+  checked. Findings with `file:line` become line-anchored comments; the rest
+  go in the body. It refuses unless the loaded session is that PR, is
+  idempotent per (PR, head SHA) via hidden fingerprint markers, and posts
+  through `gh` so Redline never handles a token. `run`/`review`/`ingest`
+  stay read-only.
 - Reviewer adapters: `--with claude` runs Claude Code's own `/code-review`
   in the reviewed tree and folds its findings in; `--with cursor` likewise.
   Adapters are config entries (command, prompt template, timeout). A
@@ -129,44 +136,48 @@ never touches the code path the ticket names").
   viewed state, and screenshots, and a loopback server that verifies it is
   serving the right directory.
 
-## Phase 1: post to GitHub (next)
+## Phase 1: post to GitHub
 
 Replace Copilot review: one command reviews a teammate's PR with an agent
 and posts the result to GitHub, with proof of what was and wasn't checked.
 The review pipeline already works (`redline review --pr N --with claude`
 checks the PR out, runs the agent, and merges labelled findings). Phase 1
-is three pieces on top of it.
+was three pieces on top of it; the first two are the core, and shipped.
 
-1. `redline post --pr N` takes the current session's findings and posts one
-PR review via `gh api`:
+1. **Shipped.** `redline post --pr N` takes the current session's findings
+and posts one PR review via `gh api`:
 
 - Findings that carry file:line become line-anchored comments; the rest go
   in the review body.
-- The review is posted as COMMENT. It never requests changes unless asked.
-- Posting is idempotent per (PR, head SHA): a re-post updates rather than
-  duplicates. The fingerprint already identifies a finding across runs and
-  is the key.
+- The review is posted as COMMENT. It never requests changes or approves.
+- Posting is idempotent per (PR, head SHA): each finding carries a hidden
+  fingerprint marker, so a re-post never duplicates a comment, and a re-run
+  with no new findings on an already-reviewed commit posts nothing. The
+  fingerprint already identifies a finding across runs and is the key.
 - Posting is never implicit. `review` and `run` stay read-only, and `post`
   refuses when the session's target is a different PR than the one named.
 
-2. The review body opens by saying who reviewed, what was checked, and what
-was not ("reviewed by claude; lint delta, diff coverage, and UI not
-checked"), with a link to the full report (CI artifact URL when available).
-The data already exists in `findings.json` as coverage and substrate
-status; this renders it where a reader will see it. Decide early whether
-`post` also updates a check-run, which puts "reviewed" in the merge box
-instead of buried in comments and is the cheapest form of the verification
-phase 1 exists for.
+2. **Shipped.** The review body opens by saying who reviewed, what was
+checked, and what was not, with a link to the full report (`--report-url`,
+a CI artifact URL when available). The data already existed in
+`findings.json` as coverage and substrate status; the preamble renders it
+where a reader will see it.
 
-3. The Jira fetcher resolves a ticket key from the branch name, the PR
-title, or a flag, then pulls the ticket summary and description into the
-review input and the report header as intent, so the agent and the reader
-can compare claim against change from day one.
+Still open on this phase:
+
+- Whether `post` also updates a check-run, which puts "reviewed" in the
+  merge box instead of buried in comments and is the cheapest form of the
+  verification this phase exists for. Not built.
+- The Jira fetcher: resolve a ticket key from the branch name, the PR
+  title, or a flag, then pull the ticket summary and description into the
+  review input and the report header as intent, so the agent and the reader
+  can compare claim against change from day one. Not built.
 
 Done means: a teammate's PR goes through one command and a review appears
-on GitHub that a reader can act on and can verify the scope of. Everything
-else, including the ignored-lint triage, diff coverage, and the formalized
-agent UI walk below, is phase 2.
+on GitHub that a reader can act on and can verify the scope of. That path
+works today; the check-run and Jira pieces sharpen it. Everything else,
+including the ignored-lint triage, diff coverage, and the formalized agent
+UI walk below, is phase 2.
 
 ## Phase 2: the evidence panes
 
