@@ -88,11 +88,14 @@ echo '<review JSON>' | ./redline ingest   # merge judgments; open the HTML repor
 changes or approves) against the PR the session reviewed. A finding becomes a
 line-anchored comment only when its `file:line` is on a changed line in the
 PR's diff; findings off the diff (or with no line) go in the review body, so
-one stray line can never make GitHub reject the whole review. The coverage
-preamble leads the body. It refuses unless the loaded session is that same PR.
-Posting is idempotent per `(PR, head SHA)`: each finding carries a hidden
-fingerprint marker, so a re-post never duplicates a comment, and a re-run with
-no new findings on an already-reviewed commit posts nothing. `gh` supplies the
+one stray line can never make GitHub reject the whole review. The body opens
+with the agent's summary of the change and the file-by-file walkthrough, the
+shape of the review this replaces. It refuses unless the loaded session is that
+same PR. Posting is idempotent per `(PR, head SHA)`: every finding carries a
+hidden marker naming the commit it was said for, so a re-post never duplicates
+one and a re-run with no new findings on an already-reviewed commit posts
+nothing, while a new push still gets comments for findings that are still
+live. `gh` supplies the
 credentials; Redline never handles a token. `--report-url` links the full
 report (e.g. a CI artifact) from the review body.
 

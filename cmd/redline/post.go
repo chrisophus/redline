@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -56,6 +57,15 @@ func cmdPost(o opts) error {
 	}
 	payload := post.Build(&res.Report, tgt, narrative(res.Review), o.reportURL, commentable)
 
+	// A review nobody can read anything in is worse than no review: it appears
+	// on the pull request under the reviewer's name and says nothing. This is
+	// what `redline review --pr N && redline post` produced, with no ingest in
+	// between to supply the summary and the walkthrough.
+	if payload.Blank() {
+		return fmt.Errorf("this session has nothing to post: no findings, no summary and no walkthrough\n" +
+			"run the agent review and `redline ingest` first, or pass --report-url to post a link to the report")
+	}
+
 	if o.dryRun {
 		return emitJSON(reviewRequest(payload))
 	}
@@ -72,11 +82,17 @@ func cmdPost(o opts) error {
 	if err != nil {
 		return err
 	}
-	posted := post.Fingerprints([]string{commentBlob})
+	// Both blobs, not just the comments: a finding with no line, or one off the
+	// diff, was marked in the review body it rode in, and reading only the
+	// comment bodies would offer it again on every re-post.
+	posted := post.Fingerprints([]string{commentBlob, reviewBlob})
 	payload = payload.Unposted(posted)
 	alreadyReviewed := post.ReviewedAt([]string{reviewBlob}, tgt.Head)
 
-	if len(payload.Comments) == 0 && alreadyReviewed {
+	// NothingNew counts body findings as well as line comments. The earlier gate
+	// looked only at the comments, so a session whose new finding could not be
+	// anchored to a line was reported as nothing to post.
+	if payload.NothingNew() && alreadyReviewed {
 		fmt.Fprintf(os.Stderr, "redline: already reviewed %s and no new findings; nothing to post\n", shortSHA(tgt.Head))
 		return nil
 	}
@@ -168,26 +184,34 @@ func prCommentable(dryRun bool, owner, repo string, num int) (map[string]map[int
 
 // ghPullFiles returns the unified-diff patch for each file in the PR, keyed by
 // path. A file with no patch (binary, or too large for GitHub to return) is
-// omitted, so its findings fall to the body rather than risk an invalid
-// comment. Up to 100 files are read in one page; on a larger PR the unlisted
-// files' findings simply ride in the body, which is safe, never a 422.
+// omitted, so its findings fall to the body rather than risk an invalid comment.
+//
+// Every page is read. Stopping at the first hundred was safe, because an
+// unlisted file's findings ride in the body and that never 422s, but on a large
+// pull request it demoted findings that GitHub would have accepted inline.
 func ghPullFiles(owner, repo string, num int) (map[string]string, error) {
 	path := fmt.Sprintf("repos/%s/%s/pulls/%d/files?per_page=100", owner, repo, num)
-	cmd := exec.Command("gh", "api", path)
+	// --paginate with --slurp returns one array across all pages. Without
+	// --slurp gh concatenates a separate array per page, which is not valid JSON.
+	cmd := exec.Command("gh", "api", "--paginate", "--slurp", path)
 	out, err := cmd.Output()
 	if err != nil {
-		detail := ""
-		if ee, ok := err.(*exec.ExitError); ok {
-			detail = strings.TrimSpace(string(ee.Stderr))
-		}
-		return nil, fmt.Errorf("gh api %s: %s", path, detail)
+		return nil, ghError(path, err)
+	}
+	// Each element is one page's array of files.
+	var pages [][]struct {
+		Filename string `json:"filename"`
+		Patch    string `json:"patch"`
+	}
+	if err := json.Unmarshal(out, &pages); err != nil {
+		return nil, err
 	}
 	var raw []struct {
 		Filename string `json:"filename"`
 		Patch    string `json:"patch"`
 	}
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, err
+	for _, page := range pages {
+		raw = append(raw, page...)
 	}
 	m := make(map[string]string, len(raw))
 	for _, f := range raw {
@@ -206,13 +230,24 @@ func ghAPIField(owner, repo string, num int, sub string) (string, error) {
 	cmd := exec.Command("gh", "api", "--paginate", "-q", ".[].body", path)
 	out, err := cmd.Output()
 	if err != nil {
-		detail := ""
-		if ee, ok := err.(*exec.ExitError); ok {
-			detail = strings.TrimSpace(string(ee.Stderr))
-		}
-		return "", fmt.Errorf("gh api %s: %s", path, detail)
+		return "", ghError(path, err)
 	}
 	return string(out), nil
+}
+
+// ghError explains a failed `gh api` call. gh writes its diagnosis to stderr,
+// which only an *exec.ExitError carries, so anything else (gh missing from PATH,
+// a signal, a pipe that could not be opened) has to report the error itself.
+// Reading only ExitError left those cases with a message that named the path and
+// then said nothing, and wrapped no error to unwrap.
+func ghError(path string, err error) error {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if detail := strings.TrimSpace(string(ee.Stderr)); detail != "" {
+			return fmt.Errorf("gh api %s: %s", path, detail)
+		}
+	}
+	return fmt.Errorf("gh api %s: %w", path, err)
 }
 
 // parseRepoURL pulls owner and repo from a PR HTML URL like
