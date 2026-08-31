@@ -17,8 +17,7 @@ uncommitted work, and on an open pull request. It composes no judgment of its
 own — the prose and the judgment come from the agent driving it or from a
 reviewer you asked it to run. `--pr` fetches via `gh` (read-only).
 
-See `redline-design.md` for the design, and `.planning/PROJECT.md` for what the
-screen is for.
+See `redline-design.md` for the design.
 
 ## The pass
 
