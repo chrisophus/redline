@@ -34,13 +34,20 @@ import (
 // not gate, so it never requests changes or approves on its own.
 const Event = "COMMENT"
 
-// fpMarkerPrefix tags every comment with its finding fingerprint, invisibly (an
-// HTML comment), so a re-post can see what it already said and not say it twice.
-// The fingerprint is stable across runs, which is what makes idempotency per
-// (PR, head SHA) possible without a server to remember state. The fingerprint
-// itself is a human-readable string with NUL separators, so it is hex-encoded
-// in the marker — never embedded raw, where a "-->" in a message could close
-// the comment early.
+// fpMarkerPrefix tags every comment with the head SHA it was posted for and its
+// finding fingerprint, invisibly (an HTML comment), so a re-post can see what it
+// already said and not say it twice. The rendered form is
+// "redline:fp:<head sha>:<hex fingerprint>".
+//
+// The SHA is part of the key because findings.Fingerprint is file, rule and
+// normalized message with no commit in it, while GitHub keeps every comment ever
+// left on the pull request. Keyed on the fingerprint alone, a finding that is
+// still live after a new push looks already-posted against a comment attached to
+// a superseded commit, so it gets no comment on the new head and reads as fixed.
+//
+// The fingerprint itself is a human-readable string with NUL separators, so it
+// is hex-encoded rather than embedded raw, where a "-->" in a message could
+// close the comment early.
 const fpMarkerPrefix = "redline:fp:"
 
 // reviewMarkerPrefix tags the review body with the head SHA it was posted for,
@@ -49,9 +56,20 @@ const fpMarkerPrefix = "redline:fp:"
 const reviewMarkerPrefix = "redline:review:"
 
 var (
-	fpMarkerRe     = regexp.MustCompile(regexp.QuoteMeta(fpMarkerPrefix) + `([0-9a-fA-F]+)`)
+	// Two hex runs separated by a colon: the head SHA, then the encoded
+	// fingerprint. A marker written before the SHA was part of the key has only
+	// one run and deliberately does not match, so those findings post once more
+	// against the current head rather than being read as posted for it.
+	fpMarkerRe     = regexp.MustCompile(regexp.QuoteMeta(fpMarkerPrefix) + `([0-9a-fA-F]+):([0-9a-fA-F]+)`)
 	reviewMarkerRe = regexp.MustCompile(regexp.QuoteMeta(reviewMarkerPrefix) + `([0-9a-fA-F]+)`)
 )
+
+// postedKey is the identity a re-post checks against: a finding is already said
+// for this commit, or it is not. Keys from Fingerprints and lookups from
+// Unposted must be built the same way, so both go through here.
+func postedKey(head, fingerprint string) string {
+	return head + "\x00" + fingerprint
+}
 
 // Comment is one line-anchored review comment. Body already carries the
 // fingerprint marker; Fingerprint is kept alongside for filtering.
@@ -63,11 +81,40 @@ type Comment struct {
 }
 
 // Payload is one PR review: a body and the line-anchored comments. CommitID is
-// the head SHA the review is anchored to — the same SHA idempotency keys on.
+// the head SHA the review is anchored to, the same SHA idempotency keys on.
 type Payload struct {
 	CommitID string
 	Body     string
 	Comments []Comment
+
+	// What the body was rendered from, kept so Unposted can drop already-posted
+	// body findings and render it again. A body finding is tracked the same way
+	// a line comment is, and filtering it means rebuilding the string it sits in.
+	nar          Narrative
+	reportURL    string
+	bodyFindings []findings.Finding
+}
+
+// NothingNew reports that this payload has no finding Redline has not already
+// said for this commit, counting the ones that ride in the body. The caller
+// still has to post when the commit has never been reviewed, because that is
+// how the summary and walkthrough arrive.
+func (p Payload) NothingNew() bool {
+	return len(p.Comments) == 0 && len(p.bodyFindings) == 0
+}
+
+// Blank reports that a reader would see nothing in this review: no summary, no
+// walkthrough, no findings in the body or on a line, and no report link. It
+// happens when post runs on a session that was never ingested, where the body
+// renders as the head-SHA marker and nothing else. The string is not empty, so
+// this has to be a question about what went into the body rather than its
+// length.
+func (p Payload) Blank() bool {
+	return len(p.Comments) == 0 &&
+		len(p.bodyFindings) == 0 &&
+		strings.TrimSpace(p.nar.Summary) == "" &&
+		len(p.nar.Files) == 0 &&
+		p.reportURL == ""
 }
 
 // FileNote is one line of the walkthrough: what a changed file does in this
@@ -109,7 +156,7 @@ func Build(rep *findings.Report, tgt *target.Target, nar Narrative, reportURL st
 			p.Comments = append(p.Comments, Comment{
 				Path:        f.File,
 				Line:        f.Line,
-				Body:        commentBody(f),
+				Body:        commentBody(f, head),
 				Fingerprint: f.Fingerprint,
 			})
 			continue
@@ -117,6 +164,9 @@ func Build(rep *findings.Report, tgt *target.Target, nar Narrative, reportURL st
 		inBody = append(inBody, f)
 	}
 
+	p.nar = nar
+	p.reportURL = reportURL
+	p.bodyFindings = inBody
 	p.Body = buildBody(nar, head, reportURL, inBody)
 	return p
 }
@@ -132,8 +182,8 @@ func lineCommentable(m map[string]map[int]bool, file string, line int) bool {
 }
 
 // commentBody renders one finding as a line comment, ending in its hidden
-// fingerprint marker so a re-post can skip it.
-func commentBody(f findings.Finding) string {
+// fingerprint marker so a re-post against the same head can skip it.
+func commentBody(f findings.Finding, head string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "**%s** — %s", severityLabel(f.Severity), f.Message)
 	if f.Reviewer != "" {
@@ -150,8 +200,14 @@ func commentBody(f findings.Finding) string {
 		b.WriteString(ctx)
 	}
 	b.WriteString("\n\n")
-	b.WriteString(marker(fpMarkerPrefix + hex.EncodeToString([]byte(f.Fingerprint))))
+	b.WriteString(fpMarker(head, f.Fingerprint))
 	return b.String()
+}
+
+// fpMarker renders the hidden marker that identifies one finding as said for one
+// commit.
+func fpMarker(head, fingerprint string) string {
+	return marker(fpMarkerPrefix + head + ":" + hex.EncodeToString([]byte(fingerprint)))
 }
 
 // buildBody is the review body a reviewer reads first: the agent's summary of
@@ -175,7 +231,9 @@ func buildBody(nar Narrative, head, reportURL string, inBody []findings.Finding)
 		b.WriteString("<details>\n<summary>Walkthrough</summary>\n\n")
 		b.WriteString("| File | What changed |\n|---|---|\n")
 		for _, f := range nar.Files {
-			fmt.Fprintf(&b, "| `%s` | %s |\n", f.Path, escapeCell(f.Summary))
+			// Both cells are escaped. Path and Summary arrive from the same
+			// agent JSON, and a pipe in either one breaks the row.
+			fmt.Fprintf(&b, "| `%s` | %s |\n", escapeCell(f.Path), escapeCell(f.Summary))
 		}
 		b.WriteString("\n</details>\n")
 	}
@@ -189,7 +247,11 @@ func buildBody(nar Narrative, head, reportURL string, inBody []findings.Finding)
 			if loc := bodyLocation(f); loc != "" {
 				fmt.Fprintf(&b, " _(%s)_", loc)
 			}
-			b.WriteString("\n")
+			// The same marker a line comment carries. Without it only located
+			// findings were tracked, so a later ingest that added an unlocated
+			// one produced no new comments, the command read that as nothing to
+			// post, and the finding never reached the pull request.
+			fmt.Fprintf(&b, " %s\n", fpMarker(head, f.Fingerprint))
 		}
 	}
 	if reportURL != "" {
@@ -207,29 +269,50 @@ func escapeCell(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
+// Unposted drops everything Redline has already said for this payload's commit,
+// both the line comments and the findings that ride in the body. posted comes
+// from Fingerprints and is keyed on (head SHA, fingerprint), so a finding said
+// against an earlier commit does not suppress what this commit needs.
+//
+// The body is rendered again afterwards. A body finding that was already
+// reported would otherwise reappear in full on every re-post, which is the same
+// duplication the fingerprint markers exist to prevent for line comments.
 func (p Payload) Unposted(posted map[string]bool) Payload {
 	out := p
 	out.Comments = nil
 	for _, c := range p.Comments {
-		if posted[c.Fingerprint] {
+		if posted[postedKey(p.CommitID, c.Fingerprint)] {
 			continue
 		}
 		out.Comments = append(out.Comments, c)
 	}
+	out.bodyFindings = nil
+	for _, f := range p.bodyFindings {
+		if posted[postedKey(p.CommitID, f.Fingerprint)] {
+			continue
+		}
+		out.bodyFindings = append(out.bodyFindings, f)
+	}
+	out.Body = buildBody(out.nar, out.CommitID, out.reportURL, out.bodyFindings)
 	return out
 }
 
-// Fingerprints extracts the finding fingerprints embedded in a set of existing
-// comment or review bodies fetched from GitHub.
+// Fingerprints extracts what Redline has already said from a set of existing
+// comment and review bodies fetched from GitHub. Keys are (head SHA, finding
+// fingerprint) as built by postedKey; feed the result to Unposted.
+//
+// Review bodies matter as much as comment bodies: a finding that could not be
+// anchored to a line is marked in the body it rode in, and reading only the
+// comments would offer it again on every re-post.
 func Fingerprints(bodies []string) map[string]bool {
 	out := map[string]bool{}
 	for _, body := range bodies {
 		for _, m := range fpMarkerRe.FindAllStringSubmatch(body, -1) {
-			raw, err := hex.DecodeString(m[1])
+			raw, err := hex.DecodeString(m[2])
 			if err != nil {
 				continue
 			}
-			out[string(raw)] = true
+			out[postedKey(m[1], string(raw))] = true
 		}
 	}
 	return out

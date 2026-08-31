@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/packet"
+	"github.com/ccason/redline/internal/post"
 	"github.com/ccason/redline/internal/report"
 	"github.com/ccason/redline/internal/run"
 	"github.com/ccason/redline/internal/target"
@@ -147,6 +150,176 @@ func TestIngestAcceptsTheSessionsOwnTarget(t *testing.T) {
 	}
 }
 
+// prSession writes an evidence directory recording a review of PR 7, with one
+// located finding and an agent summary, so post has something to say.
+func prSession(t *testing.T) string {
+	t.Helper()
+	dir := reportDir(t)
+	rep := findings.Report{
+		BaseRef: "origin/main", BaseSHA: "abc123",
+		Findings: []findings.Finding{{
+			File: "a.go", Line: 12, Rule: "review", Substrate: "reviewer:claude",
+			Severity: findings.SeverityError, Message: "nil deref",
+			Source: findings.SourceLLM, Reviewer: "claude",
+		}},
+	}
+	rep.Finalize()
+	res := &run.Result{
+		Report: rep,
+		Packet: &packet.Packet{Target: prSessionTarget()},
+		Review: &packet.Review{Summary: "Adds a post command."},
+	}
+	if err := run.SaveSession(dir, res); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func prSessionTarget() *target.Target {
+	return &target.Target{
+		Kind: target.KindPR, Head: "deadbeef",
+		PR: &target.PullRequest{Number: 7, URL: "https://github.com/o/r/pull/7"},
+	}
+}
+
+// captureStdout runs fn with os.Stdout replaced and returns what it wrote.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := os.Stdout
+	os.Stdout = w
+	done := make(chan string, 1)
+	go func() {
+		var b strings.Builder
+		_, _ = io.Copy(&b, r)
+		done <- b.String()
+	}()
+	fn()
+	os.Stdout = orig
+	_ = w.Close()
+	out := <-done
+	_ = r.Close()
+	return out
+}
+
+// post is a write. Every one of these tests must reach the point of deciding
+// what to send without sending it, so none of them may find gh on PATH: an
+// empty PATH makes --dry-run take its documented offline path and makes a real
+// post fail before it opens a connection.
+func TestPostDryRunEmitsThePayloadWithoutPosting(t *testing.T) {
+	t.Setenv("PATH", "")
+	dir := prSession(t)
+
+	var err error
+	out := captureStdout(t, func() {
+		err = cmdPost(opts{out: dir, pr: "7", dryRun: true, port: 40500, noOpen: true})
+	})
+	if err != nil {
+		t.Fatalf("dry run should succeed offline: %v", err)
+	}
+
+	var req ghReviewRequest
+	if jsonErr := json.Unmarshal([]byte(out), &req); jsonErr != nil {
+		t.Fatalf("dry run should print the review request as JSON: %v\n%s", jsonErr, out)
+	}
+	if req.Event != post.Event {
+		t.Fatalf("a posted review reports and does not gate, got event %q", req.Event)
+	}
+	if req.CommitID != "deadbeef" {
+		t.Fatalf("the review anchors to the session head, got %q", req.CommitID)
+	}
+	if len(req.Comments) != 1 || req.Comments[0].Path != "a.go" {
+		t.Fatalf("the located finding should be a line comment: %+v", req.Comments)
+	}
+	if !strings.Contains(req.Body, "Adds a post command.") {
+		t.Fatalf("the body should lead with the agent summary:\n%s", req.Body)
+	}
+}
+
+// Posting a review of one change onto another pull request puts words in the
+// reviewer's mouth. It is a hard error, not a warning.
+func TestPostRejectsAMismatchedTarget(t *testing.T) {
+	t.Setenv("PATH", "")
+	dir := prSession(t)
+
+	err := cmdPost(opts{out: dir, pr: "456", dryRun: true, port: 40600, noOpen: true})
+	if err == nil {
+		t.Fatal("posting a PR 7 session to PR 456 should fail")
+	}
+	if !strings.Contains(err.Error(), "not pr 456") {
+		t.Fatalf("error should name the mismatch, got: %v", err)
+	}
+}
+
+// A worktree session has no pull request to post to.
+func TestPostRejectsANonPRSession(t *testing.T) {
+	t.Setenv("PATH", "")
+	dir := worktreeSession(t)
+
+	err := cmdPost(opts{out: dir, dryRun: true, port: 40700, noOpen: true})
+	if err == nil {
+		t.Fatal("posting a worktree session should fail")
+	}
+	if !strings.Contains(err.Error(), "needs a PR review session") {
+		t.Fatalf("error should say what post needs, got: %v", err)
+	}
+}
+
+// post follows the session's own target. Naming a different kind of target is a
+// category error rather than something to resolve.
+func TestPostRejectsANonPRTargetFlag(t *testing.T) {
+	t.Setenv("PATH", "")
+	dir := prSession(t)
+
+	err := cmdPost(opts{out: dir, branch: "feature", dryRun: true, port: 40800, noOpen: true})
+	if err == nil {
+		t.Fatal("post --branch should fail")
+	}
+	if !strings.Contains(err.Error(), "drop --branch") {
+		t.Fatalf("error should say which flags to drop, got: %v", err)
+	}
+}
+
+// `redline review --pr N && redline post` with no ingest between them used to
+// put a review on the pull request whose body was one invisible marker.
+func TestPostRefusesASessionWithNothingToSay(t *testing.T) {
+	t.Setenv("PATH", "")
+	dir := reportDir(t)
+	res := &run.Result{
+		Report: findings.Report{BaseRef: "origin/main", BaseSHA: "abc123"},
+		Packet: &packet.Packet{Target: prSessionTarget()},
+	}
+	if err := run.SaveSession(dir, res); err != nil {
+		t.Fatal(err)
+	}
+
+	err := cmdPost(opts{out: dir, pr: "7", dryRun: true, port: 40900, noOpen: true})
+	if err == nil {
+		t.Fatal("a session with no findings, summary or walkthrough should not post")
+	}
+	if !strings.Contains(err.Error(), "nothing to post") {
+		t.Fatalf("error should say the session is empty, got: %v", err)
+	}
+}
+
+// A real post needs gh for the credentials and for the PR's changed lines. It
+// must fail before opening a connection rather than part way through.
+func TestPostRequiresGhForARealPost(t *testing.T) {
+	t.Setenv("PATH", "")
+	dir := prSession(t)
+
+	err := cmdPost(opts{out: dir, pr: "7", port: 41000, noOpen: true})
+	if err == nil {
+		t.Fatal("a real post without gh should fail")
+	}
+	if !strings.Contains(err.Error(), "gh CLI") {
+		t.Fatalf("error should name the missing dependency, got: %v", err)
+	}
+}
+
 // startServe refuses to re-exec this binary. If a child is invoked anyway —
 // `redline.test serve …` — Go's flag parser would stop at "serve", ignore
 // the flags, and run the suite again. Route those arguments to runMain so
@@ -205,7 +378,7 @@ func TestMain(m *testing.M) {
 
 func isSubcommand(arg string) bool {
 	switch arg {
-	case "run", "review", "ingest", "open", "serve":
+	case "run", "review", "ingest", "post", "open", "serve":
 		return true
 	}
 	return false

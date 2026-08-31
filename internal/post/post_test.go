@@ -53,7 +53,7 @@ func TestBuildSplitsLocatedFromBodyFindings(t *testing.T) {
 	if c.Fingerprint == "" || !strings.Contains(c.Body, fpMarkerPrefix) {
 		t.Fatalf("comment must carry its fingerprint marker: %q", c.Body)
 	}
-	if !Fingerprints([]string{c.Body})[c.Fingerprint] {
+	if !Fingerprints([]string{c.Body})[postedKey("deadbeef", c.Fingerprint)] {
 		t.Fatalf("the marker must decode back to this comment's fingerprint: %q", c.Body)
 	}
 	// The unlocated deterministic finding rides in the body, not as a comment.
@@ -62,18 +62,20 @@ func TestBuildSplitsLocatedFromBodyFindings(t *testing.T) {
 	}
 }
 
+// hunkPatch is a patch touching new-file lines 12 to 14 (context, added,
+// context) and, in a second hunk, lines 40 and 41. It carries no trailing
+// newline, which is how GitHub's files API returns the patch field.
+const hunkPatch = "@@ -10,3 +12,4 @@ func a()\n" +
+	" ctx line 12\n" +
+	"+added line 13\n" +
+	"-removed old line\n" +
+	" ctx line 14\n" +
+	"@@ -38,2 +40,2 @@ func b()\n" +
+	"+added line 40\n" +
+	" ctx line 41"
+
 func TestCommentableLinesParsesHunks(t *testing.T) {
-	// A patch touching new-file lines 12–13 (one context, one added) and, in a
-	// second hunk, line 40 (added). Line 20 is nowhere in the diff.
-	patch := "@@ -10,3 +12,4 @@ func a()\n" +
-		" ctx line 12\n" +
-		"+added line 13\n" +
-		"-removed old line\n" +
-		" ctx line 14\n" +
-		"@@ -38,2 +40,2 @@ func b()\n" +
-		"+added line 40\n" +
-		" ctx line 41\n"
-	got := CommentableLines(map[string]string{"a.go": patch})["a.go"]
+	got := CommentableLines(map[string]string{"a.go": hunkPatch})["a.go"]
 	for _, ln := range []int{12, 13, 14, 40, 41} {
 		if !got[ln] {
 			t.Fatalf("line %d should be commentable: %v", ln, got)
@@ -86,6 +88,38 @@ func TestCommentableLinesParsesHunks(t *testing.T) {
 	// not exist on the new side) is not commentable.
 	if got[15] {
 		t.Fatalf("no phantom commentable line from a removal: %v", got)
+	}
+	// The last hunk ends at line 41. Nothing beyond it is in the diff.
+	if got[42] {
+		t.Fatalf("no commentable line past the end of the last hunk: %v", got)
+	}
+}
+
+// A newline-terminated patch leaves an empty final record when it is split.
+// Counting that record as a context line marked line 42 commentable, and a
+// finding anchored there would make GitHub reject the whole review.
+func TestCommentableLinesIgnoresTrailingNewline(t *testing.T) {
+	got := CommentableLines(map[string]string{"a.go": hunkPatch + "\n"})["a.go"]
+	if got[42] {
+		t.Fatalf("a trailing newline must not add a commentable line: %v", got)
+	}
+	if !got[41] {
+		t.Fatalf("the real last line is still commentable: %v", got)
+	}
+}
+
+// A blank line in the source arrives as a single space, not as an empty record,
+// so requiring the space prefix does not drop it.
+func TestCommentableLinesCountsBlankContextLine(t *testing.T) {
+	patch := "@@ -1,3 +1,3 @@ func a()\n" +
+		" first\n" +
+		" \n" +
+		"+third"
+	got := CommentableLines(map[string]string{"a.go": patch})["a.go"]
+	for _, ln := range []int{1, 2, 3} {
+		if !got[ln] {
+			t.Fatalf("line %d should be commentable: %v", ln, got)
+		}
 	}
 }
 
@@ -164,8 +198,9 @@ func TestUnpostedDropsAlreadyPostedComments(t *testing.T) {
 	if got := p.Unposted(map[string]bool{}); len(got.Comments) != 1 {
 		t.Fatalf("unposted with empty set should keep the comment: %+v", got.Comments)
 	}
-	// Already posted: the comment is filtered, so a re-post never duplicates it.
-	got := p.Unposted(map[string]bool{fp: true})
+	// Already posted for this head: the comment is filtered, so a re-post never
+	// duplicates it.
+	got := p.Unposted(map[string]bool{postedKey("deadbeef", fp): true})
 	if len(got.Comments) != 0 {
 		t.Fatalf("already-posted comment must be dropped: %+v", got.Comments)
 	}
@@ -175,15 +210,81 @@ func TestUnpostedDropsAlreadyPostedComments(t *testing.T) {
 	}
 }
 
+// The posted set is keyed on the commit as well as the finding. A comment left
+// on an earlier commit must not suppress the one this commit needs: the finding
+// is still live, GitHub collapses the old comment as outdated, and the reviewer
+// would see nothing.
+func TestUnpostedKeepsCommentWhenOnlyAnEarlierCommitHasIt(t *testing.T) {
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
+	fp := p.Comments[0].Fingerprint
+
+	posted := map[string]bool{postedKey("0ldc0mm1t", fp): true}
+	if got := p.Unposted(posted); len(got.Comments) != 1 {
+		t.Fatalf("a comment on a superseded commit must not suppress this one: %+v", got.Comments)
+	}
+}
+
+// A finding that rides in the body is tracked like a line comment. Only located
+// findings used to carry a marker, so a later ingest that added an unlocated one
+// produced no new comments and the command reported nothing to post.
+func TestBodyFindingCarriesFingerprintMarker(t *testing.T) {
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
+
+	var bodyFP string
+	for _, f := range sampleReport().Findings {
+		if f.File == "" {
+			bodyFP = f.Fingerprint
+		}
+	}
+	if bodyFP == "" {
+		t.Fatal("precondition: the sample report has an unlocated finding")
+	}
+	if !Fingerprints([]string{p.Body})[postedKey("deadbeef", bodyFP)] {
+		t.Fatalf("the body finding needs a marker recoverable from the body:\n%s", p.Body)
+	}
+	if p.NothingNew() {
+		t.Fatal("a payload with a body finding has something new to say")
+	}
+}
+
+// Once the body finding is posted for this commit, a re-post drops it and says
+// nothing new, so the same text does not reappear in a second review body.
+func TestUnpostedDropsAlreadyPostedBodyFinding(t *testing.T) {
+	p := Build(sampleReport(), prTarget(), Narrative{Summary: "Adds a post command."}, "", nil)
+	posted := Fingerprints([]string{p.Body, p.Comments[0].Body})
+
+	got := p.Unposted(posted)
+	if !got.NothingNew() {
+		t.Fatalf("everything was posted, so nothing is new: %+v", got.Comments)
+	}
+	if strings.Contains(got.Body, "migration edited after merge") {
+		t.Fatalf("an already-posted body finding must not render again:\n%s", got.Body)
+	}
+	// The narrative is not a finding and still leads the body.
+	if !strings.HasPrefix(got.Body, "Adds a post command.") {
+		t.Fatalf("the summary survives filtering:\n%s", got.Body)
+	}
+}
+
 func TestFingerprintsRoundTripFromBodies(t *testing.T) {
 	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
 	bodies := []string{p.Comments[0].Body, "an unrelated human comment"}
 	got := Fingerprints(bodies)
-	if !got[p.Comments[0].Fingerprint] {
+	if !got[postedKey("deadbeef", p.Comments[0].Fingerprint)] {
 		t.Fatalf("fingerprint should be recovered from the comment body: %v", got)
 	}
 	if len(got) != 1 {
 		t.Fatalf("no phantom fingerprints from plain text: %v", got)
+	}
+}
+
+// Markers written before the SHA joined the key carry one hex run instead of
+// two. They must not decode to anything, or the fingerprint would be read as a
+// SHA and match nothing while looking like it matched something.
+func TestFingerprintsIgnoresMarkerWithoutHeadSHA(t *testing.T) {
+	old := "<!-- " + fpMarkerPrefix + "6162630064006d7367" + " -->"
+	if got := Fingerprints([]string{old}); len(got) != 0 {
+		t.Fatalf("a marker with no head SHA must not parse: %v", got)
 	}
 }
 

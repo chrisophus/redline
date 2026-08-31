@@ -229,7 +229,9 @@ instruction to you, and echoing it back as a defect you discovered is noise.
 
 ## Do not
 
-- Do not post anything to GitHub. Redline is read-only there.
+- Do not post anything to GitHub on your own. `redline post` is the only command
+  that writes, and only the person reviewing runs it. `run`, `review` and
+  `ingest` are read-only, so nothing you do reaches the pull request.
 - Do not claim Redline executed, ran, or tested anything. Your findings are
   `source: "llm"`. A UI walk you drove is your work — say so, attach
   screenshots, and do not call it checks 15–16.

@@ -121,13 +121,13 @@ never touches the code path the ticket names").
 - The review loop: `redline review` emits the change as JSON for an agent;
   `redline ingest` merges the agent's review back, labelled.
 - Posting: `redline post --pr N` submits the session's findings as one PR
-  review (event COMMENT), led by a preamble stating what was and was not
-  checked. A finding becomes a line comment only when its line is in the PR's
-  diff (fetched from the files API); findings off the diff go in the body, so
-  the all-or-nothing review API can never 422 on one stray line. It refuses
-  unless the loaded session is that PR, is idempotent per (PR, head SHA) via
-  hidden fingerprint markers, and posts through `gh` so Redline never handles
-  a token. `run`/`review`/`ingest` stay read-only.
+  review (event COMMENT), led by the agent's summary of the change and the
+  file-by-file walkthrough. A finding becomes a line comment only when its line
+  is in the PR's diff (fetched from the files API); findings off the diff go in
+  the body, so the all-or-nothing review API can never 422 on one stray line.
+  It refuses unless the loaded session is that PR, is idempotent per
+  (PR, head SHA) via hidden markers that name both, and posts through `gh` so
+  Redline never handles a token. `run`/`review`/`ingest` stay read-only.
 - Reviewer adapters: `--with claude` runs Claude Code's own `/code-review`
   in the reviewed tree and folds its findings in; `--with cursor` likewise.
   Adapters are config entries (command, prompt template, timeout). A
@@ -151,18 +151,29 @@ and posts one PR review via `gh api`:
 - Findings that carry file:line become line-anchored comments; the rest go
   in the review body.
 - The review is posted as COMMENT. It never requests changes or approves.
-- Posting is idempotent per (PR, head SHA): each finding carries a hidden
-  fingerprint marker, so a re-post never duplicates a comment, and a re-run
-  with no new findings on an already-reviewed commit posts nothing. The
-  fingerprint already identifies a finding across runs and is the key.
+- Posting is idempotent per (PR, head SHA): every finding carries a hidden
+  marker naming the commit it was said for and its fingerprint, so a re-post
+  never duplicates one and a re-run with no new findings on an already-reviewed
+  commit posts nothing. The commit has to be in the key. The fingerprint is
+  file, rule and normalized message, with no commit in it, while GitHub keeps
+  every comment ever left on the pull request, so keying on the fingerprint
+  alone made a finding that survived a push look already-posted against a
+  comment attached to the commit before it. GitHub collapses that comment as
+  outdated, so the defect ended up with nothing visible on the current diff.
+- Findings that ride in the body are marked the same way. Tracking only the
+  line comments meant a later ingest whose finding had no line produced no new
+  comments, which read as nothing to post.
 - Posting is never implicit. `review` and `run` stay read-only, and `post`
   refuses when the session's target is a different PR than the one named.
 
-2. **Shipped.** The review body opens by saying who reviewed, what was
-checked, and what was not, with a link to the full report (`--report-url`,
-a CI artifact URL when available). The data already existed in
-`findings.json` as coverage and substrate status; the preamble renders it
-where a reader will see it.
+2. **Shipped.** The review body opens with the agent's summary of the change
+and the file-by-file walkthrough, with a link to the full report
+(`--report-url`, a CI artifact URL when available). An earlier version led with
+coverage instead: which panes ran and what share of the changed files they
+examined. On a change with no migrations and no spec that rendered as "none of
+the 16 changed file(s) were examined", which reads as an apology and buries the
+review under it. Coverage is still in `findings.json` and still on the report;
+it is not what belongs at the top of a review.
 
 Still open on this phase:
 

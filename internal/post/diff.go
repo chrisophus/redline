@@ -51,13 +51,24 @@ func commentableInPatch(patch string) map[int]bool {
 			newLine++
 		case strings.HasPrefix(line, "-"):
 			// Removed from the old side; the new-side counter does not move.
-		case strings.HasPrefix(line, "\\"):
-			// "\ No newline at end of file" — metadata, not a line.
-		default:
-			// A context line (leading space, or an empty trailing line) exists on
-			// both sides; commentable, then advance.
+		case strings.HasPrefix(line, " "):
+			// A context line exists on both sides; commentable, then advance.
+			// The prefix must be a literal space. A blank line in the source
+			// still arrives as " ", so requiring it costs nothing and keeps a
+			// record that is not a diff line from being counted as one.
 			out[newLine] = true
 			newLine++
+		default:
+			// Anything else is not a line of the new file: "\ No newline at end
+			// of file", or the empty final record strings.Split leaves when a
+			// patch ends in a newline. Counting that record as context marked a
+			// line one past the end of the last hunk as commentable, which is
+			// the out-of-diff anchor this file exists to prevent. GitHub does
+			// not terminate the patch field with a newline today, so this was
+			// unreachable through the files API, but CommentableLines is
+			// exported and a caller with a newline-terminated patch would hit
+			// it. Skipping without advancing can only under-report, which
+			// demotes a finding to the body and is always safe.
 		}
 	}
 	return out

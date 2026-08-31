@@ -182,7 +182,8 @@ func cmdRun(o opts) error {
 }
 
 // cmdReview emits the packet. Redline stops here: what it hands over is facts,
-// and the judgment is the agent's. Nothing in this path talks to a model.
+// and the judgment is the agent's. Nothing in this path talks to a model unless
+// asked to, which is what `--with` does.
 func cmdReview(o opts) error {
 	res, err := execute(o)
 	if err != nil {
