@@ -122,11 +122,12 @@ never touches the code path the ticket names").
   `redline ingest` merges the agent's review back, labelled.
 - Posting: `redline post --pr N` submits the session's findings as one PR
   review (event COMMENT), led by a preamble stating what was and was not
-  checked. Findings with `file:line` become line-anchored comments; the rest
-  go in the body. It refuses unless the loaded session is that PR, is
-  idempotent per (PR, head SHA) via hidden fingerprint markers, and posts
-  through `gh` so Redline never handles a token. `run`/`review`/`ingest`
-  stay read-only.
+  checked. A finding becomes a line comment only when its line is in the PR's
+  diff (fetched from the files API); findings off the diff go in the body, so
+  the all-or-nothing review API can never 422 on one stray line. It refuses
+  unless the loaded session is that PR, is idempotent per (PR, head SHA) via
+  hidden fingerprint markers, and posts through `gh` so Redline never handles
+  a token. `run`/`review`/`ingest` stay read-only.
 - Reviewer adapters: `--with claude` runs Claude Code's own `/code-review`
   in the reviewed tree and folds its findings in; `--with cursor` likewise.
   Adapters are config entries (command, prompt template, timeout). A

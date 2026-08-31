@@ -46,14 +46,17 @@ func cmdPost(o opts) error {
 	}
 	num := tgt.PR.Number
 
-	payload := post.Build(&res.Report, tgt, o.reportURL)
+	// The set of lines GitHub will accept a comment on. A finding pointing off
+	// the diff must ride in the body, not as a line comment: the review API is
+	// all-or-nothing, so one out-of-diff comment 422s the whole submission.
+	commentable, err := prCommentable(o.dryRun, owner, repo, num)
+	if err != nil {
+		return err
+	}
+	payload := post.Build(&res.Report, tgt, o.reportURL, commentable)
 
 	if o.dryRun {
 		return emitJSON(reviewRequest(payload))
-	}
-
-	if _, err := exec.LookPath("gh"); err != nil {
-		return fmt.Errorf("posting a review needs the gh CLI on PATH: %w", err)
 	}
 
 	// Read what Redline already said on this PR so a re-post neither duplicates a
@@ -123,6 +126,60 @@ func submitReview(owner, repo string, num int, p post.Payload) error {
 		return fmt.Errorf("gh api POST %s: %s", path, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// prCommentable resolves the lines GitHub will accept comments on for this PR.
+// A real post requires gh and the PR's file list; a dry-run degrades to nil (no
+// filtering) when gh is absent or the fetch fails, so a payload can still be
+// previewed offline.
+func prCommentable(dryRun bool, owner, repo string, num int) (map[string]map[int]bool, error) {
+	if _, err := exec.LookPath("gh"); err != nil {
+		if dryRun {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("posting a review needs the gh CLI on PATH: %w", err)
+	}
+	patches, err := ghPullFiles(owner, repo, num)
+	if err != nil {
+		if dryRun {
+			fmt.Fprintf(os.Stderr, "redline: could not fetch the PR diff (%v); previewing without diff filtering\n", err)
+			return nil, nil
+		}
+		return nil, err
+	}
+	return post.CommentableLines(patches), nil
+}
+
+// ghPullFiles returns the unified-diff patch for each file in the PR, keyed by
+// path. A file with no patch (binary, or too large for GitHub to return) is
+// omitted, so its findings fall to the body rather than risk an invalid
+// comment. Up to 100 files are read in one page; on a larger PR the unlisted
+// files' findings simply ride in the body, which is safe, never a 422.
+func ghPullFiles(owner, repo string, num int) (map[string]string, error) {
+	path := fmt.Sprintf("repos/%s/%s/pulls/%d/files?per_page=100", owner, repo, num)
+	cmd := exec.Command("gh", "api", path)
+	out, err := cmd.Output()
+	if err != nil {
+		detail := ""
+		if ee, ok := err.(*exec.ExitError); ok {
+			detail = strings.TrimSpace(string(ee.Stderr))
+		}
+		return nil, fmt.Errorf("gh api %s: %s", path, detail)
+	}
+	var raw []struct {
+		Filename string `json:"filename"`
+		Patch    string `json:"patch"`
+	}
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, err
+	}
+	m := make(map[string]string, len(raw))
+	for _, f := range raw {
+		if f.Patch != "" {
+			m[f.Filename] = f.Patch
+		}
+	}
+	return m, nil
 }
 
 // ghAPIField returns the concatenated `body` fields of every item under a PR
