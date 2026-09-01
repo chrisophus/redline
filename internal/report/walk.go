@@ -1,18 +1,16 @@
 package report
 
 import (
+	"github.com/ccason/redline/internal/change"
 	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/packet"
 )
 
-// fileWalkRow is one line of the change walkthrough: the path the packet
-// already knows, plus the agent's sentence when they supplied one.
+// fileWalkRow is one line of the change walkthrough.
 type fileWalkRow struct {
 	Path    string
 	Status  string
 	Added   int
 	Removed int
-	Summary string
 
 	// Findings is how many findings landed on this file, and Severity the
 	// worst of them. The walk is the first list a reviewer reads, so it has to
@@ -22,18 +20,10 @@ type fileWalkRow struct {
 	Severity string
 }
 
-// fileWalk lists every changed file in packet order. Agent notes attach by
-// path; notes for paths the packet does not contain are dropped. A reviewer
-// who has not read the diff still needs this list — especially when no pane
-// examined the change.
-func fileWalk(files []packet.FileChange, notes []packet.FileNote, fs []findings.Finding) []fileWalkRow {
-	byPath := map[string]string{}
-	for _, n := range notes {
-		if n.Path == "" || n.Summary == "" {
-			continue
-		}
-		byPath[n.Path] = n.Summary
-	}
+// fileWalk lists every changed file in change order. A reviewer who has not
+// read the diff still needs this list — especially when no pane examined the
+// change.
+func fileWalk(files []change.File, fs []findings.Finding) []fileWalkRow {
 	count := map[string]int{}
 	worst := map[string]findings.Severity{}
 	for _, f := range fs {
@@ -53,7 +43,6 @@ func fileWalk(files []packet.FileChange, notes []packet.FileNote, fs []findings.
 			Status:   f.Status,
 			Added:    f.Added,
 			Removed:  f.Removed,
-			Summary:  byPath[f.Path],
 			Findings: count[f.Path],
 			Severity: string(worst[f.Path]),
 		})

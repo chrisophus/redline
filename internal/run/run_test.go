@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ccason/redline/internal/change"
 	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/report"
 	"github.com/ccason/redline/internal/run"
 )
@@ -260,7 +260,7 @@ func TestUnexaminedChangeIsNotACleanReview(t *testing.T) {
 	if len(rep.Unknowns) == 0 {
 		t.Fatal("an entirely unexamined change must be reported as unexamined")
 	}
-	md := report.Markdown(&rep, res.Renders, res.Evidence, res.Packet, nil)
+	md := report.Markdown(&rep, res.Renders, res.Evidence, res.Change)
 	if !strings.Contains(md, "examined none of this change") {
 		t.Fatalf("report must say so at the top:\n%s", md)
 	}
@@ -366,11 +366,11 @@ func TestGeneratedFilesLeaveTheChangeAndAreNamed(t *testing.T) {
 			t.Fatal("a hand-written file was excluded as generated")
 		}
 	}
-	// The packet is the reviewing agent's input; generated text must not spend
-	// its context either.
-	for _, f := range res.Packet.Files {
+	// The change is what the report renders; generated text must not reach it
+	// either.
+	for _, f := range res.Change.Files {
 		if strings.HasPrefix(f.Path, "internal/api/oas_") || f.Path == "go.sum" {
-			t.Fatalf("%s reached the packet", f.Path)
+			t.Fatalf("%s reached the change", f.Path)
 		}
 	}
 }
@@ -392,7 +392,7 @@ func TestModificationCapturesTheSQLDiff(t *testing.T) {
 	if !strings.Contains(artifact, "-CREATE TABLE users (id int);") {
 		t.Fatalf("expected the removed SQL in the captured diff, got %q", artifact)
 	}
-	md := report.Markdown(&res.Report, res.Renders, res.Evidence, res.Packet, nil)
+	md := report.Markdown(&res.Report, res.Renders, res.Evidence, res.Change)
 	if !strings.Contains(md, "+CREATE TABLE users (id bigint);") {
 		t.Fatal("the report must show the evidence beside the claim")
 	}
@@ -421,30 +421,30 @@ func TestPartialImmutabilityIsNotConfirmed(t *testing.T) {
 }
 
 // Untracked files are in the change (pre-push) but `git diff REV -- path`
-// emits nothing for them. The packet must still carry the new file so a
+// emits nothing for them. The change must still carry the new file so a
 // reviewer can read it.
-func TestUntrackedFileHasDiffInPacket(t *testing.T) {
+func TestUntrackedFileHasDiff(t *testing.T) {
 	r := newRepo(t)
 	r.write("keep.go", "package keep\n")
 	r.commit("init")
 	r.write("new_test.go", "package keep\n\nfunc TestX() {}\n")
 
 	res := r.run(run.Options{})
-	var found *packet.FileChange
-	for i := range res.Packet.Files {
-		if res.Packet.Files[i].Path == "new_test.go" {
-			found = &res.Packet.Files[i]
+	var found *change.File
+	for i := range res.Change.Files {
+		if res.Change.Files[i].Path == "new_test.go" {
+			found = &res.Change.Files[i]
 			break
 		}
 	}
 	if found == nil {
-		t.Fatal("untracked file must appear in the packet")
+		t.Fatal("untracked file must appear in the change")
 	}
 	if found.Status != "added" {
 		t.Fatalf("untracked file status: got %q, want added", found.Status)
 	}
 	if !strings.Contains(found.Diff, "+package keep") {
-		t.Fatalf("packet diff for untracked file was empty: %q", found.Diff)
+		t.Fatalf("diff for untracked file was empty: %q", found.Diff)
 	}
 	if found.Added == 0 {
 		t.Fatalf("untracked add must have a line count, got %+v", found)

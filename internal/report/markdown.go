@@ -9,14 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ccason/redline/internal/change"
 	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/pane"
 )
 
-// Markdown renders the report. Rung 1's visual output is markdown; report.html
-// arrives with the panes whose evidence is actually visual.
-func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]pane.Artifact, p *packet.Packet, rev *packet.Review) string {
+// Markdown renders the report.
+func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]pane.Artifact, ch *change.Set) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Redline\n\n")
 	fmt.Fprintf(&b, "Base `%s` (`%s`) — %d file(s) changed, %d examined.\n\n",
@@ -24,10 +23,12 @@ func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]p
 	fmt.Fprintf(&b, "%d finding(s).\n\n", len(rep.Findings))
 	banner(&b, rep)
 
-	orientation(&b, p, rev)
+	if pr := prLink(ch); pr != "" {
+		fmt.Fprintf(&b, "%s\n\n", pr)
+	}
 	section1(&b, renders)
 	coverageSection(&b, rep)
-	fileSection(&b, p, rev)
+	fileSection(&b, ch, rep.Findings)
 	section2(&b, rep)
 	section3(&b, rep)
 	section4(&b, rep, evidence)
@@ -54,81 +55,20 @@ func banner(b *strings.Builder, rep *findings.Report) {
 	}
 }
 
-// orientation is why the change exists, and one line per contract surface. It
-// comes before the evidence because it is what a reviewer reads first and the
-// only part a diff cannot supply.
-func orientation(b *strings.Builder, p *packet.Packet, rev *packet.Review) {
-	var intent *packet.Intent
-	var surfaces *packet.Surfaces
-	if rev != nil {
-		intent = rev.Intent
-		surfaces = rev.Surfaces
+// prLink names the pull request under review, when there is one.
+func prLink(ch *change.Set) string {
+	if ch == nil || ch.Target == nil || ch.Target.PR == nil {
+		return ""
 	}
-	if rev != nil && rev.Summary != "" {
-		fmt.Fprintf(b, "## What this change is\n\n%s\n\n", rev.Summary)
+	pr := ch.Target.PR
+	label := prLabel(pr.Number)
+	if pr.URL != "" {
+		label = fmt.Sprintf("[%s](%s)", label, pr.URL)
 	}
-
-	var links []string
-	if intent != nil && intent.Ticket != nil {
-		links = append(links, describeLink(intent.Ticket.ID, intent.Ticket.Title, intent.Ticket.URL))
-	}
-	pr := prLink(intent, p)
-	if pr != "" {
-		links = append(links, pr)
-	}
-	if len(links) > 0 {
-		fmt.Fprintf(b, "%s\n\n", strings.Join(links, " · "))
-	}
-	if intent != nil && intent.Fit != nil {
-		if intent.Fit.Thing != "" {
-			fmt.Fprintf(b, "- **Right thing** — %s\n", intent.Fit.Thing)
-		}
-		if intent.Fit.Way != "" {
-			fmt.Fprintf(b, "- **Right way** — %s\n", intent.Fit.Way)
-		}
-		fmt.Fprintln(b)
-	}
-
-	fmt.Fprintf(b, "## Surfaces\n\n")
-	for _, s := range surfaceViews(surfaces) {
-		state := "did not move"
-		switch {
-		case !s.Stated:
-			state = "**not reported**"
-		case s.Moved:
-			state = "**moved**"
-		}
-		fmt.Fprintf(b, "- **%s** (%s) — %s\n", s.Label, state, s.Line)
-	}
-	fmt.Fprintln(b)
-}
-
-func describeLink(id, title, url string) string {
-	label := id
-	if label == "" {
-		label = "link"
-	}
-	if url != "" {
-		label = fmt.Sprintf("[%s](%s)", label, url)
-	}
-	if title != "" {
-		label += " " + title
+	if pr.Title != "" {
+		label += " " + pr.Title
 	}
 	return label
-}
-
-// prLink prefers the pull request Redline fetched over the agent's account of
-// it. The agent's is used only when Redline was not pointed at one.
-func prLink(intent *packet.Intent, p *packet.Packet) string {
-	if p != nil && p.Target != nil && p.Target.PR != nil {
-		pr := p.Target.PR
-		return describeLink(prLabel(pr.Number), pr.Title, pr.URL)
-	}
-	if intent != nil && intent.PR != nil {
-		pr := intent.PR
-		return describeLink(prLabel(pr.Number), pr.Title, pr.URL)
-	}
-	return ""
 }
 
 func prLabel(n int) string {
@@ -168,22 +108,18 @@ func coverageSection(b *strings.Builder, rep *findings.Report) {
 	}
 }
 
-// fileSection is the walkthrough: every changed file, with the agent's
-// sentence when they wrote one. Shown even when no pane ran — that is when
-// a reviewer most needs a file-by-file account.
-func fileSection(b *strings.Builder, p *packet.Packet, rev *packet.Review) {
-	if p == nil || len(p.Files) == 0 {
+// fileSection is the walkthrough: every changed file, with its finding count.
+// Shown even when no pane ran — that is when a reviewer most needs a
+// file-by-file account of what moved.
+func fileSection(b *strings.Builder, ch *change.Set, fs []findings.Finding) {
+	if ch == nil || len(ch.Files) == 0 {
 		return
 	}
-	var notes []packet.FileNote
-	if rev != nil {
-		notes = rev.Files
-	}
 	fmt.Fprintf(b, "## Files\n\n")
-	for _, row := range fileWalk(p.Files, notes, nil) {
+	for _, row := range fileWalk(ch.Files, fs) {
 		fmt.Fprintf(b, "- `%s` (%s, +%d −%d)", row.Path, row.Status, row.Added, row.Removed)
-		if row.Summary != "" {
-			fmt.Fprintf(b, " — %s", row.Summary)
+		if row.Findings > 0 {
+			fmt.Fprintf(b, " — %d finding(s)", row.Findings)
 		}
 		fmt.Fprintln(b)
 	}

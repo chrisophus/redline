@@ -11,12 +11,11 @@ import (
 	"fmt"
 	"html/template"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/ccason/redline/internal/change"
 	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/pane"
 )
 
@@ -26,73 +25,30 @@ var assets embed.FS
 // HTMLInput is everything the page renders.
 type HTMLInput struct {
 	Report   *findings.Report
-	Packet   *packet.Packet
-	Review   *packet.Review
+	Change   *change.Set
 	Renders  []pane.Render
 	Evidence map[string]pane.Artifact
-	// Screenshots are route captures. Until the UI pane ships they come from
-	// the reviewing agent's walk (ingest `screenshots`). The section still
-	// renders empty as "did not run" when none were supplied.
-	Screenshots []Screenshot
-}
-
-// Screenshot is one route capture. Before is optional: an agent walk of the
-// current tree often has only After. Data URIs must be template.URL or
-// html/template will replace them with #ZgotmplZ.
-type Screenshot struct {
-	Route   string
-	Caption string
-	Before  template.URL
-	After   template.URL
-	// BeforeFile and File are the copies under evidence/ui, relative to the
-	// evidence directory. Set even when the image is inlined, so the report
-	// still names where the capture lives.
-	BeforeFile string
-	File       string
 }
 
 // view is the flattened shape the template consumes.
 type view struct {
 	Title    string
 	Subtitle string
-	Summary  string
 	URL      string
 	Author   string
 	Coverage findings.Coverage
 	Banner   string
 	Counts   map[string]int
 
-	// Orientation: why this change exists. Every field is optional because the
-	// screen opens pre-push, where there is no pull request and often no
-	// ticket, as well as on an open one.
-	Ticket *packet.IntentTicket
-	PR     *prView
-	Fit    *packet.IntentFit
-
-	// Surfaces always has three entries, in the order a reviewer checks them.
-	// A surface the agent said nothing about renders as unreported rather than
-	// as unchanged.
-	Surfaces []surfaceView
-
-	API    []packet.Highlight
-	Schema []packet.Highlight
-	Files  []fileWalkRow
-
-	// Judged and Observed are the same findings split by who is accountable
-	// for them. A skim of what the reviewers found is a different act from
-	// reading what Redline can prove.
-	Judged   []reviewerGroup
+	Files    []fileWalkRow
 	Observed []findingView
 
-	Areas       []areaView
-	TestFiles   int
-	Confirms    []findings.Confirmation
-	Unknowns    []findings.Unknown
-	Dark        []findings.SubstrateStatus
-	Skipped     []findings.SubstrateStatus
-	Threads     []packet.Thread
-	Screenshots []Screenshot
-	AgentWalk   bool
+	Areas     []areaView
+	TestFiles int
+	Confirms  []findings.Confirmation
+	Unknowns  []findings.Unknown
+	Dark      []findings.SubstrateStatus
+	Skipped   []findings.SubstrateStatus
 	// UITouched is whether the change moves the interface at all. It decides
 	// how loud the absence of captures should be: no captures on a change that
 	// touches no UI is unremarkable, and on one that does it is a gap.
@@ -102,28 +58,10 @@ type view struct {
 	// has a map before any script runs.
 	Nav []navLink
 
-	Commits   int
-	HasReview bool
+	Commits int
 	// Identity keys browser-local comments to this review, not to the
 	// report.html path — every run overwrites the same file.
 	Identity string
-}
-
-// prView is the pull request as the screen shows it, from whichever source
-// knew about it.
-type prView struct {
-	Number int
-	Title  string
-	URL    string
-}
-
-// surfaceView is one contract-surface tile. Stated separates "the agent looked
-// and nothing moved" from "nobody said" — the second must never read as a pass.
-type surfaceView struct {
-	Label  string
-	Line   string
-	Moved  bool
-	Stated bool
 }
 
 // navLink is one sidebar entry.
@@ -139,22 +77,9 @@ type navLink struct {
 	Warn  bool
 }
 
-// reviewerGroup is one reviewer's findings, kept under its own name.
-//
-// Two reviewers are not reconciled into one list. Redline cannot tell whether
-// two differently worded sentences describe the same defect without guessing,
-// and a wrong guess deletes a finding silently. Grouping puts both accounts in
-// front of the reviewer, which is what skimming for a flavour of what each one
-// found actually needs.
-type reviewerGroup struct {
-	Reviewer string
-	Findings []findingView
-}
-
 type findingView struct {
 	findings.Finding
 	Evidence template.HTML
-	IsLLM    bool
 }
 
 type areaView struct {
@@ -169,7 +94,6 @@ type fileView struct {
 	Status  string
 	Added   int
 	Removed int
-	Summary string
 	Diff    template.HTML
 }
 
@@ -206,14 +130,12 @@ func HTML(in HTMLInput) (string, error) {
 func buildView(in HTMLInput) view {
 	rep := in.Report
 	v := view{
-		Title:       "Redline",
-		Coverage:    rep.Coverage,
-		Confirms:    rep.Confirmations,
-		Unknowns:    rep.Unknowns,
-		Dark:        rep.DarkSubstrates(),
-		Screenshots: in.Screenshots,
-		AgentWalk:   len(in.Screenshots) > 0,
-		Counts:      map[string]int{},
+		Title:    "Redline",
+		Coverage: rep.Coverage,
+		Confirms: rep.Confirmations,
+		Unknowns: rep.Unknowns,
+		Dark:     rep.DarkSubstrates(),
+		Counts:   map[string]int{},
 	}
 	for _, s := range rep.Substrates {
 		if s.State == findings.SubstrateSkipped {
@@ -221,85 +143,43 @@ func buildView(in HTMLInput) view {
 		}
 	}
 	head := "worktree"
-	if p := in.Packet; p != nil {
-		v.Commits = len(p.Commits)
-		v.Threads = p.Threads
-		v.UITouched = p.UITouched
-		if p.Target != nil {
-			v.Subtitle = p.Target.Describe()
-			if p.Target.Head != "" {
-				head = p.Target.Head
+	if ch := in.Change; ch != nil {
+		v.Commits = len(ch.Commits)
+		v.UITouched = ch.UITouched
+		if ch.Target != nil {
+			v.Subtitle = ch.Target.Describe()
+			if ch.Target.Head != "" {
+				head = ch.Target.Head
 			}
-			if p.Target.PR != nil {
-				v.URL = p.Target.PR.URL
-				v.Author = p.Target.PR.Author
+			if ch.Target.PR != nil {
+				v.URL = ch.Target.PR.URL
+				v.Author = ch.Target.PR.Author
 			}
 		}
 	}
-	v.Identity = reviewIdentity(rep.BaseSHA, head, in.Packet)
+	v.Identity = reviewIdentity(rep.BaseSHA, head, in.Change)
 	if v.Subtitle == "" {
 		v.Subtitle = fmt.Sprintf("base %s", short(rep.BaseSHA))
 	}
-	var notes []packet.FileNote
-	var surfaces *packet.Surfaces
-	if r := in.Review; r != nil {
-		v.HasReview = true
-		v.Summary = r.Summary
-		v.API = r.APIChanges
-		v.Schema = r.SchemaChanges
-		notes = r.Files
-		surfaces = r.Surfaces
-		if r.Intent != nil {
-			v.Ticket = r.Intent.Ticket
-			v.Fit = r.Intent.Fit
-			if p := r.Intent.PR; p != nil {
-				v.PR = &prView{Number: p.Number, Title: p.Title, URL: p.URL}
-			}
-		}
-	}
-	// When the target is a pull request, Redline fetched it and that is the
-	// pull request under review. The agent's copy is hearsay about the same
-	// thing, and rendering it instead would contradict the subtitle two lines
-	// above. It is used only when Redline was not pointed at a pull request at
-	// all — the pre-push case where the agent knows one exists.
-	if in.Packet != nil && in.Packet.Target != nil && in.Packet.Target.PR != nil {
-		pr := in.Packet.Target.PR
-		v.PR = &prView{Number: pr.Number, Title: pr.Title, URL: pr.URL}
-	}
-	v.Surfaces = surfaceViews(surfaces)
-	if v.Summary == "" {
-		v.Summary = "No agent summary. Redline emits evidence; the plain-language account of the change comes from the agent driving it — run `redline review` and pipe the result to `redline ingest`."
-	}
 	v.Banner = bannerText(rep)
 
-	var judged []findingView
 	for _, f := range rep.Findings {
 		v.Counts[string(f.Severity)]++
-		fv := findingView{Finding: f, IsLLM: f.Source == findings.SourceLLM}
+		fv := findingView{Finding: f}
 		for _, id := range f.Evidence {
 			if a, ok := in.Evidence[id]; ok && a.Content != "" && len(a.Content) < maxInlineEvidence {
 				fv.Evidence = template.HTML(highlightDiff(a.Content))
 			}
 		}
-		if fv.IsLLM {
-			judged = append(judged, fv)
-		} else {
-			v.Observed = append(v.Observed, fv)
-		}
+		v.Observed = append(v.Observed, fv)
 	}
-	v.Judged = groupByReviewer(judged)
 
-	if in.Packet != nil {
-		v.Files = fileWalk(in.Packet.Files, notes, rep.Findings)
-		byPath := map[string]string{}
-		for _, row := range v.Files {
-			byPath[row.Path] = row.Summary
-		}
+	if in.Change != nil {
+		v.Files = fileWalk(in.Change.Files, rep.Findings)
 		byArea := map[string][]fileView{}
-		for _, f := range in.Packet.Files {
+		for _, f := range in.Change.Files {
 			fv := fileView{Path: f.Path, Status: f.Status, Added: f.Added, Removed: f.Removed,
-				Summary: byPath[f.Path],
-				Diff:    template.HTML(highlightDiffFor(f.Path, f.Diff))}
+				Diff: template.HTML(highlightDiffFor(f.Path, f.Diff))}
 			for _, a := range f.Areas {
 				byArea[a] = append(byArea[a], fv)
 			}
@@ -321,105 +201,27 @@ func buildView(in HTMLInput) view {
 // in step with the template: TestNavMatchesTheSectionsOnThePage fails if a
 // section gains or loses a heading without its entry moving too.
 func navFor(v view) []navLink {
-	judged := 0
-	for _, g := range v.Judged {
-		judged += len(g.Findings)
-	}
 	// A UI that moved with nothing captured is a gap; a change with no UI files
 	// is not.
-	uiGap := v.UITouched && len(v.Screenshots) == 0
+	uiGap := v.UITouched
 	coverageGap := v.Coverage.Diff == nil || v.Coverage.Diff.Stale
 
 	nav := []navLink{
-		{ID: "change", Label: "What this change is"},
-		{ID: "interface", Label: "What it looks like", Count: len(v.Screenshots), Warn: uiGap},
+		{ID: "interface", Label: "What it looks like", Warn: uiGap},
+		{ID: "coverage", Label: "Coverage", Warn: coverageGap},
 	}
-	if len(v.API) > 0 {
-		nav = append(nav, navLink{ID: "api", Label: "API contract", Count: len(v.API)})
-	}
-	if len(v.Schema) > 0 {
-		nav = append(nav, navLink{ID: "schema", Label: "Schema", Count: len(v.Schema)})
-	}
-	nav = append(nav, navLink{ID: "coverage", Label: "Coverage", Warn: coverageGap})
 	if len(v.Files) > 0 {
 		nav = append(nav, navLink{ID: "files", Label: "Files", Count: len(v.Files)})
 	}
-	nav = append(nav,
-		navLink{ID: "findings", Label: "What the reviewers found", Count: judged},
-		navLink{ID: "observed", Label: "What Redline observed", Count: len(v.Observed)},
-	)
+	nav = append(nav, navLink{ID: "observed", Label: "What Redline observed", Count: len(v.Observed)})
 	if len(v.Areas) > 0 {
 		nav = append(nav, navLink{ID: "drill", Label: "Drill in", Count: len(v.Areas)})
-	}
-	if len(v.Threads) > 0 {
-		nav = append(nav, navLink{ID: "threads", Label: "Threads", Count: len(v.Threads)})
 	}
 	nav = append(nav,
 		navLink{ID: "unknowns", Label: "Undetermined", Count: len(v.Unknowns) + len(v.Dark), Warn: len(v.Unknowns)+len(v.Dark) > 0},
 		navLink{ID: "confirms", Label: "Checked and held", Count: len(v.Confirms)},
 	)
 	return nav
-}
-
-// groupByReviewer splits judged findings by who reported them, preserving the
-// order each reviewer's findings arrived in. The driving agent's own judgments
-// carry no reviewer name and are grouped last, after the tools that were run
-// deliberately.
-func groupByReviewer(judged []findingView) []reviewerGroup {
-	var order []string
-	byName := map[string][]findingView{}
-	for _, f := range judged {
-		if _, seen := byName[f.Reviewer]; !seen {
-			order = append(order, f.Reviewer)
-		}
-		byName[f.Reviewer] = append(byName[f.Reviewer], f)
-	}
-	sort.SliceStable(order, func(i, j int) bool {
-		if (order[i] == "") != (order[j] == "") {
-			return order[j] == ""
-		}
-		return order[i] < order[j]
-	})
-	out := make([]reviewerGroup, 0, len(order))
-	for _, name := range order {
-		label := name
-		if label == "" {
-			label = "the driving agent"
-		}
-		out = append(out, reviewerGroup{Reviewer: label, Findings: byName[name]})
-	}
-	return out
-}
-
-// surfaceViews returns the three surfaces in the order a reviewer checks them,
-// always all three. A missing surface is rendered as unreported: the whole
-// point of the strip is that a surface nobody spoke about looks different from
-// one that was checked and had not moved.
-func surfaceViews(s *packet.Surfaces) []surfaceView {
-	labels := []struct {
-		label string
-		get   func(*packet.Surfaces) *packet.Surface
-	}{
-		{"Interface", func(x *packet.Surfaces) *packet.Surface { return x.Interface }},
-		{"API", func(x *packet.Surfaces) *packet.Surface { return x.API }},
-		{"Schema", func(x *packet.Surfaces) *packet.Surface { return x.Schema }},
-	}
-	out := make([]surfaceView, 0, len(labels))
-	for _, l := range labels {
-		sv := surfaceView{Label: l.label}
-		if s != nil {
-			if got := l.get(s); got != nil && (got.Line != "" || got.Moved) {
-				sv.Line = got.Line
-				sv.Moved = got.Moved
-				sv.Stated = true
-			}
-		}
-		if !sv.Stated {
-			sv.Line = "Not reported. Nobody said whether this surface moved."
-		}
-		out = append(out, sv)
-	}
-	return out
 }
 
 // bannerText is the same honesty check the markdown report makes. An empty
@@ -430,38 +232,11 @@ func bannerText(rep *findings.Report) string {
 	case rep.Coverage.ChangedFiles == 0:
 		return "Nothing to review — the target matches the base revision."
 	case rep.Coverage.ExaminedFiles == 0:
-		// A reviewer that ran changes what the empty pane coverage means, and
-		// the old wording — "an empty findings list says nothing" — is a plain
-		// contradiction when findings from that reviewer are on the page. Say
-		// what did look, and what that costs: a reviewer's reading is not
-		// reproducible, and it confirms nothing it did not examine.
-		if who := reviewersRan(rep); who != "" {
-			return fmt.Sprintf("No pane Redline ships covers these files, so nothing below is reproducible evidence — it is %s's reading of the change. Findings are worth what that reviewer is worth; silence is not a pass.", who)
-		}
 		return "Redline examined none of this change. No pane it currently ships covers these files, so an empty findings list says nothing about whether the change is correct."
 	case len(rep.DarkSubstrates()) > 0:
 		return fmt.Sprintf("%d pane(s) applied to this change and did not run. That part of the change is unreviewed.", len(rep.DarkSubstrates()))
 	}
 	return ""
-}
-
-// reviewersRan names the external reviewers that produced findings this run,
-// for the banner. Panes and reviewers are both substrates; only the reviewers
-// carry the "reviewer:" prefix that withReviewer stamps on them.
-func reviewersRan(rep *findings.Report) string {
-	var names []string
-	for _, s := range rep.Substrates {
-		if s.State == findings.SubstrateRan && strings.HasPrefix(s.Name, "reviewer:") {
-			names = append(names, strings.TrimPrefix(s.Name, "reviewer:"))
-		}
-	}
-	switch len(names) {
-	case 0:
-		return ""
-	case 1:
-		return names[0]
-	}
-	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // highlightDiff marks up a unified diff. Deliberately hand-rolled: a syntax
@@ -557,15 +332,15 @@ func (c *diffCursor) classify(line string) (class, side string, src int) {
 
 // reviewIdentity keys browser comments to this change. Branch and PR reviews
 // are identified by base+head SHA. Working-tree reviews include a fingerprint
-// of the packet files so two dirty trees against the same base do not share
+// of the changed files so two dirty trees against the same base do not share
 // comments.
-func reviewIdentity(baseSHA, head string, p *packet.Packet) string {
+func reviewIdentity(baseSHA, head string, ch *change.Set) string {
 	id := short(baseSHA) + ":" + short(head)
-	if head != "worktree" || p == nil {
+	if head != "worktree" || ch == nil {
 		return id
 	}
 	h := sha256.New()
-	for _, f := range p.Files {
+	for _, f := range ch.Files {
 		_, _ = h.Write([]byte(f.Path))
 		_, _ = h.Write([]byte{0})
 		_, _ = h.Write([]byte(f.Diff))

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ccason/redline/internal/change"
 	"github.com/ccason/redline/internal/cover"
 	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/target"
 )
 
@@ -37,11 +37,11 @@ func TestHighlightDiffForUsesSourceLineNumbers(t *testing.T) {
 
 func TestReviewIdentityDiffersForWorktreeChanges(t *testing.T) {
 	base := "aaaaaaaaaaaaaaaa"
-	a := reviewIdentity(base, "worktree", &packet.Packet{
-		Files: []packet.FileChange{{Path: "a.go", Diff: "+one"}},
+	a := reviewIdentity(base, "worktree", &change.Set{
+		Files: []change.File{{Path: "a.go", Diff: "+one"}},
 	})
-	b := reviewIdentity(base, "worktree", &packet.Packet{
-		Files: []packet.FileChange{{Path: "a.go", Diff: "+two"}},
+	b := reviewIdentity(base, "worktree", &change.Set{
+		Files: []change.File{{Path: "a.go", Diff: "+two"}},
 	})
 	if a == b {
 		t.Fatal("different working-tree diffs must not share a comment key")
@@ -56,9 +56,9 @@ func TestReviewIdentityDiffersForWorktreeChanges(t *testing.T) {
 func TestHTMLIdentityAttribute(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{BaseSHA: "abcdef0123456789", Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
-		Packet: &packet.Packet{
+		Change: &change.Set{
 			Target: &target.Target{Kind: target.KindBranch, Head: "ffffffffffffffff"},
-			Files:  []packet.FileChange{{Path: "a.go", Diff: "@@ -1 +1 @@\n-a\n+b\n", Areas: []string{"code"}}},
+			Files:  []change.File{{Path: "a.go", Diff: "@@ -1 +1 @@\n-a\n+b\n", Areas: []string{"code"}}},
 		},
 	})
 	if err != nil {
@@ -69,20 +69,13 @@ func TestHTMLIdentityAttribute(t *testing.T) {
 	}
 }
 
-func TestHTMLFileWalkUsesPacketAndAgentNotes(t *testing.T) {
+func TestHTMLFileWalkListsEveryChangedFile(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 0}},
-		Packet: &packet.Packet{
-			Files: []packet.FileChange{
+		Change: &change.Set{
+			Files: []change.File{
 				{Path: "cmd/redline/main.go", Status: "modified", Added: 10, Removed: 2, Areas: []string{"code"}},
 				{Path: "README.md", Status: "modified", Added: 3, Removed: 1, Areas: []string{"code"}},
-			},
-		},
-		Review: &packet.Review{
-			Summary: "Serve the report over loopback.",
-			Files: []packet.FileNote{
-				{Path: "cmd/redline/main.go", Summary: "Prints the Report: URL after ingest."},
-				{Path: "ghost.go", Summary: "Must not appear — not in the packet."},
 			},
 		},
 	})
@@ -90,141 +83,31 @@ func TestHTMLFileWalkUsesPacketAndAgentNotes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(html, `<h2 id="files">Files</h2>`) {
-		t.Fatal("report must lead with a file walkthrough")
+		t.Fatal("report must carry a file walkthrough")
 	}
-	if !strings.Contains(html, "Prints the Report: URL after ingest.") {
-		t.Fatal("agent file summary must render")
-	}
-	if !strings.Contains(html, "README.md") {
-		t.Fatal("every packet file must appear even without a note")
-	}
-	if strings.Contains(html, "ghost.go") {
-		t.Fatal("notes for paths outside the packet must be dropped")
-	}
-}
-
-func TestOrientationLeadsTheScreen(t *testing.T) {
-	html, err := HTML(HTMLInput{
-		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
-		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
-		Review: &packet.Review{
-			Summary: "Serve the report over loopback.",
-			Intent: &packet.Intent{
-				Ticket: &packet.IntentTicket{ID: "REL-24", Title: "Serve the report", URL: "https://example.test/REL-24"},
-				Fit:    &packet.IntentFit{Thing: "Yes, this is what REL-24 asked for.", Way: "Mostly — the port scan is undocumented."},
-			},
-			Surfaces: &packet.Surfaces{
-				Interface: &packet.Surface{Line: "Comment bar added to the report.", Moved: true},
-				Schema:    &packet.Surface{Line: "No migrations touched.", Moved: false},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, want := range []string{
-		"REL-24", "https://example.test/REL-24", "Serve the report",
-		"Right thing", "Yes, this is what REL-24 asked for.",
-		"Right way", "the port scan is undocumented",
-		"Comment bar added to the report.", "No migrations touched.",
-	} {
+	for _, want := range []string{"cmd/redline/main.go", "README.md"} {
 		if !strings.Contains(html, want) {
-			t.Errorf("orientation missing %q", want)
+			t.Fatalf("every changed file must appear in the walk; missing %q", want)
 		}
 	}
-
-	// The API surface was never spoken about. That must not read the same as a
-	// surface someone checked and found unmoved.
-	if !strings.Contains(html, "Not reported.") {
-		t.Error("an unreported surface must say so")
-	}
-	if !strings.Contains(html, "surface unstated") {
-		t.Error("an unreported surface must be visually distinct from an idle one")
-	}
-	if !strings.Contains(html, "surface idle") {
-		t.Error("a checked-but-unmoved surface should render as idle")
-	}
-
-	// Orientation precedes the evidence.
-	if strings.Index(html, "REL-24") > strings.Index(html, `id="findings"`) {
-		t.Error("orientation must come before the findings")
-	}
 }
 
-func TestPrePushScreenHasNoTicketOrPR(t *testing.T) {
+// A --pr run knows its pull request; the subtitle carries it.
+func TestPullRequestRendersFromTheTarget(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
-		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
-		Review: &packet.Review{Summary: "Uncommitted work."},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(html, `class="intent"`) {
-		t.Error("with no ticket and no PR the orientation links must be omitted entirely")
-	}
-	if !strings.Contains(html, "Uncommitted work.") {
-		t.Error("the summary still leads")
-	}
-	// All three surfaces still appear, all unreported.
-	if got := strings.Count(html, "Not reported."); got != 3 {
-		t.Errorf("expected three unreported surfaces, got %d", got)
-	}
-}
-
-// A --pr review knows its pull request without the agent restating it, and
-// what Redline fetched outranks what the agent says about it.
-func TestPullRequestPrefersWhatRedlineObserved(t *testing.T) {
-	in := HTMLInput{
-		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
-		Packet: &packet.Packet{
+		Change: &change.Set{
 			Target: &target.Target{Kind: target.KindPR, PR: &target.PullRequest{
 				Number: 42, Title: "Add the briefing", URL: "https://example.test/pr/42",
 			}},
-			Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}},
+			Files: []change.File{{Path: "a.go", Areas: []string{"code"}}},
 		},
-		Review: &packet.Review{Summary: "s"},
-	}
-	html, err := HTML(in)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(html, "https://example.test/pr/42") {
-		t.Error("the PR the target names must appear without agent help")
-	}
-
-	// The agent claiming a different pull request must not override the one
-	// Redline fetched, or the orientation contradicts the subtitle.
-	in.Review = &packet.Review{Summary: "s", Intent: &packet.Intent{
-		PR: &packet.IntentPR{Number: 7, Title: "Agent said seven", URL: "https://example.test/pr/7"},
-	}}
-	html, err = HTML(in)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(html, "https://example.test/pr/7") {
-		t.Error("hearsay must not outrank the fetched pull request")
-	}
-	if !strings.Contains(html, "https://example.test/pr/42") {
-		t.Error("the observed pull request must still render")
-	}
-}
-
-// Pre-push there is no --pr target, so the agent's account is all there is.
-func TestAgentPullRequestUsedWhenRedlineHasNone(t *testing.T) {
-	html, err := HTML(HTMLInput{
-		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
-		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
-		Review: &packet.Review{Summary: "s", Intent: &packet.Intent{
-			PR: &packet.IntentPR{Number: 7, Title: "Seven", URL: "https://example.test/pr/7"},
-		}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(html, "PR #7") {
-		t.Error("with no fetched PR the agent's account should show")
+	if !strings.Contains(html, "https://example.test/pr/42") {
+		t.Error("the PR the target names must appear on the page")
 	}
 }
 
@@ -237,30 +120,20 @@ func TestNavMatchesTheSectionsOnThePage(t *testing.T) {
 			Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 1,
 				Diff: &cover.Result{Profile: "coverage.out", Lines: 4, Covered: 2, Percent: 50}},
 			Findings: []findings.Finding{
-				{File: "a.go", Rule: "review", Message: "judged", Severity: findings.SeverityWarning,
-					Source: findings.SourceLLM, Reviewer: "claude"},
-				{File: "b.sql", Rule: "obs", Message: "observed", Severity: findings.SeverityError,
-					Source: findings.SourceDeterministic},
+				{File: "b.sql", Rule: "obs", Message: "observed", Severity: findings.SeverityError},
 			},
 			Confirmations: []findings.Confirmation{{Rule: "r", Message: "held"}},
 			Unknowns:      []findings.Unknown{{Substrate: "s", Message: "unknown"}},
 		},
-		Packet: &packet.Packet{
+		Change: &change.Set{
 			UITouched: true,
-			Files:     []packet.FileChange{{Path: "a.go", Areas: []string{"code"}, Diff: "@@ -1 +1 @@\n+x\n"}},
-			Threads:   []packet.Thread{{From: "a", To: "b"}},
+			Files:     []change.File{{Path: "a.go", Areas: []string{"code"}, Diff: "@@ -1 +1 @@\n+x\n"}},
 		},
-		Review: &packet.Review{
-			Summary:       "s",
-			APIChanges:    []packet.Highlight{{Title: "api moved"}},
-			SchemaChanges: []packet.Highlight{{Title: "schema moved"}},
-		},
-		Screenshots: []Screenshot{{Route: "/x", After: "data:image/png;base64,AAA"}},
 	}
-	// The pre-push minimum: no highlights, no threads, no captures, no profile.
+	// The pre-push minimum: no findings, no captures, no profile.
 	bare := HTMLInput{
 		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0}},
-		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+		Change: &change.Set{Files: []change.File{{Path: "a.go", Areas: []string{"code"}}}},
 	}
 
 	navHref := regexp.MustCompile(`data-nav="([^"]+)"`)
@@ -295,9 +168,9 @@ func TestNavMarksSectionsThatAreGaps(t *testing.T) {
 			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0},
 			Unknowns: []findings.Unknown{{Substrate: "s", Message: "u"}},
 		},
-		Packet: &packet.Packet{
+		Change: &change.Set{
 			UITouched: true,
-			Files:     []packet.FileChange{{Path: "web/src/App.tsx", Areas: []string{"ui"}}},
+			Files:     []change.File{{Path: "web/src/App.tsx", Areas: []string{"ui"}}},
 		},
 	})
 	if err != nil {
@@ -310,15 +183,15 @@ func TestNavMarksSectionsThatAreGaps(t *testing.T) {
 		}
 	}
 	// A section with a real result is not a gap.
-	if regexp.MustCompile(`data-nav="change"[^>]*class="gap"`).MatchString(html) {
-		t.Error("the summary section is not a gap")
+	if regexp.MustCompile(`data-nav="files"[^>]*class="gap"`).MatchString(html) {
+		t.Error("the files section is not a gap")
 	}
 }
 
 func TestNavIsSelfContainedAndSticky(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
-		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+		Change: &change.Set{Files: []change.File{{Path: "a.go", Areas: []string{"code"}}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -342,9 +215,9 @@ func TestNavIsSelfContainedAndSticky(t *testing.T) {
 func TestCommentPayloadNamesTheChangeItBelongsTo(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{BaseSHA: "abcdef0123456789", Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
-		Packet: &packet.Packet{
+		Change: &change.Set{
 			Target: &target.Target{Kind: target.KindBranch, Head: "ffffffffffffffff", Label: "feat/x"},
-			Files:  []packet.FileChange{{Path: "a.go", Diff: "@@ -1 +1 @@\n-a\n+b\n", Areas: []string{"code"}}},
+			Files:  []change.File{{Path: "a.go", Diff: "@@ -1 +1 @@\n-a\n+b\n", Areas: []string{"code"}}},
 		},
 	})
 	if err != nil {
@@ -366,17 +239,16 @@ func TestCommentPayloadNamesTheChangeItBelongsTo(t *testing.T) {
 	}
 }
 
-// The UI screens are the one artifact no other tool hands you, so they sit in
-// pass position and their absence is stated in proportion to whether the
+// UI capture is not built. Its absence is stated in proportion to whether the
 // interface actually moved.
-func TestInterfaceSectionIsInPassPositionAndHonestWhenEmpty(t *testing.T) {
-	uiChange := &packet.Packet{
+func TestInterfaceSectionIsHonestWhenEmpty(t *testing.T) {
+	uiChange := &change.Set{
 		UITouched: true,
-		Files:     []packet.FileChange{{Path: "web/src/App.tsx", Areas: []string{"ui"}}},
+		Files:     []change.File{{Path: "web/src/App.tsx", Areas: []string{"ui"}}},
 	}
 	rep := &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0}}
 
-	html, err := HTML(HTMLInput{Report: rep, Packet: uiChange})
+	html, err := HTML(HTMLInput{Report: rep, Change: uiChange})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,8 +260,8 @@ func TestInterfaceSectionIsInPassPositionAndHonestWhenEmpty(t *testing.T) {
 		t.Error("that gap belongs in a banner, not italic small print")
 	}
 
-	noUI := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
-	html, err = HTML(HTMLInput{Report: rep, Packet: noUI})
+	noUI := &change.Set{Files: []change.File{{Path: "a.go", Areas: []string{"code"}}}}
+	html, err = HTML(HTMLInput{Report: rep, Change: noUI})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,107 +271,12 @@ func TestInterfaceSectionIsInPassPositionAndHonestWhenEmpty(t *testing.T) {
 	if !strings.Contains(html, "absence of looking") {
 		t.Error("even then, absence must not read as a finding of no change")
 	}
-
-	// With captures, the section leads and says whose walk it was.
-	html, err = HTML(HTMLInput{
-		Report:      rep,
-		Packet:      uiChange,
-		Screenshots: []Screenshot{{Route: "/login", After: "data:image/png;base64,AAA", Caption: "form"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(html, "Walked by the reviewing agent") {
-		t.Error("agent captures must be labelled as the agent's work")
-	}
-	if strings.Index(html, `id="interface"`) > strings.Index(html, `id="findings"`) {
-		t.Error("the interface section belongs before the findings")
-	}
-}
-
-func TestFindingsSplitByWhoIsAccountable(t *testing.T) {
-	html, err := HTML(HTMLInput{
-		Report: &findings.Report{
-			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
-			Findings: []findings.Finding{
-				{File: "a.go", Rule: "review", Message: "judged thing",
-					Severity: findings.SeverityWarning, Source: findings.SourceLLM, Reviewer: "claude"},
-				{File: "b.sql", Rule: "migration-modified", Message: "observed thing",
-					Severity: findings.SeverityError, Source: findings.SourceDeterministic},
-			},
-		},
-		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(html, "What the reviewers found") || !strings.Contains(html, "What Redline observed") {
-		t.Fatal("judged and observed findings need their own sections")
-	}
-	// Anchor on the heading, not its label: the label also appears in the
-	// sidebar, above everything.
-	judged := strings.Index(html, "judged thing")
-	observedHead := strings.Index(html, `<h2 id="observed"`)
-	if judged > observedHead {
-		t.Error("a judged finding must render in the reviewers' section")
-	}
-	if !strings.Contains(html, "judged by claude") {
-		t.Error("reviewer provenance must survive the split")
-	}
-}
-
-// Two reviewers are shown side by side under their own names. Nothing decides
-// that two differently worded findings are the same defect: that guess, when
-// wrong, deletes a finding the reviewer never learns existed.
-func TestTwoReviewersStaySeparate(t *testing.T) {
-	html, err := HTML(HTMLInput{
-		Report: &findings.Report{
-			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
-			Findings: []findings.Finding{
-				{File: "a.go", Line: 4, Rule: "review", Message: "claude says the retry is unbounded",
-					Severity: findings.SeverityWarning, Source: findings.SourceLLM, Reviewer: "claude"},
-				{File: "a.go", Line: 4, Rule: "review", Message: "cursor says this retries forever",
-					Severity: findings.SeverityWarning, Source: findings.SourceLLM, Reviewer: "cursor"},
-				{File: "a.go", Rule: "review", Message: "the session agent's own note",
-					Severity: findings.SeverityInfo, Source: findings.SourceLLM},
-			},
-		},
-		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Both accounts survive, even though they describe one line.
-	for _, want := range []string{"claude says the retry is unbounded", "cursor says this retries forever"} {
-		if !strings.Contains(html, want) {
-			t.Errorf("missing %q — reviewer findings must never be merged away", want)
-		}
-	}
-	for _, want := range []string{`<h3 class="reviewer">claude`, `<h3 class="reviewer">cursor`} {
-		if !strings.Contains(html, want) {
-			t.Errorf("missing group heading %q", want)
-		}
-	}
-	// No agreement or consensus badge: that claim cannot be made honestly.
-	for _, forbidden := range []string{"agree", "consensus", "both reviewers"} {
-		if strings.Contains(strings.ToLower(html), forbidden) {
-			t.Errorf("page claims %q, which requires guessing two findings are one defect", forbidden)
-		}
-	}
-	// The driving agent is a reviewer too, named plainly and ordered last.
-	if !strings.Contains(html, "the driving agent") {
-		t.Error("agent judgments need a group of their own")
-	}
-	if strings.Index(html, "the driving agent") < strings.Index(html, `<h3 class="reviewer">cursor`) {
-		t.Error("deliberately-run reviewers should come before the session agent's own notes")
-	}
 }
 
 func TestTestFilesAreCountedNotRendered(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 1}},
-		Packet: &packet.Packet{Files: []packet.FileChange{
+		Change: &change.Set{Files: []change.File{
 			{Path: "internal/run/run.go", Areas: []string{"code"}, Diff: "@@ -1 +1 @@\n-a\n+b\n"},
 			{Path: "internal/run/run_test.go", Areas: []string{"tests"},
 				Diff: "@@ -1 +1 @@\n-func TestOld\n+func TestNew\n"},
@@ -528,9 +305,9 @@ func TestTestFilesAreCountedNotRendered(t *testing.T) {
 // "nothing is tested", which is a much stronger claim than "nobody measured".
 func TestMissingCoverageProfileReadsAsUnknownNotZero(t *testing.T) {
 	rep := &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}}
-	pkt := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+	ch := &change.Set{Files: []change.File{{Path: "a.go", Areas: []string{"code"}}}}
 
-	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	html, err := HTML(HTMLInput{Report: rep, Change: ch})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -548,7 +325,7 @@ func TestMissingCoverageProfileReadsAsUnknownNotZero(t *testing.T) {
 		t.Error("the coverage tile must show ? when nothing measured it")
 	}
 
-	md := Markdown(rep, nil, nil, pkt, nil)
+	md := Markdown(rep, nil, nil, ch)
 	if !strings.Contains(md, "No coverage profile was found") {
 		t.Error("markdown must say the same")
 	}
@@ -564,9 +341,9 @@ func TestCoverageNumberNamesItsProfileAndGaps(t *testing.T) {
 			},
 		},
 	}
-	pkt := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+	ch := &change.Set{Files: []change.File{{Path: "a.go", Areas: []string{"code"}}}}
 
-	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	html, err := HTML(HTMLInput{Report: rep, Change: ch})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,7 +353,7 @@ func TestCoverageNumberNamesItsProfileAndGaps(t *testing.T) {
 		}
 	}
 
-	md := Markdown(rep, nil, nil, pkt, nil)
+	md := Markdown(rep, nil, nil, ch)
 	for _, want := range []string{"70%", "coverage.out", "internal/run/run.go"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("markdown coverage missing %q", want)
@@ -591,9 +368,9 @@ func TestStaleCoverageProfileIsCalledOut(t *testing.T) {
 			Diff: &cover.Result{Profile: "coverage.out", Lines: 4, Covered: 4, Percent: 100, Stale: true},
 		},
 	}
-	pkt := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+	ch := &change.Set{Files: []change.File{{Path: "a.go", Areas: []string{"code"}}}}
 
-	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	html, err := HTML(HTMLInput{Report: rep, Change: ch})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,7 +379,7 @@ func TestStaleCoverageProfileIsCalledOut(t *testing.T) {
 	if !strings.Contains(html, `class="banner">The profile`) {
 		t.Error("a stale profile needs a banner beside its number")
 	}
-	if !strings.Contains(Markdown(rep, nil, nil, pkt, nil), "predates this change") {
+	if !strings.Contains(Markdown(rep, nil, nil, ch), "predates this change") {
 		t.Error("markdown must flag the stale profile too")
 	}
 }
@@ -614,9 +391,9 @@ func TestGeneratedExclusionsAreNamedOnBothReports(t *testing.T) {
 			Generated: []string{"internal/api/oas_schemas_gen.go", "go.sum"},
 		},
 	}
-	pkt := &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}}
+	ch := &change.Set{Files: []change.File{{Path: "a.go", Areas: []string{"code"}}}}
 
-	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	html, err := HTML(HTMLInput{Report: rep, Change: ch})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -626,7 +403,7 @@ func TestGeneratedExclusionsAreNamedOnBothReports(t *testing.T) {
 		}
 	}
 
-	md := Markdown(rep, nil, nil, pkt, nil)
+	md := Markdown(rep, nil, nil, ch)
 	for _, want := range []string{"2 generated file(s) excluded", "oas_schemas_gen.go", "go.sum"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("markdown must name every exclusion; missing %q", want)
@@ -639,7 +416,7 @@ func TestGeneratedExclusionsAreNamedOnBothReports(t *testing.T) {
 func TestPageWrapperClosesOnce(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
-		Packet: &packet.Packet{Files: []packet.FileChange{{Path: "a.go", Areas: []string{"code"}}}},
+		Change: &change.Set{Files: []change.File{{Path: "a.go", Areas: []string{"code"}}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -654,9 +431,8 @@ func TestPageWrapperClosesOnce(t *testing.T) {
 
 func TestMarkdownFileSection(t *testing.T) {
 	md := Markdown(&findings.Report{Coverage: findings.Coverage{ChangedFiles: 1}}, nil, nil,
-		&packet.Packet{Files: []packet.FileChange{{Path: "a.go", Status: "added", Added: 4}}},
-		&packet.Review{Files: []packet.FileNote{{Path: "a.go", Summary: "New entry point."}}})
-	if !strings.Contains(md, "## Files") || !strings.Contains(md, "`a.go`") || !strings.Contains(md, "New entry point.") {
+		&change.Set{Files: []change.File{{Path: "a.go", Status: "added", Added: 4}}})
+	if !strings.Contains(md, "## Files") || !strings.Contains(md, "`a.go`") {
 		t.Fatalf("expected file walkthrough, got:\n%s", md)
 	}
 }
@@ -669,7 +445,7 @@ func TestMarkdownSection3DoesNotClaimCompleteCoverage(t *testing.T) {
 			Unexamined:    []string{"README.md"},
 		},
 	}
-	md := Markdown(&rep, nil, nil, nil, nil)
+	md := Markdown(&rep, nil, nil, nil)
 	if strings.Contains(md, "Nothing. Every check that applies") {
 		t.Fatal("section 3 must not claim every check ran when files are unexamined")
 	}
@@ -711,16 +487,13 @@ func TestFileHeadersStillDetected(t *testing.T) {
 	}
 }
 
-// The walk is the report's first screen. Rendering it as inert text while the
-// diffs sit inside a collapsed section below is what made the page look broken:
-// a reviewer clicks the file they care about and nothing happens.
 // The walk rows are buttons so clicking one opens the drawer. A button without
 // its chrome reset lays out at its intrinsic width, which turned the report's
 // primary list into a two-column jumble of centred text.
 func TestWalkRowsAreStyledAsRowsNotButtons(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 1}},
-		Packet: &packet.Packet{Files: []packet.FileChange{
+		Change: &change.Set{Files: []change.File{
 			{Path: "a.go", Areas: []string{"code"}},
 			{Path: "b.go", Areas: []string{"code"}},
 		}},
@@ -740,21 +513,21 @@ func TestWalkRowsAreStyledAsRowsNotButtons(t *testing.T) {
 
 func TestWalkRowsAreControlsThatCarryFindingCounts(t *testing.T) {
 	rep := &findings.Report{
-		Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 0},
+		Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 1},
 		Findings: []findings.Finding{{
-			File: "a.go", Line: 3, Rule: "review", Severity: findings.SeverityError,
-			Message: "boom", Source: findings.SourceLLM, Reviewer: "claude", Confidence: "high",
+			File: "a.go", Line: 3, Rule: "migration-modified-after-merge",
+			Severity: findings.SeverityError, Message: "boom",
 		}},
 		Substrates: []findings.SubstrateStatus{
-			{Name: "reviewer:claude", State: findings.SubstrateRan, Detail: "1 findings"},
+			{Name: "migrations", State: findings.SubstrateRan},
 		},
 	}
-	pkt := &packet.Packet{Files: []packet.FileChange{
+	ch := &change.Set{Files: []change.File{
 		{Path: "a.go", Status: "modified", Added: 1},
 		{Path: "b.go", Status: "modified", Added: 1},
 	}}
 
-	html, err := HTML(HTMLInput{Report: rep, Packet: pkt})
+	html, err := HTML(HTMLInput{Report: rep, Change: ch})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -764,15 +537,5 @@ func TestWalkRowsAreControlsThatCarryFindingCounts(t *testing.T) {
 	}
 	if !strings.Contains(html, "1 finding<") {
 		t.Fatal("a file carrying a finding must say so in the walk")
-	}
-	if !strings.Contains(html, "judged by claude") {
-		t.Fatal("a reviewer finding must name its reviewer")
-	}
-	// The old banner claimed an empty findings list, on a page showing findings.
-	if strings.Contains(html, "an empty findings list says nothing") {
-		t.Fatal("banner contradicts the findings on the page when a reviewer ran")
-	}
-	if !strings.Contains(html, "claude&#39;s reading of the change") {
-		t.Fatal("banner should say whose reading this is")
 	}
 }

@@ -8,12 +8,12 @@
 :root{
   --bg:#fbfbfa; --panel:#fff; --ink:#1a1a19; --muted:#6b6b68; --line:#e4e4e1;
   --error:#b4241f; --warn:#a1660a; --info:#3a6ea5; --ok:#2f6b45;
-  --add-bg:#e9f5ec; --del-bg:#fdeceb; --llm:#6b4ea1; --code:#f6f6f4;
+  --add-bg:#e9f5ec; --del-bg:#fdeceb; --accent:#6b4ea1; --code:#f6f6f4;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#161615; --panel:#1e1e1d; --ink:#e8e8e5; --muted:#9a9a95; --line:#333331;
   --error:#f08a84; --warn:#e0b060; --info:#87b3e0; --ok:#7cc79a;
-  --add-bg:#1b2f22; --del-bg:#33201f; --llm:#b79ce8; --code:#232322;
+  --add-bg:#1b2f22; --del-bg:#33201f; --accent:#b79ce8; --code:#232322;
 }}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
@@ -32,7 +32,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
   padding:6px 10px 6px 12px;border-left:2px solid transparent;color:var(--muted);
   text-decoration:none;line-height:1.35}
 .nav a:hover{color:var(--ink);background:var(--code)}
-.nav a.on{color:var(--ink);border-left-color:var(--llm);font-weight:600}
+.nav a.on{color:var(--ink);border-left-color:var(--accent);font-weight:600}
 .nav .c{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:400;font-size:12px}
 /* A section that is a gap rather than a result: no captures of a UI that moved,
    no coverage profile, something undetermined. Visible without scrolling. */
@@ -46,7 +46,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
   .nav h2{display:none}
   .nav ol{display:flex;gap:4px;white-space:nowrap}
   .nav a{border-left:0;border-bottom:2px solid transparent;padding:6px 10px}
-  .nav a.on{border-bottom-color:var(--llm)}
+  .nav a.on{border-bottom-color:var(--accent)}
 }
 @media print{.nav{display:none}}
 h1{font-size:24px;margin:0;letter-spacing:-.01em}
@@ -57,8 +57,6 @@ a{color:inherit}
 .sub{color:var(--muted);margin:4px 0 0}
 .banner{background:var(--del-bg);border-left:3px solid var(--error);padding:14px 16px;
   margin:20px 0;border-radius:0 6px 6px 0}
-.summary{background:var(--panel);border:1px solid var(--line);border-radius:10px;
-  padding:18px 20px;margin:20px 0;font-size:16px;line-height:1.6}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:16px 0}
 .tile{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
 .tile .n{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -77,7 +75,6 @@ a{color:inherit}
 .tag{display:inline-block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
   padding:2px 7px;border-radius:4px;background:var(--code);color:var(--muted);
   font-weight:600;vertical-align:2px}
-.tag.llm{background:color-mix(in srgb,var(--llm) 15%,transparent);color:var(--llm)}
 .tag.det{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
 .meta-row{color:var(--muted);font-size:13px;margin-top:8px}
 .meta-row b{color:var(--ink);font-weight:600}
@@ -102,7 +99,6 @@ details>summary:hover{background:var(--code)}
 .file:last-child{border-bottom:none}
 .file .p{font-family:ui-monospace,monospace;font-size:13px;font-weight:600}
 .file .s{font-size:12px;color:var(--muted)}
-.file .note{font-size:14px;margin:4px 0 0;line-height:1.5}
 .walk{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin:12px 0;overflow:hidden}
 .walk-row{padding:12px 16px;border-bottom:1px solid var(--line)}
 .walk-row:last-child{border-bottom:none}
@@ -113,18 +109,11 @@ details>summary:hover{background:var(--code)}
   border-bottom:1px solid var(--line);font:inherit;color:inherit;cursor:pointer}
 .walk-row.jump:last-child{border-bottom:none}
 .walk-row.jump:hover{background:var(--code)}
-.walk-row.jump:focus-visible{outline:2px solid var(--llm);outline-offset:-2px}
+.walk-row.jump:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .walk-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
-.walk-sum{margin-top:4px;font-size:14px;line-height:1.5}
 .plus{color:var(--ok)} .minus{color:var(--error)}
-.thread{padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
-.thread:last-child{border-bottom:none}
-.thread .arrow{color:var(--muted);margin:0 8px}
 ul.plain{margin:8px 0;padding-left:20px}
 ul.plain li{margin:4px 0}
-.shots{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
-.shots.single{grid-template-columns:1fr;max-width:720px}
-.shots img{width:100%;border:1px solid var(--line);border-radius:6px}
 /* 002-B: the drawer. Drilling into a file is a choice, not a navigation —
    the briefing stays put behind it, so a reviewer can open six files in a row
    without losing the map or scrolling back up from the bottom of the page. */
@@ -141,37 +130,11 @@ body.drawer-open{overflow:hidden}
 @media (max-width:640px){.drawer{width:100vw}}
 .tile{font:inherit;color:inherit;text-align:left;cursor:pointer}
 .tile:hover{background:var(--hover,rgba(0,0,0,.03))}
-.tile:focus-visible{outline:2px solid var(--llm);outline-offset:-2px}
+.tile:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .f[hidden]{display:none}
 .filter-note{font-size:13px;color:var(--muted);margin:8px 0}
-.filter-note button{font:inherit;font-size:13px;background:none;border:0;color:var(--llm);cursor:pointer;text-decoration:underline}
-.shot-lead{margin:12px 0 18px}
-.shot-lead figcaption{font-size:12px;color:var(--muted);margin-top:6px}
-.shots .cap{font-size:12px;color:var(--muted);margin-bottom:4px}
+.filter-note button{font:inherit;font-size:13px;background:none;border:0;color:var(--accent);cursor:pointer;text-decoration:underline}
 .empty{color:var(--muted);font-style:italic}
-/* Orientation: why the change exists. Read before anything else, and the one
-   thing a diff cannot supply. */
-.intent{display:flex;flex-wrap:wrap;gap:8px 14px;margin:10px 0 0;font-size:14px}
-.intent a{color:var(--info);font-weight:500}
-.fit{margin:14px 0 0;border-left:3px solid var(--llm);padding:2px 0 2px 14px}
-.fit div{margin:4px 0;font-size:14px}
-.fit b{font-weight:600}
-.fit .q{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
-/* The three contract surfaces, in the order they get checked. */
-.surfaces{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:16px 0}
-.surface{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
-.surface h3{font-size:14px;margin:0 0 4px}
-.surface .line{font-size:13px;line-height:1.5}
-.surface.moved{border-left:3px solid var(--info)}
-.surface.idle{opacity:.8}
-.surface.unstated{border-left:3px solid var(--warn)}
-.surface.unstated .line{color:var(--warn)}
-/* One heading per reviewer. Two reviewers are shown side by side rather than
-   reconciled: deciding two differently worded findings are one defect is a
-   guess, and skimming each one's flavour is the point. */
-h3.reviewer{margin:24px 0 8px;font-size:14px;text-transform:uppercase;
-  letter-spacing:.06em;color:var(--llm);display:flex;gap:10px;align-items:baseline}
-h3.reviewer .s{text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400}
 pre.diff span[data-line]{cursor:text;position:relative}
 pre.diff span[data-line]:hover{outline:1px solid var(--info);outline-offset:-1px}
 .viewed{opacity:.45}
@@ -215,78 +178,17 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 
 {{if .Banner}}<div class="banner">{{.Banner}}</div>{{end}}
 
-<h2 id="change">What this change is</h2>
-<div class="summary">{{.Summary}}</div>
-
-{{if or .Ticket .PR}}
-<div class="intent">
-  {{with .Ticket}}<span>{{if .URL}}<a href="{{.URL}}">{{if .ID}}{{.ID}}{{else}}ticket{{end}}</a>{{else}}<b>{{.ID}}</b>{{end}}{{if .Title}} · {{.Title}}{{end}}</span>{{end}}
-  {{with .PR}}<span>{{if .URL}}<a href="{{.URL}}">PR{{if .Number}} #{{.Number}}{{end}}</a>{{else}}<b>PR{{if .Number}} #{{.Number}}{{end}}</b>{{end}}{{if .Title}} · {{.Title}}{{end}}</span>{{end}}
-</div>
-{{end}}
-
-{{with .Fit}}
-<div class="fit">
-  {{if .Thing}}<div><span class="q">Right thing</span> {{.Thing}}</div>{{end}}
-  {{if .Way}}<div><span class="q">Right way</span> {{.Way}}</div>{{end}}
-</div>
-{{end}}
-
-<div class="surfaces">
-{{range .Surfaces}}
-<div class="surface{{if not .Stated}} unstated{{else if .Moved}} moved{{else}} idle{{end}}">
-  <h3>{{.Label}}</h3>
-  <div class="line">{{.Line}}</div>
-</div>
-{{end}}
-</div>
-
 <h2 id="interface">What it looks like</h2>
-{{if .Screenshots}}
-<p class="s">{{if .AgentWalk}}Walked by the reviewing agent. This is not Redline checks 15–16 (deterministic before/after and console capture).{{end}}</p>
-{{range .Screenshots}}
-<figure class="shot-lead">
-  {{if .Before}}
-  <div class="shots">
-    <div><div class="cap">before</div><img src="{{.Before}}" alt="before {{.Route}}"></div>
-    <div><div class="cap">after</div><img src="{{.After}}" alt="after {{.Route}}"></div>
-  </div>
-  {{else}}
-  <div class="shots single">
-    <div><img src="{{.After}}" alt="{{.Route}}"></div>
-  </div>
-  {{end}}
-  <figcaption><code class="p">{{.Route}}</code>{{if .Caption}} — {{.Caption}}{{end}}</figcaption>
-</figure>
-{{end}}
-{{else if .UITouched}}
+{{if .UITouched}}
 <div class="banner">This change touches the interface and no routes were captured. Nobody has seen what it looks like — that is a gap in this review, not a clean result.</div>
 {{else}}
 <p class="empty">No routes were captured. No changed file is classified as interface, so there was probably nothing to see — but this is an absence of looking, not a finding that the interface is unchanged.</p>
 {{end}}
 
-{{if .API}}
-<h2 id="api">API contract</h2>
-{{range .API}}<div class="hl{{if .Breaking}} breaking{{end}}">
-  <div class="t">{{.Title}}{{if .Breaking}} — breaking{{end}}</div>
-  {{if .Detail}}<div class="d">{{.Detail}}</div>{{end}}
-  {{if .File}}<div class="d"><code>{{.File}}</code></div>{{end}}
-</div>{{end}}
-{{end}}
-
-{{if .Schema}}
-<h2 id="schema">Schema</h2>
-{{range .Schema}}<div class="hl{{if .Breaking}} breaking{{end}}">
-  <div class="t">{{.Title}}{{if .Breaking}} — breaking{{end}}</div>
-  {{if .Detail}}<div class="d">{{.Detail}}</div>{{end}}
-  {{if .File}}<div class="d"><code>{{.File}}</code></div>{{end}}
-</div>{{end}}
-{{end}}
-
 <div class="tiles">
-  <button type="button" class="tile" data-goto="findings" data-only="error"><div class="n {{if index .Counts "error"}}error{{else}}ok{{end}}">{{with index .Counts "error"}}{{.}}{{else}}0{{end}}</div><div class="l">errors</div></button>
-  <button type="button" class="tile" data-goto="findings" data-only="warning"><div class="n warning">{{with index .Counts "warning"}}{{.}}{{else}}0{{end}}</div><div class="l">warnings</div></button>
-  <button type="button" class="tile" data-goto="findings" data-only="info"><div class="n">{{with index .Counts "info"}}{{.}}{{else}}0{{end}}</div><div class="l">info</div></button>
+  <button type="button" class="tile" data-goto="observed" data-only="error"><div class="n {{if index .Counts "error"}}error{{else}}ok{{end}}">{{with index .Counts "error"}}{{.}}{{else}}0{{end}}</div><div class="l">errors</div></button>
+  <button type="button" class="tile" data-goto="observed" data-only="warning"><div class="n warning">{{with index .Counts "warning"}}{{.}}{{else}}0{{end}}</div><div class="l">warnings</div></button>
+  <button type="button" class="tile" data-goto="observed" data-only="info"><div class="n">{{with index .Counts "info"}}{{.}}{{else}}0{{end}}</div><div class="l">info</div></button>
   <button type="button" class="tile" data-goto="files"><div class="n">{{.Coverage.ExaminedFiles}}/{{.Coverage.ChangedFiles}}</div><div class="l">files examined</div></button>
   {{with .Coverage.Diff}}
   <button type="button" class="tile" data-goto="coverage"><div class="n{{if .Stale}} warning{{end}}">{{if lt .Percent 0.0}}—{{else}}{{printf "%.0f" .Percent}}%{{end}}</div><div class="l">diff covered</div></button>
@@ -326,7 +228,6 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     <code class="p">{{.Path}}</code>
     <span class="s">{{if .Findings}}<span class="tag {{.Severity}}">{{.Findings}} finding{{if ne .Findings 1}}s{{end}}</span> {{end}}{{.Status}} · <span class="plus">+{{.Added}}</span> <span class="minus">−{{.Removed}}</span></span>
   </div>
-  {{if .Summary}}<div class="walk-sum">{{.Summary}}</div>{{end}}
 </button>
 {{end}}
 </div>
@@ -338,7 +239,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   <div>
     <span class="tag">{{.Severity}}</span>
     <span class="tag">{{.Rule}}</span>
-    {{if .IsLLM}}<span class="tag llm">{{if .Reviewer}}judged by {{.Reviewer}}{{else}}agent judgment{{end}}</span>{{if .Confidence}}<span class="tag">{{.Confidence}} confidence</span>{{end}}{{else}}<span class="tag det">observed</span>{{end}}
+    <span class="tag det">observed</span>
   </div>
   <div class="meta-row">
     {{if .File}}<b>{{.File}}</b>{{if .Line}}:{{.Line}}{{end}}{{else if .Anchor}}<b>{{.Anchor.Kind}} {{.Anchor.ID}}</b>{{end}}
@@ -349,16 +250,6 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   {{if .Evidence}}<pre class="diff">{{.Evidence}}</pre>{{end}}
   {{if .Context}}<blockquote>{{.Context}}</blockquote>{{end}}
 </div>
-{{end}}
-
-<h2 id="findings">What the reviewers found</h2>
-{{if .Judged}}
-{{range .Judged}}
-<h3 class="reviewer">{{.Reviewer}} <span class="s">{{len .Findings}} finding{{if ne (len .Findings) 1}}s{{end}}</span></h3>
-{{range .Findings}}{{template "finding" .}}{{end}}
-{{end}}
-{{else}}
-<p class="empty">No reviewer has judged this change. Run <code>redline review --with claude</code>, or pipe a review to <code>redline ingest</code>.</p>
 {{end}}
 
 <h2 id="observed">What Redline observed</h2>
@@ -380,7 +271,6 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
       <div class="s">{{.Status}} · <span class="plus">+{{.Added}}</span> <span class="minus">−{{.Removed}}</span>
         <label class="vw"><input type="checkbox" class="viewedbox"> viewed</label>
       </div>
-      {{if .Summary}}<div class="note">{{.Summary}}</div>{{end}}
       {{if .Diff}}<pre class="diff">{{.Diff}}</pre>{{end}}
     </div>
     {{end}}
@@ -390,20 +280,6 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 {{end}}
 {{if .TestFiles}}
 <p class="s">{{.TestFiles}} test file{{if ne .TestFiles 1}}s{{end}} changed. Their contents are not shown — a coverage number is the useful summary, not the diff of every case.</p>
-{{end}}
-
-{{if .Threads}}
-<h2 id="threads">Threads through the code</h2>
-<details>
-  <summary>{{len .Threads}} connection{{if ne (len .Threads) 1}}s{{end}} from the code graph</summary>
-  <div class="body">
-    {{range .Threads}}
-    <div class="thread"><b>{{.From}}</b><span class="arrow">→</span>{{.To}}
-      {{if .Explanation}}<div class="s">{{.Explanation}}</div>{{end}}
-    </div>
-    {{end}}
-  </div>
-</details>
 {{end}}
 
 <h2 id="unknowns">What could not be determined</h2>
@@ -718,7 +594,7 @@ document.getElementById("copy-cmts").addEventListener("click", function () {
     var payload = JSON.stringify({redlineReviewComments: {
       instruction: "A human reviewed this change and left the comments below, each on a specific line. " +
         "Address every one: make the change, or reply saying why you did not. " +
-        "Do not re-review the rest of the diff. When you are done, re-run redline and ingest the result.",
+        "Do not re-review the rest of the diff. When you are done, re-run redline so the report reflects the new state.",
       review: document.body.dataset.review || "",
       target: document.body.dataset.target || "",
       comments: state.comments

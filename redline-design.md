@@ -30,8 +30,7 @@ solicits, or transports a model's judgment.
 
 ## What goes
 
-The cut is phase 1 and it is mechanical. Everything here exists today and
-gets deleted or reshaped:
+The cut shipped as phase 1. What was deleted or reshaped:
 
 - Reviewer adapters. `--with claude`, `--with cursor`, the adapter config in
   `reviewers.json`, the progress ticker, the timeout handling:
@@ -246,9 +245,8 @@ Redline never invokes a model by any route.
 
 ## Order of work
 
-1. The cut: delete the packages and subcommands listed above, reshape post
-   and the report, rewrite the skill and README. Everything after builds
-   on the smaller tool.
+1. Done. The cut: delete the packages and subcommands listed above, reshape
+   post and the report, rewrite the skill and README.
 2. Lint delta, suppression triage, config drift. Builds the two-revision
    runner.
 3. Coverage: measured mode, function-level findings, coverage delta,

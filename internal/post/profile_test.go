@@ -14,7 +14,7 @@ func TestLoadProfileDefaultsBlockErrorAndWarning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !p.AuthorOnly || !p.RequireHead || !p.FailClosedReviewer {
+	if !p.AuthorOnly || !p.RequireHead || !p.FailClosedPane {
 		t.Fatalf("strict defaults: %+v", p)
 	}
 	if !p.Blocks(findings.SeverityError) || !p.Blocks(findings.SeverityWarning) {
@@ -58,13 +58,13 @@ func TestGateVerdictInfoAloneIsPass(t *testing.T) {
 	}
 }
 
-func TestGateVerdictReviewerCrashIsFail(t *testing.T) {
-	p := &Profile{FailClosedReviewer: true, Blocking: []findings.Severity{findings.SeverityError}}
+func TestGateVerdictDarkPaneIsFail(t *testing.T) {
+	p := &Profile{FailClosedPane: true, Blocking: []findings.Severity{findings.SeverityError}}
 	rep := &findings.Report{Substrates: []findings.SubstrateStatus{{
-		Name: "reviewer:cursor", State: findings.SubstrateFailed,
+		Name: "migrations", State: findings.SubstrateFailed,
 	}}}
 	if got := GateVerdict(rep, p); got != "fail" {
-		t.Fatalf("crashed reviewer should fail, got %q", got)
+		t.Fatalf("a pane that applied and did not run should fail, got %q", got)
 	}
 }
 

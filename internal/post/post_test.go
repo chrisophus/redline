@@ -13,16 +13,13 @@ func sampleReport() *findings.Report {
 		Coverage: findings.Coverage{ChangedFiles: 5, ExaminedFiles: 3},
 		Substrates: []findings.SubstrateStatus{
 			{Name: "migrations", State: findings.SubstrateRan},
-			{Name: "reviewer:claude", State: findings.SubstrateRan},
-			{Name: "diff-coverage", State: findings.SubstrateSkipped},
+			{Name: "openapi", State: findings.SubstrateSkipped, Detail: "no files in scope for this pane"},
 		},
 		Findings: []findings.Finding{
-			{File: "a.go", Line: 12, Rule: "review", Substrate: "reviewer:claude",
-				Severity: findings.SeverityError, Message: "nil deref", Source: findings.SourceLLM,
-				Reviewer: "claude", Confidence: "high"},
+			{File: "a.go", Line: 12, Rule: "migration-modified-after-merge", Substrate: "migrations",
+				Severity: findings.SeverityError, Message: "merged migration edited"},
 			{Rule: "migration-edited", Substrate: "redline/sql",
-				Severity: findings.SeverityWarning, Message: "migration edited after merge",
-				Source: findings.SourceDeterministic},
+				Severity: findings.SeverityWarning, Message: "migration edited after merge"},
 		},
 	}
 	rep.Finalize()
@@ -35,7 +32,7 @@ func prTarget() *target.Target {
 }
 
 func TestBuildSplitsLocatedFromBodyFindings(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "https://ci/report.html", nil)
+	p := Build(sampleReport(), prTarget(), "https://ci/report.html", nil)
 
 	if p.CommitID != "deadbeef" {
 		t.Fatalf("commit id should be the head SHA: %q", p.CommitID)
@@ -47,8 +44,8 @@ func TestBuildSplitsLocatedFromBodyFindings(t *testing.T) {
 	if c.Path != "a.go" || c.Line != 12 {
 		t.Fatalf("comment anchor: %+v", c)
 	}
-	if !strings.Contains(c.Body, "nil deref") || !strings.Contains(c.Body, "claude") {
-		t.Fatalf("comment body should name the finding and reviewer: %q", c.Body)
+	if !strings.Contains(c.Body, "merged migration edited") {
+		t.Fatalf("comment body should carry the finding: %q", c.Body)
 	}
 	if c.Fingerprint == "" || !strings.Contains(c.Body, fpMarkerPrefix) {
 		t.Fatalf("comment must carry its fingerprint marker: %q", c.Body)
@@ -56,7 +53,7 @@ func TestBuildSplitsLocatedFromBodyFindings(t *testing.T) {
 	if !Fingerprints([]string{c.Body})[postedKey("deadbeef", c.Fingerprint)] {
 		t.Fatalf("the marker must decode back to this comment's fingerprint: %q", c.Body)
 	}
-	// The unlocated deterministic finding rides in the body, not as a comment.
+	// The unlocated finding rides in the body, not as a comment.
 	if !strings.Contains(p.Body, "migration edited after merge") {
 		t.Fatalf("unlocated finding should be in the body: %q", p.Body)
 	}
@@ -126,12 +123,12 @@ func TestCommentableLinesCountsBlankContextLine(t *testing.T) {
 func TestBuildDemotesOutOfDiffFindingToBody(t *testing.T) {
 	// The report's line comment is on a.go:12, but the diff only touches a.go:99.
 	commentable := map[string]map[int]bool{"a.go": {99: true}}
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", commentable)
+	p := Build(sampleReport(), prTarget(), "", commentable)
 
 	if len(p.Comments) != 0 {
 		t.Fatalf("a finding off the diff must not become a line comment: %+v", p.Comments)
 	}
-	if !strings.Contains(p.Body, "nil deref") {
+	if !strings.Contains(p.Body, "merged migration edited") {
 		t.Fatalf("the demoted finding should appear in the body:\n%s", p.Body)
 	}
 	if !strings.Contains(p.Body, "a.go:12 — not on a changed line") {
@@ -141,22 +138,24 @@ func TestBuildDemotesOutOfDiffFindingToBody(t *testing.T) {
 
 func TestBuildKeepsInDiffFindingAsComment(t *testing.T) {
 	commentable := map[string]map[int]bool{"a.go": {12: true}}
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", commentable)
+	p := Build(sampleReport(), prTarget(), "", commentable)
 	if len(p.Comments) != 1 || p.Comments[0].Line != 12 {
 		t.Fatalf("a finding on a changed line stays a line comment: %+v", p.Comments)
 	}
 }
 
-func TestBuildBodyLeadsWithSummaryNotCoverage(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: "Adds a post command."}, "https://ci/report.html", nil)
+func TestBuildBodyLeadsWithVerdictAndEvidenceTable(t *testing.T) {
+	p := Build(sampleReport(), prTarget(), "https://ci/report.html", nil)
 
 	if !strings.HasPrefix(p.Body, "### Changes recommended\n") {
 		t.Fatalf("body should lead with a verdict:\n%s", p.Body)
 	}
-	if !strings.Contains(p.Body, "Adds a post command.") {
-		t.Fatalf("body should carry the agent's summary:\n%s", p.Body)
-	}
 	for _, want := range []string{
+		"| Evidence | Result |",
+		"| migrations | ran — 1 finding(s) |",
+		"| openapi | did not apply |",
+		"| diff coverage | not measured — no profile found |",
+		"| files examined | 3/5 |",
 		"[Full report](https://ci/report.html)",
 		reviewMarkerPrefix + "deadbeef",
 	} {
@@ -164,34 +163,30 @@ func TestBuildBodyLeadsWithSummaryNotCoverage(t *testing.T) {
 			t.Fatalf("body missing %q:\n%s", want, p.Body)
 		}
 	}
-	// The coverage preamble is gone: a review body describes the change, not
-	// the reviewer's own reach. See the package comment.
-	for _, gone := range []string{
-		"Reviewed by", "does not gate", "changed file(s)",
-		"Not checked", "Coverage:", "Findings:",
-	} {
-		if strings.Contains(p.Body, gone) {
-			t.Fatalf("body should no longer carry preamble text %q:\n%s", gone, p.Body)
-		}
-	}
 }
 
-func TestBuildBodyOmitsSummaryWhenAbsent(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: "   "}, "", nil)
-	if strings.HasPrefix(p.Body, "\n") {
-		t.Fatalf("a blank summary should not leave leading whitespace:\n%q", p.Body)
+// A pane that applied and did not run is named in the body, loudly. That row is
+// what makes the posted review's scope verifiable from the pull request alone.
+func TestBuildBodyNamesADarkPane(t *testing.T) {
+	rep := sampleReport()
+	rep.Substrates = append(rep.Substrates, findings.SubstrateStatus{
+		Name: "openapi-diff", State: findings.SubstrateFailed, Detail: "spec parse error",
+	})
+	p := Build(rep, prTarget(), "", nil)
+	if !strings.Contains(p.Body, "| openapi-diff | **did not run** — spec parse error |") {
+		t.Fatalf("a dark pane must be named in the body:\n%s", p.Body)
 	}
 }
 
 func TestBuildOmitsReportLinkWhenEmpty(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
+	p := Build(sampleReport(), prTarget(), "", nil)
 	if strings.Contains(p.Body, "Full report") {
 		t.Fatalf("no link should render when reportURL is empty:\n%s", p.Body)
 	}
 }
 
 func TestUnpostedDropsAlreadyPostedComments(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
+	p := Build(sampleReport(), prTarget(), "", nil)
 	if len(p.Comments) != 1 {
 		t.Fatalf("precondition: one comment, got %d", len(p.Comments))
 	}
@@ -207,7 +202,7 @@ func TestUnpostedDropsAlreadyPostedComments(t *testing.T) {
 	if len(got.Comments) != 0 {
 		t.Fatalf("already-posted comment must be dropped: %+v", got.Comments)
 	}
-	// The body is intact; the coverage summary is worth restating.
+	// The body is intact; the evidence table is worth restating.
 	if got.Body != p.Body {
 		t.Fatal("Unposted must not alter the body")
 	}
@@ -218,7 +213,7 @@ func TestUnpostedDropsAlreadyPostedComments(t *testing.T) {
 // is still live, GitHub collapses the old comment as outdated, and the reviewer
 // would see nothing.
 func TestUnpostedKeepsCommentWhenOnlyAnEarlierCommitHasIt(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
+	p := Build(sampleReport(), prTarget(), "", nil)
 	fp := p.Comments[0].Fingerprint
 
 	posted := map[string]bool{postedKey("0ldc0mm1t", fp): true}
@@ -228,10 +223,10 @@ func TestUnpostedKeepsCommentWhenOnlyAnEarlierCommitHasIt(t *testing.T) {
 }
 
 // A finding that rides in the body is tracked like a line comment. Only located
-// findings used to carry a marker, so a later ingest that added an unlocated one
+// findings used to carry a marker, so a session whose new finding had no line
 // produced no new comments and the command reported nothing to post.
 func TestBodyFindingCarriesFingerprintMarker(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
+	p := Build(sampleReport(), prTarget(), "", nil)
 
 	var bodyFP string
 	for _, f := range sampleReport().Findings {
@@ -253,7 +248,7 @@ func TestBodyFindingCarriesFingerprintMarker(t *testing.T) {
 // Once the body finding is posted for this commit, a re-post drops it and says
 // nothing new, so the same text does not reappear in a second review body.
 func TestUnpostedDropsAlreadyPostedBodyFinding(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: "Adds a post command."}, "", nil)
+	p := Build(sampleReport(), prTarget(), "", nil)
 	posted := Fingerprints([]string{p.Body, p.Comments[0].Body})
 
 	got := p.Unposted(posted)
@@ -263,14 +258,14 @@ func TestUnpostedDropsAlreadyPostedBodyFinding(t *testing.T) {
 	if strings.Contains(got.Body, "migration edited after merge") {
 		t.Fatalf("an already-posted body finding must not render again:\n%s", got.Body)
 	}
-	// The narrative is not a finding and still leads the body.
-	if !strings.Contains(got.Body, "Adds a post command.") {
-		t.Fatalf("the summary survives filtering:\n%s", got.Body)
+	// The evidence table is not a finding and still leads the body.
+	if !strings.Contains(got.Body, "| Evidence | Result |") {
+		t.Fatalf("the evidence table survives filtering:\n%s", got.Body)
 	}
 }
 
 func TestFingerprintsRoundTripFromBodies(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
+	p := Build(sampleReport(), prTarget(), "", nil)
 	bodies := []string{p.Comments[0].Body, "an unrelated human comment"}
 	got := Fingerprints(bodies)
 	if !got[postedKey("deadbeef", p.Comments[0].Fingerprint)] {
@@ -292,7 +287,7 @@ func TestFingerprintsIgnoresMarkerWithoutHeadSHA(t *testing.T) {
 }
 
 func TestReviewedAtMatchesHeadSHA(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: ""}, "", nil)
+	p := Build(sampleReport(), prTarget(), "", nil)
 	if !ReviewedAt([]string{p.Body}, "deadbeef") {
 		t.Fatal("should recognize the review marker for this head")
 	}
@@ -307,90 +302,10 @@ func TestReviewedAtMatchesHeadSHA(t *testing.T) {
 	}
 }
 
-func TestBuildBodyCarriesWalkthrough(t *testing.T) {
-	nar := Narrative{
-		Summary: "Adds a post command.",
-		Files: []FileNote{
-			{Path: "cmd/redline/post.go", Summary: "Submits the review."},
-			{Path: "internal/post/diff.go", Summary: "Finds commentable lines | safely."},
-			// A pipe in a path must not break the row either; both cells come
-			// from the same agent JSON.
-			{Path: "docs/a|b.md", Summary: "Named oddly."},
-		},
-	}
-	p := Build(sampleReport(), prTarget(), nar, "", nil)
-
-	for _, want := range []string{
-		"<summary>Walkthrough</summary>",
-		"| `cmd/redline/post.go` | Submits the review. |",
-		// A pipe in a summary must not break the row.
-		"Finds commentable lines \\| safely.",
-		"| `docs/a\\|b.md` | Named oddly. |",
-	} {
-		if !strings.Contains(p.Body, want) {
-			t.Fatalf("body missing %q:\n%s", want, p.Body)
-		}
-	}
-}
-
-func TestBuildBodyOmitsWalkthroughWhenNoFiles(t *testing.T) {
-	p := Build(sampleReport(), prTarget(), Narrative{Summary: "x"}, "", nil)
-	if strings.Contains(p.Body, "Walkthrough") {
-		t.Fatalf("no file notes should mean no walkthrough section:\n%s", p.Body)
-	}
-}
-
-func TestBuildBodyStatedIntentActualAndDiscrepancies(t *testing.T) {
-	tgt := prTarget()
-	tgt.PR.Title = "Bring post to main"
-	tgt.PR.Body = "Adds redline post and rewrites the docs.\n\n## Test plan\n- [ ] build"
-	nar := Narrative{
-		Actual: "Adds post, drops the coverage preamble, and deletes PHOENIX.md.",
-		Discrepancies: []DiscrepancyNote{{
-			Claim: "The coverage preamble leads the body.",
-			Actual: "The preamble was removed in this branch.",
-			Fingerprint: "fp-intent-1",
-		}},
-	}
-	p := Build(sampleReport(), tgt, nar, "", nil)
-	for _, want := range []string{
-		"**Stated intent.** Bring post to main. Adds redline post and rewrites the docs.",
-		"**What it does.** Adds post, drops the coverage preamble",
-		"**Discrepancies.**",
-		"The coverage preamble leads the body.",
-		threadMarkerPrefix + hexEncode("fp-intent-1"),
-	} {
-		if !strings.Contains(p.Body, want) {
-			t.Fatalf("body missing %q:\n%s", want, p.Body)
-		}
-	}
-}
-
-func hexEncode(s string) string {
-	const hexdigits = "0123456789abcdef"
-	out := make([]byte, len(s)*2)
-	for i := 0; i < len(s); i++ {
-		out[i*2] = hexdigits[s[i]>>4]
-		out[i*2+1] = hexdigits[s[i]&0x0f]
-	}
-	return string(out)
-}
-
-func TestThreadBodyReplacesMarkers(t *testing.T) {
-	body := "1. Drift " + threadMarker("abc") + "\n"
-	got := ThreadBody(body, map[string]int64{"abc": 42})
-	if !strings.Contains(got, "→ [#](#discussion_r42)") {
-		t.Fatalf("expected permalink, got: %q", got)
-	}
-	if strings.Contains(got, threadMarkerPrefix) {
-		t.Fatalf("placeholder should be gone: %q", got)
-	}
-}
-
 func TestCommentBodyIncludesSuggestion(t *testing.T) {
 	rep := sampleReport()
 	rep.Findings[0].Suggestion = "return err"
-	p := Build(rep, prTarget(), Narrative{}, "", nil)
+	p := Build(rep, prTarget(), "", nil)
 	if !strings.Contains(p.Comments[0].Body, "```suggestion\nreturn err\n```") {
 		t.Fatalf("comment should carry a suggestion block:\n%s", p.Comments[0].Body)
 	}
@@ -401,7 +316,7 @@ func TestCommentKeepsStartLineWhenCommentable(t *testing.T) {
 	rep.Findings[0].StartLine = 10
 	rep.Findings[0].Line = 12
 	commentable := map[string]map[int]bool{"a.go": {10: true, 11: true, 12: true}}
-	p := Build(rep, prTarget(), Narrative{}, "", commentable)
+	p := Build(rep, prTarget(), "", commentable)
 	if len(p.Comments) != 1 || p.Comments[0].StartLine != 10 || p.Comments[0].Line != 12 {
 		t.Fatalf("ranged comment: %+v", p.Comments)
 	}
@@ -412,7 +327,7 @@ func TestCommentDropsStartLineOutsideDiff(t *testing.T) {
 	rep.Findings[0].StartLine = 1
 	rep.Findings[0].Line = 12
 	commentable := map[string]map[int]bool{"a.go": {12: true}}
-	p := Build(rep, prTarget(), Narrative{}, "", commentable)
+	p := Build(rep, prTarget(), "", commentable)
 	if len(p.Comments) != 1 || p.Comments[0].StartLine != 0 {
 		t.Fatalf("start outside the diff must fall back to a single line: %+v", p.Comments)
 	}
@@ -424,7 +339,7 @@ func TestBuildAttestStampsFailMarkers(t *testing.T) {
 		FindingMarker: "mct-agent-finding:v1",
 		Blocking:      []findings.Severity{findings.SeverityError, findings.SeverityWarning},
 	}
-	p := BuildAttest(sampleReport(), prTarget(), Narrative{Summary: "Adds a post command."}, "", nil, prof)
+	p := BuildAttest(sampleReport(), prTarget(), "", nil, prof)
 	if p.GateVerdict != "fail" {
 		t.Fatalf("error and warning should fail, got %q", p.GateVerdict)
 	}
@@ -449,7 +364,7 @@ func TestBuildAttestPassHasNoFindingMarkers(t *testing.T) {
 		File: "a.go", Line: 1, Rule: "note", Severity: findings.SeverityInfo, Message: "coverage unknown",
 	}}}
 	rep.Finalize()
-	p := BuildAttest(rep, prTarget(), Narrative{Summary: "Clean."}, "", nil, prof)
+	p := BuildAttest(rep, prTarget(), "", nil, prof)
 	if p.GateVerdict != "pass" {
 		t.Fatalf("info-only should pass, got %q", p.GateVerdict)
 	}

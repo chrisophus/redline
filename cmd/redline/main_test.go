@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ccason/redline/internal/change"
 	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/post"
 	"github.com/ccason/redline/internal/report"
 	"github.com/ccason/redline/internal/run"
@@ -51,9 +51,9 @@ func reportDir(t *testing.T) string {
 	return dir
 }
 
-// A review that produced a report must not exit non-zero because the port
+// A run that produced a report must not exit non-zero because the port
 // was unavailable. The agent driving the session reads a non-zero exit as a
-// failed review and may run the whole loop again.
+// failed run and may start the whole loop again.
 func TestAnnounceSurvivesAnUnavailablePort(t *testing.T) {
 	dir := reportDir(t)
 	// 40000 is outside the default span, so this does not fight a real server.
@@ -82,30 +82,13 @@ func TestAnnounceServesWhenItCan(t *testing.T) {
 	}
 }
 
-// withStdin runs fn with os.Stdin replaced by text.
-func withStdin(t *testing.T, text string, fn func()) {
-	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	go func() {
-		_, _ = w.WriteString(text)
-		_ = w.Close()
-	}()
-	orig := os.Stdin
-	os.Stdin = r
-	defer func() { os.Stdin = orig; _ = r.Close() }()
-	fn()
-}
-
-// session writes an evidence directory recording a review of the worktree.
+// worktreeSession writes an evidence directory recording a run on the worktree.
 func worktreeSession(t *testing.T) string {
 	t.Helper()
 	dir := reportDir(t)
 	res := &run.Result{
 		Report: findings.Report{BaseRef: "origin/main", BaseSHA: "abc123"},
-		Packet: &packet.Packet{Target: &target.Target{Kind: target.KindWorktree}},
+		Change: &change.Set{Target: &target.Target{Kind: target.KindWorktree}},
 	}
 	if err := run.SaveSession(dir, res); err != nil {
 		t.Fatal(err)
@@ -113,61 +96,24 @@ func worktreeSession(t *testing.T) string {
 	return dir
 }
 
-// Ingest must not merge a review into a session that reviewed something else:
-// `review --pr 123` then `ingest --pr 456` used to succeed silently.
-func TestIngestRejectsAMismatchedTarget(t *testing.T) {
-	dir := worktreeSession(t)
-	var err error
-	withStdin(t, `{"summary":"x"}`, func() {
-		err = cmdIngest(opts{out: dir, pr: "456", port: 40300, noOpen: true})
-	})
-	if err == nil {
-		t.Fatal("ingesting --pr 456 into a worktree session should fail")
-	}
-	if !strings.Contains(err.Error(), "not pr 456") {
-		t.Fatalf("error should name the mismatch, got: %v", err)
-	}
-}
-
-// The same review with no target flag names the session it is merging into,
-// so it must go through.
-func TestIngestAcceptsTheSessionsOwnTarget(t *testing.T) {
-	dir := worktreeSession(t)
-	t.Cleanup(func() { _ = report.Stop(dir) })
-	var err error
-	withStdin(t, `{"summary":"what this change does"}`, func() {
-		err = cmdIngest(opts{out: dir, port: 40400, noOpen: true})
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	html, readErr := os.ReadFile(filepath.Join(dir, "report.html"))
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if !strings.Contains(string(html), "what this change does") {
-		t.Fatal("the ingested summary is not in the report")
-	}
-}
-
-// prSession writes an evidence directory recording a review of PR 7, with one
-// located finding and an agent summary, so post has something to say.
+// prSession writes an evidence directory recording a run on PR 7, with one
+// located finding so post has a line comment to build.
 func prSession(t *testing.T) string {
 	t.Helper()
 	dir := reportDir(t)
 	rep := findings.Report{
 		BaseRef: "origin/main", BaseSHA: "abc123",
 		Findings: []findings.Finding{{
-			File: "a.go", Line: 12, Rule: "review", Substrate: "reviewer:claude",
-			Severity: findings.SeverityError, Message: "nil deref",
-			Source: findings.SourceLLM, Reviewer: "claude",
+			File: "a.go", Line: 12, Rule: "migration-modified-after-merge",
+			Substrate: "migrations", Category: findings.CategorySchema,
+			Severity: findings.SeverityError, Message: "merged migration edited",
 		}},
+		Substrates: []findings.SubstrateStatus{{Name: "migrations", State: findings.SubstrateRan}},
 	}
 	rep.Finalize()
 	res := &run.Result{
 		Report: rep,
-		Packet: &packet.Packet{Target: prSessionTarget()},
-		Review: &packet.Review{Summary: "Adds a post command."},
+		Change: &change.Set{Target: prSessionTarget()},
 	}
 	if err := run.SaveSession(dir, res); err != nil {
 		t.Fatal(err)
@@ -234,8 +180,8 @@ func TestPostDryRunEmitsThePayloadWithoutPosting(t *testing.T) {
 	if len(req.Comments) != 1 || req.Comments[0].Path != "a.go" {
 		t.Fatalf("the located finding should be a line comment: %+v", req.Comments)
 	}
-	if !strings.Contains(req.Body, "Adds a post command.") {
-		t.Fatalf("the body should lead with the agent summary:\n%s", req.Body)
+	if !strings.Contains(req.Body, "| migrations | ran — 1 finding(s) |") {
+		t.Fatalf("the body should carry the evidence table:\n%s", req.Body)
 	}
 }
 
@@ -256,8 +202,7 @@ func passSession(t *testing.T) string {
 	rep.Finalize()
 	res := &run.Result{
 		Report: rep,
-		Packet: &packet.Packet{Target: prSessionTarget()},
-		Review: &packet.Review{Summary: "Looks good."},
+		Change: &change.Set{Target: prSessionTarget()},
 	}
 	if err := run.SaveSession(dir, res); err != nil {
 		t.Fatal(err)
@@ -329,7 +274,7 @@ func TestPostRejectsANonPRSession(t *testing.T) {
 	if err == nil {
 		t.Fatal("posting a worktree session should fail")
 	}
-	if !strings.Contains(err.Error(), "needs a PR review session") {
+	if !strings.Contains(err.Error(), "needs a PR session") {
 		t.Fatalf("error should say what post needs, got: %v", err)
 	}
 }
@@ -346,28 +291,6 @@ func TestPostRejectsANonPRTargetFlag(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "drop --branch") {
 		t.Fatalf("error should say which flags to drop, got: %v", err)
-	}
-}
-
-// `redline review --pr N && redline post` with no ingest between them used to
-// put a review on the pull request whose body was one invisible marker.
-func TestPostRefusesASessionWithNothingToSay(t *testing.T) {
-	t.Setenv("PATH", "")
-	dir := reportDir(t)
-	res := &run.Result{
-		Report: findings.Report{BaseRef: "origin/main", BaseSHA: "abc123"},
-		Packet: &packet.Packet{Target: prSessionTarget()},
-	}
-	if err := run.SaveSession(dir, res); err != nil {
-		t.Fatal(err)
-	}
-
-	err := cmdPost(opts{out: dir, pr: "7", dryRun: true, port: 40900, noOpen: true})
-	if err == nil {
-		t.Fatal("a session with no findings, summary or walkthrough should not post")
-	}
-	if !strings.Contains(err.Error(), "nothing to post") {
-		t.Fatalf("error should say the session is empty, got: %v", err)
 	}
 }
 
@@ -440,7 +363,7 @@ func TestPostSkipsWhenAlreadyReviewedWithNoNewFindings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := post.Build(&res.Report, res.Packet.Target, post.Narrative{Summary: res.Review.Summary}, "", nil)
+	payload := post.Build(&res.Report, res.Target, "", nil)
 	if len(payload.Comments) != 1 {
 		t.Fatalf("precondition: one line comment, got %d", len(payload.Comments))
 	}
@@ -484,47 +407,6 @@ func captureStderr(t *testing.T, fn func()) string {
 // `redline.test serve …` — Go's flag parser would stop at "serve", ignore
 // the flags, and run the suite again. Route those arguments to runMain so
 // the child is a real server and nothing recurses.
-func TestWithAcceptsSeveralReviewers(t *testing.T) {
-	parse := func(args ...string) reviewerList {
-		t.Helper()
-		var l reviewerList
-		for _, a := range args {
-			if err := l.Set(a); err != nil {
-				t.Fatal(err)
-			}
-		}
-		return l
-	}
-
-	cases := []struct {
-		name string
-		args []string
-		want []string
-	}{
-		{"repeated flag", []string{"claude", "cursor"}, []string{"claude", "cursor"}},
-		{"comma separated", []string{"claude,cursor"}, []string{"claude", "cursor"}},
-		{"mixed with spaces", []string{"claude, cursor", "bugbot"}, []string{"claude", "cursor", "bugbot"}},
-		{"repeats collapse", []string{"claude,claude"}, []string{"claude"}},
-		{"empty entries ignored", []string{"claude,,"}, []string{"claude"}},
-		// none is an off switch, so a configured default can be silenced for
-		// one run. It wins wherever it appears.
-		{"none alone", []string{"none"}, nil},
-		{"none wins", []string{"claude", "none"}, nil},
-		{"nothing given", nil, nil},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := reviewersToRun(opts{with: parse(tc.args...)})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
-				t.Fatalf("got %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestMain(m *testing.M) {
 	if args := os.Args[1:]; len(args) > 0 && isSubcommand(args[0]) {
 		if err := runMain(args); err != nil {
@@ -538,86 +420,8 @@ func TestMain(m *testing.M) {
 
 func isSubcommand(arg string) bool {
 	switch arg {
-	case "run", "review", "ingest", "post", "open", "serve":
+	case "run", "post", "open", "serve":
 		return true
 	}
 	return false
-}
-
-// --brief is opt-in. An empty value and "none" both mean skip.
-func TestBriefDefaultsOff(t *testing.T) {
-	dir := worktreeSession(t)
-	res, err := run.LoadSession(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Packet = &packet.Packet{
-		Target: &target.Target{Kind: target.KindWorktree},
-		Files:  []packet.FileChange{{Path: "a.go"}},
-	}
-	if err := runBrief(opts{out: dir}, res); err != nil {
-		t.Fatal(err)
-	}
-	if res.Packet.Brief != nil {
-		t.Fatal("no --brief means no brief on the packet")
-	}
-	if err := runBrief(opts{out: dir, brief: "none"}, res); err != nil {
-		t.Fatal(err)
-	}
-	if res.Packet.Brief != nil {
-		t.Fatal("--brief none means no brief on the packet")
-	}
-}
-
-func TestBriefRejectsUnknownName(t *testing.T) {
-	dir := worktreeSession(t)
-	res, err := run.LoadSession(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Packet = &packet.Packet{Target: &target.Target{Kind: target.KindWorktree}}
-	err = runBrief(opts{out: dir, brief: "nope"}, res)
-	if err == nil {
-		t.Fatal("unknown brief name should error")
-	}
-	if !strings.Contains(err.Error(), "unknown brief") {
-		t.Fatalf("error should name the problem, got: %v", err)
-	}
-}
-
-// A brief that runs and fails is recorded, not raised: the packet still
-// emits, and the failure shows up as a substrate and an unknown.
-func TestBriefFailureIsRecordedNotRaised(t *testing.T) {
-	dir := worktreeSession(t)
-	// Override the builtin with a command that exits without writing.
-	reviewers := []byte(`{"reviewers":{"brief":{"command":["false"],"timeout":"2s"}}}`)
-	if err := os.WriteFile(filepath.Join(dir, "reviewers.json"), reviewers, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	res, err := run.LoadSession(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Packet = &packet.Packet{
-		Target: &target.Target{Kind: target.KindWorktree, Dir: dir},
-		Files:  []packet.FileChange{{Path: "a.go"}},
-	}
-	if err := runBrief(opts{out: dir, brief: "brief"}, res); err != nil {
-		t.Fatalf("a failed brief must not fail the review: %v", err)
-	}
-	if res.Packet.Brief != nil {
-		t.Fatal("a failed brief must not attach a partial brief")
-	}
-	found := false
-	for _, s := range res.Report.Substrates {
-		if s.Name == "brief:brief" && s.State == findings.SubstrateFailed {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("failed brief should be a failed substrate: %+v", res.Report.Substrates)
-	}
-	if len(res.Report.Unknowns) == 0 {
-		t.Fatal("failed brief should leave an unknown")
-	}
 }
