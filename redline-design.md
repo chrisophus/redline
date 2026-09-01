@@ -80,6 +80,12 @@ so it spends its context on judgment instead of re-deriving measurements.
 `redline post` publishes the observed findings to the PR for reviewers who
 never leave GitHub, and a profile lets a merge gate read the result.
 
+`findings.json` plus git is the whole machine interface. The packet gets no
+successor: an agent that wants the diff runs git, and the evidence it should
+not re-derive is in `findings.json`. It was built for a consumer that no
+longer exists, so `internal/packet/` goes with it, except the generated-file
+detection, which moves to where the panes and report can share it.
+
 The CLI after phase 1: `run`, `open`, `serve --stop`, `post`. No subcommand
 invokes a model, and no flag brings one back.
 
@@ -252,10 +258,6 @@ Redline never invokes a model by any route.
 
 ## Open questions
 
-- Whether `run` keeps a machine-readable dump of the change (diffs plus
-  evidence) for agents that want it in one read, or whether
-  `findings.json` plus git is enough. Leaning to the latter; the packet
-  was built for a consumer that no longer exists.
 - The base revision for the delta runs when merge-base does not build or
   lint cleanly enough to compare. Likely answer: report the base run's
   failure as its own fact and degrade to head-only.
