@@ -42,7 +42,9 @@ uncommitted work, and on an open pull request. `--pr` fetches via `gh`
 | OpenAPI breaking-change diff (removed operations, removed response codes, newly required inputs) | shipped |
 | Diff coverage from an existing profile | shipped |
 | Generated-file suppression | shipped |
-| Lint delta, suppression triage, config drift | not started |
+| Lint delta (golangci-lint, eslint at base and head) | shipped |
+| Suppression triage (directives the diff adds) | shipped |
+| Lint config drift (rules disabled, downgraded, excluded) | shipped |
 | Measured coverage (fresh profile, per-function findings, coverage delta) | not started |
 | Migration execution against a real Postgres | not started |
 | sqlc staleness, spec-vs-handler agreement, vacuum linting | not started |
@@ -98,6 +100,31 @@ Target (all subcommands; pass only one): the working tree by default,
 Flags: `--base REF` (default: commit parent, range start, PR base, else
 origin/main), `--upstream REF` (default: same as base), `--migrations DIR`,
 `--out DIR`, `--open`, `--no-open`, `--port N` (report server, default 8765).
+
+## Lint
+
+Three panes, scoped to the change, none of which re-reports what CI gates:
+
+- **Lint delta.** When the repository carries a `.golangci.*` or eslint
+  config, the linter runs at the base revision (in a cached detached
+  worktree) and at head, and only the findings the change introduces are
+  reported, each anchored to its head line. Findings the change resolves
+  are counted as a confirmation. Identity is file, rule, and
+  digit-normalized message with no line number, so moved code does not
+  read as new violations. A configured linter that is missing or fails at
+  head darks the pane; a base revision that cannot be linted degrades the
+  delta to added-line findings and says so.
+- **Suppressions.** Every silencing directive the diff adds - `//nolint`,
+  `eslint-disable` in its forms, `@ts-ignore`, `@ts-expect-error`,
+  `# noqa`, `# type: ignore`, `pylint: disable`, `#[allow(...)]` - becomes
+  an info finding naming the rule it silences, anchored to the added line.
+  Directives that merely moved are not reported.
+- **Config drift.** A changed lint config is read on both sides: rules the
+  change disables, downgrades, or newly excludes are named individually
+  for golangci YAML, eslintrc JSON, and `.eslintignore`; formats Redline
+  cannot parse still produce a finding with the config diff as evidence.
+  The lint delta's summary also notes when part of the delta may be
+  configuration rather than code.
 
 ## Posting
 
@@ -187,6 +214,7 @@ internal/cover        diff coverage from an existing profile
 internal/findings     wire format — doctor's schema, reimplemented and extended
 internal/gitx         git layer (observe; fetch/worktrees for PR/branch)
 internal/pane         the observe/diff pane interface
+internal/pane/lint         lint delta, suppression triage, config drift
 internal/pane/migrations   migration hygiene
 internal/pane/openapi      contract breaking-change diff
 internal/post         the PR review payload and merge-gate profile

@@ -32,6 +32,7 @@ const (
 	CategoryContract Category = "contract" // HTTP/OpenAPI contract
 	CategoryCover    Category = "cover"    // diff coverage
 	CategoryUI       Category = "ui"       // rendered interface
+	CategoryLint     Category = "lint"     // lint delta, suppressions, lint config
 )
 
 // DefaultSeverity derives a finding's severity from its category. Redline's
