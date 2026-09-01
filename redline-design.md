@@ -1,347 +1,265 @@
 # Redline design
 
-Status: active. Supersedes the earlier design (in git history); the
-decisions reversed from it are listed under "Reversed decisions" below.
+Status: active. Supersedes the earlier design (in git history). The largest
+reversal since the last revision: the agent-review half of the tool is
+dropped. This document records that decision, lists what it removes, and
+plans what remains.
 
-## What it is
+## The decision
 
-Redline reviews a change: the working tree, a commit, a range, a branch, or
-a GitHub PR. It combines two kinds of output in one report:
+Redline spent most of its effort packaging the agent's review: a packet of
+facts for the agent to judge, reviewer adapters that ran a vendor's own
+review command, a context brief that pre-gathered callers and docs, and a
+Copilot-shaped posted review built from the agent's prose. Use showed that
+none of this made the review better. Claude Code and Cursor read a change,
+find its callers, and weigh it against the repo's rules at least as well on
+their own as when Redline briefs them, and the orchestration cost real
+maintenance: adapter timeouts, progress plumbing, a review JSON schema, an
+ingest step, and a skill teaching the agent how to fill all of it in.
 
-- Observed evidence: things Redline checked itself and can show. A
-  migration edited after it merged, a schema diff, a screenshot, a coverage
-  number.
-- An agent's review: Claude Code, Cursor, or any reviewer with a CLI,
-  reading the change and reporting bugs, security issues, and
-  inconsistencies.
+So Redline stops trying to improve or package agent review. What it keeps is
+the half no agent does on its own: measurement. An agent will not run the
+linters at two revisions and diff the output, run the tests under an
+instrumented profile, apply migrations to a real database, or screenshot two
+builds of the UI. Those produce facts a review needs and a model cannot
+invent. Redline becomes the instrument; whoever is reviewing, human or
+agent, supplies the judgment from their own skills.
 
-Both land in one findings file and one report, labelled so a reader can tell
-which is which.
+One line captures the split: Redline observes, and it never composes,
+solicits, or transports a model's judgment.
 
-## The three phases, in build order
+## What goes
 
-1. Reviews on GitHub you can verify happened. Replace Copilot code review:
-an agent reviews the PR and Redline posts the result to GitHub. The part no
-free tool provides is the opening line that says what was checked and what
-was not ("reviewed by claude; lint delta, diff coverage, and UI not
-checked"), with a link to the full report. Review comments by themselves say
-nothing about what was examined.
+The cut is phase 1 and it is mechanical. Everything here exists today and
+gets deleted or reshaped:
 
-2. Reviewing someone else's PR with evidence. One command that shows the
-change in its own domain: UI before/after, API contract diff, what the
-migrations do to a real database, lint and test-coverage deltas, and the
-agent's read on architecture. No free tool does this, because no free tool
-stands the app up at two revisions.
+- Reviewer adapters. `--with claude`, `--with cursor`, the adapter config in
+  `reviewers.json`, the progress ticker, the timeout handling:
+  `internal/reviewer/`, `cmd/redline/reviewers.go`.
+- The context brief. `--brief` re-created the context pass agents already
+  run for themselves: `internal/reviewer/brief.go`, `internal/packet/brief.go`,
+  `cmd/redline/brief.go`.
+- The review loop. `redline review` emitted a packet for the agent to judge
+  and `redline ingest` merged the judgment back. With no judgment to merge,
+  both subcommands retire, along with the review JSON schema (summary,
+  actual, discrepancies, intent, surfaces, the file walkthrough) in
+  `internal/packet/ingest.go`. `redline run` remains the one entry point.
+- Instruction discovery. `internal/instructions/` collected the repo's
+  Copilot instructions and Cursor rules to hand the agent. Agents read
+  those files themselves.
+- Graph threads. `internal/graph/` derived call threads through the changed
+  code for the agent packet. Following a call graph is exactly what agents
+  are good at unaided.
+- The Copilot-shaped post. The posted review's agent summary, file
+  walkthrough, and threaded discrepancies go. `redline post` stays, posting
+  observed findings only; see "Posting and the gate" below.
+- The agent UI walk. The skill sent the agent through changed journeys with
+  agent-browser and ingest embedded the screenshots. The deterministic
+  capture pane below is the UI story now; walking the app stays available
+  to any agent without Redline's involvement.
+- Most of the skill. `skills/redline/SKILL.md` was mainly a review
+  curriculum. It shrinks to: run `redline run`, read the findings, do not
+  re-report them, present the report URL, and say what went unexamined.
+- Report sections that rendered agent output: "What the reviewers found"
+  and the agent prose at the top of the page.
 
-3. A review page for the team. The report grows into a page anyone can open
-for any PR: the Jira ticket and the PR description beside what the change
-actually does, screenshots, sample rows from the database, and inline
-comments that come back to the author's agent. Host it the cheap way first:
-the report is a single self-contained HTML file, so CI can publish it as a
-build artifact per PR. Build a server only if that proves insufficient.
+What stays untouched: target resolution and worktrees, `findings.json` and
+its fingerprints, the migration and OpenAPI panes, generated-file
+suppression, diff coverage from an existing profile, the coverage banner,
+the markdown and HTML reports, the loopback server, and the click-a-line
+comment loop. That loop carries a human reviewer's comments to the author's
+agent, which is a transport for human judgment, so it survives the rule
+above.
 
-Phase 1 is days of work on top of what exists. Phase 2 is the real
-investment. Phase 3 renders phase 2's evidence and starves without it, so it
-goes last. The one exception is the Jira fetcher: it is small, independent,
-and improves phase 1 reviews right away ("the PR claims the JIRA-123 fix but
-never touches the code path the ticket names").
+## The product after the cut
 
-## What Redline provides
+`redline run` observes a change (working tree, commit, range, branch, or
+PR) and writes `findings.json`, `report.md`, and `report.html`. A human
+opens the report. An agent reviewing the same change reads `findings.json`
+so it spends its context on judgment instead of re-deriving measurements.
+`redline post` publishes the observed findings to the PR for reviewers who
+never leave GitHub, and a profile lets a merge gate read the result.
 
-- Target resolution and worktrees. Point it at a PR number, a branch, a
-  commit, a range, or nothing (the working tree, uncommitted work included)
-  and get a checkout to review that never disturbs your own. Targets other
-  than the working tree are checked out as detached git worktrees, cached
-  by commit SHA under `~/.redline/worktrees/`. PR metadata comes through
-  `gh`, so Redline never handles a token.
+The CLI after phase 1: `run`, `open`, `serve --stop`, `post`. No subcommand
+invokes a model, and no flag brings one back.
 
-- One findings file. Redline's own checks, each reviewer's findings, and
-  every future pane land in one JSON shape (`findings.json`,
-  doctor-compatible, schema version 1) that one renderer and one GitHub
-  poster consume. Adding a source of findings never means adding a
-  consumer.
+## Phase 2: lint, with nuance
 
-- The report. `report.md` for terminals. `report.html` as one
-  self-contained file that needs no server, network, or framework. It
-  carries a summary, a file-by-file walkthrough, per-area drill-ins with
-  marked-up diffs, screenshots inlined as data URIs, per-file viewed state,
-  and click-a-line comments exported as JSON for the agent. It is served
-  over loopback HTTP (`redline open`) because editor webviews reject
-  `file://`.
+Today Redline says nothing about lint. CI gates errors, so re-reporting
+them is noise; the signal is in what CI does not surface. Three panes, all
+deterministic, all scoped to the change:
 
-- Coverage. Every report states what was checked and what was not:
-  `coverage{changedFiles, examinedFiles, unexamined[]}`, a banner when
-  coverage is hollow, and a note when a check that exists in the catalog
-  did not run. Phase 1's verification depends on this. A report that
-  silently covers none of a change reads exactly like one that covers all
-  of it, and the reader assumes the flattering reading.
+- Lint delta. Run the repo's linters at merge-base and at head, in the two
+  worktrees Redline already checks out, and report only the findings the
+  change introduces. Also count the findings it resolves; a change that
+  clears twelve warnings deserves the confirmation. Fingerprint on file,
+  rule, and digit-normalized message rather than line, so moved code does
+  not read as new violations; identical messages in one file are matched by
+  count. A linter that is configured but absent, or that fails to run at
+  either revision, reports as a pane that did not run, never as a clean
+  delta.
+- Suppression triage. Collect every silencing the diff itself adds:
+  `//nolint`, `eslint-disable` in both forms, `@ts-ignore`,
+  `@ts-expect-error`, `#noqa`, `#[allow(...)]`. Each renders with the rule
+  it silences and the code beneath it. This is the highest-signal lint fact
+  a diff carries: the author told the linter to be quiet, and the reviewer
+  should see where. Alongside it, surface findings on changed lines at
+  severities the config downgrades or CI ignores, and entries the change
+  adds to a baseline or ignore file.
+- Config drift. When the diff touches a lint config, name every rule it
+  disables, downgrades, or newly excludes, and mark the lint delta as
+  partly config-driven so a clean delta earned by turning a rule off reads
+  as what it is.
 
-- Source labels. Observed findings and model findings are labelled
-  (`source: "deterministic" | "llm"`, plus `reviewer` when an external tool
-  produced it). When the report says "this migration was edited after it
-  merged," a teammate can trust it without wondering whether a model made
-  it up.
+An earlier revision of this plan had the agent judge each triaged item as
+worth fixing, defensible, or noise. That judgment step is gone with the
+rest of the agent half. Redline collects and labels; the reader judges.
 
-## What Redline does not do
+Mechanics: the Makefile `lint` target is the preferred interface, since it
+is the command the team already trusts, with direct detection of
+`golangci-lint` and `eslint` configs as the fallback. Both tools emit JSON.
+The base-and-head runner built here is shared by the coverage delta below,
+so lint goes first.
 
-- Gate merges. It reports and never blocks. (A CI gate could consume
-  `findings.json` later as a separate, thin thing.)
-- Touch production data. Database checks run against a throwaway container
-  with seeded or fake data, so there is nothing real to reach.
-- Reimplement what exists. Linters, `sqlc vet`, OpenAPI diff engines
-  (`pb33f/libopenapi` what-changed), and schema diffing
-  (`stripe/pg-schema-diff`) are consumed as they are. When a free
-  general-purpose reviewer already ships a feature (prose summaries,
-  call-graph diagrams), that is a reason to cut it from scope.
-- Ship a plugin API. New checks are code in the binary. The extension point
-  is reviewer adapters, which are config entries in `reviewers.json`.
-- Call model APIs directly. Agents run as CLIs Redline invokes, or as the
-  session driving it. This keeps API keys, rate limits, and model-version
-  drift out of Redline's surface. If a check someday needs a direct API
-  path, that is a new decision.
+## Phase 3: coverage, measured
 
-## Reversed decisions
+The shipped pane intersects an existing profile with the change's added
+lines and is honest about absence and staleness. Six additions, in order:
 
-- Posting to GitHub was forbidden. Now it is phase 1. The default stays
-  read-only; posting is a separate, explicit subcommand (`redline post`)
-  and never a side effect of reviewing.
-- Agents were confined to the packet. Now they may explore the repo, which
-  Claude Code and Cursor are good at. The packet remains as the data source
-  for the report's drill-ins and as input for skill-driven reviews.
-  Slightly different reviews on re-run are acceptable; observed checks stay
-  reproducible because they are ordinary deterministic code.
+- A measured mode. `--measure` runs the repo's test command with an
+  instrumented profile at head, so the number describes the code under
+  review instead of whatever run left a profile behind. Off by default: a
+  pre-push tool that silently runs a suite needing a database or ten
+  minutes is one nobody reaches for. The stale-profile path stays as the
+  cheap default, with its provenance and staleness reported as today.
+- Function-level findings. A new or wholly rewritten function that no test
+  executes becomes a named finding anchored at its declaration. "34% of
+  added lines" tells a reviewer to worry; "`ResolveTarget` is new and
+  nothing executes it" tells them where.
+- Coverage delta. Per-package percentage at base and at head, on the same
+  two-worktree runner as the lint delta. A drop is a finding with the
+  number in it.
+- Error-path nuance. Uncovered added lines inside error-handling branches
+  are called out separately from the rest of the gap. In Go that is the
+  block following an error check; untested error handling is the classic
+  gap the aggregate number hides.
+- A second toolchain. The reference stack has a TypeScript UI, so the pane
+  learns to read lcov and istanbul output the same way it reads Go
+  profiles, including for the measured mode when the repo's test command
+  produces one.
+- Test-delta facts. Cheap observations from the diff alone: code changed in
+  a package whose tests did not, a `t.Skip` or `.skip` the diff adds, test
+  functions or assertions the diff deletes. Each is a fact on the report,
+  severity info, for the reviewer to weigh.
 
-## Current state
+Everywhere a number renders, the three states stay distinct: uncovered,
+not coverable, and not measured. A missing profile still renders as nobody
+measured, never as zero.
 
-- Migration hygiene checks: a migration modified or deleted after it exists
-  at merge-base (golang-migrate records versions rather than contents, so
-  an edit silently diverges every already-migrated database from every
-  fresh one), and a new migration whose version prefix already exists
-  upstream.
-- The review loop: `redline review` emits the change as JSON for an agent;
-  `redline ingest` merges the agent's review back, labelled.
-- Posting: `redline post --pr N` submits the session's findings as one PR
-  review (event COMMENT), led by the agent's summary of the change and the
-  file-by-file walkthrough. A finding becomes a line comment only when its line
-  is in the PR's diff (fetched from the files API); findings off the diff go in
-  the body, so the all-or-nothing review API can never 422 on one stray line.
-  It refuses unless the loaded session is that PR, is idempotent per
-  (PR, head SHA) via hidden markers that name both, and posts through `gh` so
-  Redline never handles a token. `run`/`review`/`ingest` stay read-only.
-- Reviewer adapters: `--with claude` runs Claude Code's own `/code-review`
-  in the reviewed tree and folds its findings in; `--with cursor` likewise.
-  Adapters are config entries (command, prompt template, timeout). A
-  reviewer that fails is recorded as "did not run" so it can never read as
-  "found nothing."
-- The report: markdown plus self-contained HTML with diffs, comments,
-  viewed state, and screenshots, and a loopback server that verifies it is
-  serving the right directory.
+Deferred: per-test attribution, mapping changed lines to the specific tests
+that execute them. It needs a profile per test and the cost is out of
+proportion to the question; revisit if the function-level findings prove
+too coarse.
 
-## Phase 1: post to GitHub
+## Phase 4: the rest of the evidence
 
-Replace Copilot review: one command reviews a teammate's PR with an agent
-and posts the result to GitHub, with proof of what was and wasn't checked.
-The review pipeline already works (`redline review --pr N --with claude`
-checks the PR out, runs the agent, and merges labelled findings). Phase 1
-was three pieces on top of it; the first two are the core, and shipped.
+Unchanged in substance from the previous revision, cheapest first:
 
-1. **Shipped.** `redline post --pr N` takes the current session's findings
-and posts one PR review via `gh api`:
+- OpenAPI spec lint via vacuum, filtered to newly violated rules, next to
+  the shipped breaking-change diff. sqlc generation staleness.
+- Database. A throwaway Postgres container, fresh every run: apply pending
+  migrations with the real driver, capture lock class, table rewrite, and
+  timing; the two-world diff of from-scratch versus incremental schema;
+  the down-migration round trip; rows that violate newly added
+  constraints.
+- UI capture. A pinned Chrome for Testing build driven via go-rod:
+  before/after screenshots per changed route, console errors, and failed
+  requests during navigation. No perceptual diffing. Browser acquisition
+  stays explicit (`redline setup browser`); with no browser the pane
+  reports "skipped: no browser". With the agent walk gone this is the only
+  UI story, which raises its priority within this phase.
+- Performance stays deferred entirely. With the agent half gone there is
+  no cheap judgment-based stand-in; a measured pane gets built when use
+  shows the need.
 
-- Findings that carry file:line become line-anchored comments; the rest go
-  in the review body.
-- The review is posted as COMMENT. It never requests changes or approves.
-- Posting is idempotent per (PR, head SHA): every finding carries a hidden
-  marker naming the commit it was said for and its fingerprint, so a re-post
-  never duplicates one and a re-run with no new findings on an already-reviewed
-  commit posts nothing. The commit has to be in the key. The fingerprint is
-  file, rule and normalized message, with no commit in it, while GitHub keeps
-  every comment ever left on the pull request, so keying on the fingerprint
-  alone made a finding that survived a push look already-posted against a
-  comment attached to the commit before it. GitHub collapses that comment as
-  outdated, so the defect ended up with nothing visible on the current diff.
-- Findings that ride in the body are marked the same way. Tracking only the
-  line comments meant a later ingest whose finding had no line produced no new
-  comments, which read as nothing to post.
-- Posting is never implicit. `review` and `run` stay read-only, and `post`
-  refuses when the session's target is a different PR than the one named.
+Configuration for the runtime panes (`redline.toml`: build, run, seed,
+migrate, routes, normalizers) gets designed when the first runtime pane is
+built, from what it actually needs.
 
-2. **Shipped.** The review body opens with the agent's summary of the change
-and the file-by-file walkthrough, with a link to the full report
-(`--report-url`, a CI artifact URL when available). An earlier version led with
-coverage instead: which panes ran and what share of the changed files they
-examined. On a change with no migrations and no spec that rendered as "none of
-the 16 changed file(s) were examined", which reads as an apology and buries the
-review under it. Coverage is still in `findings.json` and still on the report;
-it is not what belongs at the top of a review.
+## Posting and the gate
 
-Still open on this phase:
+`redline post --pr N` survives the cut with its machinery intact and its
+content narrowed. What it posts: line comments for observed findings whose
+`file:line` is on the PR diff, the rest in the body, and a body that opens
+with a one-line-per-pane summary table (migrations, contract, lint delta,
+diff coverage, and what did not run) plus `--report-url`. The agent
+summary and walkthrough sections go with the rest of the agent half.
+Everything hard-won stays: event COMMENT only, idempotency per (PR, head
+SHA) via hidden markers, findings off the diff riding in the body so one
+stray line cannot 422 the review, refusal when the session is a different
+PR, credentials via `gh`.
 
-- Whether `post` also updates a check-run, which puts "reviewed" in the
-  merge box instead of buried in comments and is the cheapest form of the
-  verification this phase exists for. Not built.
-- The Jira fetcher: resolve a ticket key from the branch name, the PR
-  title, or a flag, then pull the ticket summary and description into the
-  review input and the report header as intent, so the agent and the reader
-  can compare claim against change from day one. Not built.
+The `--profile` gate stays, re-keyed to observed findings: the YAML names
+the markers, blocking severities fail, info does not. `fail_closed_reviewer`
+retires with the reviewers; in its place the profile may fail closed on a
+pane that applied but did not run, which is the same principle, that a
+missing check must not read as a pass.
 
-`--profile` on `post` is shipped: a YAML file names the hidden markers a
-merge gate already understands, treats error and warning as fail, and still
-posts COMMENT. Redline does not approve. A consuming repo (Marketplace
-`/review-bot`) owns the block.
+The check-run question from the previous revision stays open, and matters
+more now: "migrations applied cleanly, lint delta +0, diff coverage 84%"
+in the merge box is the natural delivery for evidence, where a comment
+thread was the natural delivery for prose.
 
-Done means: a teammate's PR goes through one command and a review appears
-on GitHub that a reader can act on and can verify the scope of. That path
-works today; the check-run and Jira pieces sharpen it. Everything else,
-including the ignored-lint triage, diff coverage, and the formalized agent
-UI walk below, is phase 2.
+## The report page
 
-## Phase 2: the evidence panes
+The page keeps its shape minus the agent sections. Orientation shrinks to
+the PR title and body, and the Jira ticket when the fetcher gets built; it
+stays worth building as header context, at low priority, since the
+intent-versus-change comparison it fed is the reviewing agent's job now.
+The evidence panes fill the rest: screens, contract, schema, coverage,
+lint, and the observed findings. Viewed state and click-a-line comments
+stay, exported as JSON for the author's agent as today.
 
-The backlog, roughly cheapest first. Each pane emits into the same findings
-file and renders a section of the report. A pane that applies but cannot
-run reports "did not run" loudly.
-
-### Checks that need no runtime
-
-- Lint delta: run the repo's linters at base and head, diff the two sets,
-  and report only what this change introduces.
-- Ignored-lint triage: collect the lint output nobody looks at (info-level
-  findings, rules the config downgrades, baseline-suppressed findings,
-  scoped to changed lines) plus any suppression directives the diff itself
-  adds (`//nolint`, `eslint-disable`). The agent judges each one as worth
-  fixing here, defensible, or noise, and promotes the few that matter as
-  labelled model findings citing the lint rule. The collection step is
-  deterministic and only the judgment comes from the agent. A suppression
-  added by the diff is the high-signal case: the author explicitly told the
-  linter to be quiet, and someone should check whether that was justified.
-- Diff coverage: run the tests with a cover profile and map it onto the
-  lines this change adds or modifies, to find new code no test executes.
-  This is measured per change because the repo-wide number can look healthy
-  while an entire new function ships untested. Findings name the untested
-  behaviour and anchor to file:line; the per-file covered/uncovered split
-  renders in the walkthrough.
-- OpenAPI breaking-change diff via `libopenapi` what-changed, and spec lint
-  (vacuum) filtered to newly violated rules.
-- sqlc generation staleness.
-
-### Database
-
-A throwaway Postgres container, fresh every run.
-
-- Apply pending migrations with the real driver. Snapshot the schema and
-  the affected tables' rows before and after. Capture lock class, table
-  rewrite, and timing; the migration that pages someone at 2am needs no
-  model to spot.
-- Two-world diff: apply the migrations from scratch and also incrementally
-  on top of merge-base. If the two schemas differ, fresh installs and
-  deployed environments end up different, and nothing else ever reports
-  that.
-- Down-migration round trip, and rows that violate newly added constraints
-  (the repo's seed data plus a small generated adversarial set: the NULL
-  going NOT NULL, the 65-char string into the narrowed column).
-- These sample rows also feed phase 3's "show me the data" section.
-
-### Agent UI walk
-
-Partly exists; make it first-class.
-
-- The skill already sends the agent through the changed journeys with
-  agent-browser when the diff touches UI: open, interact, screenshot, check
-  console errors, and judge correctness and experience. The walk is scoped
-  to the diff and never crawls the whole app. Screenshots ingest into the
-  report today.
-- The missing half is setup. Redline should stand the app up (or find the
-  running dev server) and hand the agent the URL and the routes the diff
-  touches, so every walk starts from the same place instead of the agent
-  re-deriving bring-up each time.
-- The walk assesses one revision and is labelled as the agent's work. The
-  capture pane below compares two revisions, so the two do not overlap. The
-  walk ships first because it needs no browser infrastructure of Redline's
-  own.
-
-### UI capture
-
-A pinned Chrome for Testing build, driven in-process via go-rod.
-
-- Before/after screenshots per changed route, side by side. No perceptual
-  diffing: it is the largest false-positive source in the catalog, and the
-  side-by-side render serves the reviewer directly.
-- Console errors and failed network requests during navigation. Those need
-  no threshold and are real findings.
-- Browser acquisition is explicit: `redline setup browser` downloads the
-  pinned build with consent, so a review never triggers a silent 150MB
-  download. With no browser present the pane reports "skipped: no browser."
-
-### Deferred: performance
-
-Benchmarks on changed packages are expensive and noisy. "No major
-degradation" starts as an agent judgment over the diff, and a measured pane
-gets built only if that proves insufficient in use.
-
-Observations are normalized before diffing (timestamps, UUIDs, row order).
-Diffing without normalizing produces 100% false positives on the first run,
-which is how a tool like this dies.
-
-Configuration for the runtime panes (`redline.toml`: how to build, run,
-seed, and migrate; routes; normalizers) gets designed when the first
-runtime pane is built, from what it actually needs. The checks built so far
-run off convention and flags, and that has held.
-
-## Phase 3: the review page
-
-The existing `report.html` is the seed. It grows:
-
-- Intent beside outcome, at the top: the Jira ticket and PR description on
-  one side, the agent's account of what the change actually does on the
-  other, with mismatches called out.
-- Screenshots and database sample rows from phase 2's panes.
-- Lint, coverage, and performance status at a glance.
-- The current features stay: the file walkthrough with findings per file,
-  viewed checkboxes, and click-a-line comments handed back to the agent.
-
-Distribution: CI uploads the report as a per-PR artifact (or static page).
-Comments in that mode export as JSON the author pastes to their agent, as
-they do today. If artifact hosting proves too clunky, the fallback is a
-hosted server with live comment state. Decide that from use.
-
-## Reference stack
-
-Redline is designed against a specific project shape, which breaks ties: a
-Go service, a TypeScript/React UI, Postgres, golang-migrate, sqlc, ogen
-from an OpenAPI 3 spec, a Makefile as the interface everyone already uses
-(`build`, `run`, `seed`, `test`, `generate`), and a mock/offline mode so
-the stack starts without cloud credentials. Two properties matter for
-phase 2: the Makefile already documents bring-up, and mock adapters make
-standing the stack up cheap enough to do twice per run.
+Distribution is unchanged: one self-contained HTML file, served over
+loopback locally, published as a CI artifact per PR when a team wants a
+shared page. A hosted server with live comment state remains the fallback
+if artifacts prove too clunky.
 
 ## Standing decisions
 
-- Fresh throwaway container, every run. A couple of seconds of startup
-  buys a clean baseline, and it keeps "no production data" true because
-  the container cannot reach any.
-- Findings and human comment state live in separate files. `findings.json`
-  is regenerated every run; reviewer accept/dismiss state is keyed by
-  fingerprint elsewhere. If they were merged, every re-run would clobber
-  the reviewer's decisions.
-- Stable fingerprints (location or anchor, plus rule, plus digit-normalized
-  message) so a finding keeps its identity across runs. The fingerprint is
-  the join key for comment state and for idempotent GitHub posting.
-- Reviewer findings are appended rather than merged across reviewers.
-  Guessing that two differently worded findings are one defect deletes a
-  finding silently, and exact duplicates already collapse on fingerprint.
-  Two reviewers reporting the same thing is a confidence signal.
-- Pinned browser version for screenshots. An unpinned browser can update
-  between the base and head captures and produce phantom diffs.
-- Confirmations are kept, collapsed. "Applied against 50k rows, no table
-  rewrite" is a question the reviewer no longer has to ask, and discarding
-  it throws away most of the value of running the check.
+Carried forward: stable fingerprints as the join key for comment state and
+posting; findings and human comment state in separate files; fresh
+throwaway containers; pinned browser builds; confirmations kept and
+collapsed; every exclusion named; a pane that applies but cannot run
+reports loudly.
+
+Retired as moot: appending rather than merging reviewer findings, agents
+being allowed to explore beyond the packet, and adapter extension via
+`reviewers.json`. The old rule "no direct model API calls" strengthens to:
+Redline never invokes a model by any route.
+
+## Order of work
+
+1. The cut: delete the packages and subcommands listed above, reshape post
+   and the report, rewrite the skill and README. Everything after builds
+   on the smaller tool.
+2. Lint delta, suppression triage, config drift. Builds the two-revision
+   runner.
+3. Coverage: measured mode, function-level findings, coverage delta,
+   error-path split, lcov, test-delta facts.
+4. vacuum and sqlc staleness, then the database pane, then UI capture.
+5. The check-run, and the Jira header when it earns its slot.
 
 ## Open questions
 
-- How far artifact-hosted reports get before phase 3 needs real comment
-  persistence, and therefore a server.
-- Where the Jira credential lives. Likely the `jira` CLI or an env token,
-  handled the same way as `gh`: Redline never stores it.
-- The base revision for re-review. Merge-base is right for a first pass;
-  "since the last Redline run" may be better when iterating.
+- Whether `run` keeps a machine-readable dump of the change (diffs plus
+  evidence) for agents that want it in one read, or whether
+  `findings.json` plus git is enough. Leaning to the latter; the packet
+  was built for a consumer that no longer exists.
+- The base revision for the delta runs when merge-base does not build or
+  lint cleanly enough to compare. Likely answer: report the base run's
+  failure as its own fact and degrade to head-only.
+- How much toolchain detection to attempt before requiring `redline.toml`.
+  The reference stack's Makefile convention has held so far.
+- Where the Jira credential lives when the fetcher gets built. Same answer
+  as `gh`: a CLI or env token Redline never stores.
