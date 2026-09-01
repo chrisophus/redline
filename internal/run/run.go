@@ -6,11 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ccason/redline/internal/change"
 	"github.com/ccason/redline/internal/cover"
 	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/gitx"
-	"github.com/ccason/redline/internal/graph"
-	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/pane"
 	"github.com/ccason/redline/internal/pane/migrations"
 	"github.com/ccason/redline/internal/pane/openapi"
@@ -41,12 +40,9 @@ type Result struct {
 	Renders  []pane.Render
 	Evidence map[string]pane.Artifact
 	Target   *target.Target
-	Packet   *packet.Packet
-	// Review is the agent's last ingested judgment, carried across runs by
-	// the session snapshot. The report's summary, walkthrough, and contract
-	// highlights live only here — findings.Report has no field for them — so
-	// a follow-up ingest must merge onto it rather than replace it.
-	Review *packet.Review
+	// Change is the file-by-file account of the diff the report renders its
+	// walkthrough and drill-in sections from.
+	Change *change.Set
 }
 
 // Run executes every applicable pane. Applicability is computed from the diff,
@@ -87,11 +83,11 @@ func Run(opts Options) (*Result, error) {
 	}
 	changed = excludeOwnOutput(changed, opts.Out, repo.Root)
 
-	// Generated output leaves the change here, before any pane or the packet
+	// Generated output leaves the change here, before any pane or the report
 	// sees it, so the coverage denominator counts files a reviewer would
 	// actually read. What was dropped is recorded and shown: an exclusion the
 	// reader cannot see is indistinguishable from a file that never changed.
-	changed, generated := packet.Generated(tgt.Dir, changed, repo.AttrSet("linguist-generated", changed))
+	changed, generated := change.Generated(tgt.Dir, changed, repo.AttrSet("linguist-generated", changed))
 
 	res := &Result{Evidence: map[string]pane.Artifact{}, Target: tgt, Report: findings.Report{
 		BaseRef: baseRef,
@@ -157,28 +153,25 @@ func Run(opts Options) (*Result, error) {
 	res.Report.Finalize()
 	findings.Sort(res.Report.Findings)
 
-	// The packet is built on every run, not only for `review`: it is what the
-	// HTML report renders its drill-in sections from.
-	res.Packet = packet.Build(repo, tgt, baseSHA, changed, res.Report.Findings)
-	attachThreads(res.Packet, tgt.Dir, changed)
-	attachDiffCoverage(&res.Report, res.Packet, tgt.Dir)
+	res.Change = change.Build(repo, tgt, baseSHA, changed)
+	attachDiffCoverage(&res.Report, res.Change, tgt.Dir)
 	return res, nil
 }
 
 // attachDiffCoverage computes the number that stands in for reading the tests.
-// It needs the packet's diffs, so it runs after Build.
+// It needs the per-file diffs, so it runs after change.Build.
 //
 // A missing profile is recorded as an unknown. This is the whole point of the
 // number: "no test executes these lines" and "nobody measured" look identical on
 // a page that only shows a percentage, and only one of them is a problem the
 // author can fix by writing a test.
-func attachDiffCoverage(rep *findings.Report, p *packet.Packet, dir string) {
-	if p == nil || len(p.Files) == 0 {
+func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir string) {
+	if ch == nil || len(ch.Files) == 0 {
 		return
 	}
-	changed := make([]cover.Changed, 0, len(p.Files))
+	changed := make([]cover.Changed, 0, len(ch.Files))
 	goFiles := 0
-	for _, f := range p.Files {
+	for _, f := range ch.Files {
 		if filepath.Ext(f.Path) != ".go" {
 			continue
 		}
@@ -236,29 +229,6 @@ func resolveRef(repo *gitx.Repo, want string, fallbacks ...string) string {
 		}
 	}
 	return ""
-}
-
-// attachThreads adds graph-derived threads when the repository has a graphify
-// graph. Absent graph, absent threads — Redline does not build one, because
-// extraction is an expensive pass the user should choose to run.
-func attachThreads(p *packet.Packet, dir string, changed []string) {
-	path := graph.Locate(dir)
-	if path == "" {
-		return
-	}
-	g, err := graph.Load(path)
-	if err != nil {
-		return
-	}
-	p.Threads = toPacketThreads(g.Threads(changed))
-}
-
-func toPacketThreads(ts []graph.Thread) []packet.Thread {
-	out := make([]packet.Thread, len(ts))
-	for i, t := range ts {
-		out[i] = packet.Thread{From: t.From, To: t.To, Nodes: t.Nodes, Explanation: t.Explanation}
-	}
-	return out
 }
 
 // excludeOwnOutput drops Redline's own evidence directory from the change.
@@ -329,7 +299,7 @@ func unbuiltPanes(changed []string, examined map[string]bool) []findings.Unknown
 		if examined[path] {
 			continue
 		}
-		for _, area := range packet.Areas(path) {
+		for _, area := range change.Areas(path) {
 			byArea[area]++
 		}
 	}

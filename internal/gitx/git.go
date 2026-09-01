@@ -343,7 +343,7 @@ func (r *Repo) Stat(rev, head string) ([]DiffStat, error) {
 		return stats, nil
 	}
 	// Untracked files are absent from numstat. Count their lines from the
-	// same diff the packet will show, so the +N −0 in the report matches.
+	// same diff the report will show, so the +N −0 in the walkthrough matches.
 	changed, err := r.ChangedPaths(rev)
 	if err != nil {
 		return stats, nil

@@ -21,23 +21,24 @@ type Profile struct {
 	Blocking      []findings.Severity
 	AuthorOnly    bool
 	RequireHead   bool
-	// FailClosedReviewer turns a reviewer substrate that crashed into fail,
-	// even when no findings were produced. A missing review must not read as pass.
-	FailClosedReviewer bool
+	// FailClosedPane turns a pane that applied to the change but did not run
+	// into fail, even when no findings were produced. A missing check must not
+	// read as pass.
+	FailClosedPane bool
 }
 
 type profileFile struct {
-	ReviewMarker       string   `yaml:"review_marker"`
-	FindingMarker      string   `yaml:"finding_marker"`
-	Blocking           []string `yaml:"blocking"`
-	AuthorOnly         *bool    `yaml:"author_only"`
-	RequireHead        *bool    `yaml:"require_head"`
-	FailClosedReviewer *bool    `yaml:"fail_closed_reviewer"`
+	ReviewMarker   string   `yaml:"review_marker"`
+	FindingMarker  string   `yaml:"finding_marker"`
+	Blocking       []string `yaml:"blocking"`
+	AuthorOnly     *bool    `yaml:"author_only"`
+	RequireHead    *bool    `yaml:"require_head"`
+	FailClosedPane *bool    `yaml:"fail_closed_pane"`
 }
 
 // LoadProfile reads a YAML profile. Missing optional fields default to the
 // strict merge-gate shape: error and warning block, author-only, HEAD must
-// match, a crashed reviewer is fail.
+// match, a pane that applied and did not run is fail.
 func LoadProfile(path string) (*Profile, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -51,11 +52,11 @@ func LoadProfile(path string) (*Profile, error) {
 		return nil, fmt.Errorf("profile %s: review_marker and finding_marker are required", path)
 	}
 	p := &Profile{
-		ReviewMarker:       strings.TrimSpace(f.ReviewMarker),
-		FindingMarker:      strings.TrimSpace(f.FindingMarker),
-		AuthorOnly:         true,
-		RequireHead:        true,
-		FailClosedReviewer: true,
+		ReviewMarker:   strings.TrimSpace(f.ReviewMarker),
+		FindingMarker:  strings.TrimSpace(f.FindingMarker),
+		AuthorOnly:     true,
+		RequireHead:    true,
+		FailClosedPane: true,
 	}
 	if f.AuthorOnly != nil {
 		p.AuthorOnly = *f.AuthorOnly
@@ -63,8 +64,8 @@ func LoadProfile(path string) (*Profile, error) {
 	if f.RequireHead != nil {
 		p.RequireHead = *f.RequireHead
 	}
-	if f.FailClosedReviewer != nil {
-		p.FailClosedReviewer = *f.FailClosedReviewer
+	if f.FailClosedPane != nil {
+		p.FailClosedPane = *f.FailClosedPane
 	}
 	if len(f.Blocking) == 0 {
 		p.Blocking = []findings.Severity{findings.SeverityError, findings.SeverityWarning}
@@ -106,14 +107,14 @@ func (p *Profile) Blocks(s findings.Severity) bool {
 	return false
 }
 
-// GateVerdict is pass when nothing blocking is present and every requested
-// reviewer finished. fail otherwise. Empty profile yields an empty string:
-// post is not attesting.
+// GateVerdict is pass when nothing blocking is present and every pane that
+// applied to the change ran. fail otherwise. Empty profile yields an empty
+// string: post is not attesting.
 func GateVerdict(rep *findings.Report, p *Profile) string {
 	if p == nil {
 		return ""
 	}
-	if p.FailClosedReviewer && reviewerFailed(rep) {
+	if p.FailClosedPane && rep != nil && len(rep.DarkSubstrates()) > 0 {
 		return "fail"
 	}
 	if rep != nil {
@@ -124,18 +125,6 @@ func GateVerdict(rep *findings.Report, p *Profile) string {
 		}
 	}
 	return "pass"
-}
-
-func reviewerFailed(rep *findings.Report) bool {
-	if rep == nil {
-		return false
-	}
-	for _, s := range rep.Substrates {
-		if strings.HasPrefix(s.Name, "reviewer:") && s.State == findings.SubstrateFailed {
-			return true
-		}
-	}
-	return false
 }
 
 // reviewAttestMarker is the hidden line a merge gate scans for.

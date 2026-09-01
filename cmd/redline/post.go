@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/ccason/redline/internal/packet"
 	"github.com/ccason/redline/internal/post"
 	"github.com/ccason/redline/internal/run"
 	"github.com/ccason/redline/internal/target"
@@ -19,10 +18,10 @@ import (
 // cmdPost submits the session's findings as one GitHub pull request review.
 //
 // This is the one Redline command that writes to GitHub, and it is never a side
-// effect: `run`, `review`, and `ingest` stay read-only, and posting happens
-// only when the operator types `redline post`. It refuses unless the session it
-// loads is the PR named — merging a review of one change onto another PR under
-// a reviewer's name is exactly the mistake worth a hard error.
+// effect: `run` stays read-only, and posting happens only when the operator
+// types `redline post`. It refuses unless the session it loads is the PR named
+// — posting a review of one change onto another PR is exactly the mistake
+// worth a hard error.
 func cmdPost(o opts) error {
 	res, err := run.LoadSession(o.out)
 	if err != nil {
@@ -30,7 +29,7 @@ func cmdPost(o opts) error {
 	}
 	tgt := res.Target
 	if tgt == nil || tgt.Kind != target.KindPR || tgt.PR == nil {
-		return fmt.Errorf("post needs a PR review session; run `redline review --pr N` first")
+		return fmt.Errorf("post needs a PR session; run `redline run --pr N` first")
 	}
 	// A named target must be this PR. A non-PR target flag is a category error.
 	switch {
@@ -55,10 +54,6 @@ func cmdPost(o opts) error {
 	if err != nil {
 		return err
 	}
-	nar := narrative(res.Review)
-	if res.Packet != nil && res.Packet.Brief != nil {
-		nar.Coverage.BriefFiles = len(res.Packet.Brief.FilesRead)
-	}
 	var prof *post.Profile
 	if o.profile != "" {
 		var perr error
@@ -70,16 +65,7 @@ func cmdPost(o opts) error {
 			return err
 		}
 	}
-	payload := post.BuildAttest(&res.Report, tgt, nar, o.reportURL, commentable, prof)
-
-	// A review nobody can read anything in is worse than no review: it appears
-	// on the pull request under the reviewer's name and says nothing. This is
-	// what `redline review --pr N && redline post` produced, with no ingest in
-	// between to supply the summary and the walkthrough.
-	if payload.Blank() {
-		return fmt.Errorf("this session has nothing to post: no findings, no summary and no walkthrough\n" +
-			"run the agent review and `redline ingest` first, or pass --report-url to post a link to the report")
-	}
+	payload := post.BuildAttest(&res.Report, tgt, o.reportURL, commentable, prof)
 
 	if o.dryRun {
 		return emitJSON(reviewRequest(payload))
@@ -155,7 +141,7 @@ func enforceProfile(dryRun bool, prof *post.Profile, tgt *target.Target, owner, 
 				author = tgt.PR.Author
 			}
 			if author == "" {
-				return fmt.Errorf("profile author_only: session has no PR author; re-run `redline review --pr %d`", num)
+				return fmt.Errorf("profile author_only: session has no PR author; re-run `redline run --pr %d`", num)
 			}
 			if login != author {
 				return fmt.Errorf("profile author_only: only the PR author (%s) may post (gh user: %s)", author, login)
@@ -171,7 +157,7 @@ func enforceProfile(dryRun bool, prof *post.Profile, tgt *target.Target, owner, 
 				return err
 			}
 		} else if head != tgt.Head {
-			return fmt.Errorf("profile require_head: session reviewed %s but PR head is %s; re-run `redline review --pr %d`", shortSHA(tgt.Head), shortSHA(head), num)
+			return fmt.Errorf("profile require_head: session reviewed %s but PR head is %s; re-run `redline run --pr %d`", shortSHA(tgt.Head), shortSHA(head), num)
 		}
 	}
 	return nil
@@ -194,27 +180,6 @@ func ghPRHead(owner, repo string, num int) (string, error) {
 		return "", ghError(path, err)
 	}
 	return strings.TrimSpace(string(out)), nil
-}
-
-// narrative lifts the agent's prose — summary, actual, walkthrough, and
-// discrepancies — out of the ingested review. Stated intent is not here: Build
-// reads it off the pull request Redline already fetched. A session posted
-// before any ingest has no review, and the body degrades to the findings alone.
-func narrative(r *packet.Review) post.Narrative {
-	if r == nil {
-		return post.Narrative{}
-	}
-	nar := post.Narrative{Summary: r.Summary, Actual: r.Actual}
-	for _, f := range r.Files {
-		nar.Files = append(nar.Files, post.FileNote{Path: f.Path, Summary: f.Summary})
-	}
-	for _, d := range r.Discrepancies {
-		nar.Discrepancies = append(nar.Discrepancies, post.DiscrepancyNote{
-			Claim:  d.Claim,
-			Actual: d.Actual,
-		})
-	}
-	return nar
 }
 
 // ghReviewComment and ghReviewRequest mirror the GitHub "create a review" API.
@@ -249,11 +214,7 @@ func reviewRequest(p post.Payload) ghReviewRequest {
 	return req
 }
 
-// submitReview posts one review via `gh api`, then patches the body so
-// discrepancy placeholders become permalinks to the inline comments. Comment
-// IDs do not exist until the review is created, so the overview cannot thread
-// them in one shot. A failed PATCH leaves the posted review intact and warns;
-// retrying into a second review would duplicate comments.
+// submitReview posts one review via `gh api`.
 func submitReview(owner, repo string, num int, p post.Payload) error {
 	body, err := json.Marshal(reviewRequest(p))
 	if err != nil {
@@ -266,70 +227,7 @@ func submitReview(owner, repo string, num int, p post.Payload) error {
 	if err != nil {
 		return fmt.Errorf("gh api POST %s: %s", path, strings.TrimSpace(string(out)))
 	}
-	var created struct {
-		ID int64 `json:"id"`
-	}
-	if jsonErr := json.Unmarshal(out, &created); jsonErr != nil || created.ID == 0 {
-		// The review landed; we just cannot thread. Say so and stop.
-		fmt.Fprintf(os.Stderr, "redline: posted review but could not read its id; discrepancy links were not threaded\n")
-		return nil
-	}
-	if err := threadReview(owner, repo, num, created.ID, p); err != nil {
-		fmt.Fprintf(os.Stderr, "redline: posted review #%d but could not thread discrepancy links: %v\n", created.ID, err)
-	}
 	return nil
-}
-
-// threadReview fetches the comments on a just-created review, maps them to
-// finding fingerprints, and patches the review body with permalinks.
-func threadReview(owner, repo string, num int, reviewID int64, p post.Payload) error {
-	ids, err := reviewCommentIDs(owner, repo, num, reviewID)
-	if err != nil {
-		return err
-	}
-	threaded := post.ThreadBody(p.Body, ids)
-	if threaded == p.Body {
-		return nil
-	}
-	patch, err := json.Marshal(map[string]string{"body": threaded})
-	if err != nil {
-		return err
-	}
-	path := fmt.Sprintf("repos/%s/%s/pulls/%d/reviews/%d", owner, repo, num, reviewID)
-	cmd := exec.Command("gh", "api", "--method", "PUT", path, "--input", "-")
-	cmd.Stdin = bytes.NewReader(patch)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("gh api PUT %s: %s", path, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-// reviewCommentIDs maps finding fingerprint to GitHub review-comment id for the
-// comments belonging to one review.
-func reviewCommentIDs(owner, repo string, num int, reviewID int64) (map[string]int64, error) {
-	path := fmt.Sprintf("repos/%s/%s/pulls/%d/reviews/%d/comments", owner, repo, num, reviewID)
-	cmd := exec.Command("gh", "api", "--paginate", path)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, ghError(path, err)
-	}
-	var comments []struct {
-		ID   int64  `json:"id"`
-		Body string `json:"body"`
-	}
-	if err := json.Unmarshal(out, &comments); err != nil {
-		return nil, err
-	}
-	ids := map[string]int64{}
-	for _, c := range comments {
-		for fp := range post.Fingerprints([]string{c.Body}) {
-			// Fingerprints keys are head\x00fingerprint; recover the fingerprint.
-			if i := strings.IndexByte(fp, 0); i >= 0 {
-				ids[fp[i+1:]] = c.ID
-			}
-		}
-	}
-	return ids, nil
 }
 
 // prCommentable resolves the lines GitHub will accept comments on for this PR.

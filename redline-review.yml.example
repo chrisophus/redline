@@ -15,5 +15,6 @@ blocking:
 
 author_only: true
 require_head: true
-# A reviewer adapter that crashed is fail, even with no findings.
-fail_closed_reviewer: true
+# A pane that applied to the change but did not run is fail, even with no
+# findings. A missing check must not read as pass.
+fail_closed_pane: true

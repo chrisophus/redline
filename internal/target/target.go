@@ -338,9 +338,9 @@ func (o Options) kindLabel() (Kind, string, error) {
 }
 
 // Matches reports whether opts name this target. It compares what the user
-// typed rather than resolved SHAs: the caller is `redline ingest`, which has
-// no repository open, and the mistake worth catching is `review --pr 123`
-// followed by `ingest --pr 456`.
+// typed rather than resolved SHAs: the caller is `redline post`, which has
+// no repository open, and the mistake worth catching is `run --pr 123`
+// followed by `post --pr 456`.
 func (t *Target) Matches(o Options) error {
 	if err := o.exclusive(); err != nil {
 		return err

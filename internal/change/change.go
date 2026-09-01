@@ -1,45 +1,68 @@
-package packet
+// Package change describes the change under review: every file with its diff,
+// classified for the report's sections, with machine output already removed.
+//
+// This is internal structure, not a machine interface. The packet that used to
+// carry this shape to a reviewing agent is gone; an agent that wants the diff
+// runs git, and the evidence it should not re-derive is in findings.json. The
+// report still needs the diffs to render its walkthrough and drill-ins, and
+// that is what this package supplies.
+package change
 
 import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/gitx"
-	"github.com/ccason/redline/internal/instructions"
 	"github.com/ccason/redline/internal/target"
 )
 
-// maxDiffBytes caps a single file's diff in the packet. A generated file with
-// a 40,000-line diff would crowd out every hand-written change in the review.
+// maxDiffBytes caps a single file's diff. A file with a 40,000-line diff would
+// crowd out every hand-written change on the report.
 const maxDiffBytes = 60000
 
-// Build assembles the packet from an already-resolved target and report.
-func Build(repo *gitx.Repo, tgt *target.Target, baseSHA string, changed []string, det []findings.Finding) *Packet {
-	p := &Packet{
-		Version:       Version,
-		Target:        tgt,
-		BaseSHA:       baseSHA,
-		Deterministic: det,
-		Guidance:      DefaultGuidance(),
-	}
-	if p.Deterministic == nil {
-		p.Deterministic = []findings.Finding{}
-	}
+// Set is the change: the target, the commits, and every changed file.
+type Set struct {
+	Target  *target.Target `json:"target"`
+	BaseSHA string         `json:"baseSHA"`
+
+	Commits []gitx.Commit `json:"commits,omitempty"`
+	Files   []File        `json:"files"`
+
+	// UITouched is true when at least one changed file is classified as UI.
+	// It decides how loud the absence of captures should be on the report: a
+	// change that moves the interface with nothing captured is a gap, one that
+	// touches no UI is not.
+	UITouched bool `json:"uiTouched"`
+}
+
+// File is one changed file with its diff.
+type File struct {
+	Path     string `json:"path"`
+	Status   string `json:"status"` // added | modified | deleted
+	Added    int    `json:"added"`
+	Removed  int    `json:"removed"`
+	Diff     string `json:"diff,omitempty"`
+	Language string `json:"language,omitempty"`
+	// Areas classifies the file for the report's drill-in sections.
+	Areas []string `json:"areas,omitempty"`
+}
+
+// Build assembles the change from an already-resolved target.
+func Build(repo *gitx.Repo, tgt *target.Target, baseSHA string, changed []string) *Set {
+	s := &Set{Target: tgt, BaseSHA: baseSHA}
 	if commits, err := repo.Log(baseSHA, headRev(tgt)); err == nil {
-		p.Commits = commits
+		s.Commits = commits
 	}
 	stats := map[string]gitx.DiffStat{}
-	if s, err := repo.Stat(baseSHA, tgt.Head); err == nil {
-		p.Stats = s
-		for _, st := range s {
-			stats[st.Path] = st
+	if st, err := repo.Stat(baseSHA, tgt.Head); err == nil {
+		for _, d := range st {
+			stats[d.Path] = d
 		}
 	}
 	baseBlobs, _ := repo.Blobs(baseSHA)
 	workBlobs, _ := repo.WorktreeBlobs()
 	for _, path := range changed {
-		fc := FileChange{
+		f := File{
 			Path:     path,
 			Added:    stats[path].Added,
 			Removed:  stats[path].Removed,
@@ -50,20 +73,18 @@ func Build(repo *gitx.Repo, tgt *target.Target, baseSHA string, changed []string
 		if len(diff) > maxDiffBytes {
 			diff = diff[:maxDiffBytes] + "\n... diff truncated; read the file directly\n"
 		}
-		fc.Diff = diff
-		fc.Status = fileStatus(path, baseBlobs, workBlobs)
-		if fc.Status == "" {
-			fc.Status = status(diff)
+		f.Diff = diff
+		f.Status = fileStatus(path, baseBlobs, workBlobs)
+		if f.Status == "" {
+			f.Status = status(diff)
 		}
-		p.Files = append(p.Files, fc)
+		s.Files = append(s.Files, f)
 	}
-	all := instructions.Discover(tgt.Dir)
-	p.Instructions = instructions.For(all, changed)
-	p.UITouched = touchesUI(p.Files)
-	return p
+	s.UITouched = touchesUI(s.Files)
+	return s
 }
 
-func touchesUI(files []FileChange) bool {
+func touchesUI(files []File) bool {
 	for _, f := range files {
 		for _, a := range f.Areas {
 			if a == "ui" {

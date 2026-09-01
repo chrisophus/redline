@@ -32,8 +32,6 @@ const (
 	CategoryContract Category = "contract" // HTTP/OpenAPI contract
 	CategoryCover    Category = "cover"    // diff coverage
 	CategoryUI       Category = "ui"       // rendered interface
-	CategoryReview   Category = "review"   // agent-authored judgment with no more specific category
-	CategoryIntent   Category = "intent"   // stated intent of the change does not match what it does
 )
 
 // DefaultSeverity derives a finding's severity from its category. Redline's
@@ -48,13 +46,13 @@ func (c Category) DefaultSeverity() Severity {
 	}
 }
 
-// Source distinguishes reproducible findings from the LLM pass. Load-bearing:
-// without it the determinism guarantee is invisible at the point of use.
+// Source names where a finding came from. Every pane Redline ships is
+// deterministic; the field stays in the wire format so a reader of
+// findings.json can see that stated rather than assumed.
 type Source string
 
 const (
 	SourceDeterministic Source = "deterministic"
-	SourceLLM           Source = "llm"
 )
 
 // Anchor is a pane-relative location, for findings that have no file:line.
@@ -77,8 +75,8 @@ func (a *Anchor) Key() string {
 // Finding is one diagnostic from one pane. Fields through Context mirror
 // doctor's Finding; the rest are Redline's additive extension.
 type Finding struct {
-	File        string   `json:"file,omitempty"`
-	Line        int      `json:"line,omitempty"`
+	File string `json:"file,omitempty"`
+	Line int    `json:"line,omitempty"`
 	// StartLine is the first line of a ranged comment. Zero means the comment
 	// anchors on Line alone. When set it must be less than or equal to Line.
 	StartLine   int      `json:"startLine,omitempty"`
@@ -102,18 +100,6 @@ type Finding struct {
 	Expected string   `json:"expected,omitempty"` // for surprise ranking
 	Observed string   `json:"observed,omitempty"`
 	Source   Source   `json:"source,omitempty"`
-
-	// Reviewer identifies which external code reviewer (Claude Code, Cursor, Copilot,
-	// etc.) produced this finding. Empty for Redline's own deterministic findings.
-	// When merging, multiple reviewers reporting the same defect provides the
-	// strongest confidence signal that the finding is real.
-	Reviewer string `json:"reviewer,omitempty"`
-
-	// Confidence is the reviewer's own stated confidence level in this finding
-	// (e.g., "high", "medium", "low"). Empty for Redline's deterministic findings.
-	// Useful for ranking when the same defect is reported by multiple reviewers
-	// with different confidence levels.
-	Confidence string `json:"confidence,omitempty"`
 }
 
 // SubstrateState records whether a pane produced findings this run.
@@ -225,29 +211,6 @@ func (r *Report) Finalize() {
 	}
 	if r.Substrates == nil {
 		r.Substrates = []SubstrateStatus{}
-	}
-}
-
-// Dedupe drops later findings that share a fingerprint with an earlier one.
-// Ingest can be run twice against the same session; without this the agent's
-// judgments stack. NewCount is recomputed so the header still matches.
-func (r *Report) Dedupe() {
-	seen := map[string]bool{}
-	out := r.Findings[:0]
-	for _, f := range r.Findings {
-		if f.Fingerprint == "" {
-			f.Fingerprint = Fingerprint(f)
-		}
-		if seen[f.Fingerprint] {
-			continue
-		}
-		seen[f.Fingerprint] = true
-		out = append(out, f)
-	}
-	r.Findings = out
-	r.NewCount = map[Severity]int{}
-	for _, f := range r.Findings {
-		r.NewCount[f.Severity]++
 	}
 }
 

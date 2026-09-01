@@ -1,33 +1,25 @@
 package report
 
 import (
-	"github.com/ccason/redline/internal/findings"
 	"testing"
 
-	"github.com/ccason/redline/internal/packet"
+	"github.com/ccason/redline/internal/change"
+	"github.com/ccason/redline/internal/findings"
 )
 
-func TestFileWalkAttachesNotesInPacketOrder(t *testing.T) {
+func TestFileWalkKeepsChangeOrder(t *testing.T) {
 	rows := fileWalk(
-		[]packet.FileChange{
+		[]change.File{
 			{Path: "b.go", Status: "modified", Added: 2, Removed: 1},
 			{Path: "a.go", Status: "added", Added: 8},
-		},
-		[]packet.FileNote{
-			{Path: "a.go", Summary: "New helper."},
-			{Path: "missing.go", Summary: "drop me"},
-			{Path: "b.go", Summary: ""},
 		},
 		nil,
 	)
 	if len(rows) != 2 {
 		t.Fatalf("got %d rows", len(rows))
 	}
-	if rows[0].Path != "b.go" || rows[0].Summary != "" {
-		t.Fatalf("empty note must not invent a summary: %+v", rows[0])
-	}
-	if rows[1].Path != "a.go" || rows[1].Summary != "New helper." {
-		t.Fatalf("note must attach by path: %+v", rows[1])
+	if rows[0].Path != "b.go" || rows[1].Path != "a.go" {
+		t.Fatalf("walk must keep change order: %+v", rows)
 	}
 }
 
@@ -35,8 +27,7 @@ func TestFileWalkAttachesNotesInPacketOrder(t *testing.T) {
 // has to say so there rather than only inside the collapsed drill-in.
 func TestFileWalkCountsFindingsPerFile(t *testing.T) {
 	rows := fileWalk(
-		[]packet.FileChange{{Path: "a.go"}, {Path: "b.go"}},
-		nil,
+		[]change.File{{Path: "a.go"}, {Path: "b.go"}},
 		[]findings.Finding{
 			{File: "a.go", Severity: findings.SeverityWarning},
 			{File: "a.go", Severity: findings.SeverityError},
