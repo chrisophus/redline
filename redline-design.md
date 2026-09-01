@@ -90,9 +90,9 @@ invokes a model, and no flag brings one back.
 
 ## Phase 2: lint, with nuance
 
-Today Redline says nothing about lint. CI gates errors, so re-reporting
-them is noise; the signal is in what CI does not surface. Three panes, all
-deterministic, all scoped to the change:
+Shipped. CI gates errors, so re-reporting them is noise; the signal is in
+what CI does not surface. Three panes, all deterministic, all scoped to
+the change:
 
 - Lint delta. Run the repo's linters at merge-base and at head, in the two
   worktrees Redline already checks out, and report only the findings the
@@ -120,11 +120,13 @@ An earlier revision of this plan had the agent judge each triaged item as
 worth fixing, defensible, or noise. That judgment step is gone with the
 rest of the agent half. Redline collects and labels; the reader judges.
 
-Mechanics: the Makefile `lint` target is the preferred interface, since it
-is the command the team already trusts, with direct detection of
-`golangci-lint` and `eslint` configs as the fallback. Both tools emit JSON.
-The base-and-head runner built here is shared by the coverage delta below,
-so lint goes first.
+Mechanics: detection is by the tools' own config files, and the runs use
+their JSON output. An earlier revision of this plan preferred the Makefile
+`lint` target as the interface; building it reversed that. A make target's
+output has no structure to fingerprint, and the delta needs identity - the
+same finding at two revisions - not text. The base side runs in the cached
+detached worktree gitx already keeps per commit, which is the base-and-head
+runner the coverage delta below reuses.
 
 ## Phase 3: coverage, measured
 
@@ -247,7 +249,7 @@ Redline never invokes a model by any route.
 
 1. Done. The cut: delete the packages and subcommands listed above, reshape
    post and the report, rewrite the skill and README.
-2. Lint delta, suppression triage, config drift. Builds the two-revision
+2. Done. Lint delta, suppression triage, config drift, on the two-revision
    runner.
 3. Coverage: measured mode, function-level findings, coverage delta,
    error-path split, lcov, test-delta facts.

@@ -247,10 +247,10 @@ func TestFingerprintStableAcrossRuns(t *testing.T) {
 }
 
 // The failure mode that destroys trust: a change nothing looked at reading as
-// a clean review.
+// a clean review. Markdown prose is a file no pane covers.
 func TestUnexaminedChangeIsNotACleanReview(t *testing.T) {
 	r := baseline(t)
-	r.write("main.go", "package main\n")
+	r.write("docs/notes.md", "notes\n")
 
 	res := r.run(run.Options{Base: "main", Upstream: "upstream"})
 	rep := res.Report
@@ -530,4 +530,28 @@ func hasPath(paths []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// The suppression pane rides in the standard pane list: a directive the
+// change adds must reach the report without any flag.
+func TestAddedSuppressionReachesTheReport(t *testing.T) {
+	r := baseline(t)
+	r.write("internal/x/x.go", "package x\n\nvar v = f() //nolint:errcheck\n")
+
+	rep := r.run(run.Options{Base: "main", Upstream: "upstream"}).Report
+	if !hasRule(rep, "suppression-added") {
+		t.Fatalf("expected a suppression finding, got %v", rules(rep))
+	}
+	var f findings.Finding
+	for _, cand := range rep.Findings {
+		if cand.Rule == "suppression-added" {
+			f = cand
+		}
+	}
+	if f.File != "internal/x/x.go" || f.Line != 3 || !strings.Contains(f.Message, "errcheck") {
+		t.Fatalf("suppression finding misdescribed: %+v", f)
+	}
+	if f.Severity != findings.SeverityInfo {
+		t.Fatalf("suppressions are info severity: %+v", f)
+	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/gitx"
 	"github.com/ccason/redline/internal/pane"
+	"github.com/ccason/redline/internal/pane/lint"
 	"github.com/ccason/redline/internal/pane/migrations"
 	"github.com/ccason/redline/internal/pane/openapi"
 	"github.com/ccason/redline/internal/target"
@@ -98,6 +99,9 @@ func Run(opts Options) (*Result, error) {
 	panes := []pane.Pane{
 		&migrations.Pane{Repo: repo, UpstreamRef: resolveRef(repo, opts.Upstream, baseRef), Dir: opts.MigDir},
 		&openapi.Pane{Repo: repo},
+		&lint.Delta{Repo: repo},
+		&lint.Suppressions{Repo: repo},
+		&lint.Config{Repo: repo},
 	}
 
 	examined := map[string]bool{}
