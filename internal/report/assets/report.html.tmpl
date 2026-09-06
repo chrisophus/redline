@@ -131,6 +131,8 @@ ul.plain li{margin:4px 0}
 .drawer{position:fixed;top:0;right:0;bottom:0;width:min(860px,92vw);z-index:41;
   background:var(--bg,#fff);border-left:1px solid var(--line);
   box-shadow:-8px 0 32px rgba(0,0,0,.12);overflow-y:auto;padding:0 18px 96px}
+.drawer.wide{width:min(1400px,98vw)}
+.drawer-actions{display:flex;gap:8px}
 .drawer-head{position:sticky;top:0;background:inherit;padding:14px 0 10px;
   border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center;justify-content:space-between}
 .drawer .keep{font:inherit;font-size:13px;padding:6px 12px;border:1px solid var(--line);
@@ -145,11 +147,15 @@ body.drawer-open{overflow:hidden}
 .filter-note{font-size:13px;color:var(--muted);margin:8px 0}
 .filter-note button{font:inherit;font-size:13px;background:none;border:0;color:var(--accent);cursor:pointer;text-decoration:underline}
 .empty{color:var(--muted);font-style:italic}
-pre.diff span[data-line]{cursor:text;position:relative}
+pre.diff span[data-line]{cursor:text;position:relative;border-left:3px solid transparent}
 pre.diff span[data-line]::before{content:attr(data-line);display:inline-block;width:3em;
   margin-right:14px;text-align:right;color:var(--muted);user-select:none;opacity:.7}
 pre.diff span[data-line]:hover{outline:1px solid var(--info);outline-offset:-1px}
 pre.diff span.hit{background:rgba(250,204,21,.28)}
+/* Coverage stripe: a test ran this head line (hit), or did not (miss); a line
+   the profile does not mention is not coverable and stays unstriped. */
+pre.diff span[data-cov="hit"]{border-left-color:var(--ok)}
+pre.diff span[data-cov="miss"]{border-left-color:var(--warn)}
 .viewed{opacity:.45}
 .viewed .p{text-decoration:line-through}
 label.vw{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;
@@ -370,7 +376,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <aside id="drawer" class="drawer" hidden aria-label="File detail" role="dialog" aria-modal="false">
   <header class="drawer-head">
     <code class="p" id="drawer-title"></code>
-    <button type="button" id="drawer-close" class="keep">Keep briefing</button>
+    <span class="drawer-actions"><button type="button" id="drawer-wide" class="keep">Widen</button> <button type="button" id="drawer-close" class="keep">Keep briefing</button></span>
   </header>
   <div id="drawer-findings"></div>
   <div id="drawer-body"></div>
@@ -638,6 +644,14 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     });
   });
   document.getElementById("drawer-close").addEventListener("click", close);
+  (function () {
+    var wideBtn = document.getElementById("drawer-wide");
+    if (!wideBtn) { return; }
+    wideBtn.addEventListener("click", function () {
+      var wide = drawer.classList.toggle("wide");
+      wideBtn.textContent = wide ? "Narrow" : "Widen";
+    });
+  })();
   scrim.addEventListener("click", close);
   document.addEventListener("keydown", function (e) {
     // Esc inside a comment box cancels the comment; only an Esc outside one

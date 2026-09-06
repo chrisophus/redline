@@ -23,7 +23,7 @@ func TestHighlightDiffForUsesSourceLineNumbers(t *testing.T) {
 		"-old\n" +
 		"+new\n" +
 		" more\n"
-	got := highlightDiffFor("foo.go", diff)
+	got := highlightDiffFor("foo.go", diff, nil)
 	if !strings.Contains(got, `data-file="foo.go" data-line="11" data-side="new">+new</span>`) {
 		t.Fatalf("added line should be new-file line 11, got:\n%s", got)
 	}
@@ -537,7 +537,7 @@ func TestMarkdownSection3DoesNotClaimCompleteCoverage(t *testing.T) {
 // line number in the hunk — the exact failure line anchoring exists to avoid.
 func TestDiffLineStartingWithDashesIsContent(t *testing.T) {
 	diff := "--- a/README.md\n+++ b/README.md\n@@ -10,4 +10,3 @@\n context\n---port N\n+++count M\n more\n"
-	html := highlightDiffFor("README.md", diff)
+	html := highlightDiffFor("README.md", diff, nil)
 
 	if !strings.Contains(html, `data-line="11" data-side="old"`) {
 		t.Fatalf("deleted --port line was not anchored to old line 11:\n%s", html)
@@ -553,7 +553,7 @@ func TestDiffLineStartingWithDashesIsContent(t *testing.T) {
 
 func TestFileHeadersStillDetected(t *testing.T) {
 	diff := "diff --git a/x.go b/x.go\nindex 1..2 100644\n--- a/x.go\n+++ b/x.go\n@@ -1,2 +1,2 @@\n a\n-b\n+c\n"
-	html := highlightDiffFor("x.go", diff)
+	html := highlightDiffFor("x.go", diff, nil)
 	if strings.Contains(html, `data-line="1" data-side="old">--- a/x.go`) {
 		t.Fatal("the --- file header was treated as content")
 	}
@@ -667,8 +667,27 @@ func TestExpandForFindingsAddsContextForOffDiffLine(t *testing.T) {
 		t.Fatalf("expected a context window around the off-diff finding line:\n%s", out)
 	}
 	// After highlighting, the finding line is addressable, so open() can mark it.
-	if !strings.Contains(highlightDiffFor("a.go", out), `data-line="8"`) {
+	if !strings.Contains(highlightDiffFor("a.go", out, nil), `data-line="8"`) {
 		t.Fatalf("the finding line must become addressable:\n%s", out)
+	}
+}
+
+func TestHighlightDiffForStripesCoverage(t *testing.T) {
+	diff := "@@ -1,2 +1,2 @@\n a\n+ran\n+missed\n"
+	cov := map[int]bool{2: true, 3: false}
+	html := highlightDiffFor("x.go", diff, cov)
+	if !strings.Contains(html, `data-line="2" data-side="new" data-cov="hit"`) {
+		t.Errorf("a covered head line must carry data-cov=hit:\n%s", html)
+	}
+	if !strings.Contains(html, `data-line="3" data-side="new" data-cov="miss"`) {
+		t.Errorf("an uncovered head line must carry data-cov=miss:\n%s", html)
+	}
+	if strings.Contains(html, `data-cov`) != true {
+		t.Fatal("expected coverage stripes")
+	}
+	// A line the profile does not mention is not coverable and must not stripe.
+	if strings.Contains(html, `data-line="1" data-side="new" data-cov`) {
+		t.Errorf("a non-coverable line must not be striped:\n%s", html)
 	}
 }
 

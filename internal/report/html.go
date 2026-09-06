@@ -31,6 +31,9 @@ type HTMLInput struct {
 	Change   *change.Set
 	Renders  []pane.Render
 	Evidence map[string]pane.Artifact
+	// LineCoverage overlays which changed lines a test ran, per file, keyed by
+	// new-file line. Nil when no coverage profile was found.
+	LineCoverage map[string]map[int]bool
 }
 
 // view is the flattened shape the template consumes.
@@ -199,7 +202,7 @@ func buildView(in HTMLInput) view {
 				diff := expandForFindings(headDir, f.Path, f.Diff, findingLines[f.Path])
 				fv := fileView{Path: f.Path, Status: f.Status, Added: f.Added, Removed: f.Removed,
 					Findings: count[f.Path], Severity: string(worst[f.Path]),
-					Diff: template.HTML(highlightDiffFor(f.Path, diff))}
+					Diff: template.HTML(highlightDiffFor(f.Path, diff, in.LineCoverage[f.Path]))}
 				dg.Files = append(dg.Files, fv)
 				if !seen[f.Path] {
 					seen[f.Path] = true
@@ -258,7 +261,7 @@ func bannerText(rep *findings.Report) string {
 // highlightDiff marks up a unified diff. Deliberately hand-rolled: a syntax
 // highlighting library would be a dependency and a CDN fetch, and the page
 // must work with no network.
-func highlightDiff(diff string) string { return highlightDiffFor("", diff) }
+func highlightDiff(diff string) string { return highlightDiffFor("", diff, nil) }
 
 // hunkHeader captures the old and new starting line numbers of a unified-diff
 // hunk. Counts are optional (`@@ -1 +1 @@`).
@@ -271,7 +274,7 @@ var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
 // data-line is the source line in the file, parsed from hunk headers: new-file
 // line for added and context lines, old-file line for deletions. A comment
 // copied for the agent therefore names path.go:48, not "row 17 of the dump".
-func highlightDiffFor(path, diff string) string {
+func highlightDiffFor(path, diff string, cov map[int]bool) string {
 	if diff == "" {
 		return ""
 	}
@@ -284,10 +287,27 @@ func highlightDiffFor(path, diff string) string {
 			fmt.Fprintf(&b, `<span class="%s">%s</span>`, class, escaped)
 			continue
 		}
-		fmt.Fprintf(&b, `<span class="%s" data-file="%s" data-line="%d" data-side="%s">%s</span>`,
-			class, template.HTMLEscapeString(path), src, side, escaped)
+		fmt.Fprintf(&b, `<span class="%s" data-file="%s" data-line="%d" data-side="%s"%s>%s</span>`,
+			class, template.HTMLEscapeString(path), src, side, coverAttr(side, src, cov), escaped)
 	}
 	return b.String()
+}
+
+// coverAttr is the coverage stripe for one diff line. Only head (new) lines
+// carry it — coverage is a fact about the head file: hit ran, miss did not, and
+// a line the profile does not mention is not coverable and gets nothing.
+func coverAttr(side string, src int, cov map[int]bool) string {
+	if side != "new" || cov == nil {
+		return ""
+	}
+	covered, ok := cov[src]
+	if !ok {
+		return ""
+	}
+	if covered {
+		return ` data-cov="hit"`
+	}
+	return ` data-cov="miss"`
 }
 
 // expandForFindings appends a small context window around each finding line the

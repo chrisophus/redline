@@ -273,6 +273,49 @@ func Compute(root string, changed []Changed) *Result {
 	return res
 }
 
+// Profile is a parsed coverage profile, kept so per-line coverage can be read
+// for many files without re-parsing. It is the raw material the report overlays
+// on the diff: which of the lines you are reading a test actually ran.
+type Profile struct {
+	blocks map[string][]block
+}
+
+// Load reads the coverage profile under root, or nil when none is found or it
+// does not parse. Like the rest of this package, absence is a normal answer.
+func Load(root string) *Profile {
+	name := Locate(root)
+	if name == "" {
+		return nil
+	}
+	blocks, err := parseProfile(filepath.Join(root, name))
+	if err != nil || len(blocks) == 0 {
+		return nil
+	}
+	return &Profile{blocks: blocks}
+}
+
+// LineCoverage returns, for one file, whether each coverable line was executed.
+// A line no block mentions is not coverable (blank, import, declaration) and is
+// omitted, so a caller can tell "ran", "did not run", and "nothing to run"
+// apart. Nil when the profile says nothing about the file.
+func (p *Profile) LineCoverage(file string) map[int]bool {
+	if p == nil {
+		return nil
+	}
+	fileBlocks := blocksFor(p.blocks, file)
+	if fileBlocks == nil {
+		return nil
+	}
+	out := map[int]bool{}
+	for _, b := range fileBlocks {
+		covered := b.count > 0
+		for line := b.startLine; line <= b.endLine; line++ {
+			out[line] = out[line] || covered
+		}
+	}
+	return out
+}
+
 // blocksFor matches a repository path against the import-qualified names a Go
 // profile uses, by longest suffix. `github.com/x/y/internal/a/b.go` is the entry
 // for `internal/a/b.go`.

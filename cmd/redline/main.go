@@ -240,7 +240,7 @@ func write(o opts, res *run.Result) error {
 	}
 	html, err := report.HTML(report.HTMLInput{
 		Report: &res.Report, Change: res.Change,
-		Renders: res.Renders, Evidence: res.Evidence,
+		Renders: res.Renders, Evidence: res.Evidence, LineCoverage: res.LineCoverage,
 	})
 	if err != nil {
 		return err

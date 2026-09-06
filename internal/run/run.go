@@ -44,6 +44,9 @@ type Result struct {
 	// Change is the file-by-file account of the diff the report renders its
 	// walkthrough and drill-in sections from.
 	Change *change.Set
+	// LineCoverage overlays the profile onto the diff: per changed .go file,
+	// each coverable line mapped to whether a test ran it. Nil when no profile.
+	LineCoverage map[string]map[int]bool
 }
 
 // Run executes every applicable pane. Applicability is computed from the diff,
@@ -170,7 +173,9 @@ func Run(opts Options) (*Result, error) {
 	findings.Sort(res.Report.Findings)
 
 	res.Change = change.Build(repo, tgt, baseSHA, changed)
-	attachDiffCoverage(&res.Report, res.Change, tgt.Dir, originCoverageDir(opts.Dir, tgt))
+	covDir := originCoverageDir(opts.Dir, tgt)
+	attachDiffCoverage(&res.Report, res.Change, tgt.Dir, covDir)
+	res.LineCoverage = lineCoverageOverlay(tgt.Dir, covDir, res.Change)
 	return res, nil
 }
 
@@ -240,6 +245,36 @@ func originCoverageDir(dir string, tgt *target.Target) string {
 		return ""
 	}
 	return orig.Root
+}
+
+// lineCoverageOverlay reads per-line coverage for the changed Go files from the
+// same profile the coverage pane used: the worktree first, then the origin
+// checkout when reviewing its HEAD. Empty when there is no profile — the diff
+// then renders with no coverage stripe, which is the honest "nobody measured".
+func lineCoverageOverlay(dir, originDir string, ch *change.Set) map[string]map[int]bool {
+	if ch == nil {
+		return nil
+	}
+	prof := cover.Load(dir)
+	if prof == nil && originDir != "" && originDir != dir {
+		prof = cover.Load(originDir)
+	}
+	if prof == nil {
+		return nil
+	}
+	out := map[string]map[int]bool{}
+	for _, f := range ch.Files {
+		if filepath.Ext(f.Path) != ".go" {
+			continue
+		}
+		if lc := prof.LineCoverage(f.Path); len(lc) > 0 {
+			out[f.Path] = lc
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func runPane(p pane.Pane, baseSHA string) (pane.Result, error) {
