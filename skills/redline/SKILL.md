@@ -90,6 +90,35 @@ When you receive it:
 4. **Re-run `redline run`** when you are done, so the report reflects the new
    state. Use the same target flags.
 
+## Bring your review into the report
+
+If you produce a review of the change, an overview, a per-file summary, and line
+comments, write it to `.redline/review.json` and Redline folds it into the
+report on the next run. This is the same file the verdicts below live in. Redline
+renders what you wrote, marked as yours, and composes none of it.
+
+```json
+{
+  "overview": "One or two paragraphs on what this change is and why it exists.",
+  "files": {
+    "internal/foo.go": "Reworked the retry loop to bound attempts."
+  },
+  "comments": [
+    {"file": "internal/foo.go", "line": 42, "severity": "warning",
+     "body": "This can loop forever if the server keeps returning 503."}
+  ]
+}
+```
+
+- `overview` renders as a Review section at the top of the report.
+- `files` maps a changed path to a one-line summary, shown on that file in the
+  drill-in. Key on the same repo-relative paths Redline reports.
+- `comments` become findings on their line, marked `source: llm`, sitting in the
+  drawer beside Redline's own with the coverage stripe and the line highlight.
+  `severity` is one of error, warning, info, and defaults to info. A comment on a
+  line the default diff does not show still renders: Redline expands the diff
+  around it.
+
 ## Judge the suppressions
 
 Redline extracts the facts; the reading is still yours. For a finding it
@@ -104,8 +133,9 @@ After a run, for each finding in `findings.json` with rule
 ```json
 {"verdicts": {
   "<fingerprint from findings.json>": {
-    "ruling": "justified",
-    "rationale": "test fixture seed, not a real suppression"
+    "ruling": "should-fix",
+    "rationale": "the error path is real, this is not a fixture",
+    "fix": "wrap the call with %w and drop the nolint"
   }
 }}
 ```
@@ -114,6 +144,8 @@ After a run, for each finding in `findings.json` with rule
   **should-fix** (fix the code rather than hide the finding), or
   **rule-noisy** (the rule fires too often and should be tuned or scoped).
 - `rationale` is one line: why.
+- `fix` is your recommendation for how to resolve the finding, one or two lines.
+  Optional: leave it out when the ruling stands on its own.
 - Key on the exact `fingerprint` string Redline emitted. A verdict that
   matches no finding is dropped.
 

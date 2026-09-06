@@ -46,6 +46,11 @@ type view struct {
 	Banner   string
 	Counts   map[string]int
 
+	// Overview is the agent's summary of the change, from review.json. Empty
+	// when the agent wrote none; the Review section and its nav entry render
+	// only when it is present.
+	Overview string
+
 	// Renders is what changed, in the domain where it lives — a pane's own
 	// account (e.g. the lint delta's introduced/resolved count, or a
 	// suppression's added-directive list), not a finding. Markdown has
@@ -112,6 +117,7 @@ type drillGroup struct {
 type fileView struct {
 	Path     string
 	Status   string
+	Summary  string
 	Added    int
 	Removed  int
 	Findings int
@@ -171,6 +177,9 @@ func buildView(in HTMLInput) view {
 		v.Subtitle = fmt.Sprintf("base %s", short(rep.BaseSHA))
 	}
 	v.Banner = bannerText(rep)
+	if rep.Agent != nil {
+		v.Overview = rep.Agent.Overview
+	}
 
 	for _, f := range rep.Findings {
 		v.Counts[string(f.Severity)]++
@@ -203,6 +212,9 @@ func buildView(in HTMLInput) view {
 				fv := fileView{Path: f.Path, Status: f.Status, Added: f.Added, Removed: f.Removed,
 					Findings: count[f.Path], Severity: string(worst[f.Path]),
 					Diff: template.HTML(highlightDiffFor(f.Path, diff, in.LineCoverage[f.Path]))}
+				if rep.Agent != nil {
+					fv.Summary = rep.Agent.Files[f.Path]
+				}
 				dg.Files = append(dg.Files, fv)
 				if !seen[f.Path] {
 					seen[f.Path] = true
@@ -225,10 +237,14 @@ func navFor(v view) []navLink {
 	uiGap := v.UITouched
 	coverageGap := v.Coverage.Diff == nil || v.Coverage.Diff.Stale
 
-	nav := []navLink{
-		{ID: "interface", Label: "What it looks like", Warn: uiGap},
-		{ID: "coverage", Label: "Coverage", Warn: coverageGap},
+	nav := []navLink{}
+	if v.Overview != "" {
+		nav = append(nav, navLink{ID: "review", Label: "Review"})
 	}
+	nav = append(nav,
+		navLink{ID: "interface", Label: "What it looks like", Warn: uiGap},
+		navLink{ID: "coverage", Label: "Coverage", Warn: coverageGap},
+	)
 	if len(v.Groups) > 0 {
 		nav = append(nav, navLink{ID: "drill", Label: "Drill in", Count: len(v.Groups)})
 	}

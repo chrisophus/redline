@@ -22,18 +22,28 @@ func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]p
 		rep.BaseRef, short(rep.BaseSHA), rep.Coverage.ChangedFiles, rep.Coverage.ExaminedFiles)
 	fmt.Fprintf(&b, "%d finding(s).\n\n", len(rep.Findings))
 	banner(&b, rep)
+	overviewSection(&b, rep)
 
 	if pr := prLink(ch); pr != "" {
 		fmt.Fprintf(&b, "%s\n\n", pr)
 	}
 	section1(&b, renders)
 	coverageSection(&b, rep)
-	fileSection(&b, ch, rep.Findings)
+	fileSection(&b, ch, rep)
 	compositionSection(&b, ch)
 	section2(&b, rep)
 	section3(&b, rep)
 	section4(&b, rep, evidence)
 	return b.String()
+}
+
+// overviewSection renders the agent's summary of the change, when it wrote one.
+// Marked as the agent's: Redline composed none of it.
+func overviewSection(b *strings.Builder, rep *findings.Report) {
+	if rep.Agent == nil || rep.Agent.Overview == "" {
+		return
+	}
+	fmt.Fprintf(b, "## Review (agent)\n\n%s\n\n", rep.Agent.Overview)
 }
 
 // banner states up front when Redline covered little or none of the change.
@@ -117,15 +127,20 @@ func coverageSection(b *strings.Builder, rep *findings.Report) {
 // fileSection is the walkthrough: every changed file, with its finding count.
 // Shown even when no pane ran — that is when a reviewer most needs a
 // file-by-file account of what moved.
-func fileSection(b *strings.Builder, ch *change.Set, fs []findings.Finding) {
+func fileSection(b *strings.Builder, ch *change.Set, rep *findings.Report) {
 	if ch == nil || len(ch.Files) == 0 {
 		return
 	}
 	fmt.Fprintf(b, "## Files\n\n")
-	for _, row := range fileWalk(ch.Files, fs) {
+	for _, row := range fileWalk(ch.Files, rep.Findings) {
 		fmt.Fprintf(b, "- `%s` (%s, +%d −%d)", row.Path, row.Status, row.Added, row.Removed)
 		if row.Findings > 0 {
-			fmt.Fprintf(b, " — %d finding(s)", row.Findings)
+			fmt.Fprintf(b, ", %d finding(s)", row.Findings)
+		}
+		if rep.Agent != nil {
+			if s := rep.Agent.Files[row.Path]; s != "" {
+				fmt.Fprintf(b, ": %s", s)
+			}
 		}
 		fmt.Fprintln(b)
 	}
@@ -273,6 +288,9 @@ func section4(b *strings.Builder, rep *findings.Report, evidence map[string]pane
 				fmt.Fprintf(b, " — %s", f.Verdict.Rationale)
 			}
 			fmt.Fprintf(b, "\n")
+			if f.Verdict.Fix != "" {
+				fmt.Fprintf(b, "- agent fix: %s\n", f.Verdict.Fix)
+			}
 		}
 		fmt.Fprintf(b, "- source: %s\n", f.Source)
 		if f.FixCmd != "" {

@@ -33,6 +33,7 @@ const (
 	CategoryCover    Category = "cover"    // diff coverage
 	CategoryUI       Category = "ui"       // rendered interface
 	CategoryLint     Category = "lint"     // lint delta, suppressions, lint config
+	CategoryReview   Category = "review"   // agent review comment
 )
 
 // DefaultSeverity derives a finding's severity from its category. Redline's
@@ -42,6 +43,8 @@ func (c Category) DefaultSeverity() Severity {
 	switch c {
 	case CategorySchema, CategoryContract:
 		return SeverityError
+	case CategoryReview:
+		return SeverityInfo
 	default:
 		return SeverityWarning
 	}
@@ -115,7 +118,10 @@ type Finding struct {
 type Verdict struct {
 	Ruling    string `json:"ruling"`
 	Rationale string `json:"rationale,omitempty"`
-	Source    Source `json:"source"`
+	// Fix is the agent's recommendation for how to resolve the finding, one or
+	// two lines. Empty when the ruling stands on its own.
+	Fix    string `json:"fix,omitempty"`
+	Source Source `json:"source"`
 }
 
 // SubstrateState records whether a pane produced findings this run.
@@ -190,6 +196,19 @@ type Report struct {
 
 	Confirmations []Confirmation `json:"confirmations,omitempty"`
 	Unknowns      []Unknown      `json:"unknowns,omitempty"`
+
+	// Agent is the review narrative the agent wrote, read from review.json: an
+	// overview of the change and a per-file summary. Redline composes none of
+	// it. It renders what the agent wrote, marked as the agent's.
+	Agent *AgentReview `json:"agent,omitempty"`
+}
+
+// AgentReview is the agent's prose layer over a change, ingested from
+// review.json. The comments in that file become findings; this holds the parts
+// that have no single line to sit on.
+type AgentReview struct {
+	Overview string            `json:"overview,omitempty"`
+	Files    map[string]string `json:"files,omitempty"`
 }
 
 // DarkSubstrates returns panes that applied but did not run. Redline is

@@ -57,6 +57,11 @@ a{color:inherit}
 .sub{color:var(--muted);margin:4px 0 0}
 .banner{background:var(--del-bg);border-left:3px solid var(--error);padding:14px 16px;
   margin:20px 0;border-radius:0 6px 6px 0}
+.overview{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);
+  padding:14px 16px;margin:16px 0;border-radius:0 6px 6px 0}
+.overview p{margin:6px 0 0;white-space:pre-wrap}
+.file-sum{color:var(--muted);font-size:13px;margin-top:4px}
+.verdict .fix{margin-top:4px;color:var(--muted);font-size:13px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:16px 0}
 .tile{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
 .tile .n{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -209,6 +214,10 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   <button type="button" class="tile" data-goto="confirms"><div class="n">{{len .Confirms}}</div><div class="l">confirmed</div></button>
   <button type="button" class="tile" data-goto="unknowns"><div class="n">{{len .Unknowns}}</div><div class="l">undetermined</div></button>
 </div>
+{{if .Overview}}
+<h2 id="review">Review</h2>
+<div class="overview"><span class="tag vd">agent</span><p>{{.Overview}}</p></div>
+{{end}}
 
 <h2 id="interface">What it looks like</h2>
 {{if .UITouched}}
@@ -254,6 +263,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
         <code class="p">{{.Path}}</code>
         <span class="s">{{if .Findings}}<span class="tag {{.Severity}}">{{.Findings}} finding{{if ne .Findings 1}}s{{end}}</span> {{end}}{{.Status}} · <span class="plus">+{{.Added}}</span> <span class="minus">−{{.Removed}}</span></span>
       </div>
+      {{if .Summary}}<div class="file-sum">{{.Summary}}</div>{{end}}
     </button>
     {{end}}
     </div>
@@ -268,10 +278,10 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   <div>
     <span class="tag">{{.Severity}}</span>
     <span class="tag">{{.Rule}}</span>
-    <span class="tag det">observed</span>
+    <span class="tag det">{{if eq (lower .Source) "llm"}}agent{{else}}observed{{end}}</span>
   </div>
   {{with .Verdict}}
-  <div class="verdict"><span class="tag vd">{{.Ruling}}</span><span class="s">agent{{if .Rationale}} — {{.Rationale}}{{end}}</span></div>
+  <div class="verdict"><span class="tag vd">{{.Ruling}}</span><span class="s">agent{{if .Rationale}} · {{.Rationale}}{{end}}</span>{{if .Fix}}<div class="fix">fix: {{.Fix}}</div>{{end}}</div>
   {{end}}
   <div class="meta-row">
     {{if .File}}<b>{{.File}}</b>{{if .Line}}:{{.Line}}{{end}}{{else if .Anchor}}<b>{{.Anchor.Kind}} {{.Anchor.ID}}</b>{{end}}

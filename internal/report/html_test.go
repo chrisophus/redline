@@ -698,3 +698,37 @@ func TestExpandForFindingsSkipsLinesAlreadyInDiff(t *testing.T) {
 		t.Fatalf("a finding line already in the diff must not add context:\n%s", out)
 	}
 }
+
+// The agent's review folds into the report: an overview section, a per-file
+// summary in the drill-in, its comment on the line marked as the agent's, and
+// the verdict's fix recommendation on the card.
+func TestReportRendersAgentReview(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Agent: &findings.AgentReview{
+				Overview: "Adds a retry loop to the client.",
+				Files:    map[string]string{"a.go": "reworked the retry path"},
+			},
+			Findings: []findings.Finding{{
+				File: "a.go", Line: 2, Rule: "agent-comment", Category: findings.CategoryReview,
+				Severity: findings.SeverityWarning, Message: "this can loop forever",
+				Source:  findings.SourceLLM,
+				Verdict: &findings.Verdict{Ruling: "should-fix", Fix: "add a max-attempts bound", Source: findings.SourceLLM},
+			}},
+		},
+		Change: &change.Set{Files: []change.File{{Path: "a.go", Language: "go", Diff: "@@ -1,2 +1,2 @@\n x\n+y\n"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`data-nav="review"`, `id="review"`, "Adds a retry loop to the client.",
+		"reworked the retry path", "this can loop forever", "add a max-attempts bound",
+		`class="tag det">agent`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("report is missing %q", want)
+		}
+	}
+}

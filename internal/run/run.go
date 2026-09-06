@@ -157,18 +157,27 @@ func Run(opts Options) (*Result, error) {
 			Reason:    "this change is entirely unexamined; the empty findings list below is not evidence of correctness",
 		})
 	}
-	res.Report.Finalize()
-	// Agent verdicts, if the agent has written any. Merged after Finalize so
-	// they join on stamped fingerprints, and never fatal: a run reports facts
-	// with or without a reading, and a broken review file is stated, not thrown.
-	if verdicts, verr := findings.LoadReview(filepath.Join(opts.Out, "review.json")); verr != nil {
+	// The agent's review, if it has written one. Loaded before Finalize so its
+	// line comments become findings that get fingerprints stamped with the rest;
+	// verdicts merge after, joining on those fingerprints. Never fatal: a run
+	// reports facts with or without a reading, and a broken file is stated.
+	review, verr := findings.LoadReview(filepath.Join(opts.Out, "review.json"))
+	if verr != nil {
 		res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
 			Substrate: "redline/review",
-			Message:   "review.json was present but could not be read, so no agent verdicts were merged",
+			Message:   "review.json was present but could not be read, so no agent review was merged",
 			Reason:    verr.Error(),
 		})
-	} else {
-		res.Report.MergeVerdicts(verdicts)
+	}
+	if review != nil {
+		res.Report.Findings = append(res.Report.Findings, review.CommentFindings()...)
+		if review.Overview != "" || len(review.Files) > 0 {
+			res.Report.Agent = &findings.AgentReview{Overview: review.Overview, Files: review.Files}
+		}
+	}
+	res.Report.Finalize()
+	if review != nil {
+		res.Report.MergeVerdicts(review.Verdicts)
 	}
 	findings.Sort(res.Report.Findings)
 

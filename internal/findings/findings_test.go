@@ -155,7 +155,7 @@ func TestLoadReviewMergesByFingerprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep.MergeVerdicts(v)
+	rep.MergeVerdicts(v.Verdicts)
 	got := rep.Findings[0].Verdict
 	if got == nil {
 		t.Fatal("a verdict keyed on the finding's fingerprint must attach")
@@ -183,5 +183,29 @@ func TestMergeVerdictsDropsUnmatchedFingerprint(t *testing.T) {
 	rep.MergeVerdicts(map[string]findings.Verdict{"no-such-fingerprint": {Ruling: "justified"}})
 	if rep.Findings[0].Verdict != nil {
 		t.Error("a verdict matching no finding must be dropped, not attached to the wrong one")
+	}
+}
+
+// The agent's line comments come in as review comments and leave as findings so
+// they render on the diff line beside Redline's own. Source is always llm, an
+// empty body is dropped, and a comment with no severity defaults to info.
+func TestReviewCommentsBecomeFindings(t *testing.T) {
+	r := &findings.Review{Comments: []findings.ReviewComment{
+		{File: "a.go", Line: 12, Body: "swallows the error", Severity: findings.SeverityWarning},
+		{File: "b.go", Line: 3, Body: "reads fine"},
+		{File: "c.go", Line: 9, Body: ""},
+	}}
+	fs := r.CommentFindings()
+	if len(fs) != 2 {
+		t.Fatalf("an empty-body comment must be dropped; got %d findings", len(fs))
+	}
+	if fs[0].Source != findings.SourceLLM || fs[0].Rule != "agent-comment" {
+		t.Errorf("a comment must become an llm agent-comment finding: %+v", fs[0])
+	}
+	if fs[0].Severity != findings.SeverityWarning {
+		t.Errorf("a comment's severity must carry through, got %q", fs[0].Severity)
+	}
+	if fs[1].Severity != findings.SeverityInfo {
+		t.Errorf("a comment with no severity defaults to info, got %q", fs[1].Severity)
 	}
 }
