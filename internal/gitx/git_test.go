@@ -186,3 +186,50 @@ func TestStatCountsUntrackedAdds(t *testing.T) {
 		t.Fatalf("untracked add must count lines, got %+v", found)
 	}
 }
+
+func TestCachedWorktreesListAndRemove(t *testing.T) {
+	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
+	r := newRepo(t)
+	r.write("a.txt", "1\n")
+	r.commit("one")
+	r.write("a.txt", "2\n")
+	r.commit("two")
+	repo, err := gitx.Open(r.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := repo.CachedWorktrees(); err != nil || len(got) != 0 {
+		t.Fatalf("a fresh cache must be empty, got %v err %v", got, err)
+	}
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := repo.Parent(head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d1, err := repo.AddWorktree(head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.AddWorktree(parent); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.CachedWorktrees()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("cached worktrees = %v, want 2", got)
+	}
+	for _, d := range got {
+		repo.RemoveWorktree(d)
+	}
+	if _, err := os.Stat(d1); !os.IsNotExist(err) {
+		t.Fatalf("worktree dir must be gone, stat err = %v", err)
+	}
+	if got, err := repo.CachedWorktrees(); err != nil || len(got) != 0 {
+		t.Fatalf("cache must be empty after remove, got %v err %v", got, err)
+	}
+}

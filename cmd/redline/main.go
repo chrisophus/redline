@@ -32,6 +32,7 @@ usage:
   redline post    [flags]   post the session's findings as one PR review (--pr)
   redline open    [flags]   serve and open the last report (--file opens it from disk, no server)
   redline serve   [flags]   serve .redline over http (blocks; --stop ends it)
+  redline gc      [flags]   remove this repo's cached review worktrees (~/.redline/worktrees)
 
 target (all subcommands; pass only one):
   (default)         working tree, uncommitted work included
@@ -58,6 +59,7 @@ flags:
                     never approves.
   --dry-run         with post: print the review payload instead of posting
   --stop            with serve: stop the server for --out
+  --older-than D    with gc: only remove cached worktrees older than D (e.g. 168h)
 `
 
 func main() {
@@ -69,7 +71,7 @@ func main() {
 
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
-	reportURL, profile                                                string
+	reportURL, profile, olderThan                                     string
 	open, noOpen, stop, dryRun, file                                  bool
 	port                                                              int
 }
@@ -99,6 +101,7 @@ func runMain(args []string) error {
 	fs.StringVar(&o.profile, "profile", "", "with post: YAML profile for merge-gate pass/fail markers")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "with post: print the review payload as JSON instead of posting")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
+	fs.StringVar(&o.olderThan, "older-than", "", "with gc: only remove cached worktrees older than this duration (e.g. 168h)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -118,6 +121,8 @@ func runMain(args []string) error {
 			return report.Stop(o.out)
 		}
 		return report.Serve(o.out, o.port)
+	case "gc":
+		return cmdGC(o)
 	default:
 		return fmt.Errorf("unknown subcommand %q\n\n%s", cmd, usage)
 	}

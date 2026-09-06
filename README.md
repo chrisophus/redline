@@ -84,6 +84,7 @@ go build ./cmd/redline
 ./redline post --pr 123 --dry-run # print the review payload instead of posting
 ./redline open                    # serve and open http://127.0.0.1:8765/report.html
 ./redline serve --stop            # stop the server for this .redline
+./redline gc                      # remove this repo's cached review worktrees
 ```
 
 `run` writes `.redline/findings.json`, `.redline/report.md`,
@@ -91,6 +92,12 @@ go build ./cmd/redline
 `.redline/evidence/`. `findings.json` plus git is the whole machine
 interface: an agent reviewing the change reads it so it does not re-derive
 what Redline measured, and runs git for anything else.
+
+Reviewing a `--commit`, `--branch`, `--range`, or `--pr` checks that revision
+out in a detached worktree, cached under `~/.redline/worktrees` and reused
+across runs so a second review of the same commit is instant. The cache is
+left in place on purpose; `redline gc` reclaims it for the current repository
+(`--older-than 168h` keeps recent worktrees).
 
 Target (all subcommands; pass only one): the working tree by default,
 `--commit REF` for that commit against its parent (`HEAD` for the latest),

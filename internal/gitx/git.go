@@ -234,6 +234,38 @@ func (r *Repo) dropWorktree(dir string) {
 	_, _ = r.git("worktree", "prune")
 }
 
+// CachedWorktrees lists the detached worktrees Redline has materialized for
+// this repository: the per-SHA directories under the content-addressed cache
+// AddWorktree fills. Empty when nothing has been cached yet.
+func (r *Repo) CachedWorktrees() ([]string, error) {
+	root, err := worktreeRoot()
+	if err != nil {
+		return nil, err
+	}
+	common, err := r.commonDir()
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(filepath.Join(root, repoKey(common)))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() {
+			out = append(out, filepath.Join(root, repoKey(common), e.Name()))
+		}
+	}
+	return out, nil
+}
+
+// RemoveWorktree detaches and deletes a worktree Redline materialized, then
+// prunes its administrative entry. Safe on a directory git no longer tracks.
+func (r *Repo) RemoveWorktree(dir string) { r.dropWorktree(dir) }
+
 func absClean(p string) string {
 	p = filepath.Clean(p)
 	if abs, err := filepath.Abs(p); err == nil {
