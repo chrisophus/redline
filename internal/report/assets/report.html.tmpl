@@ -92,14 +92,6 @@ code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5p
 pre.diff{background:var(--code);border:1px solid var(--line);border-radius:8px;
   padding:10px 12px;overflow-x:auto;margin:8px 0 0;line-height:1.3}
 pre.diff span{display:block;white-space:pre}
-pre.src{background:var(--code);border-radius:0 0 8px 8px;padding:8px 0;margin:0;
-  overflow-x:auto;line-height:1.4}
-pre.src span.src-line{display:block;white-space:pre;padding:0 12px}
-pre.src span.ln{display:inline-block;width:2.5em;margin-right:12px;text-align:right;
-  color:var(--muted);user-select:none}
-pre.src span.hit{background:var(--del-bg)}
-details.src{margin:8px 0 0}
-details.src>summary{padding:8px 12px;font-weight:400;font-size:13px;color:var(--muted)}
 .add{background:var(--add-bg)} .del{background:var(--del-bg)}
 .hunk{color:var(--info)} .meta{color:var(--muted)}
 details{background:var(--panel);border:1px solid var(--line);border-radius:10px;
@@ -153,6 +145,7 @@ body.drawer-open{overflow:hidden}
 .empty{color:var(--muted);font-style:italic}
 pre.diff span[data-line]{cursor:text;position:relative}
 pre.diff span[data-line]:hover{outline:1px solid var(--info);outline-offset:-1px}
+pre.diff span.hit{background:rgba(250,204,21,.28)}
 .viewed{opacity:.45}
 .viewed .p{text-decoration:line-through}
 label.vw{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;
@@ -238,11 +231,11 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <p class="empty">No coverage profile was found, so whether these changes are tested is unknown. That is not the same as untested — run the suite with <code>-coverprofile=coverage.out</code> to get the number.</p>
 {{end}}
 
-{{if .Areas}}
+{{if .Groups}}
 <h2 id="drill">Drill in</h2>
-{{range .Areas}}
+{{range .Groups}}
 <details>
-  <summary>{{.Label}}<span class="s">{{.Count}} file{{if ne .Count 1}}s{{end}}</span></summary>
+  <summary>{{.Label}}<span class="s">{{.Count}} file{{if ne .Count 1}}s{{end}} · <span class="plus">+{{.Added}}</span> <span class="minus">−{{.Removed}}</span></span></summary>
   <div class="body">
     <div class="walk">
     {{range .Files}}
@@ -257,21 +250,6 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   </div>
 </details>
 {{end}}
-{{end}}
-{{if .TestFiles}}
-<p class="s">{{.TestFiles}} test file{{if ne .TestFiles 1}}s{{end}} changed, not shown — a coverage number is the useful summary, not the diff of every case: {{range $i, $p := .TestPaths}}{{if $i}}, {{end}}<code>{{$p}}</code>{{end}}</p>
-{{end}}
-
-{{if .Composition}}
-<h2 id="composition">Lines by language and type</h2>
-<table class="comp">
-  <thead><tr><th>Language</th><th>Type</th><th>Files</th><th>+</th><th>−</th></tr></thead>
-  <tbody>
-  {{range .Composition}}
-  <tr><td>{{.Language}}</td><td>{{.Kind}}</td><td>{{.Files}}</td><td class="plus">+{{.Added}}</td><td class="minus">−{{.Removed}}</td></tr>
-  {{end}}
-  </tbody>
-</table>
 {{end}}
 
 {{define "finding"}}
@@ -288,10 +266,10 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     {{if .Observed}}<br>observed: {{.Observed}}{{end}}
     {{if .FixCmd}}<br>fix: {{.FixCmd}}{{end}}
   </div>
-  {{if .Snippet}}<details class="src"><summary>offending code</summary><pre class="src">{{.Snippet}}</pre></details>{{end}}
   {{if .Evidence}}<pre class="diff">{{.Evidence}}</pre>{{end}}
   {{if .Context}}<blockquote>{{.Context}}</blockquote>{{end}}
   <div class="f-actions">
+    {{if .File}}<button type="button" class="f-view" data-file="{{.File}}" data-line="{{.Line}}" title="Open this file's diff at the finding">View code</button>{{end}}
     <button type="button" class="f-copy" title="Copy this finding for the agent">Copy</button>
     <button type="button" class="f-comment" title="Comment on this finding for the agent">Comment</button>
   </div>
@@ -604,7 +582,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     if (opener) { opener.focus(); opener = null; }
   }
 
-  function open(path, from) {
+  function open(path, from, line) {
     var target = null;
     document.querySelectorAll(".file").forEach(function (f) {
       if (!target && f.getAttribute("data-path") === path) { target = f; }
@@ -628,11 +606,21 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     drawer.hidden = false; scrim.hidden = false;
     document.body.classList.add("drawer-open");
     drawer.scrollTop = 0;
+    if (line) {
+      var hit = body.querySelector('[data-line="' + line + '"][data-side="new"]') ||
+                body.querySelector('[data-line="' + line + '"]');
+      if (hit) { hit.classList.add("hit"); hit.scrollIntoView({ block: "center" }); }
+    }
     document.getElementById("drawer-close").focus();
   }
 
   document.querySelectorAll(".walk-row.jump").forEach(function (row) {
     row.addEventListener("click", function () { open(row.getAttribute("data-jump"), row); });
+  });
+  document.querySelectorAll(".f-view").forEach(function (b) {
+    b.addEventListener("click", function () {
+      open(b.getAttribute("data-file"), b, parseInt(b.getAttribute("data-line"), 10) || 0);
+    });
   });
   document.getElementById("drawer-close").addEventListener("click", close);
   scrim.addEventListener("click", close);

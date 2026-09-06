@@ -26,14 +26,23 @@ const (
 	KindSource = "source"
 )
 
-// Composition groups a change's files by language and kind, so a reviewer
-// can see how much of the diff is test versus behavior versus config before
-// reading a single line of it. Generated files never reach here: run.go
-// filters them out of the change before change.Build ever sees them, and a
-// composition table is not the exception the way that exclusion list is.
-func Composition(files []File) []LinesRow {
+// LinesGroup is a composition cell together with the files behind it, so the
+// drill-in can present the language/kind breakdown as a browsable list rather
+// than only a summary count.
+type LinesGroup struct {
+	Language string
+	Kind     string
+	Added    int
+	Removed  int
+	Files    []File
+}
+
+// CompositionGroups groups a change's files by language and kind, the dominant
+// part of the change first, each group carrying the files it counts. Generated
+// files never reach here: run.go filters them before change.Build sees them.
+func CompositionGroups(files []File) []LinesGroup {
 	type key struct{ lang, kind string }
-	byKey := map[key]*LinesRow{}
+	byKey := map[key]*LinesGroup{}
 	var order []key
 	for _, f := range files {
 		lang := f.Language
@@ -41,15 +50,15 @@ func Composition(files []File) []LinesRow {
 			lang = "other"
 		}
 		k := key{lang, kind(f.Path)}
-		row, ok := byKey[k]
+		g, ok := byKey[k]
 		if !ok {
-			row = &LinesRow{Language: lang, Kind: k.kind}
-			byKey[k] = row
+			g = &LinesGroup{Language: lang, Kind: k.kind}
+			byKey[k] = g
 			order = append(order, k)
 		}
-		row.Files++
-		row.Added += f.Added
-		row.Removed += f.Removed
+		g.Added += f.Added
+		g.Removed += f.Removed
+		g.Files = append(g.Files, f)
 	}
 	sort.Slice(order, func(i, j int) bool {
 		a, b := byKey[order[i]], byKey[order[j]]
@@ -62,9 +71,20 @@ func Composition(files []File) []LinesRow {
 		}
 		return a.Kind < b.Kind
 	})
-	rows := make([]LinesRow, len(order))
+	groups := make([]LinesGroup, len(order))
 	for i, k := range order {
-		rows[i] = *byKey[k]
+		groups[i] = *byKey[k]
+	}
+	return groups
+}
+
+// Composition is CompositionGroups reduced to per-cell counts, for the markdown
+// table and the JSON packet.
+func Composition(files []File) []LinesRow {
+	groups := CompositionGroups(files)
+	rows := make([]LinesRow, len(groups))
+	for i, g := range groups {
+		rows[i] = LinesRow{Language: g.Language, Kind: g.Kind, Files: len(g.Files), Added: g.Added, Removed: g.Removed}
 	}
 	return rows
 }

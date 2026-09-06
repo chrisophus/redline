@@ -10,8 +10,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html/template"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -53,13 +51,10 @@ type view struct {
 	// DiffFiles is the deduped set of changed files that appear in a drill-in
 	// area, each with its diff. Rendered once into a hidden store the drawer
 	// moves from, so a diff exists in exactly one place in the DOM.
-	DiffFiles   []fileView
-	Composition []change.LinesRow
-	Observed    []findingView
+	DiffFiles []fileView
+	Observed  []findingView
 
-	Areas     []areaView
-	TestFiles int
-	TestPaths []string
+	Groups []drillGroup
 	Confirms  []findings.Confirmation
 	Unknowns  []findings.Unknown
 	Dark      []findings.SubstrateStatus
@@ -95,16 +90,17 @@ type navLink struct {
 type findingView struct {
 	findings.Finding
 	Evidence template.HTML
-	// Snippet is the offending source lines, shown behind a disclosure so a
-	// reviewer can see the code a finding points at without leaving the page.
-	Snippet template.HTML
 }
 
-type areaView struct {
-	Key   string
-	Label string
-	Files []fileView
-	Count int
+// drillGroup is one language/kind cell of the drill-in: the files of that
+// language and role, each openable in the drawer, with the line totals the
+// composition table used to show on its own.
+type drillGroup struct {
+	Label   string
+	Count   int
+	Added   int
+	Removed int
+	Files   []fileView
 }
 
 type fileView struct {
@@ -117,19 +113,6 @@ type fileView struct {
 	Diff     template.HTML
 }
 
-// areaLabels names the drill-in sections, in the order they are shown.
-//
-// Tests are deliberately absent. A reviewer does not read test bodies; they
-// read a coverage number and expect the tests to have been run. Rendering the
-// diff of every table-driven case buries the change that needed testing. The
-// files still appear in the walkthrough and are counted, so the reviewer knows
-// tests moved — they just do not have to scroll past them.
-var areaLabels = []struct{ Key, Label string }{
-	{"sql", "Schema & migrations"},
-	{"api", "API contract"},
-	{"ui", "Interface"},
-	{"code", "Code"},
-}
 
 // HTML renders the report page.
 func HTML(in HTMLInput) (string, error) {
@@ -184,10 +167,6 @@ func buildView(in HTMLInput) view {
 	}
 	v.Banner = bannerText(rep)
 
-	headDir := ""
-	if in.Change != nil && in.Change.Target != nil {
-		headDir = in.Change.Target.Dir
-	}
 	for _, f := range rep.Findings {
 		v.Counts[string(f.Severity)]++
 		fv := findingView{Finding: f}
@@ -196,45 +175,25 @@ func buildView(in HTMLInput) view {
 				fv.Evidence = template.HTML(highlightDiff(a.Content))
 			}
 		}
-		fv.Snippet = snippet(headDir, f.File, f.Line)
 		v.Observed = append(v.Observed, fv)
 	}
 
 	if in.Change != nil {
-		v.Composition = change.Composition(in.Change.Files)
 		count, worst := fileFindingCounts(rep.Findings)
-		rendered := map[string]bool{}
-		for _, al := range areaLabels {
-			rendered[al.Key] = true
-		}
-		byArea := map[string][]fileView{}
 		seen := map[string]bool{}
-		for _, f := range in.Change.Files {
-			fv := fileView{Path: f.Path, Status: f.Status, Added: f.Added, Removed: f.Removed,
-				Findings: count[f.Path], Severity: string(worst[f.Path]),
-				Diff: template.HTML(highlightDiffFor(f.Path, f.Diff))}
-			inArea := false
-			for _, a := range f.Areas {
-				byArea[a] = append(byArea[a], fv)
-				if rendered[a] {
-					inArea = true
+		for _, g := range change.CompositionGroups(in.Change.Files) {
+			dg := drillGroup{Label: g.Language + " " + g.Kind, Count: len(g.Files), Added: g.Added, Removed: g.Removed}
+			for _, f := range g.Files {
+				fv := fileView{Path: f.Path, Status: f.Status, Added: f.Added, Removed: f.Removed,
+					Findings: count[f.Path], Severity: string(worst[f.Path]),
+					Diff: template.HTML(highlightDiffFor(f.Path, f.Diff))}
+				dg.Files = append(dg.Files, fv)
+				if !seen[f.Path] {
+					seen[f.Path] = true
+					v.DiffFiles = append(v.DiffFiles, fv)
 				}
 			}
-			if inArea && !seen[f.Path] {
-				seen[f.Path] = true
-				v.DiffFiles = append(v.DiffFiles, fv)
-			}
-		}
-		for _, tf := range byArea["tests"] {
-			v.TestPaths = append(v.TestPaths, tf.Path)
-		}
-		v.TestFiles = len(byArea["tests"])
-		for _, al := range areaLabels {
-			files := byArea[al.Key]
-			if len(files) == 0 {
-				continue
-			}
-			v.Areas = append(v.Areas, areaView{Key: al.Key, Label: al.Label, Files: files, Count: len(files)})
+			v.Groups = append(v.Groups, dg)
 		}
 	}
 	v.Nav = navFor(v)
@@ -254,11 +213,8 @@ func navFor(v view) []navLink {
 		{ID: "interface", Label: "What it looks like", Warn: uiGap},
 		{ID: "coverage", Label: "Coverage", Warn: coverageGap},
 	}
-	if len(v.Areas) > 0 {
-		nav = append(nav, navLink{ID: "drill", Label: "Drill in", Count: len(v.Areas)})
-	}
-	if len(v.Composition) > 0 {
-		nav = append(nav, navLink{ID: "composition", Label: "Lines by language and type", Count: len(v.Composition)})
+	if len(v.Groups) > 0 {
+		nav = append(nav, navLink{ID: "drill", Label: "Drill in", Count: len(v.Groups)})
 	}
 	if len(v.Renders) > 0 {
 		nav = append(nav, navLink{ID: "changed", Label: "What changed", Count: len(v.Renders)})
@@ -271,46 +227,6 @@ func navFor(v view) []navLink {
 	return nav
 }
 
-// snippet returns the offending lines around a finding, read from the head
-// tree, as a numbered code block with the finding's own line marked. Best
-// effort: a file it cannot read, or a line past the file's end (a stale
-// tool result), yields no snippet rather than an error — the finding still
-// renders, just without the code behind it.
-func snippet(headDir, file string, line int) template.HTML {
-	if file == "" || line <= 0 {
-		return ""
-	}
-	path := file
-	if headDir != "" {
-		path = filepath.Join(headDir, file)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	lines := strings.Split(string(data), "\n")
-	if line > len(lines) {
-		return ""
-	}
-	const ctx = 3
-	from, to := line-ctx, line+ctx
-	if from < 1 {
-		from = 1
-	}
-	if to > len(lines) {
-		to = len(lines)
-	}
-	var b strings.Builder
-	for n := from; n <= to; n++ {
-		cls := "src-line"
-		if n == line {
-			cls = "src-line hit"
-		}
-		fmt.Fprintf(&b, `<span class="%s"><span class="ln">%d</span>%s</span>`,
-			cls, n, template.HTMLEscapeString(lines[n-1]))
-	}
-	return template.HTML(b.String())
-}
 
 // bannerText is the same honesty check the markdown report makes. An empty
 // report is ambiguous by nature and the reader will take the flattering

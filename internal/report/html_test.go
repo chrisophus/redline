@@ -1,8 +1,6 @@
 package report
 
 import (
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -78,35 +76,36 @@ func TestWhatChangedSectionRendersPaneSummaries(t *testing.T) {
 	}
 }
 
-func TestCompositionTableRendersLanguageAndKind(t *testing.T) {
+func TestDrillGroupsByLanguageAndKind(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 2}},
 		Change: &change.Set{Files: []change.File{
-			{Path: "internal/change/change.go", Language: "go", Added: 20, Removed: 3},
-			{Path: "internal/change/change_test.go", Language: "go", Added: 80, Removed: 0},
+			{Path: "internal/change/change.go", Language: "go", Added: 20, Removed: 3, Diff: "@@ -1 +1 @@\n+x\n"},
+			{Path: "internal/change/change_test.go", Language: "go", Added: 80, Removed: 0, Diff: "@@ -1 +1 @@\n+func TestX\n"},
 		}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(html, `<h2 id="composition">Lines by language and type</h2>`) {
-		t.Fatal("a change with files must carry a composition heading")
+	if !strings.Contains(html, `<h2 id="drill">Drill in</h2>`) {
+		t.Fatal("a change with files must carry the drill-in list")
 	}
-	if !strings.Contains(html, "<td>go</td><td>test</td>") || !strings.Contains(html, "<td>go</td><td>source</td>") {
-		t.Errorf("both the source file and its test must appear, split by kind:\n%s", html)
+	// The composition breakdown is now the drill grouping: one group per
+	// language and kind, folded in so there is one place to browse files.
+	if !strings.Contains(html, "go source") || !strings.Contains(html, "go test") {
+		t.Errorf("drill must group by language and kind:\n%s", html)
+	}
+	for _, p := range []string{"internal/change/change.go", "internal/change/change_test.go"} {
+		if !strings.Contains(html, `data-jump="`+p+`"`) {
+			t.Errorf("every changed file must be a drill row; missing %q", p)
+		}
 	}
 }
 
-// A finding with a real file and line shows the offending source behind a
-// disclosure, marking its own line, so a reviewer sees the code without
-// leaving the page. A finding pointing past EOF or at a missing file shows
-// none rather than erroring.
-func TestFindingSnippetShowsOffendingLines(t *testing.T) {
-	dir := t.TempDir()
-	src := "package a\n\nfunc A() {\n\tx := risky()\n\treturn x\n}\n"
-	if err := osWriteFile(t, filepath.Join(dir, "a.go"), src); err != nil {
-		t.Fatal(err)
-	}
+// A finding with a file offers a View code control that opens that file's diff
+// in the drawer at the finding's line — the one source view, shared with the
+// drill-in, rather than a second inline snippet.
+func TestFindingLinksToItsFileInTheDrawer(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{
 			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
@@ -115,46 +114,23 @@ func TestFindingSnippetShowsOffendingLines(t *testing.T) {
 			},
 		},
 		Change: &change.Set{
-			Target: &target.Target{Kind: target.KindWorktree, Dir: dir},
-			Files:  []change.File{{Path: "a.go", Areas: []string{"code"}}},
+			Files: []change.File{{Path: "a.go", Language: "go", Diff: "@@ -1,4 +1,4 @@\n+x := risky()\n"}},
 		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(html, "offending code") {
-		t.Fatal("a finding with a file and line must offer its code")
+	if !strings.Contains(html, `class="f-view" data-file="a.go" data-line="4"`) {
+		t.Fatal("a finding with a file must offer a View code control targeting its line")
 	}
-	if !strings.Contains(html, "risky()") {
-		t.Errorf("the offending source line must appear:\n%s", html)
-	}
-	if !strings.Contains(html, `class="src-line hit"`) {
-		t.Error("the finding's own line must be marked")
-	}
-}
-
-func TestFindingSnippetSkipsMissingFile(t *testing.T) {
-	html, err := HTML(HTMLInput{
-		Report: &findings.Report{
-			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
-			Findings: []findings.Finding{
-				{File: "nope.go", Line: 5, Rule: "r", Message: "m", Severity: findings.SeverityWarning},
-			},
-		},
-		Change: &change.Set{Target: &target.Target{Dir: t.TempDir()},
-			Files: []change.File{{Path: "nope.go", Areas: []string{"code"}}}},
-	})
-	if err != nil {
-		t.Fatal(err)
+	// The file's diff lives in the store the drawer opens, not in a second
+	// inline snippet on the finding.
+	if !strings.Contains(html, `data-path="a.go"`) {
+		t.Error("the finding's file must be openable in the drawer")
 	}
 	if strings.Contains(html, "offending code") {
-		t.Error("a finding whose file cannot be read must not claim to show code")
+		t.Error("the inline snippet is gone; the drawer is the single source view")
 	}
-}
-
-func osWriteFile(t *testing.T, path, content string) error {
-	t.Helper()
-	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 func TestHTMLIdentityAttribute(t *testing.T) {
@@ -377,30 +353,26 @@ func TestInterfaceSectionIsHonestWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestTestFilesAreCountedNotRendered(t *testing.T) {
+func TestTestFilesAreBrowsableInTheDrill(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 1}},
 		Change: &change.Set{Files: []change.File{
-			{Path: "internal/run/run.go", Areas: []string{"code"}, Diff: "@@ -1 +1 @@\n-a\n+b\n"},
-			{Path: "internal/run/run_test.go", Areas: []string{"tests"},
-				Diff: "@@ -1 +1 @@\n-func TestOld\n+func TestNew\n"},
+			{Path: "internal/run/run.go", Language: "go", Diff: "@@ -1 +1 @@\n-a\n+b\n"},
+			{Path: "internal/run/run_test.go", Language: "go", Diff: "@@ -1 +1 @@\n-func TestOld\n+func TestNew\n"},
 		}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(html, "1 test file changed") {
-		t.Error("changed tests must be counted so the reviewer knows they moved")
+	// Tests are their own language/kind group now, browsable like any file.
+	if !strings.Contains(html, "go test") {
+		t.Error("changed tests must appear in their own group")
 	}
-	// The path appears in the walkthrough; the diff body must not.
-	if !strings.Contains(html, "run_test.go") {
-		t.Error("the test file should still be listed")
+	if !strings.Contains(html, `data-jump="internal/run/run_test.go"`) {
+		t.Error("the test file must be a drill row")
 	}
-	if strings.Contains(html, "func TestNew") {
-		t.Error("test file contents must not render")
-	}
-	if !strings.Contains(html, "+b") {
-		t.Error("non-test diffs must still render")
+	if !strings.Contains(html, "func TestNew") {
+		t.Error("the test diff must be viewable in the drawer store")
 	}
 }
 
