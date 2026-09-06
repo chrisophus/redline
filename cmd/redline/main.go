@@ -30,7 +30,7 @@ const usage = `redline — observe a change and report the evidence
 usage:
   redline run     [flags]   observe the change and report (the entry point)
   redline post    [flags]   post the session's findings as one PR review (--pr)
-  redline open    [flags]   serve and open the last report
+  redline open    [flags]   serve and open the last report (--file opens it from disk, no server)
   redline serve   [flags]   serve .redline over http (blocks; --stop ends it)
 
 target (all subcommands; pass only one):
@@ -48,6 +48,7 @@ flags:
   --out DIR         evidence directory (default .redline)
   --open            open the HTML report when done
   --no-open         never open a browser
+  --file            open (or print) the report as a file:// path, no server
   --port N          loopback port for open/serve (default 8765; the next
                     free port is used if it is taken)
   --report-url URL  with post: link to the full report in the review body
@@ -69,7 +70,7 @@ func main() {
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
 	reportURL, profile                                                string
-	open, noOpen, stop, dryRun                                        bool
+	open, noOpen, stop, dryRun, file                                  bool
 	port                                                              int
 }
 
@@ -93,6 +94,7 @@ func runMain(args []string) error {
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
 	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")
+	fs.BoolVar(&o.file, "file", false, "open or print the report as a file:// path, no server")
 	fs.StringVar(&o.reportURL, "report-url", "", "with post: link to the full report in the review body (e.g. a CI artifact URL)")
 	fs.StringVar(&o.profile, "profile", "", "with post: YAML profile for merge-gate pass/fail markers")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "with post: print the review payload as JSON instead of posting")
@@ -107,6 +109,9 @@ func runMain(args []string) error {
 	case "post":
 		return cmdPost(o)
 	case "open":
+		if o.file {
+			return openFile(o.out, true)
+		}
 		return announce(o.out, o.port, true)
 	case "serve":
 		if o.stop {
@@ -142,7 +147,32 @@ func cmdRun(o opts) error {
 		return emitJSON(res.Report)
 	}
 	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence, res.Change))
+	if o.file {
+		return openFile(o.out, o.open && !o.noOpen)
+	}
 	return announce(o.out, o.port, o.open && !o.noOpen)
+}
+
+// openFile points at report.html on disk, no server. The page is
+// self-contained, so a browser renders it straight from a file:// path; only
+// the click-to-comment feature, which needs a stable origin for
+// localStorage, wants the server. This is the answer to a report that lands
+// in .redline, a directory the file picker hides: the path is handed to the
+// opener directly, so no picker is involved. With browse, it opens; without,
+// it prints the file:// URL to click.
+func openFile(out string, browse bool) error {
+	abs, err := filepath.Abs(filepath.Join(out, "report.html"))
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(abs); err != nil {
+		return fmt.Errorf("no report at %s (run `redline run` first)", abs)
+	}
+	fmt.Fprintf(os.Stderr, "Report: file://%s\n", abs)
+	if browse {
+		return report.Open(abs)
+	}
+	return nil
 }
 
 // announce prints where the report is and, when asked, opens it. Serving and

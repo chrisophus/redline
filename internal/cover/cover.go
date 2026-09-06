@@ -21,7 +21,10 @@ import (
 	"time"
 )
 
-// Result is the coverage of the changed lines.
+// Result is the coverage of the changed lines, plus the profile's whole-repo
+// total — the diff number says whether what changed is tested, the total
+// says how well-tested the codebase it landed in already was, so a reviewer
+// can tell one from the other rather than reading a single ambiguous percent.
 type Result struct {
 	// Profile is the file the number came from, relative to the repository.
 	// Named so a reviewer can judge whether to believe it.
@@ -42,6 +45,15 @@ type Result struct {
 	// most-uncovered first. The number alone does not tell a reviewer where to
 	// look.
 	Uncovered []FileGap `json:"uncovered,omitempty"`
+
+	// TotalLines, TotalCovered, and TotalPercent are every coverable line the
+	// whole profile has anything to say about, not just the lines this
+	// change added — the same line-granular measure as Lines/Covered/Percent,
+	// applied to the profile's full scope rather than the diff's. TotalPercent
+	// is -1 when TotalLines is zero, for the same reason Percent is.
+	TotalLines   int     `json:"totalLines"`
+	TotalCovered int     `json:"totalCovered"`
+	TotalPercent float64 `json:"totalPercent"`
 }
 
 // FileGap is one file's uncovered added lines.
@@ -88,7 +100,7 @@ func parseProfile(path string) (map[string][]block, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	out := map[string][]block{}
 	sc := bufio.NewScanner(f)
@@ -149,8 +161,13 @@ func AddedLines(diff string) []int {
 	inHunk := false
 	for _, line := range strings.Split(diff, "\n") {
 		if strings.HasPrefix(line, "@@") {
-			newLine = hunkStart(line)
-			inHunk = true
+			n, ok := hunkStart(line)
+			// An unparseable header names no real line; treating it as
+			// line 0 would fabricate a location that cannot exist in any
+			// file, so the hunk is skipped rather than guessed at (the
+			// same "degrade the number, not the review" rule this file
+			// applies to a malformed profile).
+			newLine, inHunk = n, ok
 			continue
 		}
 		if !inHunk {
@@ -173,22 +190,24 @@ func AddedLines(diff string) []int {
 	return out
 }
 
-// hunkStart reads the new-side start line out of `@@ -a,b +c,d @@`.
-func hunkStart(header string) int {
+// hunkStart reads the new-side start line out of `@@ -a,b +c,d @@`. The
+// second result is false when the header cannot be parsed, or names a
+// start below 1 — not a line any file has.
+func hunkStart(header string) (int, bool) {
 	plus := strings.Index(header, "+")
 	if plus < 0 {
-		return 0
+		return 0, false
 	}
 	rest := header[plus+1:]
 	end := strings.IndexAny(rest, ", ")
 	if end < 0 {
-		return 0
+		return 0, false
 	}
 	n, err := strconv.Atoi(rest[:end])
-	if err != nil {
-		return 0
+	if err != nil || n < 1 {
+		return 0, false
 	}
-	return n
+	return n, true
 }
 
 // Changed is one changed file and the lines it added.
@@ -213,7 +232,7 @@ func Compute(root string, changed []Changed) *Result {
 		return nil
 	}
 
-	res := &Result{Profile: name, Percent: -1}
+	res := &Result{Profile: name, Percent: -1, TotalPercent: -1}
 	for _, c := range changed {
 		if filepath.Ext(c.Path) != ".go" || len(c.Added) == 0 {
 			continue
@@ -244,6 +263,10 @@ func Compute(root string, changed []Changed) *Result {
 	}
 	if res.Lines > 0 {
 		res.Percent = float64(res.Covered) / float64(res.Lines) * 100
+	}
+	res.TotalLines, res.TotalCovered = totalCoverage(blocks)
+	if res.TotalLines > 0 {
+		res.TotalPercent = float64(res.TotalCovered) / float64(res.TotalLines) * 100
 	}
 	res.Stale = isStale(root, full, changed)
 	sortGaps(res.Uncovered)
@@ -283,6 +306,32 @@ func lineState(blocks []block, line int) (covered, coverable bool) {
 		}
 	}
 	return false, coverable
+}
+
+// totalCoverage sums coverable and covered lines across every file the
+// profile mentions, independent of what this change touched — the same
+// per-line rule lineState applies to a single line, applied to every line
+// any block in the file claims.
+func totalCoverage(blocks map[string][]block) (lines, covered int) {
+	for _, fileBlocks := range blocks {
+		seen := map[int]bool{}
+		for _, b := range fileBlocks {
+			for ln := b.startLine; ln <= b.endLine; ln++ {
+				seen[ln] = true
+			}
+		}
+		for ln := range seen {
+			isCovered, isCoverable := lineState(fileBlocks, ln)
+			if !isCoverable {
+				continue
+			}
+			lines++
+			if isCovered {
+				covered++
+			}
+		}
+	}
+	return lines, covered
 }
 
 // isStale compares the profile's timestamp with the files under review. A

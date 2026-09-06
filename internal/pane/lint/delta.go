@@ -2,6 +2,8 @@ package lint
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -23,8 +25,13 @@ type Delta struct {
 
 	// tools caches detection, which reads the head tree. Detection is by the
 	// head's config: the head defines what this repository lints with.
-	tools    []tool
-	detected bool
+	tools     []tool
+	detected  bool
+	detectErr error
+
+	// scoped is the changed files this pane examines, kept so Diff can run a
+	// differ-kind tool (oasdiff) once per scoped file it covers.
+	scoped []string
 
 	// configChanged is set by Scope when the change touches a lint config. A
 	// delta partly earned by editing the config has to say so: fewer findings
@@ -35,28 +42,30 @@ type Delta struct {
 // Name implements pane.Pane.
 func (p *Delta) Name() string { return DeltaSubstrate }
 
-func (p *Delta) detect() []tool {
+func (p *Delta) detect() ([]tool, error) {
 	if !p.detected {
-		p.tools = detect(p.Repo.Root)
+		p.tools, p.detectErr = detect(p.Repo.Root)
 		p.detected = true
 	}
-	return p.tools
+	return p.tools, p.detectErr
 }
 
-// Scope is the changed files a configured linter covers, plus any changed
-// lint config. No configured linter means an empty scope: the pane then reads
-// as skipped, which is the honest state for a repository that has not opted
-// into any linter Redline can run.
+// Scope is the changed files a configured tool covers, plus any changed lint
+// config. No configured tool means an empty scope: the pane then reads as
+// skipped, the honest state for a repository that has opted into no linter
+// Redline can run. A .redline.yml that fails to parse keeps only the config
+// files in scope, so the pane runs and darks with the parse error when the
+// config itself is part of the change, without inflating the examined set.
 func (p *Delta) Scope(changed []string) []string {
-	tools := p.detect()
-	if len(tools) == 0 {
-		return nil
-	}
+	tools, err := p.detect()
 	var out []string
 	for _, path := range changed {
-		if isLintConfig(path) {
+		if isLintConfig(path) || isRedlineConfig(path) {
 			out = append(out, path)
 			p.configChanged = true
+			continue
+		}
+		if err != nil {
 			continue
 		}
 		for _, t := range tools {
@@ -66,6 +75,7 @@ func (p *Delta) Scope(changed []string) []string {
 			}
 		}
 	}
+	p.scoped = out
 	return out
 }
 
@@ -96,22 +106,35 @@ func (s *snapshot) ID() string {
 // lints (a config newer than the code, missing dependencies in a bare
 // worktree) must degrade the answer, not erase it. Diff handles that case.
 func (p *Delta) Observe(rev pane.Revision) (pane.Observation, error) {
+	tools, err := p.detect()
+	if err != nil {
+		return nil, err
+	}
 	dir := p.Repo.Root
 	if rev.Name == "base" {
-		var err error
-		dir, err = p.Repo.AddWorktree(rev.Rev)
-		if err != nil {
-			return nil, fmt.Errorf("checking out the base revision to lint it: %w", err)
+		var werr error
+		dir, werr = p.Repo.AddWorktree(rev.Rev)
+		if werr != nil {
+			return nil, fmt.Errorf("checking out the base revision to lint it: %w", werr)
 		}
 	}
 	snap := &snapshot{Rev: rev.Rev}
-	for _, t := range p.detect() {
-		issues, err := t.run(dir)
-		if err != nil {
+	for _, t := range tools {
+		// A differ tool computes its own delta and runs once, in Diff.
+		if t.isDiffer() {
+			continue
+		}
+		// A baseline-file tool takes its "already existed" set from a
+		// committed artifact, not a run at the base revision.
+		if rev.Name == "base" && t.custom != nil && t.custom.Baseline.Mode == "file" {
+			continue
+		}
+		issues, rerr := t.run(dir)
+		if rerr != nil {
 			if rev.Name != "base" {
-				return nil, fmt.Errorf("%s at head: %v", t.name, err)
+				return nil, fmt.Errorf("%s at head: %v", t.name, rerr)
 			}
-			snap.Runs = append(snap.Runs, toolRun{Tool: t.name, Err: err.Error()})
+			snap.Runs = append(snap.Runs, toolRun{Tool: t.name, Err: rerr.Error()})
 			continue
 		}
 		snap.Runs = append(snap.Runs, toolRun{Tool: t.name, Issues: issues})
@@ -134,6 +157,14 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 	evidence := []string{base.ID(), head.ID()}
 	res := pane.Result{Evidence: map[string]pane.Artifact{}}
 
+	tools, _ := p.detect()
+	customByName := map[string]*ToolConfig{}
+	for _, t := range tools {
+		if t.custom != nil {
+			customByName[t.name] = t.custom
+		}
+	}
+
 	baseByTool := map[string]toolRun{}
 	for _, r := range base.Runs {
 		baseByTool[r.Tool] = r
@@ -144,23 +175,62 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 	var toolNames []string
 	for _, hr := range head.Runs {
 		toolNames = append(toolNames, hr.Tool)
-		br := baseByTool[hr.Tool]
-		if br.Err != "" {
-			// The base run failed, so there is no delta for this tool. Degrade
+
+		// The "already existed" set is either the base run, or — for a
+		// baseline-file tool — the committed baseline artifact.
+		var baseIssues []Issue
+		degraded, degradeMsg, reason := false, "", ""
+		if cfg := customByName[hr.Tool]; cfg != nil && cfg.Baseline.Mode == "file" {
+			bi, err := p.baselineIssues(*cfg)
+			if err != nil {
+				degraded = true
+				degradeMsg = fmt.Sprintf("%s baseline %q could not be read, so resolved findings are unknown and introduced ones are limited to added lines", hr.Tool, cfg.Baseline.File)
+				reason = err.Error()
+			} else {
+				baseIssues = bi
+			}
+		} else {
+			br := baseByTool[hr.Tool]
+			if br.Err != "" {
+				degraded = true
+				degradeMsg = fmt.Sprintf("%s could not run at the base revision, so resolved findings are unknown and introduced ones are limited to added lines", hr.Tool)
+				reason = br.Err
+			} else {
+				baseIssues = br.Issues
+			}
+		}
+
+		if degraded {
+			// No comparable base, so there is no delta for this tool. Degrade
 			// to head issues on lines this change added: still precise, still
 			// only about the change, and the degradation is stated.
 			onAdded := p.issuesOnAddedLines(base.Rev, hr.Issues)
 			introduced = append(introduced, onAdded...)
 			res.Unknowns = append(res.Unknowns, findings.Unknown{
 				Substrate: DeltaSubstrate,
-				Message:   fmt.Sprintf("%s could not run at the base revision, so resolved findings are unknown and introduced ones are limited to added lines", hr.Tool),
-				Reason:    br.Err,
+				Message:   degradeMsg,
+				Reason:    reason,
 			})
 			continue
 		}
-		in, out := diffIssues(br.Issues, hr.Issues)
+		in, out := diffIssues(baseIssues, hr.Issues)
 		introduced = append(introduced, in...)
 		resolved += out
+	}
+
+	// Differ tools run once here, comparing each scoped file at base and head
+	// directly; everything they report is introduced by this change.
+	for _, t := range tools {
+		if !t.isDiffer() {
+			continue
+		}
+		toolNames = append(toolNames, t.name)
+		files := p.differFiles(t)
+		issues, err := p.runDiffer(*t.custom, base.Rev, files)
+		if err != nil {
+			return pane.Result{}, fmt.Errorf("%s: %w", t.name, err)
+		}
+		introduced = append(introduced, issues...)
 	}
 
 	sort.SliceStable(introduced, func(i, j int) bool {
@@ -228,6 +298,81 @@ func (p *Delta) issuesOnAddedLines(baseRev string, issues []Issue) []Issue {
 	return out
 }
 
+// baselineIssues parses a baseline-file tool's committed artifact — the same
+// output shape the tool always produces — into the issue set treated as
+// already present.
+func (p *Delta) baselineIssues(cfg ToolConfig) ([]Issue, error) {
+	raw := p.Repo.File("", cfg.Baseline.File)
+	if raw == "" {
+		return nil, fmt.Errorf("baseline file %q is empty or missing", cfg.Baseline.File)
+	}
+	return parseToolOutput(raw, cfg)
+}
+
+// differFiles is the scoped changed files a differ tool covers.
+func (p *Delta) differFiles(t tool) []string {
+	var out []string
+	for _, path := range p.scoped {
+		if t.covers(path) {
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+// runDiffer invokes a differ tool once per file it covers, substituting the
+// file's base-revision content (materialized to a temp file) for {{base}} and
+// its path in the tree under review for {{head}}.
+func (p *Delta) runDiffer(cfg ToolConfig, baseRev string, files []string) ([]Issue, error) {
+	var all []Issue
+	for _, path := range files {
+		tmp, err := os.CreateTemp("", "redline-base-*"+filepath.Ext(path))
+		if err != nil {
+			return nil, err
+		}
+		tmpPath := tmp.Name()
+		defer func() { _ = os.Remove(tmpPath) }()
+		if _, err := tmp.WriteString(p.Repo.File(baseRev, path)); err != nil {
+			_ = tmp.Close()
+			return nil, err
+		}
+		if err := tmp.Close(); err != nil {
+			return nil, err
+		}
+		args := substituteArgs(cfg.Args, tmpPath, filepath.Join(p.Repo.Root, path))
+		stdout, stderr, exit, err := runTool(p.Repo.Root, cfg.Command, args...)
+		if err != nil {
+			return nil, err
+		}
+		if !exitOK(exit, cfg.OKExitCodes) {
+			return nil, fmt.Errorf("exited %d: %s", exit, firstLine(stderr))
+		}
+		issues, err := parseToolOutput(stdout, cfg)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, issues...)
+	}
+	return all, nil
+}
+
+// substituteArgs replaces the {{base}} and {{head}} placeholders in a differ
+// tool's args with the two file paths.
+func substituteArgs(args []string, base, head string) []string {
+	out := make([]string, len(args))
+	for i, a := range args {
+		switch a {
+		case "{{base}}":
+			out[i] = base
+		case "{{head}}":
+			out[i] = head
+		default:
+			out[i] = a
+		}
+	}
+	return out
+}
+
 // diffIssues is the multiset comparison: introduced issues (with head line
 // numbers) and the count of resolved ones.
 func diffIssues(base, head []Issue) (introduced []Issue, resolved int) {
@@ -262,8 +407,15 @@ func allBaseRan(base *snapshot) bool {
 	return true
 }
 
+// severity maps a tool's severity string to Redline's. golangci-lint and
+// eslint issues in this package are always "warning" or "info"; gorefactor
+// also reports "error" (e.g. file-size over its limit), which is real:
+// nothing here downgrades it.
 func severity(s string) findings.Severity {
-	if s == "info" {
+	switch s {
+	case "error":
+		return findings.SeverityError
+	case "info":
 		return findings.SeverityInfo
 	}
 	return findings.SeverityWarning

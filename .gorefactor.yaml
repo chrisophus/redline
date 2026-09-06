@@ -1,0 +1,12 @@
+# gorefactor is a separate project (github.com/chrisophus/gorefactor), used
+# here only as a structural-health lint (`make gorefactor-lint` / `make
+# gorefactor-doctor`); Redline itself does not depend on it and `make`
+# targets self-skip when the binary is absent.
+#
+# The one error-tier finding at the time this was wired (internal/gitx/
+# git.go over the 500-line file-size limit) is real and left as a backlog
+# item rather than papered over with a raised threshold.
+walk:
+  skip_dir_segments:
+    - scratch
+    - docs

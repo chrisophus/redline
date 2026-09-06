@@ -72,7 +72,7 @@ func Serve(outDir string, port int) error {
 		files.ServeHTTP(w, r)
 	}))
 
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	writePID(abs, info)
 	defer clearPID(abs, info)
 
@@ -268,7 +268,7 @@ func servesDir(port int, abs string) bool {
 	if err != nil {
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return false
 	}

@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # golangci-lint's own PR-diff mode and gremlins --diff need history
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./... -coverprofile=coverage.out -covermode=atomic
+      - run: go tool cover -func=coverage.out | tail -1
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.13.2
+
+  bench:
+    # Advisory: records numbers in the log, never fails the build. A
+    # regression here is something a human reads, not a gate — the same
+    # posture Redline's own coverage pane takes toward a number with no
+    # threshold attached.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - run: go test ./... -bench=. -benchtime=10x -run='^$'
+
+  mutate:
+    # Advisory, diff-scoped, pull_request only: mutation-tests only the
+    # lines a PR touched against its base, so this stays fast regardless of
+    # module size. See `make mutate` for the same command locally.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+      - run: gremlins unleash . --diff="origin/${{ github.base_ref }}" --timeout-coefficient=10
+        continue-on-error: true

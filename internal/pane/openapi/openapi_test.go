@@ -164,7 +164,11 @@ func TestRemovedOperationIsBreaking(t *testing.T) {
 	r.write("api/openapi.yaml", twoOps)
 	base := r.commit("spec")
 	// Drop POST /pets.
-	r.write("api/openapi.yaml", twoOps[:strings.Index(twoOps, "    post:")])
+	cut := strings.Index(twoOps, "    post:")
+	if cut < 0 {
+		t.Fatal("fixture must contain \"    post:\"")
+	}
+	r.write("api/openapi.yaml", twoOps[:cut])
 
 	res := r.diff(base)
 	f := find(t, res, "api-operation-removed")
@@ -310,5 +314,27 @@ func TestJSONSpecParses(t *testing.T) {
 	res := r.diff(base)
 	if f := find(t, res, "api-operation-removed"); !strings.Contains(f.Message, "GET /pets") {
 		t.Errorf("JSON specs must parse too: %q", f.Message)
+	}
+}
+
+// requestBody.required is a distinct breaking condition from a required
+// schema field (change.BodyNowRequired vs NowRequired) and no existing test
+// ever flips it: a caller that used to be able to omit the body entirely can
+// no longer omit it, independent of what fields the body itself requires.
+func TestRequestBodyNowRequiredIsBreaking(t *testing.T) {
+	r := newRepo(t)
+	r.write("api/openapi.yaml", twoOps)
+	base := r.commit("spec")
+	r.write("api/openapi.yaml", strings.Replace(twoOps,
+		"      requestBody:\n        content:",
+		"      requestBody:\n        required: true\n        content:", 1))
+
+	res := r.diff(base)
+	f := find(t, res, "api-operation-breaking")
+	if !strings.Contains(f.Message, "request body is now mandatory") {
+		t.Errorf("message must say the body became mandatory: %q", f.Message)
+	}
+	if f.Severity != findings.SeverityError {
+		t.Errorf("severity = %q, want error", f.Severity)
 	}
 }

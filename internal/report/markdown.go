@@ -29,6 +29,7 @@ func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]p
 	section1(&b, renders)
 	coverageSection(&b, rep)
 	fileSection(&b, ch, rep.Findings)
+	compositionSection(&b, ch)
 	section2(&b, rep)
 	section3(&b, rep)
 	section4(&b, rep, evidence)
@@ -100,6 +101,11 @@ func coverageSection(b *strings.Builder, rep *findings.Report) {
 			"according to `%s`. %d covered, %d not.\n\n",
 			c.Percent, c.Lines, c.Profile, c.Covered, c.Lines-c.Covered)
 	}
+	if c.TotalPercent >= 0 {
+		fmt.Fprintf(b, "Repository-wide, **%.0f%%** of %d coverable line(s) in `%s` are covered "+
+			"(%d covered, %d not) — the profile's whole scope, not just what this change added.\n\n",
+			c.TotalPercent, c.TotalLines, c.Profile, c.TotalCovered, c.TotalLines-c.TotalCovered)
+	}
 	for _, gap := range c.Uncovered {
 		fmt.Fprintf(b, "- `%s` — %d uncovered added line(s)\n", gap.Path, len(gap.Lines))
 	}
@@ -122,6 +128,25 @@ func fileSection(b *strings.Builder, ch *change.Set, fs []findings.Finding) {
 			fmt.Fprintf(b, " — %d finding(s)", row.Findings)
 		}
 		fmt.Fprintln(b)
+	}
+	fmt.Fprintln(b)
+}
+
+// compositionSection is the diff's lines grouped by language and kind — test
+// versus behavior versus config versus prose — so a reviewer knows the shape
+// of the change before reading a single line of it.
+func compositionSection(b *strings.Builder, ch *change.Set) {
+	if ch == nil {
+		return
+	}
+	rows := change.Composition(ch.Files)
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "## Lines by language and type\n\n")
+	fmt.Fprintf(b, "| Language | Type | Files | + | − |\n|---|---|---:|---:|---:|\n")
+	for _, r := range rows {
+		fmt.Fprintf(b, "| %s | %s | %d | %d | %d |\n", r.Language, r.Kind, r.Files, r.Added, r.Removed)
 	}
 	fmt.Fprintln(b)
 }

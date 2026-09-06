@@ -37,8 +37,12 @@ func commentableInPatch(patch string) map[int]bool {
 	inHunk := false
 	for _, line := range strings.Split(patch, "\n") {
 		if m := hunkHeader.FindStringSubmatch(line); m != nil {
-			newLine, _ = strconv.Atoi(m[1])
-			inHunk = true
+			n, err := strconv.Atoi(m[1])
+			// A start below 1 names no real line in the new file (git only
+			// emits one for a hunk that adds nothing, which carries no
+			// commentable "+"/context lines anyway); treat it the same as
+			// an unparseable header rather than anchor a comment at 0.
+			newLine, inHunk = n, err == nil && n >= 1
 			continue
 		}
 		if !inHunk {

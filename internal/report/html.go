@@ -10,6 +10,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html/template"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -40,8 +42,17 @@ type view struct {
 	Banner   string
 	Counts   map[string]int
 
-	Files    []fileWalkRow
-	Observed []findingView
+	// Renders is what changed, in the domain where it lives — a pane's own
+	// account (e.g. the lint delta's introduced/resolved count, or a
+	// suppression's added-directive list), not a finding. Markdown has
+	// rendered this since section1 existed; HTML dropped it on the floor
+	// until a report with a real lint delta and no visible "Lint" anywhere
+	// on the page exposed the gap.
+	Renders []pane.Render
+
+	Files       []fileWalkRow
+	Composition []change.LinesRow
+	Observed    []findingView
 
 	Areas     []areaView
 	TestFiles int
@@ -80,6 +91,9 @@ type navLink struct {
 type findingView struct {
 	findings.Finding
 	Evidence template.HTML
+	// Snippet is the offending source lines, shown behind a disclosure so a
+	// reviewer can see the code a finding points at without leaving the page.
+	Snippet template.HTML
 }
 
 type areaView struct {
@@ -132,6 +146,7 @@ func buildView(in HTMLInput) view {
 	v := view{
 		Title:    "Redline",
 		Coverage: rep.Coverage,
+		Renders:  in.Renders,
 		Confirms: rep.Confirmations,
 		Unknowns: rep.Unknowns,
 		Dark:     rep.DarkSubstrates(),
@@ -163,6 +178,10 @@ func buildView(in HTMLInput) view {
 	}
 	v.Banner = bannerText(rep)
 
+	headDir := ""
+	if in.Change != nil && in.Change.Target != nil {
+		headDir = in.Change.Target.Dir
+	}
 	for _, f := range rep.Findings {
 		v.Counts[string(f.Severity)]++
 		fv := findingView{Finding: f}
@@ -171,11 +190,13 @@ func buildView(in HTMLInput) view {
 				fv.Evidence = template.HTML(highlightDiff(a.Content))
 			}
 		}
+		fv.Snippet = snippet(headDir, f.File, f.Line)
 		v.Observed = append(v.Observed, fv)
 	}
 
 	if in.Change != nil {
 		v.Files = fileWalk(in.Change.Files, rep.Findings)
+		v.Composition = change.Composition(in.Change.Files)
 		byArea := map[string][]fileView{}
 		for _, f := range in.Change.Files {
 			fv := fileView{Path: f.Path, Status: f.Status, Added: f.Added, Removed: f.Removed,
@@ -213,6 +234,12 @@ func navFor(v view) []navLink {
 	if len(v.Files) > 0 {
 		nav = append(nav, navLink{ID: "files", Label: "Files", Count: len(v.Files)})
 	}
+	if len(v.Composition) > 0 {
+		nav = append(nav, navLink{ID: "composition", Label: "Lines by language and type", Count: len(v.Composition)})
+	}
+	if len(v.Renders) > 0 {
+		nav = append(nav, navLink{ID: "changed", Label: "What changed", Count: len(v.Renders)})
+	}
 	nav = append(nav, navLink{ID: "observed", Label: "What Redline observed", Count: len(v.Observed)})
 	if len(v.Areas) > 0 {
 		nav = append(nav, navLink{ID: "drill", Label: "Drill in", Count: len(v.Areas)})
@@ -222,6 +249,47 @@ func navFor(v view) []navLink {
 		navLink{ID: "confirms", Label: "Checked and held", Count: len(v.Confirms)},
 	)
 	return nav
+}
+
+// snippet returns the offending lines around a finding, read from the head
+// tree, as a numbered code block with the finding's own line marked. Best
+// effort: a file it cannot read, or a line past the file's end (a stale
+// tool result), yields no snippet rather than an error — the finding still
+// renders, just without the code behind it.
+func snippet(headDir, file string, line int) template.HTML {
+	if file == "" || line <= 0 {
+		return ""
+	}
+	path := file
+	if headDir != "" {
+		path = filepath.Join(headDir, file)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(data), "\n")
+	if line > len(lines) {
+		return ""
+	}
+	const ctx = 3
+	from, to := line-ctx, line+ctx
+	if from < 1 {
+		from = 1
+	}
+	if to > len(lines) {
+		to = len(lines)
+	}
+	var b strings.Builder
+	for n := from; n <= to; n++ {
+		cls := "src-line"
+		if n == line {
+			cls = "src-line hit"
+		}
+		fmt.Fprintf(&b, `<span class="%s"><span class="ln">%d</span>%s</span>`,
+			cls, n, template.HTMLEscapeString(lines[n-1]))
+	}
+	return template.HTML(b.String())
 }
 
 // bannerText is the same honesty check the markdown report makes. An empty
@@ -265,10 +333,10 @@ func highlightDiffFor(path, diff string) string {
 		class, side, src := cur.classify(line)
 		escaped := template.HTMLEscapeString(line)
 		if path == "" || class == "meta" || class == "hunk" || src == 0 {
-			fmt.Fprintf(&b, `<span class="%s">%s</span>`+"\n", class, escaped)
+			fmt.Fprintf(&b, `<span class="%s">%s</span>`, class, escaped)
 			continue
 		}
-		fmt.Fprintf(&b, `<span class="%s" data-file="%s" data-line="%d" data-side="%s">%s</span>`+"\n",
+		fmt.Fprintf(&b, `<span class="%s" data-file="%s" data-line="%d" data-side="%s">%s</span>`,
 			class, template.HTMLEscapeString(path), src, side, escaped)
 	}
 	return b.String()

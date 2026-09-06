@@ -120,8 +120,8 @@ func TestDiffIssuesNormalizesDigits(t *testing.T) {
 func TestDiffIssuesMatchesByCount(t *testing.T) {
 	one := Issue{File: "a.go", Rule: "errcheck", Message: "unchecked error"}
 	introduced, resolved := diffIssues([]Issue{one}, []Issue{one, one})
-	if len(introduced) != 1 {
-		t.Fatalf("a second identical violation is introduced: %+v", introduced)
+	if len(introduced) != 1 || resolved != 0 {
+		t.Fatalf("a second identical violation is introduced, nothing resolved: %+v / %d", introduced, resolved)
 	}
 	introduced, resolved = diffIssues([]Issue{one, one}, []Issue{one})
 	if len(introduced) != 0 || resolved != 1 {
@@ -340,6 +340,124 @@ func TestDeltaNotesAConfigDrivenDelta(t *testing.T) {
 	}
 }
 
+// fakeGorefactor puts a stand-in gorefactor on PATH. It prints
+// gorefactor-fixture.json in its working directory (empty issue list if the
+// fixture is absent), exactly like the real linter run at two revisions.
+func fakeGorefactor(t *testing.T) {
+	t.Helper()
+	bin := t.TempDir()
+	script := "#!/bin/sh\n" +
+		"if [ ! -f gorefactor-fixture.json ]; then echo '{\"issues\":[]}'; exit 0; fi\n" +
+		"cat gorefactor-fixture.json\n" +
+		"exit 1\n"
+	if err := os.WriteFile(filepath.Join(bin, "gorefactor"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
+}
+
+func gorefactorJSON(issues ...string) string {
+	return `{"issues":[` + strings.Join(issues, ",") + `]}`
+}
+
+func gorefactorIssueJSON(file, rule, severity, message string) string {
+	return `{"file":"` + file + `","rule":"` + rule + `","severity":"` + severity + `","message":"` + message + `"}`
+}
+
+// gorefactor's own findings (structural: file size, duplication, dead code)
+// flow through the same delta and identity machinery as golangci-lint's,
+// keyed on its config file rather than golangci's.
+func TestDeltaIncludesGorefactorFindings(t *testing.T) {
+	fakeGorefactor(t)
+	r := newRepo(t)
+	r.write(".gorefactor.yaml", "walk: {}\n")
+	r.write("a.go", "package a\n")
+	r.write("gorefactor-fixture.json", gorefactorJSON(
+		gorefactorIssueJSON("a.go:3:1", "funcorder-function", "warning", "exported before unexported"),
+	))
+	base := r.commit("base")
+	// Head: the funcorder finding is fixed, a new error-tier file-size finding
+	// appears, with no line (a whole-file finding).
+	r.write("a.go", "package a\n\nfunc A() {}\n")
+	r.write("gorefactor-fixture.json", gorefactorJSON(
+		gorefactorIssueJSON("a.go", "file-size", "error", "531 lines (limit 500, over by 31)"),
+	))
+
+	p := &Delta{Repo: r.open()}
+	if got := p.Scope([]string{"a.go", "gorefactor-fixture.json"}); len(got) != 1 || got[0] != "a.go" {
+		t.Fatalf("scope should be the go file, got %v", got)
+	}
+	res := runPane(t, p, base)
+
+	if len(res.Findings) != 1 {
+		t.Fatalf("expected one introduced finding, got %+v", res.Findings)
+	}
+	f := res.Findings[0]
+	if f.Rule != "gorefactor/file-size" || f.File != "a.go" || f.Line != 0 {
+		t.Fatalf("introduced finding misdescribed: %+v", f)
+	}
+	if f.Severity != findings.SeverityError {
+		t.Fatalf("gorefactor's error tier must survive as SeverityError, got %q", f.Severity)
+	}
+	var sawResolved bool
+	for _, c := range res.Confirmations {
+		if c.Rule == "lint-resolved" {
+			sawResolved = true
+		}
+	}
+	if !sawResolved {
+		t.Fatalf("the fixed funcorder finding must be confirmed as resolved: %+v", res.Confirmations)
+	}
+}
+
+func TestSplitGorefactorLocation(t *testing.T) {
+	cases := []struct {
+		in       string
+		wantPath string
+		wantLine int
+	}{
+		{"internal/gitx/git.go", "internal/gitx/git.go", 0},
+		{"cmd/redline/main_test.go:25:1", "cmd/redline/main_test.go", 25},
+		{"a.go:7", "a.go", 7},
+		{"", "", 0},
+	}
+	for _, tc := range cases {
+		path, line := splitGorefactorLocation(tc.in)
+		if path != tc.wantPath || line != tc.wantLine {
+			t.Errorf("splitGorefactorLocation(%q) = (%q, %d), want (%q, %d)",
+				tc.in, path, line, tc.wantPath, tc.wantLine)
+		}
+	}
+}
+
+// gorefactor's untested-function rule names files module-qualified
+// ("github.com/x/y/a.go:12"), unlike every other rule's repo-relative path.
+// Left unstripped, such an issue could never be attributed to a changed
+// file or anchored to a PR line.
+func TestRunGorefactorStripsModuleQualifiedPaths(t *testing.T) {
+	fakeGorefactor(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module github.com/x/y\n\ngo 1.26\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "gorefactor-fixture.json"), []byte(gorefactorJSON(
+		gorefactorIssueJSON("github.com/x/y/internal/a/b.go:12:3", "untested-function", "info", "F has no test"),
+	)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	issues, err := runGorefactor(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("expected one issue, got %+v", issues)
+	}
+	if issues[0].File != "internal/a/b.go" || issues[0].Line != 12 {
+		t.Fatalf("module prefix must be stripped: %+v", issues[0])
+	}
+}
+
 // --- suppressions ---
 
 func TestSuppressionsFlagsDirectivesOnAddedLines(t *testing.T) {
@@ -491,5 +609,86 @@ func TestConfigChangeWithNoRuleOffIsConfirmed(t *testing.T) {
 	}
 	if len(res.Confirmations) != 1 {
 		t.Fatalf("a config change that turns nothing off is confirmed: %+v", res.Confirmations)
+	}
+}
+
+// The nolint and eslint-disable conventions are exercised above; the
+// directive table has five more entries (ts-ignore, ts-nocheck, type-ignore,
+// pylint-disable, rust-allow) that no existing test ever adds a line for. A
+// regex typo or a wrong submatch index in any one of them would silently
+// blind the pane to that convention while every other test kept passing.
+func TestSuppressionsDetectsEveryDirectiveKind(t *testing.T) {
+	cases := []struct {
+		name    string
+		file    string
+		base    string
+		head    string
+		wantMsg string
+	}{
+		{
+			name:    "ts-ignore",
+			file:    "a.ts",
+			base:    "export const a = 1\n",
+			head:    "export const a = 1\n// @ts-ignore\nconst b: number = \"x\"\n",
+			wantMsg: "ts-ignore directive silencing its findings on this line",
+		},
+		{
+			name:    "ts-nocheck",
+			file:    "b.ts",
+			base:    "export const a = 1\n",
+			head:    "// @ts-nocheck\nexport const a = 1\n",
+			wantMsg: "ts-nocheck directive silencing its findings on this line",
+		},
+		{
+			name:    "type-ignore",
+			file:    "c.py",
+			base:    "x = 1\n",
+			head:    "x = 1\ny = bad()  # type: ignore\n",
+			wantMsg: "type-ignore directive silencing its findings on this line",
+		},
+		{
+			name:    "pylint-disable",
+			file:    "d.py",
+			base:    "x = 1\n",
+			head:    "x = 1\ny = risky()  # pylint: disable=broad-except\n",
+			wantMsg: "pylint-disable directive silencing broad-except",
+		},
+		{
+			name:    "rust-allow",
+			file:    "e.rs",
+			base:    "fn a() {}\n",
+			head:    "fn a() {}\n#[allow(dead_code)]\nfn unused() {}\n",
+			wantMsg: "rust-allow directive silencing dead_code",
+		},
+		{
+			name:    "noqa-bare",
+			file:    "f.py",
+			base:    "x = 1\n",
+			head:    "x = 1\ny = eval(z)  # noqa\n",
+			wantMsg: "noqa directive silencing its findings on this line",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRepo(t)
+			r.write(tc.file, tc.base)
+			base := r.commit("base")
+			r.write(tc.file, tc.head)
+
+			p := &Suppressions{Repo: r.open()}
+			p.Scope([]string{tc.file})
+			res := runPane(t, p, base)
+
+			if len(res.Findings) != 1 {
+				t.Fatalf("%s: expected exactly one suppression finding, got %+v", tc.name, res.Findings)
+			}
+			f := res.Findings[0]
+			if f.Rule != "suppression-added" {
+				t.Fatalf("%s: rule = %q, want suppression-added", tc.name, f.Rule)
+			}
+			if !strings.Contains(f.Message, tc.wantMsg) {
+				t.Fatalf("%s: message = %q, want to contain %q", tc.name, f.Message, tc.wantMsg)
+			}
+		})
 	}
 }

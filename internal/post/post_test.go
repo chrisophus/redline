@@ -375,3 +375,28 @@ func TestBuildAttestPassHasNoFindingMarkers(t *testing.T) {
 		t.Fatalf("pass marker missing:\n%s", p.Body)
 	}
 }
+
+// CRLF line endings must not shift the commentable-line count or break hunk
+// parsing: the "+" and " " prefixes are unaffected by a trailing \r.
+func TestCommentableLinesHandlesCRLF(t *testing.T) {
+	patch := "@@ -1,3 +1,3 @@\r\n ctx\r\n+add\r\n ctx2\r\n"
+	got := CommentableLines(map[string]string{"a.go": patch})["a.go"]
+	for _, ln := range []int{1, 2, 3} {
+		if !got[ln] {
+			t.Fatalf("line %d should be commentable: %v", ln, got)
+		}
+	}
+	if len(got) != 3 {
+		t.Fatalf("CRLF must not add phantom commentable lines: %v", got)
+	}
+}
+
+// Git's "no newline at end of file" marker must not become a phantom
+// commentable line past the hunk it follows.
+func TestCommentableLinesIgnoresNoNewlineMarker(t *testing.T) {
+	patch := "@@ -1,2 +1,2 @@\n+add\n\\ No newline at end of file"
+	got := CommentableLines(map[string]string{"a.go": patch})["a.go"]
+	if len(got) != 1 || !got[1] {
+		t.Fatalf("only line 1 should be commentable: %v", got)
+	}
+}

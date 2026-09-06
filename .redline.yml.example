@@ -1,0 +1,90 @@
+# .redline.yml — external tools Redline runs as part of the lint-delta pane.
+#
+# The three built-in tools (golangci-lint, eslint, gorefactor) need no config
+# here; they are detected by their own config file. This file is for anything
+# else: an OpenAPI linter, a TypeScript type-checker, a breaking-change diff.
+# Each tool is run at the base revision and at head and only what the change
+# introduces is reported, the same way the built-in tools work.
+#
+# Copy this to .redline.yml and delete the tools you do not use.
+
+tools:
+  # vacuum — OpenAPI linter, Spectral-compatible JSON via `spectral-report`.
+  # `spectral-report <spec> <out>` writes to a file, so point it at /dev/stdout.
+  - name: vacuum
+    command: vacuum
+    args: ["spectral-report", "openapi.yaml", "/dev/stdout"]
+    scope: ["openapi.yaml", "**/*.openapi.yaml"]
+    format: spectral
+    # Spectral (and vacuum) number lines from 0; Redline numbers from 1.
+    lineOffset: 1
+    # Spectral severities are numbers: 0 error, 1 warn, 2 info, 3 hint. The
+    # defaults already map 0 and 1; spell the rest out if you want them louder.
+    severityMap:
+      "2": info
+      "3": info
+
+  # eslint via a type-aware run you drive yourself. (Plain eslint is already
+  # built in and detected by .eslintrc; this shows an arbitrary command.)
+  - name: tsc
+    command: npx
+    args: ["tsc", "--noEmit", "--pretty", "false"]
+    scope: ["**/*.ts", "**/*.tsx"]
+    # tsc does not emit JSON; wrap it in a script that does, or use a reporter.
+    # This entry is illustrative — see `format: json` below for the mapping.
+    format: json
+    resultsPath: results
+    fields:
+      file: file
+      line: line
+      rule: code
+      message: message
+      severity: severity
+
+  # oasdiff — a differ: it compares two spec files itself rather than linting
+  # one snapshot, so kind is "differ" and the two spec paths are substituted
+  # into the args. {{base}} is the spec at the merge base, {{head}} at head.
+  - name: oasdiff
+    kind: differ
+    command: oasdiff
+    args: ["breaking", "--format", "json", "{{base}}", "{{head}}"]
+    scope: ["openapi.yaml"]
+    format: json
+    resultsPath: ""      # oasdiff's JSON is a bare array
+    fields:
+      file: source
+      rule: id
+      message: text
+      severity: level
+    severityMap:
+      ERR: error
+      WARN: warning
+      INFO: info
+
+  # A tool with its own committed baseline file (accepted debt), read instead
+  # of a second run. Report only what exceeds the baseline.
+  - name: mylinter
+    command: mylinter
+    args: ["--json", "."]
+    scope: ["**/*.go"]
+    format: json
+    resultsPath: issues
+    fields: {file: file, line: line, rule: rule, message: message, severity: severity}
+    baseline:
+      mode: file
+      file: .mylinter-baseline.json
+
+# Fields reference
+#
+#   name         identifier; shows up as "<name>/<rule>" on each finding
+#   kind         "linter" (default) run per revision and diff, or "differ"
+#                run once comparing {{base}} and {{head}} directly
+#   command/args the executable and its arguments
+#   okExitCodes  exit codes that mean "ran" (default [0, 1]); others = failure
+#   scope        glob patterns this tool covers ("**" crosses directories)
+#   format       "sarif", "spectral", or "json"
+#   resultsPath  (json) dotted path to the results array; "" if the root is it
+#   fields       (json) dotted paths to each result's file/line/rule/message/severity
+#   severityMap  the tool's severity spelling -> error | warning | info
+#   lineOffset   added to every line number (set 1 for 0-indexed tools)
+#   baseline     mode "revision" (default) or "file" + the baseline file path

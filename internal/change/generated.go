@@ -145,7 +145,7 @@ func generatedByHeader(dir, path string) bool {
 		// rules. Failing to open is not evidence of anything.
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	read, lines := 0, 0
 	sc := bufio.NewScanner(f)

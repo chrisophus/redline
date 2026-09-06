@@ -67,11 +67,19 @@ a{color:inherit}
 .hl.breaking{border-left-color:var(--error)}
 .hl .t{font-weight:600}
 .hl .d{color:var(--muted);font-size:14px;margin-top:2px}
+table.comp{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+table.comp th,table.comp td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line)}
+table.comp td.plus{color:var(--ok);font-variant-numeric:tabular-nums}
+table.comp td.minus{color:var(--error);font-variant-numeric:tabular-nums}
 .f{background:var(--panel);border:1px solid var(--line);border-radius:10px;
   padding:16px 18px;margin:12px 0}
 .f.error{border-left:3px solid var(--error)}
 .f.warning{border-left:3px solid var(--warn)}
 .f.info{border-left:3px solid var(--info)}
+.f-actions{margin-top:12px;display:flex;gap:8px}
+.f-actions button{font:inherit;font-size:12px;padding:4px 11px;border:1px solid var(--line);
+  border-radius:6px;background:var(--bg);color:var(--ink);cursor:pointer}
+.f-actions button:hover{background:var(--code)}
 .tag{display:inline-block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
   padding:2px 7px;border-radius:4px;background:var(--code);color:var(--muted);
   font-weight:600;vertical-align:2px}
@@ -82,8 +90,16 @@ blockquote{margin:12px 0 0;padding:10px 14px;background:var(--code);border-radiu
   font-size:14px;color:var(--muted)}
 code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
 pre.diff{background:var(--code);border:1px solid var(--line);border-radius:8px;
-  padding:12px;overflow-x:auto;margin:12px 0 0;line-height:1.45}
+  padding:10px 12px;overflow-x:auto;margin:8px 0 0;line-height:1.3}
 pre.diff span{display:block;white-space:pre}
+pre.src{background:var(--code);border-radius:0 0 8px 8px;padding:8px 0;margin:0;
+  overflow-x:auto;line-height:1.4}
+pre.src span.src-line{display:block;white-space:pre;padding:0 12px}
+pre.src span.ln{display:inline-block;width:2.5em;margin-right:12px;text-align:right;
+  color:var(--muted);user-select:none}
+pre.src span.hit{background:var(--del-bg)}
+details.src{margin:8px 0 0}
+details.src>summary{padding:8px 12px;font-weight:400;font-size:13px;color:var(--muted)}
 .add{background:var(--add-bg)} .del{background:var(--del-bg)}
 .hunk{color:var(--info)} .meta{color:var(--muted)}
 details{background:var(--panel);border:1px solid var(--line);border-radius:10px;
@@ -94,8 +110,8 @@ details>summary::-webkit-details-marker{display:none}
 details>summary::after{content:"▸";color:var(--muted);font-weight:400}
 details[open]>summary::after{content:"▾"}
 details>summary:hover{background:var(--code)}
-.body{padding:0 18px 16px;border-top:1px solid var(--line)}
-.file{padding:12px 0;border-bottom:1px solid var(--line)}
+.body{padding:0 14px 12px;border-top:1px solid var(--line)}
+.file{padding:10px 0;border-bottom:1px solid var(--line)}
 .file:last-child{border-bottom:none}
 .file .p{font-family:ui-monospace,monospace;font-size:13px;font-weight:600}
 .file .s{font-size:12px;color:var(--muted)}
@@ -177,14 +193,6 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <p class="sub">{{.Subtitle}}{{if .Author}} · {{.Author}}{{end}}{{if .Commits}} · {{.Commits}} commit{{if ne .Commits 1}}s{{end}}{{end}}{{if .URL}} · <a href="{{.URL}}">{{.URL}}</a>{{end}}</p>
 
 {{if .Banner}}<div class="banner">{{.Banner}}</div>{{end}}
-
-<h2 id="interface">What it looks like</h2>
-{{if .UITouched}}
-<div class="banner">This change touches the interface and no routes were captured. Nobody has seen what it looks like — that is a gap in this review, not a clean result.</div>
-{{else}}
-<p class="empty">No routes were captured. No changed file is classified as interface, so there was probably nothing to see — but this is an absence of looking, not a finding that the interface is unchanged.</p>
-{{end}}
-
 <div class="tiles">
   <button type="button" class="tile" data-goto="observed" data-only="error"><div class="n {{if index .Counts "error"}}error{{else}}ok{{end}}">{{with index .Counts "error"}}{{.}}{{else}}0{{end}}</div><div class="l">errors</div></button>
   <button type="button" class="tile" data-goto="observed" data-only="warning"><div class="n warning">{{with index .Counts "warning"}}{{.}}{{else}}0{{end}}</div><div class="l">warnings</div></button>
@@ -199,6 +207,14 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   <button type="button" class="tile" data-goto="unknowns"><div class="n">{{len .Unknowns}}</div><div class="l">undetermined</div></button>
 </div>
 
+<h2 id="interface">What it looks like</h2>
+{{if .UITouched}}
+<div class="banner">This change touches the interface and no routes were captured. Nobody has seen what it looks like — that is a gap in this review, not a clean result.</div>
+{{else}}
+<p class="empty">No routes were captured. No changed file is classified as interface, so there was probably nothing to see — but this is an absence of looking, not a finding that the interface is unchanged.</p>
+{{end}}
+
+
 <h2 id="coverage">Coverage</h2>
 {{with .Coverage.Diff}}
 {{if .Stale}}<div class="banner">The profile <code>{{.Profile}}</code> is older than a file in this change, so this number does not describe the code under review. Re-run the suite with <code>-coverprofile</code>.</div>{{end}}
@@ -206,6 +222,9 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <p class="empty">No added line in this change is coverable, so there is nothing for a test to execute. Read from <code>{{.Profile}}</code>.</p>
 {{else}}
 <p><b>{{printf "%.0f" .Percent}}%</b> of the {{.Lines}} coverable line{{if ne .Lines 1}}s{{end}} this change adds are executed by a test, according to <code>{{.Profile}}</code>. {{.Covered}} covered, {{sub .Lines .Covered}} not.</p>
+{{end}}
+{{if ge .TotalPercent 0.0}}
+<p>Repository-wide, <b>{{printf "%.0f" .TotalPercent}}%</b> of {{.TotalLines}} coverable line{{if ne .TotalLines 1}}s{{end}} in <code>{{.Profile}}</code> are covered ({{.TotalCovered}} covered, {{sub .TotalLines .TotalCovered}} not) — the profile's whole scope, not just what this change added.</p>
 {{end}}
 {{if .Uncovered}}
 <details>
@@ -233,8 +252,20 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 </div>
 {{end}}
 
+{{if .Composition}}
+<h2 id="composition">Lines by language and type</h2>
+<table class="comp">
+  <thead><tr><th>Language</th><th>Type</th><th>Files</th><th>+</th><th>−</th></tr></thead>
+  <tbody>
+  {{range .Composition}}
+  <tr><td>{{.Language}}</td><td>{{.Kind}}</td><td>{{.Files}}</td><td class="plus">+{{.Added}}</td><td class="minus">−{{.Removed}}</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}
+
 {{define "finding"}}
-<div class="f {{lower .Severity}}" data-file="{{.File}}">
+<div class="f {{lower .Severity}}" data-file="{{.File}}" data-line="{{.Line}}" data-rule="{{.Rule}}" data-sev="{{.Severity}}">
   <h3>{{.Message}}</h3>
   <div>
     <span class="tag">{{.Severity}}</span>
@@ -247,9 +278,26 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     {{if .Observed}}<br>observed: {{.Observed}}{{end}}
     {{if .FixCmd}}<br>fix: {{.FixCmd}}{{end}}
   </div>
+  {{if .Snippet}}<details class="src"><summary>offending code</summary><pre class="src">{{.Snippet}}</pre></details>{{end}}
   {{if .Evidence}}<pre class="diff">{{.Evidence}}</pre>{{end}}
   {{if .Context}}<blockquote>{{.Context}}</blockquote>{{end}}
+  <div class="f-actions">
+    <button type="button" class="f-copy" title="Copy this finding for the agent">Copy</button>
+    <button type="button" class="f-comment" title="Comment on this finding for the agent">Comment</button>
+  </div>
 </div>
+{{end}}
+
+{{if .Renders}}
+<h2 id="changed">What changed</h2>
+{{range .Renders}}
+<div class="hl">
+  <div class="t">{{.Title}}</div>
+  <div class="d">{{.Summary}}</div>
+  {{if .Lines}}<pre>{{range .Lines}}{{.}}
+{{end}}</pre>{{end}}
+</div>
+{{end}}
 {{end}}
 
 <h2 id="observed">What Redline observed</h2>
@@ -323,7 +371,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 {{end}}
 
 <div class="bar">
-  <span class="n" id="cmt-count">No comments yet — click any diff line to leave one.</span>
+  <span class="n" id="cmt-count">No comments yet — click a diff line, or a finding's Comment, to leave one.</span>
   <span>
     <button id="copy-cmts">Copy comments for the agent</button>
     <button id="clear-cmts">Clear</button>
@@ -364,7 +412,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     var n = state.comments.length;
     document.getElementById("cmt-count").textContent =
       n ? n + " comment" + (n === 1 ? "" : "s") + " — hand them to the agent when you are done."
-        : "No comments yet — click any diff line to leave one.";
+        : "No comments yet — click a diff line, or a finding's Comment, to leave one.";
   }
   function copyText(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -410,7 +458,9 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     });
     var w = document.createElement("div");
     w.className = "w";
-    w.textContent = c.file + " line " + c.line;
+    w.textContent = c.on === "finding"
+      ? (c.file || "(no file)") + (c.line ? " line " + c.line : "") + (c.rule ? " · " + c.rule : "")
+      : c.file + " line " + c.line;
     var t = document.createElement("div");
     t.textContent = c.text;
     el.appendChild(b); el.appendChild(w); el.appendChild(t);
@@ -423,8 +473,25 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     return sel;
   }
 
-  // Restore existing comments under their lines.
+  function findingCard(c) {
+    var cards = document.querySelectorAll(".f");
+    for (var i = 0; i < cards.length; i++) {
+      var el = cards[i];
+      if ((el.dataset.file || "") === (c.file || "") &&
+          (+el.dataset.line || 0) === (c.line || 0) &&
+          (el.dataset.rule || "") === (c.rule || "")) return el;
+    }
+    return null;
+  }
+
+  // Restore existing comments: finding comments onto their cards, line
+  // comments under their diff line.
   state.comments.forEach(function (c) {
+    if (c.on === "finding") {
+      var card = findingCard(c);
+      if (card) card.appendChild(bubble(c));
+      return;
+    }
     var line = document.querySelector(lineSelector(c));
     if (line) line.after(bubble(c));
   });
@@ -450,6 +517,66 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
                    code: line.textContent, text: text};
           state.comments.push(c);
           line.after(bubble(c));
+          save();
+        }
+      });
+    });
+  });
+
+  // Findings: copy one for the agent, or comment on it. Finding comments join
+  // the same set the bottom bar hands over, so the agent gets line comments
+  // and finding comments in one payload.
+  document.querySelectorAll(".f").forEach(function (card) {
+    var meta = {file: card.dataset.file || "", line: +card.dataset.line || 0,
+                rule: card.dataset.rule || "", sev: card.dataset.sev || ""};
+    var msg = (card.querySelector("h3") || {}).textContent || "";
+    function snippetText() {
+      var rows = card.querySelectorAll("pre.src .src-line");
+      if (!rows.length) return "";
+      return Array.prototype.map.call(rows, function (row) {
+        var g = row.querySelector(".ln");
+        var num = g ? g.textContent : "";
+        var src = g ? row.textContent.slice(num.length) : row.textContent;
+        return (num ? num + "  " : "") + src;
+      }).join("\n");
+    }
+    function reference() {
+      var loc = meta.file ? meta.file + (meta.line ? ":" + meta.line : "") : "";
+      var out = [];
+      var head = [meta.sev, meta.rule].filter(Boolean).join(" ");
+      if (head) out.push(head);
+      if (loc) out.push(loc);
+      if (msg) out.push(msg);
+      var code = snippetText();
+      if (code) out.push("", code);
+      return out.join("\n");
+    }
+    var copyBtn = card.querySelector(".f-copy");
+    if (copyBtn) copyBtn.addEventListener("click", function () {
+      copyText(reference()).then(function () {
+        copyBtn.textContent = "Copied";
+        setTimeout(function () { copyBtn.textContent = "Copy"; }, 1500);
+      });
+    });
+    var commentBtn = card.querySelector(".f-comment");
+    if (commentBtn) commentBtn.addEventListener("click", function () {
+      if (card.querySelector("textarea.new")) return;
+      var ta = document.createElement("textarea");
+      ta.className = "new";
+      ta.rows = 3;
+      ta.placeholder = "Comment on this finding — ⌘/Ctrl+Enter to save, Esc to cancel";
+      card.querySelector(".f-actions").after(ta);
+      ta.focus();
+      ta.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape") { ta.remove(); return; }
+        if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
+          var text = ta.value.trim();
+          ta.remove();
+          if (!text) return;
+          var c = {on: "finding", file: meta.file, line: meta.line, rule: meta.rule,
+                   message: msg, code: snippetText(), text: text};
+          state.comments.push(c);
+          card.appendChild(bubble(c));
           save();
         }
       });
@@ -592,7 +719,7 @@ document.getElementById("copy-cmts").addEventListener("click", function () {
     // comments pasted into a session that has since moved on would be applied
     // to the wrong tree, and the agent cannot tell without being told.
     var payload = JSON.stringify({redlineReviewComments: {
-      instruction: "A human reviewed this change and left the comments below, each on a specific line. " +
+      instruction: "A human reviewed this change and left the comments below, each on a specific diff line or a specific finding. " +
         "Address every one: make the change, or reply saying why you did not. " +
         "Do not re-review the rest of the diff. When you are done, re-run redline so the report reflects the new state.",
       review: document.body.dataset.review || "",

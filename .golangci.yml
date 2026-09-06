@@ -1,0 +1,39 @@
+version: "2"
+
+# Must be <= the Go version the golangci-lint binary was built with, or it
+# bails out during type-checking. Keep this in sync with go.mod.
+run:
+  go: "1.26"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - gosec
+    - gocritic
+
+  settings:
+    gosec:
+      excludes:
+        # Redline's whole job is reading files and shelling out to git/gh/
+        # linters at a revision the caller named (--pr, --commit, --branch).
+        # That path is inherently "variable", and README.md documents it.
+        - G204 # subprocess launched with a variable
+        - G304 # file inclusion via variable
+        - G301 # MkdirAll 0755 — correct for report/evidence directories, not secrets
+        - G306 # WriteFile 0644 — correct for report/evidence files, not secrets
+        - G203 # template.HTML at html.go:171/182 wraps already-escaped
+               # output — highlightDiffFor (html.go:266,272) calls
+               # template.HTMLEscapeString before the template.HTML cast.
+
+  exclusions:
+    rules:
+      # Test fixtures write throwaway git repos and HTTP test doubles: file
+      # permissions, subprocess args, and marker strings there are not a
+      # threat model, and tests intentionally ignore some errors (e.g. a
+      # background test HTTP server's Serve error).
+      - linters: [gosec, errcheck]
+        path: _test\.go$

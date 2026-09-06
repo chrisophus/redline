@@ -43,6 +43,12 @@ func init() {
 	for _, n := range eslintConfigs {
 		lintConfigNames[n] = true
 	}
+	for _, n := range gorefactorConfigs {
+		lintConfigNames[n] = true
+	}
+	for _, n := range configNames {
+		lintConfigNames[n] = true
+	}
 	lintConfigNames[".eslintignore"] = true
 }
 
@@ -178,12 +184,12 @@ func configFinding(path, rule, message, anchor string) findings.Finding {
 // is false when the format cannot be parsed.
 func disabledRules(path, baseRaw, headRaw string) ([]string, bool) {
 	base := filepath.Base(path)
-	switch {
-	case base == ".golangci.yml" || base == ".golangci.yaml":
+	switch base {
+	case ".golangci.yml", ".golangci.yaml":
 		return golangciDisabled(baseRaw, headRaw)
-	case base == ".eslintrc" || base == ".eslintrc.json":
+	case ".eslintrc", ".eslintrc.json":
 		return eslintDisabled(baseRaw, headRaw)
-	case base == ".eslintignore":
+	case ".eslintignore":
 		return ignoreAdditions(baseRaw, headRaw), true
 	default:
 		return nil, false

@@ -1,6 +1,8 @@
 package report
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -8,6 +10,7 @@ import (
 	"github.com/ccason/redline/internal/change"
 	"github.com/ccason/redline/internal/cover"
 	"github.com/ccason/redline/internal/findings"
+	"github.com/ccason/redline/internal/pane"
 	"github.com/ccason/redline/internal/target"
 )
 
@@ -51,6 +54,107 @@ func TestReviewIdentityDiffersForWorktreeChanges(t *testing.T) {
 	if c != d {
 		t.Fatal("same base+head SHA must share a comment key")
 	}
+}
+
+// The HTML report dropped pane.Render (the lint delta's "N introduced, M
+// resolved", a suppression's added-directive list) on the floor entirely —
+// markdown has rendered it since section1 existed. A report with a real
+// lint delta and nothing under a "Lint" heading anywhere on the page is
+// this bug; this is the regression test for it.
+func TestWhatChangedSectionRendersPaneSummaries(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report:  &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
+		Change:  &change.Set{Files: []change.File{{Path: "a.go", Areas: []string{"code"}}}},
+		Renders: []pane.Render{{Title: "Lint delta", Summary: "3 finding(s) introduced, 9 resolved (golangci-lint)"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, `<h2 id="changed">What changed</h2>`) {
+		t.Fatal("a change with pane renders must carry a What changed heading")
+	}
+	if !strings.Contains(html, "Lint delta") || !strings.Contains(html, "9 resolved") {
+		t.Errorf("the pane's own render must appear on the page:\n%s", html)
+	}
+}
+
+func TestCompositionTableRendersLanguageAndKind(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{Coverage: findings.Coverage{ChangedFiles: 2, ExaminedFiles: 2}},
+		Change: &change.Set{Files: []change.File{
+			{Path: "internal/change/change.go", Language: "go", Added: 20, Removed: 3},
+			{Path: "internal/change/change_test.go", Language: "go", Added: 80, Removed: 0},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, `<h2 id="composition">Lines by language and type</h2>`) {
+		t.Fatal("a change with files must carry a composition heading")
+	}
+	if !strings.Contains(html, "<td>go</td><td>test</td>") || !strings.Contains(html, "<td>go</td><td>source</td>") {
+		t.Errorf("both the source file and its test must appear, split by kind:\n%s", html)
+	}
+}
+
+// A finding with a real file and line shows the offending source behind a
+// disclosure, marking its own line, so a reviewer sees the code without
+// leaving the page. A finding pointing past EOF or at a missing file shows
+// none rather than erroring.
+func TestFindingSnippetShowsOffendingLines(t *testing.T) {
+	dir := t.TempDir()
+	src := "package a\n\nfunc A() {\n\tx := risky()\n\treturn x\n}\n"
+	if err := osWriteFile(t, filepath.Join(dir, "a.go"), src); err != nil {
+		t.Fatal(err)
+	}
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Findings: []findings.Finding{
+				{File: "a.go", Line: 4, Rule: "lint/errcheck", Message: "unchecked error", Severity: findings.SeverityWarning},
+			},
+		},
+		Change: &change.Set{
+			Target: &target.Target{Kind: target.KindWorktree, Dir: dir},
+			Files:  []change.File{{Path: "a.go", Areas: []string{"code"}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "offending code") {
+		t.Fatal("a finding with a file and line must offer its code")
+	}
+	if !strings.Contains(html, "risky()") {
+		t.Errorf("the offending source line must appear:\n%s", html)
+	}
+	if !strings.Contains(html, `class="src-line hit"`) {
+		t.Error("the finding's own line must be marked")
+	}
+}
+
+func TestFindingSnippetSkipsMissingFile(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Findings: []findings.Finding{
+				{File: "nope.go", Line: 5, Rule: "r", Message: "m", Severity: findings.SeverityWarning},
+			},
+		},
+		Change: &change.Set{Target: &target.Target{Dir: t.TempDir()},
+			Files: []change.File{{Path: "nope.go", Areas: []string{"code"}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "offending code") {
+		t.Error("a finding whose file cannot be read must not claim to show code")
+	}
+}
+
+func osWriteFile(t *testing.T, path, content string) error {
+	t.Helper()
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 func TestHTMLIdentityAttribute(t *testing.T) {
@@ -501,9 +605,18 @@ func TestWalkRowsAreStyledAsRowsNotButtons(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	css := html[:strings.Index(html, "</style>")]
-	rule := css[strings.Index(css, ".walk-row.jump{"):]
-	rule = rule[:strings.Index(rule, "}")]
+	styleEnd := strings.Index(html, "</style>")
+	ruleStart := strings.Index(html[:styleEnd], ".walk-row.jump{")
+	if styleEnd < 0 || ruleStart < 0 {
+		t.Fatal("report must embed a .walk-row.jump style rule before </style>")
+	}
+	css := html[:styleEnd]
+	rule := css[ruleStart:]
+	ruleEnd := strings.Index(rule, "}")
+	if ruleEnd < 0 {
+		t.Fatal(".walk-row.jump rule must be closed")
+	}
+	rule = rule[:ruleEnd]
 	for _, want := range []string{"display:block", "width:100%", "text-align:left"} {
 		if !strings.Contains(rule, want) {
 			t.Errorf(".walk-row.jump must set %s, got %q", want, rule)

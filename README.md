@@ -105,15 +105,22 @@ origin/main), `--upstream REF` (default: same as base), `--migrations DIR`,
 
 Three panes, scoped to the change, none of which re-reports what CI gates:
 
-- **Lint delta.** When the repository carries a `.golangci.*` or eslint
-  config, the linter runs at the base revision (in a cached detached
-  worktree) and at head, and only the findings the change introduces are
-  reported, each anchored to its head line. Findings the change resolves
-  are counted as a confirmation. Identity is file, rule, and
+- **Lint delta.** When the repository carries a `.golangci.*`, eslint, or
+  `.gorefactor.*` config, the linter runs at the base revision (in a cached
+  detached worktree) and at head, and only the findings the change
+  introduces are reported, each anchored to its head line. Findings the
+  change resolves are counted as a confirmation. Identity is file, rule, and
   digit-normalized message with no line number, so moved code does not
   read as new violations. A configured linter that is missing or fails at
   head darks the pane; a base revision that cannot be linted degrades the
   delta to added-line findings and says so.
+
+  Other tools are added in `.redline.yml`, with no code change: a command,
+  the globs it covers, and how to read its output (`sarif`, `spectral`, or a
+  `json` field mapping). A `kind: differ` tool (oasdiff) is run once
+  comparing the file at base and head directly rather than linting one
+  snapshot; a `baseline: {mode: file}` tool reads a committed accepted-debt
+  file as its base set instead of a second run. See `.redline.yml.example`.
 - **Suppressions.** Every silencing directive the diff adds - `//nolint`,
   `eslint-disable` in its forms, `@ts-ignore`, `@ts-expect-error`,
   `# noqa`, `# type: ignore`, `pylint: disable`, `#[allow(...)]` - becomes

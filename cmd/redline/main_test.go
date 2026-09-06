@@ -425,3 +425,28 @@ func isSubcommand(arg string) bool {
 	}
 	return false
 }
+
+// openFile is the no-server path: it points straight at report.html on disk,
+// so a report that lands in .redline (a directory the file picker hides) is
+// reachable without a server or a picker.
+func TestOpenFilePrintsFileURLWithoutServing(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "report.html"), []byte("<html>ok</html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stderr := captureStderr(t, func() {
+		if err := openFile(dir, false); err != nil {
+			t.Fatalf("openFile: %v", err)
+		}
+	})
+	want := "file://" + filepath.Join(dir, "report.html")
+	if !strings.Contains(stderr, want) {
+		t.Errorf("must print the file URL %q, got %q", want, stderr)
+	}
+}
+
+func TestOpenFileMissingReportIsAnError(t *testing.T) {
+	if err := openFile(t.TempDir(), false); err == nil {
+		t.Fatal("a missing report must be an error, not a silent success")
+	}
+}
