@@ -54,6 +54,7 @@ type Source string
 
 const (
 	SourceDeterministic Source = "deterministic"
+	SourceLLM           Source = "llm"
 )
 
 // Anchor is a pane-relative location, for findings that have no file:line.
@@ -101,6 +102,20 @@ type Finding struct {
 	Expected string   `json:"expected,omitempty"` // for surprise ranking
 	Observed string   `json:"observed,omitempty"`
 	Source   Source   `json:"source,omitempty"`
+	// Verdict is the agent's judgment of this finding, merged from review.json
+	// after fingerprints are stamped. Nil until an agent has ruled on it.
+	Verdict *Verdict `json:"verdict,omitempty"`
+}
+
+// Verdict is an agent's judgment of a finding, ingested from review.json and
+// joined by fingerprint. Redline never fills it: the instrument states facts,
+// the agent supplies the reading, so Source is always "llm". Ruling is a short
+// controlled word per finding class (justified / should-fix / rule-noisy for a
+// suppression); Rationale is one line of why.
+type Verdict struct {
+	Ruling    string `json:"ruling"`
+	Rationale string `json:"rationale,omitempty"`
+	Source    Source `json:"source"`
 }
 
 // SubstrateState records whether a pane produced findings this run.

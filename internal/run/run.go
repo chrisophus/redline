@@ -155,6 +155,18 @@ func Run(opts Options) (*Result, error) {
 		})
 	}
 	res.Report.Finalize()
+	// Agent verdicts, if the agent has written any. Merged after Finalize so
+	// they join on stamped fingerprints, and never fatal: a run reports facts
+	// with or without a reading, and a broken review file is stated, not thrown.
+	if verdicts, verr := findings.LoadReview(filepath.Join(opts.Out, "review.json")); verr != nil {
+		res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
+			Substrate: "redline/review",
+			Message:   "review.json was present but could not be read, so no agent verdicts were merged",
+			Reason:    verr.Error(),
+		})
+	} else {
+		res.Report.MergeVerdicts(verdicts)
+	}
 	findings.Sort(res.Report.Findings)
 
 	res.Change = change.Build(repo, tgt, baseSHA, changed)

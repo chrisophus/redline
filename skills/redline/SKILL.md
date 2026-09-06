@@ -90,6 +90,41 @@ When you receive it:
 4. **Re-run `redline run`** when you are done, so the report reflects the new
    state. Use the same target flags.
 
+## Judge the suppressions
+
+Redline extracts the facts; the reading is still yours. For a finding it
+cannot judge — a `//nolint` or `eslint-disable` the change adds — you can
+record a verdict that rides on the same card, marked `source: llm`, beside
+Redline's deterministic fact.
+
+After a run, for each finding in `findings.json` with rule
+`suppression-added`, decide why the author silenced the linter and write
+`.redline/review.json`, keyed by the finding's own `fingerprint`:
+
+```json
+{"verdicts": {
+  "<fingerprint from findings.json>": {
+    "ruling": "justified",
+    "rationale": "test fixture seed, not a real suppression"
+  }
+}}
+```
+
+- `ruling` is one of **justified** (the silencing is warranted),
+  **should-fix** (fix the code rather than hide the finding), or
+  **rule-noisy** (the rule fires too often and should be tuned or scoped).
+- `rationale` is one line: why.
+- Key on the exact `fingerprint` string Redline emitted. A verdict that
+  matches no finding is dropped.
+
+Then re-run `redline run` with the same target flags: it merges the verdicts
+onto the findings and renders them. Redline never writes `review.json` and
+never overwrites it, so your judgments survive a re-run the way
+`comments.json` does.
+
+Judge only the suppressions here. This is triage of Redline's own evidence,
+not a second pass over the whole diff.
+
 ## Do not
 
 - Do not post anything to GitHub on your own. `redline post` is the only

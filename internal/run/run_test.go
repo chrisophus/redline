@@ -1,6 +1,7 @@
 package run_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -600,5 +601,54 @@ func TestAddedSuppressionReachesTheReport(t *testing.T) {
 	}
 	if f.Severity != findings.SeverityInfo {
 		t.Fatalf("suppressions are info severity: %+v", f)
+	}
+}
+
+// The two-pass loop: a run stamps fingerprints, the agent writes verdicts keyed
+// by them, the next run merges them onto the findings. review.json is the
+// agent's own state, read from the evidence dir and never overwritten.
+func TestVerdictMergedFromReviewFile(t *testing.T) {
+	r := newRepo(t)
+	r.write("a.go", "package a\n")
+	r.commit("base")
+	r.write("a.go", "package a\n\nfunc A() {} //nolint:errcheck\n")
+	out := filepath.Join(r.dir, ".redline")
+
+	first := r.run(run.Options{Base: "main", Out: out}).Report
+	var fp string
+	for _, f := range first.Findings {
+		if f.Rule == "suppression-added" {
+			fp = f.Fingerprint
+		}
+	}
+	if fp == "" {
+		t.Fatalf("expected a suppression-added finding to judge, got %+v", first.Findings)
+	}
+
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(findings.Review{Verdicts: map[string]findings.Verdict{
+		fp: {Ruling: "justified", Rationale: "seed"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "review.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	second := r.run(run.Options{Base: "main", Out: out}).Report
+	var v *findings.Verdict
+	for _, f := range second.Findings {
+		if f.Rule == "suppression-added" {
+			v = f.Verdict
+		}
+	}
+	if v == nil || v.Ruling != "justified" {
+		t.Fatalf("the second run must merge the agent verdict onto the finding, got %+v", v)
+	}
+	if v.Source != findings.SourceLLM {
+		t.Errorf("a merged verdict is the agent's reading: source = %q, want llm", v.Source)
 	}
 }

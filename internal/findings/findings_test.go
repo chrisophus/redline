@@ -2,6 +2,8 @@ package findings_test
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -126,5 +128,60 @@ func TestReportJSONFieldNamesMatchTheWireContract(t *testing.T) {
 		if !strings.Contains(body, field) {
 			t.Errorf("Report JSON must carry field %s; the skill/merge gate reads it by name: %s", field, body)
 		}
+	}
+}
+
+func TestLoadReviewMergesByFingerprint(t *testing.T) {
+	dir := t.TempDir()
+	rep := findings.Report{Findings: []findings.Finding{
+		{Category: findings.CategoryLint, Rule: "suppression-added", Message: "adds a nolint", File: "a.go"},
+	}}
+	rep.Finalize()
+	fp := rep.Findings[0].Fingerprint
+	path := filepath.Join(dir, "review.json")
+	// A real agent writes review.json with a JSON encoder, so the fingerprint's
+	// NUL separators round-trip as \u0000. The file claims source
+	// "deterministic"; Redline must override it to llm on load.
+	data, err := json.Marshal(findings.Review{Verdicts: map[string]findings.Verdict{
+		fp: {Ruling: "justified", Rationale: "fixture", Source: findings.SourceDeterministic},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	v, err := findings.LoadReview(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep.MergeVerdicts(v)
+	got := rep.Findings[0].Verdict
+	if got == nil {
+		t.Fatal("a verdict keyed on the finding's fingerprint must attach")
+	}
+	if got.Ruling != "justified" || got.Rationale != "fixture" {
+		t.Fatalf("verdict = %+v", got)
+	}
+	if got.Source != findings.SourceLLM {
+		t.Errorf("verdict source = %q, want llm; Redline attributes the reading, the file does not", got.Source)
+	}
+}
+
+func TestLoadReviewMissingFileIsNotAnError(t *testing.T) {
+	v, err := findings.LoadReview(filepath.Join(t.TempDir(), "nope.json"))
+	if err != nil || v != nil {
+		t.Fatalf("a missing review file must read as (nil, nil), got %v / %v", v, err)
+	}
+}
+
+func TestMergeVerdictsDropsUnmatchedFingerprint(t *testing.T) {
+	rep := findings.Report{Findings: []findings.Finding{
+		{Category: findings.CategoryLint, Rule: "r", Message: "m", File: "a.go"},
+	}}
+	rep.Finalize()
+	rep.MergeVerdicts(map[string]findings.Verdict{"no-such-fingerprint": {Ruling: "justified"}})
+	if rep.Findings[0].Verdict != nil {
+		t.Error("a verdict matching no finding must be dropped, not attached to the wrong one")
 	}
 }

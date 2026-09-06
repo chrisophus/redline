@@ -84,6 +84,8 @@ table.comp td.minus{color:var(--error);font-variant-numeric:tabular-nums}
   padding:2px 7px;border-radius:4px;background:var(--code);color:var(--muted);
   font-weight:600;vertical-align:2px}
 .tag.det{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.tag.vd{background:color-mix(in srgb,var(--info) 18%,transparent);color:var(--info)}
+.verdict{margin-top:8px;display:flex;gap:8px;align-items:baseline;font-size:13px}
 .meta-row{color:var(--muted);font-size:13px;margin-top:8px}
 .meta-row b{color:var(--ink);font-weight:600}
 blockquote{margin:12px 0 0;padding:10px 14px;background:var(--code);border-radius:6px;
@@ -260,6 +262,9 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     <span class="tag">{{.Rule}}</span>
     <span class="tag det">observed</span>
   </div>
+  {{with .Verdict}}
+  <div class="verdict"><span class="tag vd">{{.Ruling}}</span><span class="s">agent{{if .Rationale}} — {{.Rationale}}{{end}}</span></div>
+  {{end}}
   <div class="meta-row">
     {{if .File}}<b>{{.File}}</b>{{if .Line}}:{{.Line}}{{end}}{{else if .Anchor}}<b>{{.Anchor.Kind}} {{.Anchor.ID}}</b>{{end}}
     {{if .Expected}}<br>expected: {{.Expected}}{{end}}

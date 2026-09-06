@@ -267,6 +267,13 @@ func section4(b *strings.Builder, rep *findings.Report, evidence map[string]pane
 		if f.Observed != "" {
 			fmt.Fprintf(b, "- observed: %s\n", f.Observed)
 		}
+		if f.Verdict != nil {
+			fmt.Fprintf(b, "- agent verdict: %s", f.Verdict.Ruling)
+			if f.Verdict.Rationale != "" {
+				fmt.Fprintf(b, " — %s", f.Verdict.Rationale)
+			}
+			fmt.Fprintf(b, "\n")
+		}
 		fmt.Fprintf(b, "- source: %s\n", f.Source)
 		if f.FixCmd != "" {
 			fmt.Fprintf(b, "- fix: %s\n", f.FixCmd)

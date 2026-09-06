@@ -624,3 +624,29 @@ func TestWalkRowsAreControlsThatCarryFindingCounts(t *testing.T) {
 		t.Fatal("a file carrying a finding must say so in the walk")
 	}
 }
+
+func TestFindingRendersAgentVerdict(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Findings: []findings.Finding{{
+				File: "a.go", Line: 3, Rule: "suppression-added", Severity: findings.SeverityInfo,
+				Message: "this change adds a nolint directive",
+				Verdict: &findings.Verdict{Ruling: "rule-noisy", Rationale: "errcheck is noisy here", Source: findings.SourceLLM},
+			}},
+		},
+		Change: &change.Set{Files: []change.File{{Path: "a.go", Language: "go", Diff: "@@ -1 +1 @@\n+x //nolint\n"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "rule-noisy") {
+		t.Error("the agent's ruling must render on the finding card")
+	}
+	if !strings.Contains(html, "errcheck is noisy here") {
+		t.Error("the rationale must render")
+	}
+	if !strings.Contains(html, `class="tag vd"`) {
+		t.Error("the verdict needs its own tag, distinct from the deterministic finding")
+	}
+}
