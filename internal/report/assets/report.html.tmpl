@@ -146,6 +146,8 @@ body.drawer-open{overflow:hidden}
 .filter-note button{font:inherit;font-size:13px;background:none;border:0;color:var(--accent);cursor:pointer;text-decoration:underline}
 .empty{color:var(--muted);font-style:italic}
 pre.diff span[data-line]{cursor:text;position:relative}
+pre.diff span[data-line]::before{content:attr(data-line);display:inline-block;width:3em;
+  margin-right:14px;text-align:right;color:var(--muted);user-select:none;opacity:.7}
 pre.diff span[data-line]:hover{outline:1px solid var(--info);outline-offset:-1px}
 pre.diff span.hit{background:rgba(250,204,21,.28)}
 .viewed{opacity:.45}
@@ -605,7 +607,15 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     // no listeners, and leaving the originals in place keeps the findings list
     // whole while the drawer is open.
     document.querySelectorAll('.f[data-file]').forEach(function (f) {
-      if (f.getAttribute("data-file") === path) { fbox.appendChild(f.cloneNode(true)); }
+      if (f.getAttribute("data-file") !== path) { return; }
+      fbox.appendChild(f.cloneNode(true));
+      // Mark every finding's line in the diff, so opening a file shows where its
+      // findings sit — not only the one line a View code click scrolled to.
+      var fl = f.getAttribute("data-line");
+      if (fl && fl !== "0") {
+        var s = body.querySelector('[data-line="' + fl + '"][data-side="new"]');
+        if (s) { s.classList.add("hit"); }
+      }
     });
 
     drawer.hidden = false; scrim.hidden = false;
