@@ -10,7 +10,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html/template"
+	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -54,11 +57,11 @@ type view struct {
 	DiffFiles []fileView
 	Observed  []findingView
 
-	Groups []drillGroup
-	Confirms  []findings.Confirmation
-	Unknowns  []findings.Unknown
-	Dark      []findings.SubstrateStatus
-	Skipped   []findings.SubstrateStatus
+	Groups   []drillGroup
+	Confirms []findings.Confirmation
+	Unknowns []findings.Unknown
+	Dark     []findings.SubstrateStatus
+	Skipped  []findings.SubstrateStatus
 	// UITouched is whether the change moves the interface at all. It decides
 	// how loud the absence of captures should be: no captures on a change that
 	// touches no UI is unremarkable, and on one that does it is a gap.
@@ -112,7 +115,6 @@ type fileView struct {
 	Severity string
 	Diff     template.HTML
 }
-
 
 // HTML renders the report page.
 func HTML(in HTMLInput) (string, error) {
@@ -180,13 +182,24 @@ func buildView(in HTMLInput) view {
 
 	if in.Change != nil {
 		count, worst := fileFindingCounts(rep.Findings)
+		findingLines := map[string][]int{}
+		for _, f := range rep.Findings {
+			if f.File != "" && f.Line > 0 {
+				findingLines[f.File] = append(findingLines[f.File], f.Line)
+			}
+		}
+		headDir := ""
+		if in.Change.Target != nil {
+			headDir = in.Change.Target.Dir
+		}
 		seen := map[string]bool{}
 		for _, g := range change.CompositionGroups(in.Change.Files) {
 			dg := drillGroup{Label: g.Language + " " + g.Kind, Count: len(g.Files), Added: g.Added, Removed: g.Removed}
 			for _, f := range g.Files {
+				diff := expandForFindings(headDir, f.Path, f.Diff, findingLines[f.Path])
 				fv := fileView{Path: f.Path, Status: f.Status, Added: f.Added, Removed: f.Removed,
 					Findings: count[f.Path], Severity: string(worst[f.Path]),
-					Diff: template.HTML(highlightDiffFor(f.Path, f.Diff))}
+					Diff: template.HTML(highlightDiffFor(f.Path, diff))}
 				dg.Files = append(dg.Files, fv)
 				if !seen[f.Path] {
 					seen[f.Path] = true
@@ -226,7 +239,6 @@ func navFor(v view) []navLink {
 	)
 	return nav
 }
-
 
 // bannerText is the same honesty check the markdown report makes. An empty
 // report is ambiguous by nature and the reader will take the flattering
@@ -276,6 +288,105 @@ func highlightDiffFor(path, diff string) string {
 			class, template.HTMLEscapeString(path), src, side, escaped)
 	}
 	return b.String()
+}
+
+// expandForFindings appends a small context window around each finding line the
+// file's diff does not already show, read from the head tree. A lint finding
+// often sits on an unchanged line the default 3-line diff context never reaches;
+// without this it cannot be located or highlighted in the drawer. Best effort:
+// a file it cannot read, or a finding already in the diff, adds nothing.
+func expandForFindings(headDir, path, diff string, lines []int) string {
+	if len(lines) == 0 {
+		return diff
+	}
+	covered := coveredNewLines(diff)
+	var want []int
+	for _, ln := range lines {
+		if ln > 0 && !covered[ln] {
+			want = append(want, ln)
+		}
+	}
+	if len(want) == 0 {
+		return diff
+	}
+	src := headFileLines(headDir, path)
+	if len(src) == 0 {
+		return diff
+	}
+	const ctx = 3
+	var b strings.Builder
+	b.WriteString(diff)
+	if diff != "" && !strings.HasSuffix(diff, "\n") {
+		b.WriteByte('\n')
+	}
+	for _, w := range mergeWindows(want, len(src), ctx) {
+		n := w.to - w.from + 1
+		fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n", w.from, n, w.from, n)
+		for i := w.from; i <= w.to; i++ {
+			b.WriteString(" ")
+			b.WriteString(src[i-1])
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
+// coveredNewLines is the set of new-file line numbers the diff already shows.
+func coveredNewLines(diff string) map[int]bool {
+	covered := map[int]bool{}
+	var cur diffCursor
+	for _, line := range strings.Split(diff, "\n") {
+		_, side, src := cur.classify(line)
+		if src > 0 && side == "new" {
+			covered[src] = true
+		}
+	}
+	return covered
+}
+
+type lineWindow struct{ from, to int }
+
+// mergeWindows turns finding lines into context windows, merging ones that touch
+// so a cluster of findings reads as one block rather than repeating lines.
+func mergeWindows(lines []int, max, ctx int) []lineWindow {
+	sort.Ints(lines)
+	var ws []lineWindow
+	for _, ln := range lines {
+		if ln < 1 || ln > max {
+			continue
+		}
+		from, to := ln-ctx, ln+ctx
+		if from < 1 {
+			from = 1
+		}
+		if to > max {
+			to = max
+		}
+		if n := len(ws); n > 0 && from <= ws[n-1].to+1 {
+			if to > ws[n-1].to {
+				ws[n-1].to = to
+			}
+			continue
+		}
+		ws = append(ws, lineWindow{from, to})
+	}
+	return ws
+}
+
+// headFileLines reads path from the head tree as lines. Empty when unreadable.
+func headFileLines(headDir, path string) []string {
+	if path == "" {
+		return nil
+	}
+	full := path
+	if headDir != "" {
+		full = filepath.Join(headDir, path)
+	}
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return nil
+	}
+	return strings.Split(string(data), "\n")
 }
 
 // diffCursor walks a unified diff, tracking old and new file line numbers.

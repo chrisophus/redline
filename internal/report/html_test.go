@@ -1,6 +1,8 @@
 package report
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -648,5 +650,32 @@ func TestFindingRendersAgentVerdict(t *testing.T) {
 	}
 	if !strings.Contains(html, `class="tag vd"`) {
 		t.Error("the verdict needs its own tag, distinct from the deterministic finding")
+	}
+}
+
+func TestExpandForFindingsAddsContextForOffDiffLine(t *testing.T) {
+	dir := t.TempDir()
+	src := "l1\nl2\nl3\nl4\nl5\nl6\nl7\nBAD()\nl9\nl10\n"
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The diff only touches line 1; the finding sits on line 8, far outside the
+	// default 3-line context, so it is not in the diff at all.
+	diff := "@@ -1 +1 @@\n-old1\n+l1\n"
+	out := expandForFindings(dir, "a.go", diff, []int{8})
+	if !strings.Contains(out, "BAD()") {
+		t.Fatalf("expected a context window around the off-diff finding line:\n%s", out)
+	}
+	// After highlighting, the finding line is addressable, so open() can mark it.
+	if !strings.Contains(highlightDiffFor("a.go", out), `data-line="8"`) {
+		t.Fatalf("the finding line must become addressable:\n%s", out)
+	}
+}
+
+func TestExpandForFindingsSkipsLinesAlreadyInDiff(t *testing.T) {
+	diff := "@@ -1,2 +1,2 @@\n-a\n+BAD()\n b\n"
+	out := expandForFindings(t.TempDir(), "a.go", diff, []int{1})
+	if out != diff {
+		t.Fatalf("a finding line already in the diff must not add context:\n%s", out)
 	}
 }
