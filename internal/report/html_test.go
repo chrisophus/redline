@@ -186,8 +186,8 @@ func TestHTMLFileWalkListsEveryChangedFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(html, `<h2 id="files">Files</h2>`) {
-		t.Fatal("report must carry a file walkthrough")
+	if !strings.Contains(html, `<h2 id="drill">Drill in</h2>`) {
+		t.Fatal("report must carry a file list")
 	}
 	for _, want := range []string{"cmd/redline/main.go", "README.md"} {
 		if !strings.Contains(html, want) {
@@ -287,8 +287,8 @@ func TestNavMarksSectionsThatAreGaps(t *testing.T) {
 		}
 	}
 	// A section with a real result is not a gap.
-	if regexp.MustCompile(`data-nav="files"[^>]*class="gap"`).MatchString(html) {
-		t.Error("the files section is not a gap")
+	if regexp.MustCompile(`data-nav="drill"[^>]*class="gap"`).MatchString(html) {
+		t.Error("the drill-in file list is not a gap")
 	}
 }
 
@@ -636,8 +636,8 @@ func TestWalkRowsAreControlsThatCarryFindingCounts(t *testing.T) {
 		},
 	}
 	ch := &change.Set{Files: []change.File{
-		{Path: "a.go", Status: "modified", Added: 1},
-		{Path: "b.go", Status: "modified", Added: 1},
+		{Path: "a.go", Status: "modified", Added: 1, Areas: []string{"code"}},
+		{Path: "b.go", Status: "modified", Added: 1, Areas: []string{"code"}},
 	}}
 
 	html, err := HTML(HTMLInput{Report: rep, Change: ch})

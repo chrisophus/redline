@@ -50,12 +50,16 @@ type view struct {
 	// on the page exposed the gap.
 	Renders []pane.Render
 
-	Files       []fileWalkRow
+	// DiffFiles is the deduped set of changed files that appear in a drill-in
+	// area, each with its diff. Rendered once into a hidden store the drawer
+	// moves from, so a diff exists in exactly one place in the DOM.
+	DiffFiles   []fileView
 	Composition []change.LinesRow
 	Observed    []findingView
 
 	Areas     []areaView
 	TestFiles int
+	TestPaths []string
 	Confirms  []findings.Confirmation
 	Unknowns  []findings.Unknown
 	Dark      []findings.SubstrateStatus
@@ -104,11 +108,13 @@ type areaView struct {
 }
 
 type fileView struct {
-	Path    string
-	Status  string
-	Added   int
-	Removed int
-	Diff    template.HTML
+	Path     string
+	Status   string
+	Added    int
+	Removed  int
+	Findings int
+	Severity string
+	Diff     template.HTML
 }
 
 // areaLabels names the drill-in sections, in the order they are shown.
@@ -195,15 +201,32 @@ func buildView(in HTMLInput) view {
 	}
 
 	if in.Change != nil {
-		v.Files = fileWalk(in.Change.Files, rep.Findings)
 		v.Composition = change.Composition(in.Change.Files)
+		count, worst := fileFindingCounts(rep.Findings)
+		rendered := map[string]bool{}
+		for _, al := range areaLabels {
+			rendered[al.Key] = true
+		}
 		byArea := map[string][]fileView{}
+		seen := map[string]bool{}
 		for _, f := range in.Change.Files {
 			fv := fileView{Path: f.Path, Status: f.Status, Added: f.Added, Removed: f.Removed,
+				Findings: count[f.Path], Severity: string(worst[f.Path]),
 				Diff: template.HTML(highlightDiffFor(f.Path, f.Diff))}
+			inArea := false
 			for _, a := range f.Areas {
 				byArea[a] = append(byArea[a], fv)
+				if rendered[a] {
+					inArea = true
+				}
 			}
+			if inArea && !seen[f.Path] {
+				seen[f.Path] = true
+				v.DiffFiles = append(v.DiffFiles, fv)
+			}
+		}
+		for _, tf := range byArea["tests"] {
+			v.TestPaths = append(v.TestPaths, tf.Path)
 		}
 		v.TestFiles = len(byArea["tests"])
 		for _, al := range areaLabels {
@@ -231,8 +254,8 @@ func navFor(v view) []navLink {
 		{ID: "interface", Label: "What it looks like", Warn: uiGap},
 		{ID: "coverage", Label: "Coverage", Warn: coverageGap},
 	}
-	if len(v.Files) > 0 {
-		nav = append(nav, navLink{ID: "files", Label: "Files", Count: len(v.Files)})
+	if len(v.Areas) > 0 {
+		nav = append(nav, navLink{ID: "drill", Label: "Drill in", Count: len(v.Areas)})
 	}
 	if len(v.Composition) > 0 {
 		nav = append(nav, navLink{ID: "composition", Label: "Lines by language and type", Count: len(v.Composition)})
@@ -241,9 +264,6 @@ func navFor(v view) []navLink {
 		nav = append(nav, navLink{ID: "changed", Label: "What changed", Count: len(v.Renders)})
 	}
 	nav = append(nav, navLink{ID: "observed", Label: "What Redline observed", Count: len(v.Observed)})
-	if len(v.Areas) > 0 {
-		nav = append(nav, navLink{ID: "drill", Label: "Drill in", Count: len(v.Areas)})
-	}
 	nav = append(nav,
 		navLink{ID: "unknowns", Label: "Undetermined", Count: len(v.Unknowns) + len(v.Dark), Warn: len(v.Unknowns)+len(v.Dark) > 0},
 		navLink{ID: "confirms", Label: "Checked and held", Count: len(v.Confirms)},
