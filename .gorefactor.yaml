@@ -10,3 +10,11 @@ walk:
   skip_dir_segments:
     - scratch
     - docs
+
+# high-blast-radius (noise) and untested-function (redundant with Redline's
+# own coverage pane) are turned off. Both are info-tier rules that surface
+# in the report because Redline's gorefactor pane reads `lint --json`.
+lint:
+  disable:
+    - high-blast-radius
+    - untested-function
