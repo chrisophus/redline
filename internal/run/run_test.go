@@ -304,6 +304,53 @@ func TestDiffCoverageReadsAProfileFromTheTree(t *testing.T) {
 	}
 }
 
+// A committed target is reviewed in a pristine worktree that holds no coverage
+// profile. When the reviewed revision is the checkout's own HEAD, the profile
+// in the checkout describes exactly that code, so it stands in.
+func TestDiffCoverageFallsBackToOriginCheckoutForCommitHead(t *testing.T) {
+	r := newRepo(t)
+	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
+	r.write("internal/x/x.go", "package x\n\nfunc A() int {\n\treturn 1\n}\n")
+	r.commit("one")
+	r.write("internal/x/x.go", "package x\n\nfunc A() int {\n\treturn 1\n}\n\nfunc B() int {\n\treturn 2\n}\n")
+	r.commit("two")
+	// The profile lives in the developer's checkout, never in the worktree.
+	r.write("coverage.out", "mode: set\n"+
+		"github.com/ccason/redline/internal/x/x.go:7.14,9.2 1 1\n")
+
+	res := r.run(run.Options{Commit: "HEAD"})
+	if res.Target.Kind != "commit" {
+		t.Fatalf("kind %q", res.Target.Kind)
+	}
+	c := res.Report.Coverage.Diff
+	if c == nil {
+		t.Fatal("expected the origin checkout profile to cover --commit HEAD")
+	}
+	if c.Profile != "coverage.out" || c.Lines == 0 {
+		t.Fatalf("coverage not computed from the fallback: %+v", c)
+	}
+}
+
+// The fallback is scoped to the checkout's HEAD. A different revision (here the
+// middle commit) must not borrow a profile that does not describe it.
+func TestDiffCoverageNoFallbackForARevisionThatIsNotHead(t *testing.T) {
+	r := newRepo(t)
+	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
+	r.write("internal/x/x.go", "package x\n\nfunc A() int {\n\treturn 1\n}\n")
+	r.commit("one")
+	r.write("internal/x/x.go", "package x\n\nfunc A() int {\n\treturn 1\n}\n\nfunc B() int {\n\treturn 2\n}\n")
+	r.commit("two")
+	r.write("more.go", "package x\n")
+	r.commit("three")
+	r.write("coverage.out", "mode: set\n"+
+		"github.com/ccason/redline/internal/x/x.go:7.14,9.2 1 1\n")
+
+	rep := r.run(run.Options{Commit: "HEAD~1"}).Report
+	if rep.Coverage.Diff != nil {
+		t.Fatalf("older commit must not borrow the checkout profile: %+v", rep.Coverage.Diff)
+	}
+}
+
 // Absence has to be recorded, not merely omitted: an empty coverage section and
 // a fully covered change look the same to a reader who is scanning.
 func TestMissingCoverageProfileIsUndetermined(t *testing.T) {

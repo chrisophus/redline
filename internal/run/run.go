@@ -158,7 +158,7 @@ func Run(opts Options) (*Result, error) {
 	findings.Sort(res.Report.Findings)
 
 	res.Change = change.Build(repo, tgt, baseSHA, changed)
-	attachDiffCoverage(&res.Report, res.Change, tgt.Dir)
+	attachDiffCoverage(&res.Report, res.Change, tgt.Dir, originCoverageDir(opts.Dir, tgt))
 	return res, nil
 }
 
@@ -169,7 +169,7 @@ func Run(opts Options) (*Result, error) {
 // number: "no test executes these lines" and "nobody measured" look identical on
 // a page that only shows a percentage, and only one of them is a problem the
 // author can fix by writing a test.
-func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir string) {
+func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir, originDir string) {
 	if ch == nil || len(ch.Files) == 0 {
 		return
 	}
@@ -186,6 +186,13 @@ func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir string) {
 		return
 	}
 	rep.Coverage.Diff = cover.Compute(dir, changed)
+	if rep.Coverage.Diff == nil && originDir != "" && originDir != dir {
+		// The panes observe a pristine worktree of the reviewed revision, which
+		// holds no local coverage profile. When that revision is the origin
+		// checkout's own HEAD, the developer's profile there describes exactly
+		// this code, so read it instead of reporting the tests as unmeasured.
+		rep.Coverage.Diff = cover.Compute(originDir, changed)
+	}
 	switch {
 	case rep.Coverage.Diff == nil:
 		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
@@ -200,6 +207,27 @@ func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir string) {
 			Reason:    "re-run the suite with -coverprofile",
 		})
 	}
+}
+
+// originCoverageDir returns the origin checkout's root when the reviewed
+// revision is that checkout's current HEAD, so a coverage profile living there
+// can stand in for the pristine worktree's absent one. It returns "" for any
+// other revision (an older commit, another branch, a PR): that profile would
+// not describe the reviewed code, and absence stays the honest answer. It also
+// returns "" for a working-tree target, whose Dir already is the origin root.
+func originCoverageDir(dir string, tgt *target.Target) string {
+	if dir == "" {
+		dir = "."
+	}
+	orig, err := gitx.Open(dir)
+	if err != nil || orig.Root == tgt.Dir {
+		return ""
+	}
+	head, err := orig.Head()
+	if err != nil || head != tgt.Head {
+		return ""
+	}
+	return orig.Root
 }
 
 func runPane(p pane.Pane, baseSHA string) (pane.Result, error) {
