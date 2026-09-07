@@ -71,8 +71,11 @@ func exitOK(exit int, okCodes []int) bool {
 	return false
 }
 
-// parseGenericJSON reads an arbitrary JSON body using the tool's ResultsPath
-// and Fields to locate each result's file, line, rule, message and severity.
+// parseGenericJSON reads an arbitrary JSON body using the tool's ResultsPath and
+// Fields to locate each result's file, line, rule, message and severity. When
+// ItemsPath is set, each ResultsPath element is a group whose inner array fans
+// out into one Issue per item, with fields resolved against the item then the
+// group.
 func parseGenericJSON(stdout string, cfg ToolConfig) ([]Issue, error) {
 	var root any
 	if err := decodeOneJSON(stdout, &root); err != nil {
@@ -86,19 +89,53 @@ func parseGenericJSON(stdout string, cfg ToolConfig) ([]Issue, error) {
 	if !ok {
 		return nil, fmt.Errorf("%s: resultsPath %q is not an array", cfg.Name, cfg.ResultsPath)
 	}
-	out := make([]Issue, 0, len(arr))
+	var out []Issue
 	for _, item := range arr {
-		rawSev := asString(jsonPathGet(item, cfg.Fields.Severity))
-		out = append(out, Issue{
-			Tool:     cfg.Name,
-			File:     asString(jsonPathGet(item, cfg.Fields.File)),
-			Line:     asInt(jsonPathGet(item, cfg.Fields.Line)),
-			Rule:     asString(jsonPathGet(item, cfg.Fields.Rule)),
-			Message:  asString(jsonPathGet(item, cfg.Fields.Message)),
-			Severity: mapSeverity(rawSev, cfg.SeverityMap),
-		})
+		if cfg.ItemsPath == "" {
+			out = append(out, issueFrom(item, nil, cfg))
+			continue
+		}
+		inner, ok := jsonPathGet(item, cfg.ItemsPath)
+		if !ok {
+			// A group with no inner array (a clean file) contributes nothing.
+			continue
+		}
+		items, ok := inner.([]any)
+		if !ok {
+			return nil, fmt.Errorf("%s: itemsPath %q is not an array", cfg.Name, cfg.ItemsPath)
+		}
+		for _, sub := range items {
+			out = append(out, issueFrom(sub, item, cfg))
+		}
 	}
 	return out, nil
+}
+
+// issueFrom builds one Issue, resolving each field against item and falling back
+// to parent when item does not carry it. With itemsPath fan-out the file often
+// lives on the outer group and the line, rule, and message on the inner item;
+// the fallback covers that without a separate outer and inner mapping.
+func issueFrom(item, parent any, cfg ToolConfig) Issue {
+	get := func(path string) (any, bool) {
+		if path == "" {
+			return nil, false
+		}
+		if v, ok := jsonPathGet(item, path); ok {
+			return v, true
+		}
+		if parent != nil {
+			return jsonPathGet(parent, path)
+		}
+		return nil, false
+	}
+	return Issue{
+		Tool:     cfg.Name,
+		File:     asString(get(cfg.Fields.File)),
+		Line:     asInt(get(cfg.Fields.Line)),
+		Rule:     asString(get(cfg.Fields.Rule)),
+		Message:  asString(get(cfg.Fields.Message)),
+		Severity: mapSeverity(asString(get(cfg.Fields.Severity)), cfg.SeverityMap),
+	}
 }
 
 // sarifLog is the subset of SARIF one issue needs: rule, level, message, and

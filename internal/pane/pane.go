@@ -36,6 +36,10 @@ type Result struct {
 	Confirmations []findings.Confirmation
 	Unknowns      []findings.Unknown
 
+	// Tools is per-tool health, for panes that run external tools. Aggregated
+	// into Report.Tools so findings.json states which linters ran.
+	Tools []findings.ToolStatus
+
 	// Evidence maps an observation ID to the artifact backing it — the SQL a
 	// migration edit actually changed, a schema dump, a captured response.
 	// Findings reference these by ID. A finding a reviewer cannot check for

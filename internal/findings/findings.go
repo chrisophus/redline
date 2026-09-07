@@ -223,6 +223,12 @@ type Report struct {
 	Confirmations []Confirmation `json:"confirmations,omitempty"`
 	Unknowns      []Unknown      `json:"unknowns,omitempty"`
 
+	// Tools is the per-tool health of the lint delta: which external linters ran
+	// with a comparable base revision, and which degraded to added-line findings.
+	// Empty when the lint pane did not run. A reader of findings.json sees tool
+	// health here rather than parsing it out of unknowns[].reason.
+	Tools []ToolStatus `json:"tools,omitempty"`
+
 	// Agent is the review narrative the agent wrote, read from review.json: an
 	// overview of the change and a per-file summary, rendered as the agent's.
 	Agent *AgentReview `json:"agent,omitempty"`
@@ -232,6 +238,17 @@ type Report struct {
 	// which lived. A lived mutant is a line a test runs but nothing asserts. Nil
 	// when no report was found.
 	Mutation *mutation.Result `json:"mutation,omitempty"`
+}
+
+// ToolStatus is the health of one external tool the lint-delta pane ran. Status
+// is "ran" when the tool produced a comparable result at base and head, or
+// "degraded" when the base run or baseline failed and the delta fell back to
+// findings on added lines. A tool that fails at head fails the whole pane, so it
+// never appears here: it shows up as a failed substrate instead.
+type ToolStatus struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Detail string `json:"detail,omitempty"`
 }
 
 // AgentReview is the agent's prose layer over a change, ingested from

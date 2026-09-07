@@ -205,6 +205,7 @@ func Run(opts Options) (*Result, error) {
 		res.Report.Findings = append(res.Report.Findings, out.Findings...)
 		res.Report.Confirmations = append(res.Report.Confirmations, out.Confirmations...)
 		res.Report.Unknowns = append(res.Report.Unknowns, out.Unknowns...)
+		res.Report.Tools = append(res.Report.Tools, out.Tools...)
 		res.Renders = append(res.Renders, out.Render)
 		for id, a := range out.Evidence {
 			res.Evidence[id] = a

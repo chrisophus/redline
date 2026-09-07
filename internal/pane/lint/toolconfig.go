@@ -65,6 +65,14 @@ type ToolConfig struct {
 	// root value is that array.
 	ResultsPath string     `yaml:"resultsPath"`
 	Fields      FieldPaths `yaml:"fields"`
+	// ItemsPath fans out a nested array. When set, each element of the
+	// ResultsPath array is a group (one file, say) and ItemsPath is the dotted
+	// path to the array of results inside it (its violations). One Issue is
+	// emitted per inner item, and each Fields path is resolved against the inner
+	// item first, then the outer group — so a file path on the group and a line
+	// and rule on each violation both map. This is the shape sqlfluff's default
+	// JSON and several per-file reporters use.
+	ItemsPath string `yaml:"itemsPath"`
 	// SeverityMap translates the tool's own severity spelling (a string,
 	// even for a tool that writes a bare number: "0", "1") to Redline's
 	// error/warning/info. A value with no entry here falls back to a

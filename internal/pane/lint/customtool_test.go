@@ -76,6 +76,40 @@ func TestParseGenericJSON(t *testing.T) {
 	}
 }
 
+// itemsPath fans a per-file report (sqlfluff's default JSON shape) out into one
+// issue per violation: the file comes from the outer group, the line, rule, and
+// message from each inner violation, and a clean file contributes nothing.
+func TestParseGenericJSONItemsPath(t *testing.T) {
+	cfg := ToolConfig{
+		Name:        "sqlfluff",
+		ResultsPath: "",
+		ItemsPath:   "violations",
+		Fields: FieldPaths{
+			File: "filepath", Line: "line_no", Rule: "code", Message: "description",
+		},
+	}
+	out := `[
+	  {"filepath":"a.sql","violations":[
+	     {"line_no":3,"code":"L010","description":"keywords upper"},
+	     {"line_no":7,"code":"L003","description":"indent"}
+	  ]},
+	  {"filepath":"b.sql","violations":[]}
+	]`
+	issues, err := parseGenericJSON(out, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issues) != 2 {
+		t.Fatalf("fan-out should yield 2 issues (b.sql is clean), got %d: %+v", len(issues), issues)
+	}
+	if got := issues[0]; got.File != "a.sql" || got.Line != 3 || got.Rule != "L010" || got.Message != "keywords upper" {
+		t.Fatalf("first issue = %+v; file from outer group, rest from inner", got)
+	}
+	if got := issues[1]; got.File != "a.sql" || got.Line != 7 || got.Rule != "L003" {
+		t.Fatalf("second issue = %+v", got)
+	}
+}
+
 func TestParseSARIF(t *testing.T) {
 	out := `{"runs":[{"results":[
 	  {"ruleId":"G404","level":"warning","message":{"text":"weak rng"},

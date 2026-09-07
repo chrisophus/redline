@@ -84,6 +84,9 @@ tools:
 #   scope        glob patterns this tool covers ("**" crosses directories)
 #   format       "sarif", "spectral", or "json"
 #   resultsPath  (json) dotted path to the results array; "" if the root is it
+#   itemsPath    (json) dotted path to a nested results array inside each
+#                resultsPath element; fans out one finding per inner item,
+#                fields resolved against the inner item then the outer group
 #   fields       (json) dotted paths to each result's file/line/rule/message/severity
 #   severityMap  the tool's severity spelling -> error | warning | info
 #   lineOffset   added to every line number (set 1 for 0-indexed tools)

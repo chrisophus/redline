@@ -191,6 +191,7 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 	resolved := 0
 	anyDegraded := false
 	var toolNames []string
+	var toolStatuses []findings.ToolStatus
 	for _, hr := range head.Runs {
 		toolNames = append(toolNames, hr.Tool)
 
@@ -230,11 +231,13 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 				Message:   degradeMsg,
 				Reason:    reason,
 			})
+			toolStatuses = append(toolStatuses, findings.ToolStatus{Name: hr.Tool, Status: "degraded", Detail: reason})
 			continue
 		}
 		in, out := diffIssues(baseIssues, hr.Issues)
 		introduced = append(introduced, in...)
 		resolved += out
+		toolStatuses = append(toolStatuses, findings.ToolStatus{Name: hr.Tool, Status: "ran"})
 	}
 
 	// Differ tools run once here, comparing each scoped file at base and head
@@ -254,6 +257,12 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 			res.Unknowns = append(res.Unknowns, unknowns...)
 		}
 		introduced = append(introduced, issues...)
+		st := findings.ToolStatus{Name: t.name, Status: "ran"}
+		if len(unknowns) > 0 {
+			st.Status = "degraded"
+			st.Detail = "some scoped files had no comparable base or head side to diff"
+		}
+		toolStatuses = append(toolStatuses, st)
 	}
 
 	sort.SliceStable(introduced, func(i, j int) bool {
@@ -301,6 +310,7 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 	if p.configChanged {
 		res.Render.Summary += " — the change also edits a lint config, so part of this delta may be configuration rather than code"
 	}
+	res.Tools = toolStatuses
 	return res, nil
 }
 

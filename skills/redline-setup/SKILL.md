@@ -72,7 +72,8 @@ target or script that writes the profile. `redline run --prepare` runs
 See `.redline.yml.example` for the schema (`when: stale|missing|always`,
 optional `scope` globs, optional `env.from` script sourced before each
 produce step). Point `path` at `coverage.out` (or where the suite writes)
-and `produce` at the same command CI uses (`make test-coverage`, etc.).
+and `produce` at the command CI uses, written `{command, args}` (for example
+`{command: make, args: [test-coverage]}`).
 
 When the repository embeds built assets for Go compile (for example
 `ui/embed.go` with `//go:embed dist`), add `harness.worktree` steps that
@@ -106,6 +107,9 @@ matter when writing an entry:
   OpenAPI linters. Otherwise `format: json` with `resultsPath` and a
   `fields` mapping; each field is a dotted path and may index an array
   (`messages[0].Note`).
+  A per-file report that nests results under each file (sqlfluff's default,
+  for one) needs `itemsPath`: the dotted path to the inner array, fanned out to
+  one finding per item with fields read from the item then its group.
 - `scope` is the globs this tool speaks for. A changed file outside every
   tool's scope is reported as unexamined, so scope should match what the
   tool actually reads.
@@ -170,8 +174,9 @@ way oasdiff does, so it is a `differ` if the repository uses Atlas.
 SQL style. sqlfluff with `--dialect postgres` and its flat GitHub
 annotation output (`--format github-annotation`), mapped with
 `format: json`: `file`, `start_line`, `message`, `annotation_level`, and
-`title` as the rule. Its default JSON nests violations under each file and
-does not fit.
+`title` as the rule. Its default JSON nests violations under each file; map
+that with `itemsPath: violations`, `file` reading `filepath` from the group and
+`line`, `rule`, `message` reading `line_no`, `code`, `description` from each.
 
 Other linters that emit SARIF or flat JSON and slot in with a scope glob:
 semgrep (`--sarif`), gosec (`-fmt sarif`), trivy (`--format sarif`),
@@ -211,9 +216,11 @@ After writing `.redline.yml`, run `redline run --prepare` on the working
 tree (or `--commit HEAD` in a clean tree) when harness profiles are
 configured, else `redline run`, and read `.redline/findings.json`:
 
-- Every tool you wired appears in the lint delta's tool list with a status
-  other than failed. A failed tool means the command, flags, or mapping is
-  wrong; fix it before reporting the tool as wired.
+- Every tool you wired appears in `tools[]` with `status: ran` (or `degraded`
+  when its base run or baseline failed and the delta fell back to added-line
+  findings). A tool missing from `tools[]`, or the whole lint pane failing in
+  `substrates[]`/`unknowns[]`, means the command, flags, or mapping is wrong;
+  fix it before reporting the tool as wired.
 - `coverage.examinedFiles` against `coverage.changedFiles` tells you
   whether scope globs cover what changed.
 - When the repository uses gomutants, run its mutate target once (with any
