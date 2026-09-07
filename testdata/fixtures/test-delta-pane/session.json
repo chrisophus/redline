@@ -12,6 +12,42 @@
     ],
     "findings": [
       {
+        "file": "internal/pane/testdelta/testdelta.go",
+        "rule": "gorefactor/data-clumps",
+        "substrate": "redline/lint",
+        "category": "lint",
+        "severity": "info",
+        "message": "this change introduces a data-clumps violation: Parameter group [baseRev string, res *pane.Result, lines *[]string] appears in 2 functions; consider creating a struct",
+        "new": true,
+        "fingerprint": "internal/pane/testdelta/testdelta.go\u0000gorefactor/data-clumps\u0000this change introduces a data-clumps violation: Parameter group [baseRev string, res *pane.Result, lines *[]string] appears in # functions; consider creating a struct",
+        "id": "f45b3a599b5",
+        "evidence": [
+          "lint@4cfafc4f0cb709d0313ef8a372ae49aff5bc168f",
+          "lint@worktree"
+        ],
+        "expected": "no new linter findings against the base revision",
+        "observed": "gorefactor reports data-clumps at head and not at base",
+        "source": "deterministic"
+      },
+      {
+        "file": "internal/findings",
+        "rule": "gorefactor/high-coupling",
+        "substrate": "redline/lint",
+        "category": "lint",
+        "severity": "info",
+        "message": "this change introduces a high-coupling violation: package internal/findings has fan-in 9 (threshold 8) — many local packages depend on it; high blast radius for changes",
+        "new": true,
+        "fingerprint": "internal/findings\u0000gorefactor/high-coupling\u0000this change introduces a high-coupling violation: package internal/findings has fan-in # (threshold #) — many local packages depend on it; high blast radius for changes",
+        "id": "ff76a55c941",
+        "evidence": [
+          "lint@4cfafc4f0cb709d0313ef8a372ae49aff5bc168f",
+          "lint@worktree"
+        ],
+        "expected": "no new linter findings against the base revision",
+        "observed": "gorefactor reports high-coupling at head and not at base",
+        "source": "deterministic"
+      },
+      {
         "rule": "source-without-test",
         "substrate": "redline/test-delta",
         "category": "tests",
@@ -157,8 +193,7 @@
       },
       {
         "name": "redline/lint",
-        "state": "failed",
-        "detail": "observe worktree: golangci-lint at head: golangci-lint exited 3: Error: can't load config: the Go language version (go1.25) used to build golangci-lint is lower than the targeted Go version (1.26)",
+        "state": "ran",
         "gating": false
       },
       {
@@ -179,7 +214,7 @@
       }
     ],
     "newCount": {
-      "info": 9
+      "info": 11
     },
     "coverage": {
       "changedFiles": 5,
@@ -196,11 +231,14 @@
         "message": "this change adds no lint-silencing directive"
       }
     ],
-    "unknowns": [
+    "tools": [
       {
-        "substrate": "redline/lint",
-        "message": "pane applied to this change but did not run",
-        "reason": "observe worktree: golangci-lint at head: golangci-lint exited 3: Error: can't load config: the Go language version (go1.25) used to build golangci-lint is lower than the targeted Go version (1.26)"
+        "name": "golangci-lint",
+        "status": "ran"
+      },
+      {
+        "name": "gorefactor",
+        "status": "ran"
       }
     ]
   },
@@ -228,6 +266,7 @@
         "added": 1,
         "removed": 1,
         "diff": "diff --git a/docs/plans/potential-enhancements.md b/docs/plans/potential-enhancements.md\nindex bc14b94..9001800 100644\n--- a/docs/plans/potential-enhancements.md\n+++ b/docs/plans/potential-enhancements.md\n@@ -17,7 +17,7 @@ Each item is a candidate, not a commitment. Effort is rough: **S** days,\n | Coverage delta | Per-package percentage at base and head on the two-worktree runner. A drop becomes a finding with the number in it. | M |\n | Error-path nuance | Call out uncovered added lines inside error-handling branches separately from other gaps. | S |\n | TypeScript / lcov profiles | Read lcov or istanbul output the same way as Go `coverage.out`, including measured mode when the UI test command produces one. | M |\n-| Test-delta facts | Cheap diff observations: code changed where tests did not, new `t.Skip` / `.skip`, deleted assertions. Info findings for the reviewer to weigh. | S |\n+| Test-delta facts (shipped) | Info findings from the diff: a Go package changed with no test in it, a `t.Skip`/`.skip`/`.only` added, or a net drop in assertion-like lines in a test. Pane `internal/pane/testdelta`. | done |\n | Per-test attribution | Map a line to the tests that execute it. Needs per-test profiles and real test runs; same data mutation wants. Opt-in command, not default `run`. See report-roadmap. | L |\n | CI profile ingest | Read `coverage.out` (or lcov) from a CI artifact URL or path when local produce is too heavy. Harness `from: ci` or env substitution. | M |\n \n",
+        "head": "# Potential enhancements\n\nIdeas for Redline itself: new panes, harness behavior, tool wiring, and\nworkflow. Report layout and drill-in UX live in\n[report-roadmap.md](report-roadmap.md). Phased design rationale is in\n[redline-design.md](../../redline-design.md) at the repo root.\n\nEach item is a candidate, not a commitment. Effort is rough: **S** days,\n**M** weeks, **L** multi-week.\n\n## Coverage\n\n| Item | What | Effort |\n|------|------|--------|\n| Measured mode (`--measure`) | Run the repo test command with coverage at head when no profile exists or the harness artifact is stale. Off by default so `run` never silently starts a ten-minute suite. | M |\n| Function-level findings | Name new or rewritten functions with no executing test, anchored at the declaration. Finer than a diff-coverage percentage alone. | M |\n| Coverage delta | Per-package percentage at base and head on the two-worktree runner. A drop becomes a finding with the number in it. | M |\n| Error-path nuance | Call out uncovered added lines inside error-handling branches separately from other gaps. | S |\n| TypeScript / lcov profiles | Read lcov or istanbul output the same way as Go `coverage.out`, including measured mode when the UI test command produces one. | M |\n| Test-delta facts (shipped) | Info findings from the diff: a Go package changed with no test in it, a `t.Skip`/`.skip`/`.only` added, or a net drop in assertion-like lines in a test. Pane `internal/pane/testdelta`. | done |\n| Per-test attribution | Map a line to the tests that execute it. Needs per-test profiles and real test runs; same data mutation wants. Opt-in command, not default `run`. See report-roadmap. | L |\n| CI profile ingest | Read `coverage.out` (or lcov) from a CI artifact URL or path when local produce is too heavy. Harness `from: ci` or env substitution. | M |\n\n## Lint and external tools\n\n| Item | What | Effort |\n|------|------|--------|\n| Built-in `tsc` wrapper | Ship a small reporter script (like repo-specific `redline-eslint-json`) so TypeScript errors join lint delta without every consumer inventing JSON flattening. Example stub exists in `.redline.yml.example`. | S |\n| SARIF as a documented pattern | First-class doc + setup skill recipe for tools that only emit SARIF (many security scanners). Parser may already exist; make setup discover it. | S |\n| Companion checks beside differs | Repos often pair OpenAPI lint with a second command on the same file (`gen-permissions --check`, custom codegen verify). Document the pattern; setup skill could emit sibling tool entries. | S |\n| Markdown lint | `markdownlint-cli2` on changed `*.md` via JSON or wrapper. Docs-only PRs are common; CI often skips them. | S |\n| Scope suppressions in `_test.go` | Fuzz seeds and fixture `//nolint` in Redline's own tests read as real suppressions today. Per-path exclusion or default skip for test-only paths. See report-roadmap backlog. | S |\n| `untested-function` on the diff | Gorefactor info finding for changed functions with no test at all. Blocked on repo-relative paths from gorefactor (see below). | S |\n| Smell findings with line anchors | Gorefactor smells and duplicate-block rules report no node position today, so Redline cannot place them on a line. Upstream fix unlocks the unified line view. | M (upstream) |\n| Baseline-file tools in setup | `baseline: {mode: file}` is implemented; `/redline-setup` should detect committed debt files and wire them without hand-editing. | S |\n\n## Harness and worktree preparation\n\n| Item | What | Effort |\n|------|------|--------|\n| Dependency install steps | Worktree `produce` for `node_modules`, `go generate` stubs, or other gitignored dirs linters need. MCT needs `ui/dist` (shipped) and `ui/node_modules` (not yet). | S |\n| Mutation produce (opt-in) | Harness profile with `produce: make mutate` scoped to changed packages. Slow and DB-dependent; must stay off default `--prepare`, documented as explicit opt-in. | S |\n| Generated-code drift pane | `verify-generated` style: run codegen and diff. Not a linter delta; needs a pane that reports \"these generated paths drifted\" with file list. | M |\n| Staleness hints for slow profiles | When `coverage.out` or `mutants.json` is present but older than the diff, say how stale (mtime vs HEAD) in the report and `findings.json`. Partial today; make it consistent. | S |\n| Multi-profile merge | Some repos have Go coverage and UI lcov. Apply scope per profile and merge `examinedFiles` / unknowns without double-counting. | M |\n| `redline.toml` runtime config | Single config for DB URL, migrate command, seed, routes when runtime panes land. Design when the first runtime pane ships (design doc phase 4). | L |\n\n## New panes and substrates\n\n| Item | What | Effort |\n|------|------|--------|\n| OpenAPI rule lint (vacuum) as built-in | Many repos already wire vacuum in `.redline.yml`. Could detect ruleset + spec paths and run spectral-report without YAML duplication. | M |\n| sqlc / codegen staleness | `sqlc generate` (or equivalent) and diff `internal/data/db`. Same family as generated drift. | M |\n| Spec vs handler agreement | OpenAPI pane today is contract diff only. Checking handlers match the spec needs a running API or static codegen crosswalk. Deferred in openapi pane comments. | L |\n| Migration execution (Postgres) | Apply migrations in a throwaway DB: lock class, rewrite risk, timing, down migration, constraint violations on seed data. Git checks (shipped) are the cheap half. | L |\n| Fixture / seed safety scan | Scan changed testdata for real identifiers. Go tool, text output; wrapper or SARIF. Valuable for data-heavy repos. | M |\n| Import / arch lint | `go-arch-lint` or depguard matrix as a scoped custom tool. Complements golangci, not a duplicate delta. | S |\n| UI capture | Pinned browser, route screenshots, console errors, failed requests. No perceptual diff. Explicit `redline setup browser`; pane skipped when missing. Design doc phase 4. | L |\n| Interface section | Permanent gap banner vs agent screenshots vs deterministic \"what UI moved\" list. No decision yet. See report-roadmap backlog. | M |\n\n## Agent workflow and decisions\n\n| Item | What | Effort |\n|------|------|--------|\n| Verdict vocabulary expansion | Today: suppressions (justified / should-fix / rule-noisy). Extend to coverage gaps, config drift, migration findings, lint delta. Same fingerprint machinery. Design doc \"Decisions\" section. | M |\n| Verdicts on mutation survivors | `mutants.json` overlays lines; reviewer should record \"needs test\" / \"equivalent\" / \"acceptable\" per survivor fingerprint. | S |\n| Post verdicts to PR | Whether human/agent decisions ride on `redline post` or stay local. Open question in design doc. | M |\n| Multi-reviewer `review.json` | Merge agent + Bugbot (or two agents) into one report without overwriting. MCT publishes per-reviewer; Redline could key by `reviewer` field. | M |\n| `redline serve` live loop | Replace copy-paste \"Copy for the agent\" with a websocket or stdin bridge. Upgrade path noted in report-roadmap. | L |\n| Broader review skill context | Skill text for \"why was this nolint added\" and whether a rule is noisy. Docs/skills, not binary code. | S |\n\n## Setup, CLI, and distribution\n\n| Item | What | Effort |\n|------|------|--------|\n| Setup skill: worktree steps | `/redline-setup` proposes `harness.worktree` entries when linters need generated or installed paths (embed dirs, `node_modules`, sqlc output). | S |\n| Setup skill: harness profiles | Detect `make test-coverage`, `make mutate`, and suggest profiles with correct `scope` and `when`. | S |\n| `redline doctor` | Validate `.redline.yml`, tool presence, worktree produce dry-run, and print what would run for the current diff. | M |\n| Version skew warning | Compare skill pin vs binary version on `run` (install doc already warns; enforce in CLI). | S |\n| Publish findings schema | Document `findings.json` version field and migration notes for consumers (agents, merge gates). | S |\n\n## CI integration and posting\n\n| Item | What | Effort |\n|------|------|--------|\n| Artifact upload recipe | Standard GitHub Actions step: upload `.redline/report.html` + `findings.json`, pass URL to `redline post --report-url`. Document in README. | S |\n| Merge gate profiles | More examples beyond `redline-review.yml.example`: require mutation section present, require coverage profile, allow missing UI lint when no `ui/**` in scope. | S |\n| PR head reuse | When CI runs Redline on PR head and a developer runs locally, detect matching SHA and skip re-lint if artifacts are fresh (optional cache protocol). | M |\n| Post agent + observed in one review | `post` today is observed findings; agent comments are separate publish scripts in some repos. Unify or document the two-step flow clearly. | S |\n\n## Gorefactor upstream (blocks unified line view)\n\n| Gap | Impact |\n|-----|--------|\n| Smells / duplicate-block without positions | Findings cannot anchor to a line in the drawer. |\n| `untested-*` module-qualified paths | Redline strips via `go.mod`; repo-relative emission would be cleaner and more reliable. |\n| Orphaned-config-path on gitignored dirs | Consumers need placeholder dirs (`.keep` pattern) for literal skip paths. Document in setup skill. |\n\n## Dogfooding notes (Marketplace Core and similar repos)\n\nItems surfaced while wiring `.redline.yml` on a large Go + React + OpenAPI repo:\n\n- ESLint and tsc need `ui/node_modules` in detached PR worktrees; only `stub-ui` is wired today.\n- Gorefactor runs in Redline lint delta but not in the repo's fast `verify-lint` path, so Redline is stricter than the agent default. Document that intentional gap for adopters.\n- `mutation-quality-check` (CI baseline compare) is faster than local `make mutate` but is outside Redline; could be a documented companion or a harness `from: script` ingest later.\n- oasdiff + built-in OpenAPI pane overlap slightly; report should dedupe or label \"structural diff\" vs \"oasdiff breaking\" so reviewers do not read the same break twice.\n- Shellcheck scope is often narrower than `make lint-deploy-scripts` (severity, path filters). Setup skill should copy the repo's real shell gate, not `**/*.sh`.\n\n## Suggested near-term batch\n\nIf picking a small set that improves most adopter repos without runtime infrastructure:\n\n1. Built-in or shared `tsc` JSON wrapper.\n2. Setup skill proposals for worktree install steps and harness profiles.\n3. Verdict vocabulary for coverage and lint findings (not only suppressions).\n4. Generated / verify-generated drift pane (even if Go-only first).\n5. Document CI artifact + `--report-url` posting pattern.\n",
         "language": "markdown",
         "areas": [
           "code"
@@ -239,6 +278,7 @@
         "added": 3,
         "removed": 0,
         "diff": "diff --git a/internal/findings/findings.go b/internal/findings/findings.go\nindex 5eb6086..5fcc642 100644\n--- a/internal/findings/findings.go\n+++ b/internal/findings/findings.go\n@@ -35,6 +35,7 @@ const (\n \tCategoryUI       Category = \"ui\"       // rendered interface\n \tCategoryLint     Category = \"lint\"     // lint delta, suppressions, lint config\n \tCategoryReview   Category = \"review\"   // agent review comment\n+\tCategoryTests    Category = \"tests\"    // test-delta facts from the diff\n )\n \n // DefaultSeverity derives a finding's severity from its category. Redline's\n@@ -46,6 +47,8 @@ func (c Category) DefaultSeverity() Severity {\n \t\treturn SeverityError\n \tcase CategoryReview:\n \t\treturn SeverityInfo\n+\tcase CategoryTests:\n+\t\treturn SeverityInfo\n \tdefault:\n \t\treturn SeverityWarning\n \t}\n",
+        "head": "// Package findings is Redline's wire format. It is not a new schema: it is an\n// independent reimplementation of doctor's JSON shape (gorefactor/doctor,\n// SchemaVersion 1), extended additively. Shared contract, not shared internals.\npackage findings\n\nimport (\n\t\"sort\"\n\n\t\"github.com/chrisophus/redline/internal/cover\"\n\t\"github.com/chrisophus/redline/internal/mutation\"\n)\n\n// SchemaVersion guards the JSON encoding of Report. Kept in lockstep with\n// doctor's constant of the same name.\nconst SchemaVersion = 1\n\n// Severity of a finding.\ntype Severity string\n\nconst (\n\tSeverityError   Severity = \"error\"\n\tSeverityWarning Severity = \"warning\"\n\tSeverityInfo    Severity = \"info\"\n)\n\n// Category classifies a finding. Redline adds its own categories rather than\n// overloading doctor's — doctor's \"api\" means undeclared Go exported-API\n// changes, which is a different thing from an HTTP contract change.\ntype Category string\n\nconst (\n\tCategorySchema   Category = \"schema\"   // migrations, database structure\n\tCategoryContract Category = \"contract\" // HTTP/OpenAPI contract\n\tCategoryCover    Category = \"cover\"    // diff coverage\n\tCategoryUI       Category = \"ui\"       // rendered interface\n\tCategoryLint     Category = \"lint\"     // lint delta, suppressions, lint config\n\tCategoryReview   Category = \"review\"   // agent review comment\n\tCategoryTests    Category = \"tests\"    // test-delta facts from the diff\n)\n\n// DefaultSeverity derives a finding's severity from its category. Redline's\n// categories all describe changes that alter a contract with something outside\n// the diff, so they default to error; a pane may demote per finding.\nfunc (c Category) DefaultSeverity() Severity {\n\tswitch c {\n\tcase CategorySchema, CategoryContract:\n\t\treturn SeverityError\n\tcase CategoryReview:\n\t\treturn SeverityInfo\n\tcase CategoryTests:\n\t\treturn SeverityInfo\n\tdefault:\n\t\treturn SeverityWarning\n\t}\n}\n\n// Source names where a finding came from. Every pane Redline ships is\n// deterministic; the field stays in the wire format so a reader of\n// findings.json can see that stated rather than assumed.\ntype Source string\n\nconst (\n\tSourceDeterministic Source = \"deterministic\"\n\tSourceLLM           Source = \"llm\"\n)\n\n// Anchor is a pane-relative location, for findings that have no file:line.\n// Kind names the pane's identity scheme (\"migration\", \"table.column\",\n// \"method path\"); ID is the value. Anchor identity must be stable across runs\n// because the fingerprint is the join key for human comment state.\ntype Anchor struct {\n\tKind string `json:\"kind\"`\n\tID   string `json:\"id\"`\n}\n\n// Key returns the anchor's contribution to a fingerprint.\nfunc (a *Anchor) Key() string {\n\tif a == nil {\n\t\treturn \"\"\n\t}\n\treturn a.Kind + \":\" + a.ID\n}\n\n// Finding is one diagnostic from one pane. Fields through Context mirror\n// doctor's Finding; the rest are Redline's additive extension.\ntype Finding struct {\n\tFile string `json:\"file,omitempty\"`\n\tLine int    `json:\"line,omitempty\"`\n\t// StartLine is the first line of a ranged comment. Zero means the comment\n\t// anchors on Line alone. When set it must be less than or equal to Line.\n\tStartLine   int      `json:\"startLine,omitempty\"`\n\tRule        string   `json:\"rule\"`\n\tSubstrate   string   `json:\"substrate\"`\n\tCategory    Category `json:\"category\"`\n\tSeverity    Severity `json:\"severity\"`\n\tMessage     string   `json:\"message\"`\n\tNew         bool     `json:\"new\"`\n\tFingerprint string   `json:\"fingerprint\"`\n\tFixCmd      string   `json:\"fixCmd,omitempty\"`\n\t// Suggestion is a literal single-file replacement for the anchored lines,\n\t// rendered as a GitHub suggestion block when short enough. Empty means no\n\t// proposed fix; a suggestion that would need more than one file is refused\n\t// rather than emitted wrong.\n\tSuggestion string `json:\"suggestion,omitempty\"`\n\tContext    string `json:\"context,omitempty\"`\n\n\tAnchor   *Anchor  `json:\"anchor,omitempty\"`   // pane-relative location; file:line often absent\n\tEvidence []string `json:\"evidence,omitempty\"` // observation IDs backing the claim\n\tExpected string   `json:\"expected,omitempty\"` // for surprise ranking\n\tObserved string   `json:\"observed,omitempty\"`\n\tSource   Source   `json:\"source,omitempty\"`\n\t// Verdict is the agent's judgment of this finding, merged from review.json\n\t// after fingerprints are stamped. Nil until an agent has ruled on it.\n\tVerdict *Verdict `json:\"verdict,omitempty\"`\n}\n\n// Verdict is an agent's judgment of a finding, ingested from review.json and\n// joined by fingerprint. Redline never fills it: the instrument states facts,\n// the agent supplies the reading, so Source is always \"llm\". Ruling is a short\n// controlled word per finding class (justified / should-fix / rule-noisy for a\n// suppression); Rationale is one line of why.\ntype Verdict struct {\n\tRuling    string `json:\"ruling\"`\n\tRationale string `json:\"rationale,omitempty\"`\n\t// Fix is the agent's recommendation for how to resolve the finding, one or\n\t// two lines. Empty when the ruling stands on its own.\n\tFix    string `json:\"fix,omitempty\"`\n\tSource Source `json:\"source\"`\n}\n\n// SubstrateState records whether a pane produced findings this run.\ntype SubstrateState string\n\nconst (\n\tSubstrateRan     SubstrateState = \"ran\"\n\tSubstrateSkipped SubstrateState = \"skipped\" // the repository has such files; this change touched none\n\tSubstrateFailed  SubstrateState = \"failed\"  // started and errored\n\t// SubstrateNotApplicable is a pane the repository has no files for at all:\n\t// no migrations, no API spec, no linter configured. It is recorded here so\n\t// findings.json says the pane exists, and rendered nowhere. A report on a\n\t// repository with no API should not mention the API; naming an absence\n\t// the reader already knows about is noise, and worse, it makes the panes\n\t// that did apply and failed harder to see.\n\tSubstrateNotApplicable SubstrateState = \"not-applicable\"\n)\n\n// SubstrateStatus is the per-pane availability record. Redline is non-gating,\n// so Gating is always false and GateOK does not apply — but the rendering\n// obligation is the same: a pane that did not run renders as \"did not run\".\ntype SubstrateStatus struct {\n\tName   string         `json:\"name\"`\n\tState  SubstrateState `json:\"state\"`\n\tDetail string         `json:\"detail,omitempty\"`\n\tGating bool           `json:\"gating\"`\n}\n\n// Confirmation is a check that ran and came back clean. Confirmations are the\n// deliverable, not suppressed noise: each is a question the reviewer no longer\n// has to ask. They never emit findings and are rendered collapsed.\ntype Confirmation struct {\n\tSubstrate string  `json:\"substrate\"`\n\tRule      string  `json:\"rule\"`\n\tMessage   string  `json:\"message\"`\n\tAnchor    *Anchor `json:\"anchor,omitempty\"`\n}\n\n// Unknown records something a pane could not determine, and why. Section 3 of\n// the report: a report that silently covers 60% of a change reads exactly like\n// one that covers all of it.\ntype Unknown struct {\n\tSubstrate string `json:\"substrate\"`\n\tMessage   string `json:\"message\"`\n\tReason    string `json:\"reason,omitempty\"`\n}\n\n// Coverage records how much of the change Redline actually examined. It is\n// the answer to the question a reader of an empty report cannot otherwise ask:\n// did every check come back clean, or did nothing look? Without it a report\n// covering none of a change is indistinguishable from one covering all of it.\ntype Coverage struct {\n\tChangedFiles  int      `json:\"changedFiles\"`\n\tExaminedFiles int      `json:\"examinedFiles\"`\n\tUnexamined    []string `json:\"unexamined,omitempty\"`\n\n\t// Generated are paths dropped from the change as machine output before any\n\t// pane ran. They are listed rather than merely counted: excluding a file a\n\t// human actually wrote is the one way this feature can hide a real change,\n\t// and naming every exclusion is what makes that recoverable.\n\tGenerated []string `json:\"generated,omitempty\"`\n\n\t// CoverableFiles counts the changed files a coverage profile could\n\t// describe (Go files, until the pane reads other formats). Zero means the\n\t// coverage number does not apply to this change, and the report leaves\n\t// coverage out entirely rather than reporting a profile as missing for a\n\t// change no profile could ever cover.\n\tCoverableFiles int `json:\"coverableFiles\"`\n\n\t// Diff is the share of added lines a test profile shows executed. Nil when\n\t// no profile was found, which must render as \"nobody knows\" rather than as\n\t// zero per cent — those are very different claims. Only meaningful when\n\t// CoverableFiles is non-zero.\n\tDiff *cover.Result `json:\"diffCoverage,omitempty\"`\n}\n\n// CoverageApplies reports whether the coverage number has anything to say\n// about this change: a profile was read, or a changed file could have been\n// covered by one. When false, coverage is left off the report.\nfunc (c Coverage) CoverageApplies() bool {\n\treturn c.Diff != nil || c.CoverableFiles \u003e 0\n}\n\n// Report is the merged result of one Redline run.\ntype Report struct {\n\tSchemaVersion int               `json:\"schemaVersion\"`\n\tBaseRef       string            `json:\"baseRef\"`\n\tBaseSHA       string            `json:\"baseSHA,omitempty\"`\n\tScope         []string          `json:\"scope,omitempty\"`\n\tFindings      []Finding         `json:\"findings\"`\n\tSubstrates    []SubstrateStatus `json:\"substrates\"`\n\tNewCount      map[Severity]int  `json:\"newCount\"`\n\tCoverage      Coverage          `json:\"coverage\"`\n\n\tConfirmations []Confirmation `json:\"confirmations,omitempty\"`\n\tUnknowns      []Unknown      `json:\"unknowns,omitempty\"`\n\n\t// Agent is the review narrative the agent wrote, read from review.json: an\n\t// overview of the change and a per-file summary, rendered as the agent's.\n\tAgent *AgentReview `json:\"agent,omitempty\"`\n\n\t// Mutation is the diff-scoped result of a gomutants report, when one is on\n\t// disk: of the mutants on the lines this change adds, which a test killed and\n\t// which lived. A lived mutant is a line a test runs but nothing asserts. Nil\n\t// when no report was found.\n\tMutation *mutation.Result `json:\"mutation,omitempty\"`\n}\n\n// AgentReview is the agent's prose layer over a change, ingested from\n// review.json. The comments in that file become findings; this holds the parts\n// that have no single line to sit on.\ntype AgentReview struct {\n\tOverview string            `json:\"overview,omitempty\"`\n\tFiles    map[string]string `json:\"files,omitempty\"`\n}\n\n// FailedSubstrates returns panes that applied but did not run. Redline is\n// non-gating, so this drives rendering, not exit status.\nfunc (r *Report) FailedSubstrates() []SubstrateStatus {\n\tvar out []SubstrateStatus\n\tfor _, s := range r.Substrates {\n\t\tif s.State == SubstrateFailed {\n\t\t\tout = append(out, s)\n\t\t}\n\t}\n\treturn out\n}\n\n// Finalize stamps fingerprints, fills defaults and recomputes NewCount.\n// Every Redline pane is diff-based by construction — its findings are relative\n// to the base — so New is always true and no baseline build is needed.\nfunc (r *Report) Finalize() {\n\tr.SchemaVersion = SchemaVersion\n\tr.NewCount = map[Severity]int{}\n\tfor i := range r.Findings {\n\t\tf := \u0026r.Findings[i]\n\t\tif f.Severity == \"\" {\n\t\t\tf.Severity = f.Category.DefaultSeverity()\n\t\t}\n\t\tif f.Source == \"\" {\n\t\t\tf.Source = SourceDeterministic\n\t\t}\n\t\tf.New = true\n\t\tf.Fingerprint = Fingerprint(*f)\n\t\tr.NewCount[f.Severity]++\n\t}\n\tif r.Findings == nil {\n\t\tr.Findings = []Finding{}\n\t}\n\tif r.Substrates == nil {\n\t\tr.Substrates = []SubstrateStatus{}\n\t}\n}\n\n// Sort orders by severity, then substrate, then rule, then location, so\n// output is stable across runs. Surprise ranking decides emphasis within\n// the report; it never decides inclusion.\nfunc Sort(fs []Finding) {\n\trank := map[Severity]int{SeverityError: 0, SeverityWarning: 1, SeverityInfo: 2}\n\tsort.SliceStable(fs, func(i, j int) bool {\n\t\ta, b := fs[i], fs[j]\n\t\tif rank[a.Severity] != rank[b.Severity] {\n\t\t\treturn rank[a.Severity] \u003c rank[b.Severity]\n\t\t}\n\t\tif a.Substrate != b.Substrate {\n\t\t\treturn a.Substrate \u003c b.Substrate\n\t\t}\n\t\tif a.Rule != b.Rule {\n\t\t\treturn a.Rule \u003c b.Rule\n\t\t}\n\t\treturn a.File \u003c b.File\n\t})\n}\n",
         "language": "go",
         "areas": [
           "code"
@@ -250,6 +290,7 @@
         "added": 275,
         "removed": 0,
         "diff": "diff --git a/internal/pane/testdelta/testdelta.go b/internal/pane/testdelta/testdelta.go\nnew file mode 100644\nindex 0000000..54695b8\n--- /dev/null\n+++ b/internal/pane/testdelta/testdelta.go\n@@ -0,0 +1,275 @@\n+// Package testdelta reports cheap, deterministic facts about how a change treats\n+// its tests, read from the diff alone: source that changed with no test beside\n+// it, tests newly skipped or focused, and assertions removed. These are info\n+// findings, signals for the reviewer to weigh, not gates. They sit next to\n+// coverage (did a test run this line) and mutation (would a test catch it\n+// breaking) with the third question the diff can answer for free: did the tests\n+// move with the code.\n+package testdelta\n+\n+import (\n+\t\"fmt\"\n+\t\"path\"\n+\t\"regexp\"\n+\t\"sort\"\n+\t\"strings\"\n+\n+\t\"github.com/chrisophus/redline/internal/cover\"\n+\t\"github.com/chrisophus/redline/internal/findings\"\n+\t\"github.com/chrisophus/redline/internal/gitx\"\n+\t\"github.com/chrisophus/redline/internal/pane\"\n+)\n+\n+// Substrate is the pane's name in the findings schema.\n+const Substrate = \"redline/test-delta\"\n+\n+// Pane reports test-facing facts a diff shows on its own.\n+type Pane struct {\n+\tRepo *gitx.Repo\n+\n+\t// changed is the whole changed set, kept for the source-without-test fact,\n+\t// which is about files this pane does not otherwise open. scoped is the code\n+\t// files it inspects line by line.\n+\tchanged []string\n+\tscoped  []string\n+}\n+\n+// codeExts are the files this pane inspects for skips and assertion changes, and\n+// the ones whose packages the source-without-test fact reasons about.\n+var codeExts = []string{\".go\", \".js\", \".jsx\", \".ts\", \".tsx\", \".mjs\", \".cjs\", \".py\"}\n+\n+// Name implements pane.Pane.\n+func (p *Pane) Name() string { return Substrate }\n+\n+// Scope selects the changed code files. It also stashes the full changed set:\n+// the source-without-test fact must fire precisely when no test changed, and a\n+// pane with an empty scope never runs, so scope must be non-empty whenever code\n+// changed at all.\n+func (p *Pane) Scope(changed []string) []string {\n+\tp.changed = changed\n+\tvar out []string\n+\tfor _, f := range changed {\n+\t\tif hasExt(f, codeExts) {\n+\t\t\tout = append(out, f)\n+\t\t}\n+\t}\n+\tp.scoped = out\n+\treturn out\n+}\n+\n+type observation struct{ Rev string }\n+\n+func (o *observation) ID() string { return \"test-delta@\" + o.Rev }\n+\n+// Observe records the revision. Like the suppressions pane, the real work reads\n+// the diff in Diff, because every fact here is a property of added or removed\n+// lines rather than of a whole-file snapshot.\n+func (p *Pane) Observe(rev pane.Revision) (pane.Observation, error) {\n+\treturn \u0026observation{Rev: rev.Rev}, nil\n+}\n+\n+// Diff emits the test-delta facts.\n+func (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {\n+\tbase, ok := before.(*observation)\n+\tif !ok {\n+\t\treturn pane.Result{}, fmt.Errorf(\"test-delta: base observation is %T\", before)\n+\t}\n+\tres := pane.Result{Evidence: map[string]pane.Artifact{}}\n+\tvar lines []string\n+\n+\tp.sourceWithoutTest(\u0026res, \u0026lines)\n+\tp.skipsAdded(base.Rev, \u0026res, \u0026lines)\n+\tp.assertionsRemoved(base.Rev, \u0026res, \u0026lines)\n+\n+\tif len(res.Findings) == 0 {\n+\t\tres.Confirmations = append(res.Confirmations, findings.Confirmation{\n+\t\t\tSubstrate: Substrate,\n+\t\t\tRule:      \"tests-move-with-code\",\n+\t\t\tMessage:   \"every changed package changed a test, none were skipped or focused, and no assertions were removed\",\n+\t\t})\n+\t}\n+\tres.Render = pane.Render{\n+\t\tTitle:   \"Tests\",\n+\t\tSummary: fmt.Sprintf(\"%d test-delta fact(s) from the diff\", len(res.Findings)),\n+\t\tLines:   lines,\n+\t}\n+\treturn res, nil\n+}\n+\n+// sourceWithoutTest names each Go package this change edits without touching a\n+// test in it. Go only: its one-test-file-per-package convention makes \"a test in\n+// this package changed\" a clean question, which JS and Python layouts do not\n+// answer as cleanly.\n+func (p *Pane) sourceWithoutTest(res *pane.Result, lines *[]string) {\n+\tsrc := map[string]bool{}\n+\ttest := map[string]bool{}\n+\tfor _, f := range p.changed {\n+\t\tif !strings.HasSuffix(f, \".go\") {\n+\t\t\tcontinue\n+\t\t}\n+\t\tdir := path.Dir(f)\n+\t\tif strings.HasSuffix(f, \"_test.go\") {\n+\t\t\ttest[dir] = true\n+\t\t} else {\n+\t\t\tsrc[dir] = true\n+\t\t}\n+\t}\n+\tvar dirs []string\n+\tfor dir := range src {\n+\t\tif !test[dir] {\n+\t\t\tdirs = append(dirs, dir)\n+\t\t}\n+\t}\n+\tsort.Strings(dirs)\n+\tfor _, dir := range dirs {\n+\t\tres.Findings = append(res.Findings, findings.Finding{\n+\t\t\tAnchor:    \u0026findings.Anchor{Kind: \"package\", ID: dir},\n+\t\t\tRule:      \"source-without-test\",\n+\t\t\tSubstrate: Substrate,\n+\t\t\tCategory:  findings.CategoryTests,\n+\t\t\tSeverity:  findings.SeverityInfo,\n+\t\t\tMessage:   fmt.Sprintf(\"code in %s changed but no test in that package did\", dir),\n+\t\t\tContext:   \"Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.\",\n+\t\t})\n+\t\t*lines = append(*lines, \"~ \"+dir+\" (no test changed)\")\n+\t}\n+}\n+\n+// skipsAdded reports a skip or focus directive on a line this change adds to a\n+// test file. A skip quietly removes a test from the run; a focus (.only, fit)\n+// quietly removes every other test in the file.\n+func (p *Pane) skipsAdded(baseRev string, res *pane.Result, lines *[]string) {\n+\tfor _, f := range p.scoped {\n+\t\tif !isTestFile(f) {\n+\t\t\tcontinue\n+\t\t}\n+\t\tadded := map[int]bool{}\n+\t\tfor _, n := range cover.AddedLines(p.Repo.DiffPath(baseRev, f)) {\n+\t\t\tadded[n] = true\n+\t\t}\n+\t\tif len(added) == 0 {\n+\t\t\tcontinue\n+\t\t}\n+\t\tcontent := p.Repo.File(\"\", f)\n+\t\tif content == \"\" {\n+\t\t\tcontinue\n+\t\t}\n+\t\tfor n, line := range strings.Split(content, \"\\n\") {\n+\t\t\tlineNo := n + 1\n+\t\t\tif !added[lineNo] {\n+\t\t\t\tcontinue\n+\t\t\t}\n+\t\t\tif what := skipKind(line); what != \"\" {\n+\t\t\t\tres.Findings = append(res.Findings, findings.Finding{\n+\t\t\t\t\tFile:      f,\n+\t\t\t\t\tLine:      lineNo,\n+\t\t\t\t\tRule:      \"test-skip-added\",\n+\t\t\t\t\tSubstrate: Substrate,\n+\t\t\t\t\tCategory:  findings.CategoryTests,\n+\t\t\t\t\tSeverity:  findings.SeverityInfo,\n+\t\t\t\t\tMessage:   \"this change \" + what,\n+\t\t\t\t\tObserved:  strings.TrimSpace(line),\n+\t\t\t\t})\n+\t\t\t\t*lines = append(*lines, fmt.Sprintf(\"+ %s:%d %s\", f, lineNo, what))\n+\t\t\t}\n+\t\t}\n+\t}\n+}\n+\n+// assertionsRemoved reports a test file that ends the change with fewer\n+// assertion-like lines than it started. Netting added against removed keeps a\n+// pure move or rename from reading as a loss; only a real drop is reported, and\n+// per file rather than per line, because a deleted line has no home in the head\n+// tree to anchor on.\n+func (p *Pane) assertionsRemoved(baseRev string, res *pane.Result, lines *[]string) {\n+\tfor _, f := range p.scoped {\n+\t\tif !isTestFile(f) {\n+\t\t\tcontinue\n+\t\t}\n+\t\tdiff := p.Repo.DiffPath(baseRev, f)\n+\t\tif diff == \"\" {\n+\t\t\tcontinue\n+\t\t}\n+\t\tadded, removed := 0, 0\n+\t\tfor _, l := range strings.Split(diff, \"\\n\") {\n+\t\t\tif strings.HasPrefix(l, \"+++\") || strings.HasPrefix(l, \"---\") {\n+\t\t\t\tcontinue\n+\t\t\t}\n+\t\t\tswitch {\n+\t\t\tcase strings.HasPrefix(l, \"+\"):\n+\t\t\t\tif assertionRe.MatchString(l[1:]) {\n+\t\t\t\t\tadded++\n+\t\t\t\t}\n+\t\t\tcase strings.HasPrefix(l, \"-\"):\n+\t\t\t\tif assertionRe.MatchString(l[1:]) {\n+\t\t\t\t\tremoved++\n+\t\t\t\t}\n+\t\t\t}\n+\t\t}\n+\t\tif removed \u003e added {\n+\t\t\tres.Findings = append(res.Findings, findings.Finding{\n+\t\t\t\tFile:      f,\n+\t\t\t\tRule:      \"assertions-removed\",\n+\t\t\t\tSubstrate: Substrate,\n+\t\t\t\tCategory:  findings.CategoryTests,\n+\t\t\t\tSeverity:  findings.SeverityInfo,\n+\t\t\t\tMessage:   fmt.Sprintf(\"this change removes %d more assertion-like line(s) than it adds in this test\", removed-added),\n+\t\t\t\tContext:   \"Assertions are what let a test fail. A net drop can mean a weaker test; check it is intended.\",\n+\t\t\t})\n+\t\t\t*lines = append(*lines, fmt.Sprintf(\"- %s (-%d assertion-like line(s))\", f, removed-added))\n+\t\t}\n+\t}\n+}\n+\n+// skipKind classifies a skip or focus directive, or returns \"\" for neither.\n+func skipKind(line string) string {\n+\tswitch {\n+\tcase focusRe.MatchString(line):\n+\t\treturn \"focuses tests, so the others in the file will not run\"\n+\tcase skipRe.MatchString(line):\n+\t\treturn \"skips a test\"\n+\t}\n+\treturn \"\"\n+}\n+\n+var (\n+\tskipRe = regexp.MustCompile(`\\b[tbsf]\\.Skip(Now|f)?\\s*\\(` + // Go t.Skip / b.Skip\n+\t\t`|\\b(it|test|describe|context)\\.skip\\b` + // JS/TS .skip\n+\t\t`|\\bx(it|describe)\\b` + // JS/TS xit / xdescribe\n+\t\t`|@(pytest\\.mark\\.skip|unittest\\.skip)` + // Python decorators\n+\t\t`|\\bpytest\\.skip\\s*\\(|\\bself\\.skipTest\\s*\\(`)\n+\n+\tfocusRe = regexp.MustCompile(`\\b(it|test|describe|context)\\.only\\b|\\bf(it|describe)\\b`)\n+\n+\tassertionRe = regexp.MustCompile(`\\b(assert|require)\\.\\w+` + // Go testify\n+\t\t`|\\bt\\.(Error|Errorf|Fatal|Fatalf|Fail|FailNow)\\b` + // Go testing\n+\t\t`|\\bexpect\\s*\\(|\\.should\\b` + // JS/TS\n+\t\t`|\\bassert(Equal|True|False|Nil|NotNil|Error|NoError)?\\s*\\(` + // xUnit-style\n+\t\t`|\\bself\\.assert\\w+\\s*\\(`) // Python unittest\n+)\n+\n+// isTestFile reports whether a path is a test file in a supported language.\n+func isTestFile(f string) bool {\n+\tbase := path.Base(f)\n+\tswitch {\n+\tcase strings.HasSuffix(f, \"_test.go\"):\n+\t\treturn true\n+\tcase strings.HasPrefix(base, \"test_\") \u0026\u0026 strings.HasSuffix(base, \".py\"),\n+\t\tstrings.HasSuffix(base, \"_test.py\"):\n+\t\treturn true\n+\tcase strings.Contains(base, \".test.\") || strings.Contains(base, \".spec.\"):\n+\t\treturn true\n+\tcase strings.Contains(f, \"__tests__/\"):\n+\t\treturn true\n+\t}\n+\treturn false\n+}\n+\n+func hasExt(f string, exts []string) bool {\n+\tfor _, e := range exts {\n+\t\tif strings.HasSuffix(f, e) {\n+\t\t\treturn true\n+\t\t}\n+\t}\n+\treturn false\n+}\n",
+        "head": "// Package testdelta reports cheap, deterministic facts about how a change treats\n// its tests, read from the diff alone: source that changed with no test beside\n// it, tests newly skipped or focused, and assertions removed. These are info\n// findings, signals for the reviewer to weigh, not gates. They sit next to\n// coverage (did a test run this line) and mutation (would a test catch it\n// breaking) with the third question the diff can answer for free: did the tests\n// move with the code.\npackage testdelta\n\nimport (\n\t\"fmt\"\n\t\"path\"\n\t\"regexp\"\n\t\"sort\"\n\t\"strings\"\n\n\t\"github.com/chrisophus/redline/internal/cover\"\n\t\"github.com/chrisophus/redline/internal/findings\"\n\t\"github.com/chrisophus/redline/internal/gitx\"\n\t\"github.com/chrisophus/redline/internal/pane\"\n)\n\n// Substrate is the pane's name in the findings schema.\nconst Substrate = \"redline/test-delta\"\n\n// Pane reports test-facing facts a diff shows on its own.\ntype Pane struct {\n\tRepo *gitx.Repo\n\n\t// changed is the whole changed set, kept for the source-without-test fact,\n\t// which is about files this pane does not otherwise open. scoped is the code\n\t// files it inspects line by line.\n\tchanged []string\n\tscoped  []string\n}\n\n// codeExts are the files this pane inspects for skips and assertion changes, and\n// the ones whose packages the source-without-test fact reasons about.\nvar codeExts = []string{\".go\", \".js\", \".jsx\", \".ts\", \".tsx\", \".mjs\", \".cjs\", \".py\"}\n\n// Name implements pane.Pane.\nfunc (p *Pane) Name() string { return Substrate }\n\n// Scope selects the changed code files. It also stashes the full changed set:\n// the source-without-test fact must fire precisely when no test changed, and a\n// pane with an empty scope never runs, so scope must be non-empty whenever code\n// changed at all.\nfunc (p *Pane) Scope(changed []string) []string {\n\tp.changed = changed\n\tvar out []string\n\tfor _, f := range changed {\n\t\tif hasExt(f, codeExts) {\n\t\t\tout = append(out, f)\n\t\t}\n\t}\n\tp.scoped = out\n\treturn out\n}\n\ntype observation struct{ Rev string }\n\nfunc (o *observation) ID() string { return \"test-delta@\" + o.Rev }\n\n// Observe records the revision. Like the suppressions pane, the real work reads\n// the diff in Diff, because every fact here is a property of added or removed\n// lines rather than of a whole-file snapshot.\nfunc (p *Pane) Observe(rev pane.Revision) (pane.Observation, error) {\n\treturn \u0026observation{Rev: rev.Rev}, nil\n}\n\n// Diff emits the test-delta facts.\nfunc (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {\n\tbase, ok := before.(*observation)\n\tif !ok {\n\t\treturn pane.Result{}, fmt.Errorf(\"test-delta: base observation is %T\", before)\n\t}\n\tres := pane.Result{Evidence: map[string]pane.Artifact{}}\n\tvar lines []string\n\n\tp.sourceWithoutTest(\u0026res, \u0026lines)\n\tp.skipsAdded(base.Rev, \u0026res, \u0026lines)\n\tp.assertionsRemoved(base.Rev, \u0026res, \u0026lines)\n\n\tif len(res.Findings) == 0 {\n\t\tres.Confirmations = append(res.Confirmations, findings.Confirmation{\n\t\t\tSubstrate: Substrate,\n\t\t\tRule:      \"tests-move-with-code\",\n\t\t\tMessage:   \"every changed package changed a test, none were skipped or focused, and no assertions were removed\",\n\t\t})\n\t}\n\tres.Render = pane.Render{\n\t\tTitle:   \"Tests\",\n\t\tSummary: fmt.Sprintf(\"%d test-delta fact(s) from the diff\", len(res.Findings)),\n\t\tLines:   lines,\n\t}\n\treturn res, nil\n}\n\n// sourceWithoutTest names each Go package this change edits without touching a\n// test in it. Go only: its one-test-file-per-package convention makes \"a test in\n// this package changed\" a clean question, which JS and Python layouts do not\n// answer as cleanly.\nfunc (p *Pane) sourceWithoutTest(res *pane.Result, lines *[]string) {\n\tsrc := map[string]bool{}\n\ttest := map[string]bool{}\n\tfor _, f := range p.changed {\n\t\tif !strings.HasSuffix(f, \".go\") {\n\t\t\tcontinue\n\t\t}\n\t\tdir := path.Dir(f)\n\t\tif strings.HasSuffix(f, \"_test.go\") {\n\t\t\ttest[dir] = true\n\t\t} else {\n\t\t\tsrc[dir] = true\n\t\t}\n\t}\n\tvar dirs []string\n\tfor dir := range src {\n\t\tif !test[dir] {\n\t\t\tdirs = append(dirs, dir)\n\t\t}\n\t}\n\tsort.Strings(dirs)\n\tfor _, dir := range dirs {\n\t\tres.Findings = append(res.Findings, findings.Finding{\n\t\t\tAnchor:    \u0026findings.Anchor{Kind: \"package\", ID: dir},\n\t\t\tRule:      \"source-without-test\",\n\t\t\tSubstrate: Substrate,\n\t\t\tCategory:  findings.CategoryTests,\n\t\t\tSeverity:  findings.SeverityInfo,\n\t\t\tMessage:   fmt.Sprintf(\"code in %s changed but no test in that package did\", dir),\n\t\t\tContext:   \"Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.\",\n\t\t})\n\t\t*lines = append(*lines, \"~ \"+dir+\" (no test changed)\")\n\t}\n}\n\n// skipsAdded reports a skip or focus directive on a line this change adds to a\n// test file. A skip quietly removes a test from the run; a focus (.only, fit)\n// quietly removes every other test in the file.\nfunc (p *Pane) skipsAdded(baseRev string, res *pane.Result, lines *[]string) {\n\tfor _, f := range p.scoped {\n\t\tif !isTestFile(f) {\n\t\t\tcontinue\n\t\t}\n\t\tadded := map[int]bool{}\n\t\tfor _, n := range cover.AddedLines(p.Repo.DiffPath(baseRev, f)) {\n\t\t\tadded[n] = true\n\t\t}\n\t\tif len(added) == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tcontent := p.Repo.File(\"\", f)\n\t\tif content == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tfor n, line := range strings.Split(content, \"\\n\") {\n\t\t\tlineNo := n + 1\n\t\t\tif !added[lineNo] {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif what := skipKind(line); what != \"\" {\n\t\t\t\tres.Findings = append(res.Findings, findings.Finding{\n\t\t\t\t\tFile:      f,\n\t\t\t\t\tLine:      lineNo,\n\t\t\t\t\tRule:      \"test-skip-added\",\n\t\t\t\t\tSubstrate: Substrate,\n\t\t\t\t\tCategory:  findings.CategoryTests,\n\t\t\t\t\tSeverity:  findings.SeverityInfo,\n\t\t\t\t\tMessage:   \"this change \" + what,\n\t\t\t\t\tObserved:  strings.TrimSpace(line),\n\t\t\t\t})\n\t\t\t\t*lines = append(*lines, fmt.Sprintf(\"+ %s:%d %s\", f, lineNo, what))\n\t\t\t}\n\t\t}\n\t}\n}\n\n// assertionsRemoved reports a test file that ends the change with fewer\n// assertion-like lines than it started. Netting added against removed keeps a\n// pure move or rename from reading as a loss; only a real drop is reported, and\n// per file rather than per line, because a deleted line has no home in the head\n// tree to anchor on.\nfunc (p *Pane) assertionsRemoved(baseRev string, res *pane.Result, lines *[]string) {\n\tfor _, f := range p.scoped {\n\t\tif !isTestFile(f) {\n\t\t\tcontinue\n\t\t}\n\t\tdiff := p.Repo.DiffPath(baseRev, f)\n\t\tif diff == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tadded, removed := 0, 0\n\t\tfor _, l := range strings.Split(diff, \"\\n\") {\n\t\t\tif strings.HasPrefix(l, \"+++\") || strings.HasPrefix(l, \"---\") {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tswitch {\n\t\t\tcase strings.HasPrefix(l, \"+\"):\n\t\t\t\tif assertionRe.MatchString(l[1:]) {\n\t\t\t\t\tadded++\n\t\t\t\t}\n\t\t\tcase strings.HasPrefix(l, \"-\"):\n\t\t\t\tif assertionRe.MatchString(l[1:]) {\n\t\t\t\t\tremoved++\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\tif removed \u003e added {\n\t\t\tres.Findings = append(res.Findings, findings.Finding{\n\t\t\t\tFile:      f,\n\t\t\t\tRule:      \"assertions-removed\",\n\t\t\t\tSubstrate: Substrate,\n\t\t\t\tCategory:  findings.CategoryTests,\n\t\t\t\tSeverity:  findings.SeverityInfo,\n\t\t\t\tMessage:   fmt.Sprintf(\"this change removes %d more assertion-like line(s) than it adds in this test\", removed-added),\n\t\t\t\tContext:   \"Assertions are what let a test fail. A net drop can mean a weaker test; check it is intended.\",\n\t\t\t})\n\t\t\t*lines = append(*lines, fmt.Sprintf(\"- %s (-%d assertion-like line(s))\", f, removed-added))\n\t\t}\n\t}\n}\n\n// skipKind classifies a skip or focus directive, or returns \"\" for neither.\nfunc skipKind(line string) string {\n\tswitch {\n\tcase focusRe.MatchString(line):\n\t\treturn \"focuses tests, so the others in the file will not run\"\n\tcase skipRe.MatchString(line):\n\t\treturn \"skips a test\"\n\t}\n\treturn \"\"\n}\n\nvar (\n\tskipRe = regexp.MustCompile(`\\b[tbsf]\\.Skip(Now|f)?\\s*\\(` + // Go t.Skip / b.Skip\n\t\t`|\\b(it|test|describe|context)\\.skip\\b` + // JS/TS .skip\n\t\t`|\\bx(it|describe)\\b` + // JS/TS xit / xdescribe\n\t\t`|@(pytest\\.mark\\.skip|unittest\\.skip)` + // Python decorators\n\t\t`|\\bpytest\\.skip\\s*\\(|\\bself\\.skipTest\\s*\\(`)\n\n\tfocusRe = regexp.MustCompile(`\\b(it|test|describe|context)\\.only\\b|\\bf(it|describe)\\b`)\n\n\tassertionRe = regexp.MustCompile(`\\b(assert|require)\\.\\w+` + // Go testify\n\t\t`|\\bt\\.(Error|Errorf|Fatal|Fatalf|Fail|FailNow)\\b` + // Go testing\n\t\t`|\\bexpect\\s*\\(|\\.should\\b` + // JS/TS\n\t\t`|\\bassert(Equal|True|False|Nil|NotNil|Error|NoError)?\\s*\\(` + // xUnit-style\n\t\t`|\\bself\\.assert\\w+\\s*\\(`) // Python unittest\n)\n\n// isTestFile reports whether a path is a test file in a supported language.\nfunc isTestFile(f string) bool {\n\tbase := path.Base(f)\n\tswitch {\n\tcase strings.HasSuffix(f, \"_test.go\"):\n\t\treturn true\n\tcase strings.HasPrefix(base, \"test_\") \u0026\u0026 strings.HasSuffix(base, \".py\"),\n\t\tstrings.HasSuffix(base, \"_test.py\"):\n\t\treturn true\n\tcase strings.Contains(base, \".test.\") || strings.Contains(base, \".spec.\"):\n\t\treturn true\n\tcase strings.Contains(f, \"__tests__/\"):\n\t\treturn true\n\t}\n\treturn false\n}\n\nfunc hasExt(f string, exts []string) bool {\n\tfor _, e := range exts {\n\t\tif strings.HasSuffix(f, e) {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}\n",
         "language": "go",
         "areas": [
           "code"
@@ -261,6 +302,7 @@
         "added": 107,
         "removed": 0,
         "diff": "diff --git a/internal/pane/testdelta/testdelta_test.go b/internal/pane/testdelta/testdelta_test.go\nnew file mode 100644\nindex 0000000..8fb748c\n--- /dev/null\n+++ b/internal/pane/testdelta/testdelta_test.go\n@@ -0,0 +1,107 @@\n+package testdelta\n+\n+import (\n+\t\"strings\"\n+\t\"testing\"\n+\n+\t\"github.com/chrisophus/redline/internal/pane\"\n+)\n+\n+func TestSkipKind(t *testing.T) {\n+\tskips := []string{\n+\t\t\"\\tt.Skip(\\\"flaky\\\")\",\n+\t\t\"    b.SkipNow()\",\n+\t\t\"  it.skip('x', () =\u003e {})\",\n+\t\t\"@pytest.mark.skip\",\n+\t\t\"  self.skipTest('n')\",\n+\t\t\"  xit('x', () =\u003e {})\",\n+\t}\n+\tfocus := []string{\n+\t\t\"  describe.only('x', () =\u003e {})\",\n+\t\t\"  fit('x', () =\u003e {})\",\n+\t}\n+\tnone := []string{\n+\t\t\"\\treturn nil\",\n+\t\t\"\\tt.Errorf(\\\"boom\\\")\",\n+\t\t\"\\t// skip this comment mentions skip but is not a directive\",\n+\t}\n+\tfor _, l := range skips {\n+\t\tif got := skipKind(l); got != \"skips a test\" {\n+\t\t\tt.Errorf(\"skipKind(%q) = %q, want a skip\", l, got)\n+\t\t}\n+\t}\n+\tfor _, l := range focus {\n+\t\tif got := skipKind(l); !strings.HasPrefix(got, \"focuses\") {\n+\t\t\tt.Errorf(\"skipKind(%q) = %q, want a focus\", l, got)\n+\t\t}\n+\t}\n+\tfor _, l := range none {\n+\t\tif got := skipKind(l); got != \"\" {\n+\t\t\tt.Errorf(\"skipKind(%q) = %q, want none\", l, got)\n+\t\t}\n+\t}\n+}\n+\n+func TestIsTestFile(t *testing.T) {\n+\tyes := []string{\n+\t\t\"internal/foo/foo_test.go\",\n+\t\t\"ui/src/a.test.ts\",\n+\t\t\"ui/src/a.spec.tsx\",\n+\t\t\"py/test_x.py\",\n+\t\t\"py/x_test.py\",\n+\t\t\"ui/src/__tests__/a.js\",\n+\t}\n+\tno := []string{\"internal/foo/foo.go\", \"ui/src/a.ts\", \"README.md\", \"py/x.py\"}\n+\tfor _, f := range yes {\n+\t\tif !isTestFile(f) {\n+\t\t\tt.Errorf(\"isTestFile(%q) = false, want true\", f)\n+\t\t}\n+\t}\n+\tfor _, f := range no {\n+\t\tif isTestFile(f) {\n+\t\t\tt.Errorf(\"isTestFile(%q) = true, want false\", f)\n+\t\t}\n+\t}\n+}\n+\n+func TestAssertionRe(t *testing.T) {\n+\tmatch := []string{\n+\t\t\"\\tassert.Equal(t, a, b)\",\n+\t\t\"\\trequire.NoError(t, err)\",\n+\t\t\"\\texpect(x).toBe(1)\",\n+\t\t\"\\tself.assertEqual(a, b)\",\n+\t\t\"\\tt.Fatal(\\\"no\\\")\",\n+\t}\n+\tnone := []string{\"\\tx := 1\", \"\\treturn nil\", \"\\t// assert something\"}\n+\tfor _, l := range match {\n+\t\tif !assertionRe.MatchString(l) {\n+\t\t\tt.Errorf(\"assertionRe should match %q\", l)\n+\t\t}\n+\t}\n+\tfor _, l := range none {\n+\t\tif assertionRe.MatchString(l) {\n+\t\t\tt.Errorf(\"assertionRe should not match %q\", l)\n+\t\t}\n+\t}\n+}\n+\n+// A Go package whose source changed with no test change in it is reported once;\n+// a package that also changed a test is not.\n+func TestSourceWithoutTest(t *testing.T) {\n+\tp := \u0026Pane{changed: []string{\n+\t\t\"internal/a/a.go\",\n+\t\t\"internal/b/b.go\",\n+\t\t\"internal/b/b_test.go\",\n+\t\t\"README.md\",\n+\t}}\n+\tvar res pane.Result\n+\tvar lines []string\n+\tp.sourceWithoutTest(\u0026res, \u0026lines)\n+\tif len(res.Findings) != 1 {\n+\t\tt.Fatalf(\"want 1 finding, got %d: %+v\", len(res.Findings), res.Findings)\n+\t}\n+\tf := res.Findings[0]\n+\tif f.Rule != \"source-without-test\" || f.Anchor == nil || f.Anchor.ID != \"internal/a\" {\n+\t\tt.Fatalf(\"finding = %+v (anchor %+v)\", f, f.Anchor)\n+\t}\n+}\n",
+        "head": "package testdelta\n\nimport (\n\t\"strings\"\n\t\"testing\"\n\n\t\"github.com/chrisophus/redline/internal/pane\"\n)\n\nfunc TestSkipKind(t *testing.T) {\n\tskips := []string{\n\t\t\"\\tt.Skip(\\\"flaky\\\")\",\n\t\t\"    b.SkipNow()\",\n\t\t\"  it.skip('x', () =\u003e {})\",\n\t\t\"@pytest.mark.skip\",\n\t\t\"  self.skipTest('n')\",\n\t\t\"  xit('x', () =\u003e {})\",\n\t}\n\tfocus := []string{\n\t\t\"  describe.only('x', () =\u003e {})\",\n\t\t\"  fit('x', () =\u003e {})\",\n\t}\n\tnone := []string{\n\t\t\"\\treturn nil\",\n\t\t\"\\tt.Errorf(\\\"boom\\\")\",\n\t\t\"\\t// skip this comment mentions skip but is not a directive\",\n\t}\n\tfor _, l := range skips {\n\t\tif got := skipKind(l); got != \"skips a test\" {\n\t\t\tt.Errorf(\"skipKind(%q) = %q, want a skip\", l, got)\n\t\t}\n\t}\n\tfor _, l := range focus {\n\t\tif got := skipKind(l); !strings.HasPrefix(got, \"focuses\") {\n\t\t\tt.Errorf(\"skipKind(%q) = %q, want a focus\", l, got)\n\t\t}\n\t}\n\tfor _, l := range none {\n\t\tif got := skipKind(l); got != \"\" {\n\t\t\tt.Errorf(\"skipKind(%q) = %q, want none\", l, got)\n\t\t}\n\t}\n}\n\nfunc TestIsTestFile(t *testing.T) {\n\tyes := []string{\n\t\t\"internal/foo/foo_test.go\",\n\t\t\"ui/src/a.test.ts\",\n\t\t\"ui/src/a.spec.tsx\",\n\t\t\"py/test_x.py\",\n\t\t\"py/x_test.py\",\n\t\t\"ui/src/__tests__/a.js\",\n\t}\n\tno := []string{\"internal/foo/foo.go\", \"ui/src/a.ts\", \"README.md\", \"py/x.py\"}\n\tfor _, f := range yes {\n\t\tif !isTestFile(f) {\n\t\t\tt.Errorf(\"isTestFile(%q) = false, want true\", f)\n\t\t}\n\t}\n\tfor _, f := range no {\n\t\tif isTestFile(f) {\n\t\t\tt.Errorf(\"isTestFile(%q) = true, want false\", f)\n\t\t}\n\t}\n}\n\nfunc TestAssertionRe(t *testing.T) {\n\tmatch := []string{\n\t\t\"\\tassert.Equal(t, a, b)\",\n\t\t\"\\trequire.NoError(t, err)\",\n\t\t\"\\texpect(x).toBe(1)\",\n\t\t\"\\tself.assertEqual(a, b)\",\n\t\t\"\\tt.Fatal(\\\"no\\\")\",\n\t}\n\tnone := []string{\"\\tx := 1\", \"\\treturn nil\", \"\\t// assert something\"}\n\tfor _, l := range match {\n\t\tif !assertionRe.MatchString(l) {\n\t\t\tt.Errorf(\"assertionRe should match %q\", l)\n\t\t}\n\t}\n\tfor _, l := range none {\n\t\tif assertionRe.MatchString(l) {\n\t\t\tt.Errorf(\"assertionRe should not match %q\", l)\n\t\t}\n\t}\n}\n\n// A Go package whose source changed with no test change in it is reported once;\n// a package that also changed a test is not.\nfunc TestSourceWithoutTest(t *testing.T) {\n\tp := \u0026Pane{changed: []string{\n\t\t\"internal/a/a.go\",\n\t\t\"internal/b/b.go\",\n\t\t\"internal/b/b_test.go\",\n\t\t\"README.md\",\n\t}}\n\tvar res pane.Result\n\tvar lines []string\n\tp.sourceWithoutTest(\u0026res, \u0026lines)\n\tif len(res.Findings) != 1 {\n\t\tt.Fatalf(\"want 1 finding, got %d: %+v\", len(res.Findings), res.Findings)\n\t}\n\tf := res.Findings[0]\n\tif f.Rule != \"source-without-test\" || f.Anchor == nil || f.Anchor.ID != \"internal/a\" {\n\t\tt.Fatalf(\"finding = %+v (anchor %+v)\", f, f.Anchor)\n\t}\n}\n",
         "language": "go",
         "areas": [
           "tests"
@@ -281,6 +323,14 @@
     "uiTouched": false
   },
   "renders": [
+    {
+      "Title": "Lint delta",
+      "Summary": "2 finding(s) introduced, 0 resolved (golangci-lint, gorefactor)",
+      "Lines": [
+        "+ internal/findings:0 high-coupling (gorefactor)",
+        "+ internal/pane/testdelta/testdelta.go:0 data-clumps (gorefactor)"
+      ]
+    },
     {
       "Title": "Suppressions",
       "Summary": "0 lint-silencing directive(s) added by this change",
@@ -307,7 +357,7 @@
       "schemaVersion": 1,
       "provider": {
         "name": "gorefactor",
-        "version": "v0.0.0-20260906204439-a2ac4a145c9c+dirty",
+        "version": "v0.0.0-20260907222515-4833e7e8a214+dirty",
         "language": "go"
       },
       "baseSHA": "4cfafc4f0cb709d0313ef8a372ae49aff5bc168f",
@@ -1097,6 +1147,246 @@
           }
         },
         {
+          "role": "caller",
+          "priority": 70,
+          "symbol": "Pane.sourceWithoutTest",
+          "scope": "internal/pane/testdelta.Pane.sourceWithoutTest",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 78,
+          "endLine": 82,
+          "content": "\tvar lines []string\n\n\tp.sourceWithoutTest(\u0026res, \u0026lines)\n\tp.skipsAdded(base.Rev, \u0026res, \u0026lines)\n\tp.assertionsRemoved(base.Rev, \u0026res, \u0026lines)\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Diff",
+            "kind": "call-site",
+            "line": "80"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 70,
+          "symbol": "Pane.skipsAdded",
+          "scope": "internal/pane/testdelta.Pane.skipsAdded",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 79,
+          "endLine": 83,
+          "content": "\n\tp.sourceWithoutTest(\u0026res, \u0026lines)\n\tp.skipsAdded(base.Rev, \u0026res, \u0026lines)\n\tp.assertionsRemoved(base.Rev, \u0026res, \u0026lines)\n\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Diff",
+            "kind": "call-site",
+            "line": "81"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 70,
+          "symbol": "Pane.assertionsRemoved",
+          "scope": "internal/pane/testdelta.Pane.assertionsRemoved",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 80,
+          "endLine": 84,
+          "content": "\tp.sourceWithoutTest(\u0026res, \u0026lines)\n\tp.skipsAdded(base.Rev, \u0026res, \u0026lines)\n\tp.assertionsRemoved(base.Rev, \u0026res, \u0026lines)\n\n\tif len(res.Findings) == 0 {\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Diff",
+            "kind": "call-site",
+            "line": "82"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 66,
+          "symbol": "isTestFile",
+          "scope": "internal/pane/testdelta.isTestFile",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 141,
+          "endLine": 145,
+          "content": "func (p *Pane) skipsAdded(baseRev string, res *pane.Result, lines *[]string) {\n\tfor _, f := range p.scoped {\n\t\tif !isTestFile(f) {\n\t\t\tcontinue\n\t\t}\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.skipsAdded",
+            "kind": "call-site",
+            "line": "143"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 66,
+          "symbol": "isTestFile",
+          "scope": "internal/pane/testdelta.isTestFile",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 184,
+          "endLine": 188,
+          "content": "func (p *Pane) assertionsRemoved(baseRev string, res *pane.Result, lines *[]string) {\n\tfor _, f := range p.scoped {\n\t\tif !isTestFile(f) {\n\t\t\tcontinue\n\t\t}\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.assertionsRemoved",
+            "kind": "call-site",
+            "line": "186"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 60,
+          "symbol": "skipKind",
+          "scope": "internal/pane/testdelta.skipKind",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 160,
+          "endLine": 164,
+          "content": "\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif what := skipKind(line); what != \"\" {\n\t\t\t\tres.Findings = append(res.Findings, findings.Finding{\n\t\t\t\t\tFile:      f,\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.skipsAdded",
+            "kind": "call-site",
+            "line": "162"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 58,
+          "symbol": "hasExt",
+          "scope": "internal/pane/testdelta.hasExt",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 50,
+          "endLine": 54,
+          "content": "\tvar out []string\n\tfor _, f := range changed {\n\t\tif hasExt(f, codeExts) {\n\t\t\tout = append(out, f)\n\t\t}\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Scope",
+            "kind": "call-site",
+            "line": "52"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 55,
+          "symbol": "assertionRe",
+          "scope": "internal/pane/testdelta.assertionRe",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 198,
+          "endLine": 202,
+          "content": "\t\t\tswitch {\n\t\t\tcase strings.HasPrefix(l, \"+\"):\n\t\t\t\tif assertionRe.MatchString(l[1:]) {\n\t\t\t\t\tadded++\n\t\t\t\t}\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.assertionsRemoved",
+            "kind": "call-site",
+            "line": "200"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 55,
+          "symbol": "assertionRe",
+          "scope": "internal/pane/testdelta.assertionRe",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 202,
+          "endLine": 206,
+          "content": "\t\t\t\t}\n\t\t\tcase strings.HasPrefix(l, \"-\"):\n\t\t\t\tif assertionRe.MatchString(l[1:]) {\n\t\t\t\t\tremoved++\n\t\t\t\t}\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.assertionsRemoved",
+            "kind": "call-site",
+            "line": "204"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 55,
+          "symbol": "skipRe",
+          "scope": "internal/pane/testdelta.skipRe",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 227,
+          "endLine": 231,
+          "content": "\tcase focusRe.MatchString(line):\n\t\treturn \"focuses tests, so the others in the file will not run\"\n\tcase skipRe.MatchString(line):\n\t\treturn \"skips a test\"\n\t}\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/pane/testdelta.skipKind",
+            "kind": "call-site",
+            "line": "229"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 53,
+          "symbol": "codeExts",
+          "scope": "internal/pane/testdelta.codeExts",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 50,
+          "endLine": 54,
+          "content": "\tvar out []string\n\tfor _, f := range changed {\n\t\tif hasExt(f, codeExts) {\n\t\t\tout = append(out, f)\n\t\t}\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Scope",
+            "kind": "call-site",
+            "line": "52"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "observation",
+          "scope": "internal/pane/testdelta.observation",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 60,
+          "endLine": 64,
+          "content": "type observation struct{ Rev string }\n\nfunc (o *observation) ID() string { return \"test-delta@\" + o.Rev }\n\n// Observe records the revision. Like the suppressions pane, the real work reads\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.observation.ID",
+            "kind": "call-site",
+            "line": "62"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "observation",
+          "scope": "internal/pane/testdelta.observation",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 66,
+          "endLine": 70,
+          "content": "// lines rather than of a whole-file snapshot.\nfunc (p *Pane) Observe(rev pane.Revision) (pane.Observation, error) {\n\treturn \u0026observation{Rev: rev.Rev}, nil\n}\n\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Observe",
+            "kind": "call-site",
+            "line": "68"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "observation",
+          "scope": "internal/pane/testdelta.observation",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 71,
+          "endLine": 75,
+          "content": "// Diff emits the test-delta facts.\nfunc (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {\n\tbase, ok := before.(*observation)\n\tif !ok {\n\t\treturn pane.Result{}, fmt.Errorf(\"test-delta: base observation is %T\", before)\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Diff",
+            "kind": "call-site",
+            "line": "73"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "focusRe",
+          "scope": "internal/pane/testdelta.focusRe",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 225,
+          "endLine": 229,
+          "content": "func skipKind(line string) string {\n\tswitch {\n\tcase focusRe.MatchString(line):\n\t\treturn \"focuses tests, so the others in the file will not run\"\n\tcase skipRe.MatchString(line):\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/pane/testdelta.skipKind",
+            "kind": "call-site",
+            "line": "227"
+          }
+        },
+        {
           "role": "type",
           "priority": 100,
           "symbol": "Result",
@@ -1536,6 +1826,19 @@
           "details": {
             "kind": "line-history",
             "lines": "134-134",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "docs/plans/potential-enhancements.md",
+          "startLine": 20,
+          "endLine": 20,
+          "content": "commit bda6ce457d144e8f8ee2b74433356bdfdec60b00\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T13:13:36-06:00\n\n    Added potential enhancement ideas\n\ndiff --git a/docs/plans/potential-enhancements.md b/docs/plans/potential-enhancements.md\n--- /dev/null\n+++ b/docs/plans/potential-enhancements.md\n@@ -0,0 +20,1 @@\n+| Test-delta facts | Cheap diff observations: code changed where tests did not, new `t.Skip` / `.skip`, deleted assertions. Info findings for the reviewer to weigh. | S |\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "20-20 at the base revision",
             "revisions": "3"
           }
         },

@@ -19,6 +19,81 @@
     ],
     "findings": [
       {
+        "file": "internal/mutation/mutation_test.go",
+        "line": 23,
+        "rule": "gorefactor/funcorder-function",
+        "substrate": "redline/lint",
+        "category": "lint",
+        "severity": "warning",
+        "message": "this change introduces a funcorder-function violation: exported functions must be declared before unexported functions (excluding constructors and init)",
+        "new": true,
+        "fingerprint": "internal/mutation/mutation_test.go\u0000gorefactor/funcorder-function\u0000this change introduces a funcorder-function violation: exported functions must be declared before unexported functions (excluding constructors and init)",
+        "id": "fa5890f91bc",
+        "evidence": [
+          "lint@a9152c4bd97e0dbef9356878e594310c7fd68bf4",
+          "lint@worktree"
+        ],
+        "expected": "no new linter findings against the base revision",
+        "observed": "gorefactor reports funcorder-function at head and not at base",
+        "source": "deterministic"
+      },
+      {
+        "file": "internal/report/html.go",
+        "line": 150,
+        "rule": "gorefactor/hard-to-maintain",
+        "substrate": "redline/lint",
+        "category": "lint",
+        "severity": "warning",
+        "message": "this change introduces a hard-to-maintain violation: buildView is hard to maintain (line 150): 79 logic lines and complexity 23 (bar 15) — consider extracting",
+        "new": true,
+        "fingerprint": "internal/report/html.go\u0000gorefactor/hard-to-maintain\u0000this change introduces a hard-to-maintain violation: buildView is hard to maintain (line #): # logic lines and complexity # (bar #) — consider extracting",
+        "id": "f279fb26d20",
+        "evidence": [
+          "lint@a9152c4bd97e0dbef9356878e594310c7fd68bf4",
+          "lint@worktree"
+        ],
+        "expected": "no new linter findings against the base revision",
+        "observed": "gorefactor reports hard-to-maintain at head and not at base",
+        "source": "deterministic"
+      },
+      {
+        "file": "internal/findings",
+        "rule": "gorefactor/high-coupling",
+        "substrate": "redline/lint",
+        "category": "lint",
+        "severity": "info",
+        "message": "this change introduces a high-coupling violation: package internal/findings has fan-in 9 (threshold 8) — many local packages depend on it; high blast radius for changes",
+        "new": true,
+        "fingerprint": "internal/findings\u0000gorefactor/high-coupling\u0000this change introduces a high-coupling violation: package internal/findings has fan-in # (threshold #) — many local packages depend on it; high blast radius for changes",
+        "id": "ff76a55c941",
+        "evidence": [
+          "lint@a9152c4bd97e0dbef9356878e594310c7fd68bf4",
+          "lint@worktree"
+        ],
+        "expected": "no new linter findings against the base revision",
+        "observed": "gorefactor reports high-coupling at head and not at base",
+        "source": "deterministic"
+      },
+      {
+        "file": "internal/report/html.go",
+        "line": 150,
+        "rule": "gorefactor/long-function",
+        "substrate": "redline/lint",
+        "category": "lint",
+        "severity": "info",
+        "message": "this change introduces a long-function violation: buildView is 96 lines (threshold 75, line 150) — consider extracting",
+        "new": true,
+        "fingerprint": "internal/report/html.go\u0000gorefactor/long-function\u0000this change introduces a long-function violation: buildView is # lines (threshold #, line #) — consider extracting",
+        "id": "fb1a95f5058",
+        "evidence": [
+          "lint@a9152c4bd97e0dbef9356878e594310c7fd68bf4",
+          "lint@worktree"
+        ],
+        "expected": "no new linter findings against the base revision",
+        "observed": "gorefactor reports long-function at head and not at base",
+        "source": "deterministic"
+      },
+      {
         "rule": "source-without-test",
         "substrate": "redline/test-delta",
         "category": "tests",
@@ -66,8 +141,7 @@
       },
       {
         "name": "redline/lint",
-        "state": "failed",
-        "detail": "observe worktree: golangci-lint at head: golangci-lint exited 3: Error: can't load config: the Go language version (go1.25) used to build golangci-lint is lower than the targeted Go version (1.26)",
+        "state": "ran",
         "gating": false
       },
       {
@@ -88,7 +162,8 @@
       }
     ],
     "newCount": {
-      "info": 2
+      "info": 4,
+      "warning": 2
     },
     "coverage": {
       "changedFiles": 12,
@@ -111,14 +186,19 @@
     ],
     "unknowns": [
       {
-        "substrate": "redline/lint",
-        "message": "pane applied to this change but did not run",
-        "reason": "observe worktree: golangci-lint at head: golangci-lint exited 3: Error: can't load config: the Go language version (go1.25) used to build golangci-lint is lower than the targeted Go version (1.26)"
-      },
-      {
         "substrate": "redline/ui",
         "message": "1 file(s) in this change fall under the ui pane, which examined none of them",
         "reason": "checks 15-16 (before/after route screenshots, console and network errors) are not built"
+      }
+    ],
+    "tools": [
+      {
+        "name": "golangci-lint",
+        "status": "ran"
+      },
+      {
+        "name": "gorefactor",
+        "status": "ran"
       }
     ]
   },
@@ -146,6 +226,7 @@
         "added": 3,
         "removed": 0,
         "diff": "diff --git a/.gitignore b/.gitignore\nindex 90949fa..a49bfe3 100644\n--- a/.gitignore\n+++ b/.gitignore\n@@ -6,6 +6,9 @@\n # artifact, and one that got committed once already.\n /coverage.out\n /cover.out\n+# gomutants writes its report and incremental cache here; both are local.\n+/mutants.json\n+/.gomutants-cache.json\n .compound-engineering/*.local.yaml\n \n /.planning/\n",
+        "head": "/.redline/\n/redline\n# goreleaser build output (make snapshot / make release).\n/dist/\n# Redline reads a coverage profile to compute diff coverage. It is a local\n# artifact, and one that got committed once already.\n/coverage.out\n/cover.out\n# gomutants writes its report and incremental cache here; both are local.\n/mutants.json\n/.gomutants-cache.json\n.compound-engineering/*.local.yaml\n\n/.planning/\nscratch/\n.claude\n",
         "areas": [
           "code"
         ]
@@ -156,6 +237,7 @@
         "added": 12,
         "removed": 1,
         "diff": "diff --git a/Makefile b/Makefile\nindex 88de4a4..387f70c 100644\n--- a/Makefile\n+++ b/Makefile\n@@ -24,7 +24,7 @@ LDFLAGS  := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(D\n \n .PHONY: all build test vet check install install-bin install-skill \\\n         install-repo uninstall clean lint gorefactor-lint gorefactor-doctor \\\n-        coverage bench mutate mutate-full snapshot release\n+        coverage bench mutate mutate-full mutants snapshot release\n \n all: build\n \n@@ -98,6 +98,17 @@ mutate-full:\n \tfi\n \tgremlins unleash ./... --timeout-coefficient=10\n \n+# gomutants (github.com/szhekpisov/gomutants) writes mutants.json, the report\n+# redline's mutation section reads. Diff-scoped against origin/main so it stays\n+# a per-change check, not a whole-repo batch. Self-skips if gomutants is absent.\n+GOMUTANTS_BASE ?= origin/main\n+mutants:\n+\t@if ! command -v gomutants \u003e/dev/null 2\u003e\u00261; then \\\n+\t  echo \"skip: gomutants not on PATH (go install github.com/szhekpisov/gomutants@latest)\"; \\\n+\t  exit 0; \\\n+\tfi\n+\tgomutants --changed-since $(GOMUTANTS_BASE) -o mutants.json ./...\n+\n check: vet test lint gorefactor-lint\n \n # install is for this machine: the skill becomes available in every repo.\n",
+        "head": "# Redline — build, test, and install.\n#\n# `make install` puts the binary on PATH and the skill where Claude Code and\n# Cursor look for it. Both are symlinks into this checkout on purpose: the\n# binary and the skill that drives it move together, and a stale copy of\n# either is the failure this target exists to prevent — an installed binary\n# that predates a packet field the skill relies on reads as a tool bug.\n\nBIN      := redline\nBINDIR   ?= $(HOME)/.local/bin\nSKILLDIR ?= $(HOME)/.claude/skills\nROOT     := $(abspath $(dir $(firstword $(MAKEFILE_LIST))))\n# Every directory under skills/ is a skill: redline drives the binary,\n# redline-setup wires a repository's tools into it.\nSKILLS   := $(notdir $(wildcard $(ROOT)/skills/*))\n\n# Version stamped into the binary. A tagged checkout gets the tag; anything else\n# gets a describe string or \"dev\", so `redline version` never claims to be a\n# release it is not.\nVERSION  := $(shell git describe --tags --always --dirty 2\u003e/dev/null || echo dev)\nCOMMIT   := $(shell git rev-parse --short HEAD 2\u003e/dev/null || echo none)\nDATE     := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)\nLDFLAGS  := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)\n\n.PHONY: all build test vet check install install-bin install-skill \\\n        install-repo uninstall clean lint gorefactor-lint gorefactor-doctor \\\n        coverage bench mutate mutate-full mutants snapshot release\n\nall: build\n\nbuild:\n\tgo build -ldflags \"$(LDFLAGS)\" -o $(BIN) ./cmd/redline\n\ntest:\n\tgo test ./...\n\nvet:\n\tgo vet ./...\n\n# golangci-lint reads .golangci.yml. Not installed is not an error here: a\n# missing tool darks this target the same way an unconfigured repo darks\n# redline's own lint-delta pane (README's \"Lint\" section) rather than\n# failing the build for a dev who hasn't installed it. CI installs it and\n# so gets the real gate.\nlint:\n\t@if ! command -v golangci-lint \u003e/dev/null 2\u003e\u00261; then \\\n\t  echo \"skip: golangci-lint not on PATH (go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest)\"; \\\n\t  exit 0; \\\n\tfi\n\tgolangci-lint run ./...\n\n# gorefactor (github.com/chrisophus/gorefactor) is a separate project's\n# structural linter; it is not a dependency of Redline and self-skips when\n# absent, same reasoning as the golangci-lint target above.\ngorefactor-lint:\n\t@if ! command -v gorefactor \u003e/dev/null 2\u003e\u00261; then \\\n\t  echo \"skip: gorefactor not on PATH\"; \\\n\t  exit 0; \\\n\tfi\n\tgorefactor lint .\n\ngorefactor-doctor:\n\t@if ! command -v gorefactor \u003e/dev/null 2\u003e\u00261; then \\\n\t  echo \"skip: gorefactor not on PATH\"; \\\n\t  exit 0; \\\n\tfi\n\tgorefactor doctor\n\n# The coverage profile this repo's own diff-coverage pane (internal/cover)\n# reads. `redline run` on this repository is only as honest about its own\n# tests as this file is fresh — regenerate it before reviewing a change here.\ncoverage:\n\tgo test ./... -coverprofile=coverage.out -covermode=atomic\n\tgo tool cover -func=coverage.out | tail -1\n\nbench:\n\tgo test ./... -bench=. -benchtime=10x -run='^$$'\n\n# Mutation testing via gremlins (github.com/go-gremlins/gremlins), scoped to\n# lines the working tree changed against origin/main — the same diff-first\n# principle as the rest of Redline: a full-module mutation run is a\n# multi-minute batch job, not a thing to run on every commit. Advisory only\n# (no --threshold-*): a killed/lived count with nothing to compare against\n# yet is not something to gate on.\nmutate:\n\t@if ! command -v gremlins \u003e/dev/null 2\u003e\u00261; then \\\n\t  echo \"skip: gremlins not on PATH (go install github.com/go-gremlins/gremlins/cmd/gremlins@latest)\"; \\\n\t  exit 0; \\\n\tfi\n\tgremlins unleash . --diff=origin/main --timeout-coefficient=10\n\n# The unscoped run: every mutant in every package. Slow; run by hand, not in\n# a pre-push loop.\nmutate-full:\n\t@if ! command -v gremlins \u003e/dev/null 2\u003e\u00261; then \\\n\t  echo \"skip: gremlins not on PATH\"; \\\n\t  exit 0; \\\n\tfi\n\tgremlins unleash ./... --timeout-coefficient=10\n\n# gomutants (github.com/szhekpisov/gomutants) writes mutants.json, the report\n# redline's mutation section reads. Diff-scoped against origin/main so it stays\n# a per-change check, not a whole-repo batch. Self-skips if gomutants is absent.\nGOMUTANTS_BASE ?= origin/main\nmutants:\n\t@if ! command -v gomutants \u003e/dev/null 2\u003e\u00261; then \\\n\t  echo \"skip: gomutants not on PATH (go install github.com/szhekpisov/gomutants@latest)\"; \\\n\t  exit 0; \\\n\tfi\n\tgomutants --changed-since $(GOMUTANTS_BASE) -o mutants.json ./...\n\ncheck: vet test lint gorefactor-lint\n\n# install is for this machine: the skill becomes available in every repo.\ninstall: install-bin install-skill\n\t@echo\n\t@echo \"Installed. Run /redline-setup once per repository, then /redline.\"\n\t@case \":$$PATH:\" in \\\n\t  *\":$(BINDIR):\"*) ;; \\\n\t  *) echo \"warning: $(BINDIR) is not on PATH; add it to your shell profile\" ;; \\\n\tesac\n\ninstall-bin: build\n\t@mkdir -p $(BINDIR)\n\t@ln -sfn $(ROOT)/$(BIN) $(BINDIR)/$(BIN)\n\t@echo \"$(BINDIR)/$(BIN) -\u003e $(ROOT)/$(BIN)\"\n\n# The skill directory is symlinked, not copied, so editing skills/redline/\n# in this checkout is immediately what the agent reads. A copy drifts, and\n# a hardlink is worse: git replaces files on checkout rather than writing\n# through them, so the link breaks silently and the drift is invisible.\ninstall-skill:\n\t@mkdir -p $(SKILLDIR)\n\t@for s in $(SKILLS); do \\\n\t  if [ -e \"$(SKILLDIR)/$$s\" ] \u0026\u0026 [ ! -L \"$(SKILLDIR)/$$s\" ]; then \\\n\t    if diff -q \"$(SKILLDIR)/$$s/SKILL.md\" \"$(ROOT)/skills/$$s/SKILL.md\" \u003e/dev/null 2\u003e\u00261; then \\\n\t      rm -rf \"$(SKILLDIR)/$$s\"; \\\n\t    else \\\n\t      mv \"$(SKILLDIR)/$$s\" \"$(SKILLDIR)/$$s.backup.$$(date +%s)\"; \\\n\t      echo \"existing skill $$s differed; moved it aside\"; \\\n\t    fi; \\\n\t  fi; \\\n\t  ln -sfn \"$(ROOT)/skills/$$s\" \"$(SKILLDIR)/$$s\"; \\\n\t  echo \"$(SKILLDIR)/$$s -\u003e $(ROOT)/skills/$$s\"; \\\n\tdone\n\n# install-repo commits the skill into another repository, for teammates who\n# do not have this checkout. A project skill overrides the personal one, so\n# the repo's copy is what everyone working in it gets. This one is a copy by\n# necessity: it has to survive without this checkout on disk.\ninstall-repo:\n\t@test -n \"$(REPO)\" || { echo \"usage: make install-repo REPO=/path/to/repo\"; exit 1; }\n\t@test -d \"$(REPO)\" || { echo \"no such directory: $(REPO)\"; exit 1; }\n\t@for s in $(SKILLS); do \\\n\t  mkdir -p \"$(REPO)/.claude/skills/$$s\"; \\\n\t  cp \"$(ROOT)/skills/$$s/SKILL.md\" \"$(REPO)/.claude/skills/$$s/SKILL.md\"; \\\n\t  echo \"$(REPO)/.claude/skills/$$s/SKILL.md (copy: commit it)\"; \\\n\tdone\n\t@echo \"note: teammates still need the redline binary on PATH.\"\n\nuninstall:\n\t@rm -f $(BINDIR)/$(BIN)\n\t@for s in $(SKILLS); do \\\n\t  if [ -L \"$(SKILLDIR)/$$s\" ]; then rm -f \"$(SKILLDIR)/$$s\"; fi; \\\n\tdone\n\t@echo \"Removed $(BINDIR)/$(BIN) and the skills under $(SKILLDIR).\"\n\nclean:\n\trm -f $(BIN)\n\n# goreleaser cuts the cross-platform release. snapshot builds locally without a\n# tag or publishing, to check the config; release runs in CI on a pushed tag.\nsnapshot:\n\tgoreleaser release --snapshot --clean\n\nrelease:\n\tgoreleaser release --clean\n",
         "areas": [
           "code"
         ]
@@ -166,6 +248,7 @@
         "added": 14,
         "removed": 5,
         "diff": "diff --git a/docs/plans/report-roadmap.md b/docs/plans/report-roadmap.md\nindex 3e6917d..5bb164f 100644\n--- a/docs/plans/report-roadmap.md\n+++ b/docs/plans/report-roadmap.md\n@@ -64,11 +64,20 @@ the default `run` behavior. Options to decide before building: an opt-in flag\n a separate command, or leaving it to the agent to produce the map as another\n ingested file. This is the same data mutation testing needs, so build it once.\n \n-## Later: mutation testing\n-\n-Run gremlins to find lines where no test fails when the line is mutated: covered\n-but not actually asserted. Mark those lines in the same per-line view. This is the\n-last layer of the unified line: changed, linted, covered, asserted.\n+## Shipped: mutation testing marks covered-but-unasserted lines\n+\n+redline reads a gomutants (github.com/szhekpisov/gomutants) report, `mutants.json`,\n+the same way it reads a coverage profile: off disk, produced by the developer or\n+CI, never run during `redline run`. It scopes the report to the lines the change\n+adds and renders a Mutation section plus a red right-edge marker in the drawer on\n+each line where a mutant survived, a test runs the line but nothing fails when it\n+is changed. Coverage says a test ran the line; mutation says whether a test would\n+catch it breaking. `make mutants` produces the report. The survivors are in\n+findings.json under `mutation`, so the agent can act on them.\n+\n+This is most of the unified line: changed, linted, covered, asserted. What is\n+still missing is naming the exact tests behind a line, which neither the coverage\n+profile nor the gomutants report exposes (see the section above).\n \n ## Backlog\n \n",
+        "head": "# Report roadmap\n\nWhere the report is going, and why. Redline measures a change and states facts.\nIt never calls a model. The agent writes prose and judgment out of band, drops a\nJSON file, and Redline renders it beside the instrument's facts. Every item here\nrides that one boundary: the agent writes a file, Redline merges and renders,\nand the interactive requests are payloads a human copies to the agent.\n\nThe through line is one view of a changed line that shows everything known about\nit at once: is it changed, does a linter flag it, does a test run it, does the\nagent have something to say about it, and could a test have caught a bug on it.\n\n## Shipped: agent review comes into the report\n\nThe agent already produces a review file shaped like a GitHub Copilot review: an\noverview of the change, a per-file summary, and comments on specific lines. Fold\nall of it into the report through `review.json`, the file the verdict layer\nalready reads.\n\n- `overview` renders as a Review section at the top of the report.\n- `files` renders as a one-line summary on each file in the drill-in.\n- `comments` become findings marked `source: llm`, so they sit on the diff line\n  in the drawer with the coverage stripe and the line highlight, next to\n  Redline's own findings.\n- Each verdict gains a `fix` field: the agent's recommendation for how to fix the\n  finding, not only whether it should be fixed.\n\nRedline renders what the agent wrote, attributed to the agent. No model call\nenters the tool.\n\n## Shipped: ask the agent from the report\n\nEach diff line and each finding has Explain and Apply. Clicking one queues a\nrequest that carries an action onto the same list the Copy button hands over,\nnow labelled \"Copy for the agent\". The payload item gains an `action` field:\n`comment` is feedback to address, `explain` asks for an explanation without a\ncode change, `apply` asks the agent to make the change and to apply the verdict's\n`fix` when there is one.\n\nRedline is a static file with no model behind it, so the loop is copy and paste,\nthe same as the review comments. `redline serve` is the upgrade path if a live\nloop is worth a running process later. This is the prequel affordance minus the\nserver.\n\n## Shipped: jump from a coverage gap to the code\n\nThe coverage overlay stripes each changed head line green (a test ran it), amber\n(none did), or nothing (not coverable). The uncovered-files list in the Coverage\nsection is now clickable: each entry opens the drawer for that file at its first\nuncovered line, already amber and highlighted.\n\n## Next: click a line, see the tests that cover it\n\nThe profile knows covered from uncovered but not which test ran a line. Showing\nthe tests behind a line needs per-test coverage: run the suite per test, or per\npackage with a narrowed `-run`, and map tests to blocks.\n\nThis one fights a design principle. cover.go reads a profile the repo already has\nrather than running the suite, on purpose: tests can need a database or minutes of\nwall time, and a tool that silently runs your suite before every push is not one\nyou reach for. Per-test coverage means running tests, many times. So it cannot be\nthe default `run` behavior. Options to decide before building: an opt-in flag\n(`redline cover --per-test`) that writes a per-line-to-tests map the report reads,\na separate command, or leaving it to the agent to produce the map as another\ningested file. This is the same data mutation testing needs, so build it once.\n\n## Shipped: mutation testing marks covered-but-unasserted lines\n\nredline reads a gomutants (github.com/szhekpisov/gomutants) report, `mutants.json`,\nthe same way it reads a coverage profile: off disk, produced by the developer or\nCI, never run during `redline run`. It scopes the report to the lines the change\nadds and renders a Mutation section plus a red right-edge marker in the drawer on\neach line where a mutant survived, a test runs the line but nothing fails when it\nis changed. Coverage says a test ran the line; mutation says whether a test would\ncatch it breaking. `make mutants` produces the report. The survivors are in\nfindings.json under `mutation`, so the agent can act on them.\n\nThis is most of the unified line: changed, linted, covered, asserted. What is\nstill missing is naming the exact tests behind a line, which neither the coverage\nprofile nor the gomutants report exposes (see the section above).\n\n## Backlog\n\nIdeas that are real but not scheduled.\n\n- What it looks like: the interface section is a permanent placeholder that only\n  ever renders a gap. Options: agent-supplied route screenshots, a deterministic\n  list of what UI moved, or drop the section. No decision yet.\n- Verdicts for more finding classes: coverage-gap as risk or acceptable,\n  config-drift as reasonable or hiding something. More skill questions and\n  vocabulary, no new machinery.\n- Scope the suppression and lint panes out of `_test.go` files, or allow a\n  per-path exclusion. Redline's own suppressions there are fuzz seeds and\n  fixtures, and they read as real findings today.\n- Broader agent-context skill: why a lint was ignored, whether it is fixable,\n  whether the rule is noisy.\n- `untested-function` is not fully redundant with the coverage pane. Coverage is\n  diff percentage; untested-function is whether a function has any test at all.\n  Fixable if scoped to changed functions with repo-relative paths. It needs\n  gorefactor to emit repo-relative paths for the untested-* rules first.\n\n## gorefactor deficiencies that block the unified view\n\n- The smells family and duplicate-block report no node position, so their\n  findings have no line number. Redline cannot place them on a line.\n- The untested-* rules emit module-qualified paths. Redline strips the module\n  prefix through go.mod, but a repo-relative path from gorefactor would be\n  cleaner.\n",
         "language": "markdown",
         "areas": [
           "code"
@@ -177,6 +260,7 @@
         "added": 7,
         "removed": 0,
         "diff": "diff --git a/internal/findings/findings.go b/internal/findings/findings.go\nindex d918d47..b85ed6c 100644\n--- a/internal/findings/findings.go\n+++ b/internal/findings/findings.go\n@@ -7,6 +7,7 @@ import (\n \t\"sort\"\n \n \t\"github.com/ccason/redline/internal/cover\"\n+\t\"github.com/ccason/redline/internal/mutation\"\n )\n \n // SchemaVersion guards the JSON encoding of Report. Kept in lockstep with\n@@ -222,6 +223,12 @@ type Report struct {\n \t// Agent is the review narrative the agent wrote, read from review.json: an\n \t// overview of the change and a per-file summary, rendered as the agent's.\n \tAgent *AgentReview `json:\"agent,omitempty\"`\n+\n+\t// Mutation is the diff-scoped result of a gomutants report, when one is on\n+\t// disk: of the mutants on the lines this change adds, which a test killed and\n+\t// which lived. A lived mutant is a line a test runs but nothing asserts. Nil\n+\t// when no report was found.\n+\tMutation *mutation.Result `json:\"mutation,omitempty\"`\n }\n \n // AgentReview is the agent's prose layer over a change, ingested from\n",
+        "head": "// Package findings is Redline's wire format. It is not a new schema: it is an\n// independent reimplementation of doctor's JSON shape (gorefactor/doctor,\n// SchemaVersion 1), extended additively. Shared contract, not shared internals.\npackage findings\n\nimport (\n\t\"sort\"\n\n\t\"github.com/ccason/redline/internal/cover\"\n\t\"github.com/ccason/redline/internal/mutation\"\n)\n\n// SchemaVersion guards the JSON encoding of Report. Kept in lockstep with\n// doctor's constant of the same name.\nconst SchemaVersion = 1\n\n// Severity of a finding.\ntype Severity string\n\nconst (\n\tSeverityError   Severity = \"error\"\n\tSeverityWarning Severity = \"warning\"\n\tSeverityInfo    Severity = \"info\"\n)\n\n// Category classifies a finding. Redline adds its own categories rather than\n// overloading doctor's — doctor's \"api\" means undeclared Go exported-API\n// changes, which is a different thing from an HTTP contract change.\ntype Category string\n\nconst (\n\tCategorySchema   Category = \"schema\"   // migrations, database structure\n\tCategoryContract Category = \"contract\" // HTTP/OpenAPI contract\n\tCategoryCover    Category = \"cover\"    // diff coverage\n\tCategoryUI       Category = \"ui\"       // rendered interface\n\tCategoryLint     Category = \"lint\"     // lint delta, suppressions, lint config\n\tCategoryReview   Category = \"review\"   // agent review comment\n)\n\n// DefaultSeverity derives a finding's severity from its category. Redline's\n// categories all describe changes that alter a contract with something outside\n// the diff, so they default to error; a pane may demote per finding.\nfunc (c Category) DefaultSeverity() Severity {\n\tswitch c {\n\tcase CategorySchema, CategoryContract:\n\t\treturn SeverityError\n\tcase CategoryReview:\n\t\treturn SeverityInfo\n\tdefault:\n\t\treturn SeverityWarning\n\t}\n}\n\n// Source names where a finding came from. Every pane Redline ships is\n// deterministic; the field stays in the wire format so a reader of\n// findings.json can see that stated rather than assumed.\ntype Source string\n\nconst (\n\tSourceDeterministic Source = \"deterministic\"\n\tSourceLLM           Source = \"llm\"\n)\n\n// Anchor is a pane-relative location, for findings that have no file:line.\n// Kind names the pane's identity scheme (\"migration\", \"table.column\",\n// \"method path\"); ID is the value. Anchor identity must be stable across runs\n// because the fingerprint is the join key for human comment state.\ntype Anchor struct {\n\tKind string `json:\"kind\"`\n\tID   string `json:\"id\"`\n}\n\n// Key returns the anchor's contribution to a fingerprint.\nfunc (a *Anchor) Key() string {\n\tif a == nil {\n\t\treturn \"\"\n\t}\n\treturn a.Kind + \":\" + a.ID\n}\n\n// Finding is one diagnostic from one pane. Fields through Context mirror\n// doctor's Finding; the rest are Redline's additive extension.\ntype Finding struct {\n\tFile string `json:\"file,omitempty\"`\n\tLine int    `json:\"line,omitempty\"`\n\t// StartLine is the first line of a ranged comment. Zero means the comment\n\t// anchors on Line alone. When set it must be less than or equal to Line.\n\tStartLine   int      `json:\"startLine,omitempty\"`\n\tRule        string   `json:\"rule\"`\n\tSubstrate   string   `json:\"substrate\"`\n\tCategory    Category `json:\"category\"`\n\tSeverity    Severity `json:\"severity\"`\n\tMessage     string   `json:\"message\"`\n\tNew         bool     `json:\"new\"`\n\tFingerprint string   `json:\"fingerprint\"`\n\tFixCmd      string   `json:\"fixCmd,omitempty\"`\n\t// Suggestion is a literal single-file replacement for the anchored lines,\n\t// rendered as a GitHub suggestion block when short enough. Empty means no\n\t// proposed fix; a suggestion that would need more than one file is refused\n\t// rather than emitted wrong.\n\tSuggestion string `json:\"suggestion,omitempty\"`\n\tContext    string `json:\"context,omitempty\"`\n\n\tAnchor   *Anchor  `json:\"anchor,omitempty\"`   // pane-relative location; file:line often absent\n\tEvidence []string `json:\"evidence,omitempty\"` // observation IDs backing the claim\n\tExpected string   `json:\"expected,omitempty\"` // for surprise ranking\n\tObserved string   `json:\"observed,omitempty\"`\n\tSource   Source   `json:\"source,omitempty\"`\n\t// Verdict is the agent's judgment of this finding, merged from review.json\n\t// after fingerprints are stamped. Nil until an agent has ruled on it.\n\tVerdict *Verdict `json:\"verdict,omitempty\"`\n}\n\n// Verdict is an agent's judgment of a finding, ingested from review.json and\n// joined by fingerprint. Redline never fills it: the instrument states facts,\n// the agent supplies the reading, so Source is always \"llm\". Ruling is a short\n// controlled word per finding class (justified / should-fix / rule-noisy for a\n// suppression); Rationale is one line of why.\ntype Verdict struct {\n\tRuling    string `json:\"ruling\"`\n\tRationale string `json:\"rationale,omitempty\"`\n\t// Fix is the agent's recommendation for how to resolve the finding, one or\n\t// two lines. Empty when the ruling stands on its own.\n\tFix    string `json:\"fix,omitempty\"`\n\tSource Source `json:\"source\"`\n}\n\n// SubstrateState records whether a pane produced findings this run.\ntype SubstrateState string\n\nconst (\n\tSubstrateRan     SubstrateState = \"ran\"\n\tSubstrateSkipped SubstrateState = \"skipped\" // the repository has such files; this change touched none\n\tSubstrateFailed  SubstrateState = \"failed\"  // started and errored\n\t// SubstrateNotApplicable is a pane the repository has no files for at all:\n\t// no migrations, no API spec, no linter configured. It is recorded here so\n\t// findings.json says the pane exists, and rendered nowhere. A report on a\n\t// repository with no API should not mention the API; naming an absence\n\t// the reader already knows about is noise, and worse, it makes the panes\n\t// that did apply and failed harder to see.\n\tSubstrateNotApplicable SubstrateState = \"not-applicable\"\n)\n\n// SubstrateStatus is the per-pane availability record. Redline is non-gating,\n// so Gating is always false and GateOK does not apply — but the rendering\n// obligation is the same: a pane that did not run renders as \"did not run\".\ntype SubstrateStatus struct {\n\tName   string         `json:\"name\"`\n\tState  SubstrateState `json:\"state\"`\n\tDetail string         `json:\"detail,omitempty\"`\n\tGating bool           `json:\"gating\"`\n}\n\n// Confirmation is a check that ran and came back clean. Confirmations are the\n// deliverable, not suppressed noise: each is a question the reviewer no longer\n// has to ask. They never emit findings and are rendered collapsed.\ntype Confirmation struct {\n\tSubstrate string  `json:\"substrate\"`\n\tRule      string  `json:\"rule\"`\n\tMessage   string  `json:\"message\"`\n\tAnchor    *Anchor `json:\"anchor,omitempty\"`\n}\n\n// Unknown records something a pane could not determine, and why. Section 3 of\n// the report: a report that silently covers 60% of a change reads exactly like\n// one that covers all of it.\ntype Unknown struct {\n\tSubstrate string `json:\"substrate\"`\n\tMessage   string `json:\"message\"`\n\tReason    string `json:\"reason,omitempty\"`\n}\n\n// Coverage records how much of the change Redline actually examined. It is\n// the answer to the question a reader of an empty report cannot otherwise ask:\n// did every check come back clean, or did nothing look? Without it a report\n// covering none of a change is indistinguishable from one covering all of it.\ntype Coverage struct {\n\tChangedFiles  int      `json:\"changedFiles\"`\n\tExaminedFiles int      `json:\"examinedFiles\"`\n\tUnexamined    []string `json:\"unexamined,omitempty\"`\n\n\t// Generated are paths dropped from the change as machine output before any\n\t// pane ran. They are listed rather than merely counted: excluding a file a\n\t// human actually wrote is the one way this feature can hide a real change,\n\t// and naming every exclusion is what makes that recoverable.\n\tGenerated []string `json:\"generated,omitempty\"`\n\n\t// CoverableFiles counts the changed files a coverage profile could\n\t// describe (Go files, until the pane reads other formats). Zero means the\n\t// coverage number does not apply to this change, and the report leaves\n\t// coverage out entirely rather than reporting a profile as missing for a\n\t// change no profile could ever cover.\n\tCoverableFiles int `json:\"coverableFiles\"`\n\n\t// Diff is the share of added lines a test profile shows executed. Nil when\n\t// no profile was found, which must render as \"nobody knows\" rather than as\n\t// zero per cent — those are very different claims. Only meaningful when\n\t// CoverableFiles is non-zero.\n\tDiff *cover.Result `json:\"diffCoverage,omitempty\"`\n}\n\n// CoverageApplies reports whether the coverage number has anything to say\n// about this change: a profile was read, or a changed file could have been\n// covered by one. When false, coverage is left off the report.\nfunc (c Coverage) CoverageApplies() bool {\n\treturn c.Diff != nil || c.CoverableFiles \u003e 0\n}\n\n// Report is the merged result of one Redline run.\ntype Report struct {\n\tSchemaVersion int               `json:\"schemaVersion\"`\n\tBaseRef       string            `json:\"baseRef\"`\n\tBaseSHA       string            `json:\"baseSHA,omitempty\"`\n\tScope         []string          `json:\"scope,omitempty\"`\n\tFindings      []Finding         `json:\"findings\"`\n\tSubstrates    []SubstrateStatus `json:\"substrates\"`\n\tNewCount      map[Severity]int  `json:\"newCount\"`\n\tCoverage      Coverage          `json:\"coverage\"`\n\n\tConfirmations []Confirmation `json:\"confirmations,omitempty\"`\n\tUnknowns      []Unknown      `json:\"unknowns,omitempty\"`\n\n\t// Agent is the review narrative the agent wrote, read from review.json: an\n\t// overview of the change and a per-file summary, rendered as the agent's.\n\tAgent *AgentReview `json:\"agent,omitempty\"`\n\n\t// Mutation is the diff-scoped result of a gomutants report, when one is on\n\t// disk: of the mutants on the lines this change adds, which a test killed and\n\t// which lived. A lived mutant is a line a test runs but nothing asserts. Nil\n\t// when no report was found.\n\tMutation *mutation.Result `json:\"mutation,omitempty\"`\n}\n\n// AgentReview is the agent's prose layer over a change, ingested from\n// review.json. The comments in that file become findings; this holds the parts\n// that have no single line to sit on.\ntype AgentReview struct {\n\tOverview string            `json:\"overview,omitempty\"`\n\tFiles    map[string]string `json:\"files,omitempty\"`\n}\n\n// FailedSubstrates returns panes that applied but did not run. Redline is\n// non-gating, so this drives rendering, not exit status.\nfunc (r *Report) FailedSubstrates() []SubstrateStatus {\n\tvar out []SubstrateStatus\n\tfor _, s := range r.Substrates {\n\t\tif s.State == SubstrateFailed {\n\t\t\tout = append(out, s)\n\t\t}\n\t}\n\treturn out\n}\n\n// Finalize stamps fingerprints, fills defaults and recomputes NewCount.\n// Every Redline pane is diff-based by construction — its findings are relative\n// to the base — so New is always true and no baseline build is needed.\nfunc (r *Report) Finalize() {\n\tr.SchemaVersion = SchemaVersion\n\tr.NewCount = map[Severity]int{}\n\tfor i := range r.Findings {\n\t\tf := \u0026r.Findings[i]\n\t\tif f.Severity == \"\" {\n\t\t\tf.Severity = f.Category.DefaultSeverity()\n\t\t}\n\t\tif f.Source == \"\" {\n\t\t\tf.Source = SourceDeterministic\n\t\t}\n\t\tf.New = true\n\t\tf.Fingerprint = Fingerprint(*f)\n\t\tr.NewCount[f.Severity]++\n\t}\n\tif r.Findings == nil {\n\t\tr.Findings = []Finding{}\n\t}\n\tif r.Substrates == nil {\n\t\tr.Substrates = []SubstrateStatus{}\n\t}\n}\n\n// Sort orders by severity, then substrate, then rule, then location, so\n// output is stable across runs. Surprise ranking decides emphasis within\n// the report; it never decides inclusion.\nfunc Sort(fs []Finding) {\n\trank := map[Severity]int{SeverityError: 0, SeverityWarning: 1, SeverityInfo: 2}\n\tsort.SliceStable(fs, func(i, j int) bool {\n\t\ta, b := fs[i], fs[j]\n\t\tif rank[a.Severity] != rank[b.Severity] {\n\t\t\treturn rank[a.Severity] \u003c rank[b.Severity]\n\t\t}\n\t\tif a.Substrate != b.Substrate {\n\t\t\treturn a.Substrate \u003c b.Substrate\n\t\t}\n\t\tif a.Rule != b.Rule {\n\t\t\treturn a.Rule \u003c b.Rule\n\t\t}\n\t\treturn a.File \u003c b.File\n\t})\n}\n",
         "language": "go",
         "areas": [
           "code"
@@ -188,6 +272,7 @@
         "added": 168,
         "removed": 0,
         "diff": "diff --git a/internal/mutation/mutation.go b/internal/mutation/mutation.go\nnew file mode 100644\nindex 0000000..360f721\n--- /dev/null\n+++ b/internal/mutation/mutation.go\n@@ -0,0 +1,168 @@\n+// Package mutation ingests a gomutants report (github.com/szhekpisov/gomutants)\n+// and scopes it to the lines a change adds. Coverage says a test ran a line;\n+// mutation says whether a test would fail if that line were wrong. A mutant that\n+// lived is a line a test executes but nothing asserts, which is the gap this puts\n+// on top of the coverage number.\n+//\n+// Like the cover package, this reads a report the repository already produced\n+// rather than running mutation testing itself. A full run is minutes of repeated\n+// test executions, not something to do on every redline run, so redline reads\n+// mutants.json when it is there and says nothing when it is not.\n+package mutation\n+\n+import (\n+\t\"encoding/json\"\n+\t\"os\"\n+\t\"path/filepath\"\n+\t\"strings\"\n+)\n+\n+// reportNames are the conventional places a gomutants JSON report lands. There\n+// is no standard, so this is a search rather than a lookup, the same as the\n+// cover package's profile search.\n+var reportNames = []string{\"mutants.json\", \".mutants.json\", \"gomutants.json\"}\n+\n+// Locate finds a gomutants report under root, or returns \"\". Absence is a normal\n+// answer: most repositories have no mutation report, and that is not a failure.\n+func Locate(root string) string {\n+\tfor _, n := range reportNames {\n+\t\tif fi, err := os.Stat(filepath.Join(root, n)); err == nil \u0026\u0026 !fi.IsDir() {\n+\t\t\treturn n\n+\t\t}\n+\t}\n+\treturn \"\"\n+}\n+\n+// rawMutant mirrors one entry of a gomutants report's per-file mutations list.\n+type rawMutant struct {\n+\tType        string `json:\"type\"`\n+\tStatus      string `json:\"status\"`\n+\tLine        int    `json:\"line\"`\n+\tOriginal    string `json:\"original\"`\n+\tReplacement string `json:\"replacement\"`\n+}\n+\n+type rawFile struct {\n+\tFileName  string      `json:\"file_name\"`\n+\tMutations []rawMutant `json:\"mutations\"`\n+}\n+\n+type raw struct {\n+\tModule string    `json:\"go_module\"`\n+\tFiles  []rawFile `json:\"files\"`\n+}\n+\n+// Mutant is one surviving mutation on a line the change added: a test runs the\n+// line, but nothing fails when the line is changed this way. Original and\n+// Replacement name the change that went uncaught, which is the assertion a test\n+// is missing.\n+type Mutant struct {\n+\tLine        int    `json:\"line\"`\n+\tMutator     string `json:\"mutator\"`\n+\tOriginal    string `json:\"original,omitempty\"`\n+\tReplacement string `json:\"replacement,omitempty\"`\n+}\n+\n+// FileSurvivors is one file's surviving mutants on the lines a change added.\n+type FileSurvivors struct {\n+\tPath    string   `json:\"path\"`\n+\tMutants []Mutant `json:\"mutants\"`\n+}\n+\n+// Result is the diff-scoped mutation picture: of the mutants that sit on the\n+// lines this change adds, how many a test killed, how many lived, and the\n+// survivors themselves. Killed and Lived count only lines this change touched,\n+// so the number describes the change and not the whole repository.\n+type Result struct {\n+\tReport   string          `json:\"report\"`\n+\tKilled   int             `json:\"killed\"`\n+\tLived    int             `json:\"lived\"`\n+\tSurvived []FileSurvivors `json:\"survived,omitempty\"`\n+}\n+\n+// Changed is one changed file and the new-side line numbers it added.\n+type Changed struct {\n+\tPath  string\n+\tAdded []int\n+}\n+\n+// Compute reads the gomutants report under root and intersects it with the lines\n+// each changed file adds. Returns nil when no report is found, or when the report\n+// says nothing about any line this change touched: both are \"nobody measured\n+// this change\", which must not render as \"the change is fully asserted\".\n+func Compute(root string, changed []Changed) *Result {\n+\tname := Locate(root)\n+\tif name == \"\" {\n+\t\treturn nil\n+\t}\n+\tdata, err := os.ReadFile(filepath.Join(root, name))\n+\tif err != nil {\n+\t\treturn nil\n+\t}\n+\tvar r raw\n+\tif err := json.Unmarshal(data, \u0026r); err != nil {\n+\t\treturn nil\n+\t}\n+\n+\tres := \u0026Result{Report: name}\n+\tfor _, c := range changed {\n+\t\tmuts := mutationsFor(r, c.Path)\n+\t\tif muts == nil {\n+\t\t\tcontinue\n+\t\t}\n+\t\tadded := make(map[int]bool, len(c.Added))\n+\t\tfor _, l := range c.Added {\n+\t\t\tadded[l] = true\n+\t\t}\n+\t\tvar survivors []Mutant\n+\t\tfor _, m := range muts {\n+\t\t\tif !added[m.Line] {\n+\t\t\t\tcontinue\n+\t\t\t}\n+\t\t\tswitch normalize(m.Status) {\n+\t\t\tcase \"killed\":\n+\t\t\t\tres.Killed++\n+\t\t\tcase \"lived\":\n+\t\t\t\tres.Lived++\n+\t\t\t\tsurvivors = append(survivors, Mutant{\n+\t\t\t\t\tLine: m.Line, Mutator: m.Type, Original: m.Original, Replacement: m.Replacement,\n+\t\t\t\t})\n+\t\t\t}\n+\t\t\t// not-covered, not-viable and timed-out are left out. Coverage already\n+\t\t\t// reports lines no test runs, and the other two are mutants gomutants\n+\t\t\t// could not decide on, not a statement about the tests.\n+\t\t}\n+\t\tif len(survivors) \u003e 0 {\n+\t\t\tres.Survived = append(res.Survived, FileSurvivors{Path: c.Path, Mutants: survivors})\n+\t\t}\n+\t}\n+\tif res.Killed == 0 \u0026\u0026 res.Lived == 0 {\n+\t\treturn nil\n+\t}\n+\treturn res\n+}\n+\n+// mutationsFor matches a repository path against gomutants' file_name. That name\n+// is relative to the common ancestor of the paths gomutants was pointed at: run\n+// on ./... from the module root it is repository-relative and matches exactly, a\n+// narrower target makes it a path suffix. Match by longest path-component suffix,\n+// the same tactic cover.blocksFor uses for import-qualified profile keys.\n+func mutationsFor(r raw, path string) []rawMutant {\n+\tvar best []rawMutant\n+\tbestLen := -1\n+\tfor i := range r.Files {\n+\t\tf := r.Files[i]\n+\t\tif f.FileName == path || strings.HasSuffix(path, \"/\"+f.FileName) {\n+\t\t\tif len(f.FileName) \u003e bestLen {\n+\t\t\t\tbest, bestLen = f.Mutations, len(f.FileName)\n+\t\t\t}\n+\t\t}\n+\t}\n+\treturn best\n+}\n+\n+// normalize folds a gomutants status (\"NOT COVERED\") to a lowercase hyphenated\n+// token (\"not-covered\").\n+func normalize(status string) string {\n+\treturn strings.ReplaceAll(strings.ToLower(status), \" \", \"-\")\n+}\n",
+        "head": "// Package mutation ingests a gomutants report (github.com/szhekpisov/gomutants)\n// and scopes it to the lines a change adds. Coverage says a test ran a line;\n// mutation says whether a test would fail if that line were wrong. A mutant that\n// lived is a line a test executes but nothing asserts, which is the gap this puts\n// on top of the coverage number.\n//\n// Like the cover package, this reads a report the repository already produced\n// rather than running mutation testing itself. A full run is minutes of repeated\n// test executions, not something to do on every redline run, so redline reads\n// mutants.json when it is there and says nothing when it is not.\npackage mutation\n\nimport (\n\t\"encoding/json\"\n\t\"os\"\n\t\"path/filepath\"\n\t\"strings\"\n)\n\n// reportNames are the conventional places a gomutants JSON report lands. There\n// is no standard, so this is a search rather than a lookup, the same as the\n// cover package's profile search.\nvar reportNames = []string{\"mutants.json\", \".mutants.json\", \"gomutants.json\"}\n\n// Locate finds a gomutants report under root, or returns \"\". Absence is a normal\n// answer: most repositories have no mutation report, and that is not a failure.\nfunc Locate(root string) string {\n\tfor _, n := range reportNames {\n\t\tif fi, err := os.Stat(filepath.Join(root, n)); err == nil \u0026\u0026 !fi.IsDir() {\n\t\t\treturn n\n\t\t}\n\t}\n\treturn \"\"\n}\n\n// rawMutant mirrors one entry of a gomutants report's per-file mutations list.\ntype rawMutant struct {\n\tType        string `json:\"type\"`\n\tStatus      string `json:\"status\"`\n\tLine        int    `json:\"line\"`\n\tOriginal    string `json:\"original\"`\n\tReplacement string `json:\"replacement\"`\n}\n\ntype rawFile struct {\n\tFileName  string      `json:\"file_name\"`\n\tMutations []rawMutant `json:\"mutations\"`\n}\n\ntype raw struct {\n\tModule string    `json:\"go_module\"`\n\tFiles  []rawFile `json:\"files\"`\n}\n\n// Mutant is one surviving mutation on a line the change added: a test runs the\n// line, but nothing fails when the line is changed this way. Original and\n// Replacement name the change that went uncaught, which is the assertion a test\n// is missing.\ntype Mutant struct {\n\tLine        int    `json:\"line\"`\n\tMutator     string `json:\"mutator\"`\n\tOriginal    string `json:\"original,omitempty\"`\n\tReplacement string `json:\"replacement,omitempty\"`\n}\n\n// FileSurvivors is one file's surviving mutants on the lines a change added.\ntype FileSurvivors struct {\n\tPath    string   `json:\"path\"`\n\tMutants []Mutant `json:\"mutants\"`\n}\n\n// Result is the diff-scoped mutation picture: of the mutants that sit on the\n// lines this change adds, how many a test killed, how many lived, and the\n// survivors themselves. Killed and Lived count only lines this change touched,\n// so the number describes the change and not the whole repository.\ntype Result struct {\n\tReport   string          `json:\"report\"`\n\tKilled   int             `json:\"killed\"`\n\tLived    int             `json:\"lived\"`\n\tSurvived []FileSurvivors `json:\"survived,omitempty\"`\n}\n\n// Changed is one changed file and the new-side line numbers it added.\ntype Changed struct {\n\tPath  string\n\tAdded []int\n}\n\n// Compute reads the gomutants report under root and intersects it with the lines\n// each changed file adds. Returns nil when no report is found, or when the report\n// says nothing about any line this change touched: both are \"nobody measured\n// this change\", which must not render as \"the change is fully asserted\".\nfunc Compute(root string, changed []Changed) *Result {\n\tname := Locate(root)\n\tif name == \"\" {\n\t\treturn nil\n\t}\n\tdata, err := os.ReadFile(filepath.Join(root, name))\n\tif err != nil {\n\t\treturn nil\n\t}\n\tvar r raw\n\tif err := json.Unmarshal(data, \u0026r); err != nil {\n\t\treturn nil\n\t}\n\n\tres := \u0026Result{Report: name}\n\tfor _, c := range changed {\n\t\tmuts := mutationsFor(r, c.Path)\n\t\tif muts == nil {\n\t\t\tcontinue\n\t\t}\n\t\tadded := make(map[int]bool, len(c.Added))\n\t\tfor _, l := range c.Added {\n\t\t\tadded[l] = true\n\t\t}\n\t\tvar survivors []Mutant\n\t\tfor _, m := range muts {\n\t\t\tif !added[m.Line] {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tswitch normalize(m.Status) {\n\t\t\tcase \"killed\":\n\t\t\t\tres.Killed++\n\t\t\tcase \"lived\":\n\t\t\t\tres.Lived++\n\t\t\t\tsurvivors = append(survivors, Mutant{\n\t\t\t\t\tLine: m.Line, Mutator: m.Type, Original: m.Original, Replacement: m.Replacement,\n\t\t\t\t})\n\t\t\t}\n\t\t\t// not-covered, not-viable and timed-out are left out. Coverage already\n\t\t\t// reports lines no test runs, and the other two are mutants gomutants\n\t\t\t// could not decide on, not a statement about the tests.\n\t\t}\n\t\tif len(survivors) \u003e 0 {\n\t\t\tres.Survived = append(res.Survived, FileSurvivors{Path: c.Path, Mutants: survivors})\n\t\t}\n\t}\n\tif res.Killed == 0 \u0026\u0026 res.Lived == 0 {\n\t\treturn nil\n\t}\n\treturn res\n}\n\n// mutationsFor matches a repository path against gomutants' file_name. That name\n// is relative to the common ancestor of the paths gomutants was pointed at: run\n// on ./... from the module root it is repository-relative and matches exactly, a\n// narrower target makes it a path suffix. Match by longest path-component suffix,\n// the same tactic cover.blocksFor uses for import-qualified profile keys.\nfunc mutationsFor(r raw, path string) []rawMutant {\n\tvar best []rawMutant\n\tbestLen := -1\n\tfor i := range r.Files {\n\t\tf := r.Files[i]\n\t\tif f.FileName == path || strings.HasSuffix(path, \"/\"+f.FileName) {\n\t\t\tif len(f.FileName) \u003e bestLen {\n\t\t\t\tbest, bestLen = f.Mutations, len(f.FileName)\n\t\t\t}\n\t\t}\n\t}\n\treturn best\n}\n\n// normalize folds a gomutants status (\"NOT COVERED\") to a lowercase hyphenated\n// token (\"not-covered\").\nfunc normalize(status string) string {\n\treturn strings.ReplaceAll(strings.ToLower(status), \" \", \"-\")\n}\n",
         "language": "go",
         "areas": [
           "code"
@@ -199,6 +284,7 @@
         "added": 77,
         "removed": 0,
         "diff": "diff --git a/internal/mutation/mutation_test.go b/internal/mutation/mutation_test.go\nnew file mode 100644\nindex 0000000..7b8eef2\n--- /dev/null\n+++ b/internal/mutation/mutation_test.go\n@@ -0,0 +1,77 @@\n+package mutation_test\n+\n+import (\n+\t\"os\"\n+\t\"path/filepath\"\n+\t\"testing\"\n+\n+\t\"github.com/ccason/redline/internal/mutation\"\n+)\n+\n+const sample = `{\n+  \"go_module\": \"example.com/x\",\n+  \"files\": [\n+    {\"file_name\": \"internal/foo/foo.go\", \"mutations\": [\n+      {\"type\":\"CONDITIONALS_BOUNDARY\",\"status\":\"KILLED\",\"line\":10,\"replacement\":\"\u003e=\"},\n+      {\"type\":\"EXPRESSION_REMOVE\",\"status\":\"LIVED\",\"line\":12,\"original\":\"!ok\",\"replacement\":\"true\"},\n+      {\"type\":\"RETURN_ZERO\",\"status\":\"LIVED\",\"line\":40,\"replacement\":\"0\"},\n+      {\"type\":\"INTEGER_INCREMENT\",\"status\":\"NOT COVERED\",\"line\":50}\n+    ]}\n+  ]\n+}`\n+\n+func writeReport(t *testing.T, name, body string) string {\n+\tt.Helper()\n+\tdir := t.TempDir()\n+\tif err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {\n+\t\tt.Fatal(err)\n+\t}\n+\treturn dir\n+}\n+\n+// Mutation is scoped to the lines the change adds. A survivor off the diff (line\n+// 40) is another change's problem; a not-covered mutant (line 50) is coverage's\n+// story, not this one.\n+func TestComputeScopesToAddedLines(t *testing.T) {\n+\tdir := writeReport(t, \"mutants.json\", sample)\n+\tres := mutation.Compute(dir, []mutation.Changed{{Path: \"internal/foo/foo.go\", Added: []int{10, 12}}})\n+\tif res == nil {\n+\t\tt.Fatal(\"a report with mutants on changed lines must produce a result\")\n+\t}\n+\tif res.Killed != 1 || res.Lived != 1 {\n+\t\tt.Fatalf(\"killed=%d lived=%d, want 1 and 1\", res.Killed, res.Lived)\n+\t}\n+\tif len(res.Survived) != 1 || len(res.Survived[0].Mutants) != 1 {\n+\t\tt.Fatalf(\"survivors = %+v\", res.Survived)\n+\t}\n+\tm := res.Survived[0].Mutants[0]\n+\tif m.Line != 12 || m.Mutator != \"EXPRESSION_REMOVE\" || m.Original != \"!ok\" || m.Replacement != \"true\" {\n+\t\tt.Fatalf(\"survivor = %+v\", m)\n+\t}\n+}\n+\n+// gomutants pointed at a package writes a shorter file_name than the\n+// repository-relative path redline holds; a suffix match must still find it.\n+func TestComputeMatchesBySuffix(t *testing.T) {\n+\tdir := writeReport(t, \"mutants.json\", `{\"files\":[{\"file_name\":\"foo.go\",\"mutations\":[\n+\t  {\"type\":\"X\",\"status\":\"LIVED\",\"line\":3,\"original\":\"a\",\"replacement\":\"b\"}]}]}`)\n+\tres := mutation.Compute(dir, []mutation.Changed{{Path: \"internal/foo/foo.go\", Added: []int{3}}})\n+\tif res == nil || res.Lived != 1 {\n+\t\tt.Fatalf(\"suffix match failed: %+v\", res)\n+\t}\n+}\n+\n+func TestComputeNilWhenNoReport(t *testing.T) {\n+\tif res := mutation.Compute(t.TempDir(), []mutation.Changed{{Path: \"a.go\", Added: []int{1}}}); res != nil {\n+\t\tt.Fatalf(\"no report must read as nil, got %+v\", res)\n+\t}\n+}\n+\n+// A report that says nothing about any line the change touched is \"nobody\n+// measured this change\", which must read as nil, not as a clean result.\n+func TestComputeNilWhenNothingOnChangedLines(t *testing.T) {\n+\tdir := writeReport(t, \"mutants.json\", sample)\n+\tif res := mutation.Compute(dir, []mutation.Changed{{Path: \"internal/foo/foo.go\", Added: []int{99}}}); res != nil {\n+\t\tt.Fatalf(\"no measured line must read as nil, got %+v\", res)\n+\t}\n+}\n",
+        "head": "package mutation_test\n\nimport (\n\t\"os\"\n\t\"path/filepath\"\n\t\"testing\"\n\n\t\"github.com/ccason/redline/internal/mutation\"\n)\n\nconst sample = `{\n  \"go_module\": \"example.com/x\",\n  \"files\": [\n    {\"file_name\": \"internal/foo/foo.go\", \"mutations\": [\n      {\"type\":\"CONDITIONALS_BOUNDARY\",\"status\":\"KILLED\",\"line\":10,\"replacement\":\"\u003e=\"},\n      {\"type\":\"EXPRESSION_REMOVE\",\"status\":\"LIVED\",\"line\":12,\"original\":\"!ok\",\"replacement\":\"true\"},\n      {\"type\":\"RETURN_ZERO\",\"status\":\"LIVED\",\"line\":40,\"replacement\":\"0\"},\n      {\"type\":\"INTEGER_INCREMENT\",\"status\":\"NOT COVERED\",\"line\":50}\n    ]}\n  ]\n}`\n\nfunc writeReport(t *testing.T, name, body string) string {\n\tt.Helper()\n\tdir := t.TempDir()\n\tif err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treturn dir\n}\n\n// Mutation is scoped to the lines the change adds. A survivor off the diff (line\n// 40) is another change's problem; a not-covered mutant (line 50) is coverage's\n// story, not this one.\nfunc TestComputeScopesToAddedLines(t *testing.T) {\n\tdir := writeReport(t, \"mutants.json\", sample)\n\tres := mutation.Compute(dir, []mutation.Changed{{Path: \"internal/foo/foo.go\", Added: []int{10, 12}}})\n\tif res == nil {\n\t\tt.Fatal(\"a report with mutants on changed lines must produce a result\")\n\t}\n\tif res.Killed != 1 || res.Lived != 1 {\n\t\tt.Fatalf(\"killed=%d lived=%d, want 1 and 1\", res.Killed, res.Lived)\n\t}\n\tif len(res.Survived) != 1 || len(res.Survived[0].Mutants) != 1 {\n\t\tt.Fatalf(\"survivors = %+v\", res.Survived)\n\t}\n\tm := res.Survived[0].Mutants[0]\n\tif m.Line != 12 || m.Mutator != \"EXPRESSION_REMOVE\" || m.Original != \"!ok\" || m.Replacement != \"true\" {\n\t\tt.Fatalf(\"survivor = %+v\", m)\n\t}\n}\n\n// gomutants pointed at a package writes a shorter file_name than the\n// repository-relative path redline holds; a suffix match must still find it.\nfunc TestComputeMatchesBySuffix(t *testing.T) {\n\tdir := writeReport(t, \"mutants.json\", `{\"files\":[{\"file_name\":\"foo.go\",\"mutations\":[\n\t  {\"type\":\"X\",\"status\":\"LIVED\",\"line\":3,\"original\":\"a\",\"replacement\":\"b\"}]}]}`)\n\tres := mutation.Compute(dir, []mutation.Changed{{Path: \"internal/foo/foo.go\", Added: []int{3}}})\n\tif res == nil || res.Lived != 1 {\n\t\tt.Fatalf(\"suffix match failed: %+v\", res)\n\t}\n}\n\nfunc TestComputeNilWhenNoReport(t *testing.T) {\n\tif res := mutation.Compute(t.TempDir(), []mutation.Changed{{Path: \"a.go\", Added: []int{1}}}); res != nil {\n\t\tt.Fatalf(\"no report must read as nil, got %+v\", res)\n\t}\n}\n\n// A report that says nothing about any line the change touched is \"nobody\n// measured this change\", which must read as nil, not as a clean result.\nfunc TestComputeNilWhenNothingOnChangedLines(t *testing.T) {\n\tdir := writeReport(t, \"mutants.json\", sample)\n\tif res := mutation.Compute(dir, []mutation.Changed{{Path: \"internal/foo/foo.go\", Added: []int{99}}}); res != nil {\n\t\tt.Fatalf(\"no measured line must read as nil, got %+v\", res)\n\t}\n}\n",
         "language": "go",
         "areas": [
           "tests"
@@ -242,6 +328,7 @@
         "added": 25,
         "removed": 0,
         "diff": "diff --git a/internal/report/markdown.go b/internal/report/markdown.go\nindex d3bc963..1b402fc 100644\n--- a/internal/report/markdown.go\n+++ b/internal/report/markdown.go\n@@ -29,6 +29,7 @@ func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]p\n \t}\n \tsection1(\u0026b, renders)\n \tcoverageSection(\u0026b, rep)\n+\tmutationSection(\u0026b, rep)\n \tfileSection(\u0026b, ch, rep)\n \tcompositionSection(\u0026b, ch)\n \tsection2(\u0026b, rep)\n@@ -46,6 +47,30 @@ func overviewSection(b *strings.Builder, rep *findings.Report) {\n \tfmt.Fprintf(b, \"## Review (agent)\\n\\n%s\\n\\n\", rep.Agent.Overview)\n }\n \n+// mutationSection renders the diff-scoped gomutants result, when a report was\n+// read. A survivor is a line a test runs but nothing asserts.\n+func mutationSection(b *strings.Builder, rep *findings.Report) {\n+\tm := rep.Mutation\n+\tif m == nil {\n+\t\treturn\n+\t}\n+\tfmt.Fprintf(b, \"## Mutation\\n\\n\")\n+\tfmt.Fprintf(b, \"%d mutant(s) on the added lines survived (a test runs the line but nothing fails when it changes); %d killed. From `%s`.\\n\\n\",\n+\t\tm.Lived, m.Killed, m.Report)\n+\tfor _, fs := range m.Survived {\n+\t\tfor _, mt := range fs.Mutants {\n+\t\t\tfmt.Fprintf(b, \"- `%s:%d` — %s\", fs.Path, mt.Line, mt.Mutator)\n+\t\t\tif mt.Original != \"\" {\n+\t\t\t\tfmt.Fprintf(b, \": `%s` -\u003e `%s`\", mt.Original, mt.Replacement)\n+\t\t\t}\n+\t\t\tfmt.Fprintln(b)\n+\t\t}\n+\t}\n+\tif len(m.Survived) \u003e 0 {\n+\t\tfmt.Fprintln(b)\n+\t}\n+}\n+\n // banner states up front when Redline covered little or none of the change.\n // An empty report is ambiguous by nature — every check clean, or nothing\n // looked — and the reader will assume the flattering reading unless told\n",
+        "head": "// Package report renders a Report for a human. Four sections, in this order:\n// what changed, what was checked and held, what could not be determined, and\n// the findings. Most review tools ship only the fourth; section 3 is the one\n// most easily skipped and the most costly to omit.\npackage report\n\nimport (\n\t\"fmt\"\n\t\"path/filepath\"\n\t\"strings\"\n\n\t\"github.com/ccason/redline/internal/change\"\n\t\"github.com/ccason/redline/internal/findings\"\n\t\"github.com/ccason/redline/internal/pane\"\n)\n\n// Markdown renders the report.\nfunc Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]pane.Artifact, ch *change.Set) string {\n\tvar b strings.Builder\n\tfmt.Fprintf(\u0026b, \"# Redline\\n\\n\")\n\tfmt.Fprintf(\u0026b, \"Base `%s` (`%s`) — %d file(s) changed, %d examined.\\n\\n\",\n\t\trep.BaseRef, short(rep.BaseSHA), rep.Coverage.ChangedFiles, rep.Coverage.ExaminedFiles)\n\tfmt.Fprintf(\u0026b, \"%d finding(s).\\n\\n\", len(rep.Findings))\n\tbanner(\u0026b, rep)\n\toverviewSection(\u0026b, rep)\n\n\tif pr := prLink(ch); pr != \"\" {\n\t\tfmt.Fprintf(\u0026b, \"%s\\n\\n\", pr)\n\t}\n\tsection1(\u0026b, renders)\n\tcoverageSection(\u0026b, rep)\n\tmutationSection(\u0026b, rep)\n\tfileSection(\u0026b, ch, rep)\n\tcompositionSection(\u0026b, ch)\n\tsection2(\u0026b, rep)\n\tsection3(\u0026b, rep)\n\tsection4(\u0026b, rep, evidence)\n\treturn b.String()\n}\n\n// overviewSection renders the agent's summary of the change, when it wrote\n// one, marked as the agent's.\nfunc overviewSection(b *strings.Builder, rep *findings.Report) {\n\tif rep.Agent == nil || rep.Agent.Overview == \"\" {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"## Review (agent)\\n\\n%s\\n\\n\", rep.Agent.Overview)\n}\n\n// mutationSection renders the diff-scoped gomutants result, when a report was\n// read. A survivor is a line a test runs but nothing asserts.\nfunc mutationSection(b *strings.Builder, rep *findings.Report) {\n\tm := rep.Mutation\n\tif m == nil {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"## Mutation\\n\\n\")\n\tfmt.Fprintf(b, \"%d mutant(s) on the added lines survived (a test runs the line but nothing fails when it changes); %d killed. From `%s`.\\n\\n\",\n\t\tm.Lived, m.Killed, m.Report)\n\tfor _, fs := range m.Survived {\n\t\tfor _, mt := range fs.Mutants {\n\t\t\tfmt.Fprintf(b, \"- `%s:%d` — %s\", fs.Path, mt.Line, mt.Mutator)\n\t\t\tif mt.Original != \"\" {\n\t\t\t\tfmt.Fprintf(b, \": `%s` -\u003e `%s`\", mt.Original, mt.Replacement)\n\t\t\t}\n\t\t\tfmt.Fprintln(b)\n\t\t}\n\t}\n\tif len(m.Survived) \u003e 0 {\n\t\tfmt.Fprintln(b)\n\t}\n}\n\n// banner states up front when Redline covered little or none of the change.\n// An empty report is ambiguous by nature — every check clean, or nothing\n// looked — and the reader will assume the flattering reading unless told\n// otherwise, before they read anything else.\nfunc banner(b *strings.Builder, rep *findings.Report) {\n\tif rep.Coverage.ChangedFiles == 0 {\n\t\tfmt.Fprintf(b, \"\u003e **Nothing to review.** The working tree matches the base revision.\\n\\n\")\n\t\treturn\n\t}\n\tswitch {\n\tcase rep.Coverage.ExaminedFiles == 0:\n\t\tif len(rep.Findings) \u003e 0 {\n\t\t\tfmt.Fprintf(b, \"\u003e **Redline's panes examined none of this change.** No pane it currently \"+\n\t\t\t\t\"ships covers these files. The findings below come from the agent's review.\\n\\n\")\n\t\t} else {\n\t\t\tfmt.Fprintf(b, \"\u003e **Redline examined none of this change.** No pane it currently ships \"+\n\t\t\t\t\"covers these files, so the empty findings list below says nothing about whether \"+\n\t\t\t\t\"the change is correct. Review it by hand.\\n\\n\")\n\t\t}\n\tcase len(rep.FailedSubstrates()) \u003e 0:\n\t\tfmt.Fprintf(b, \"\u003e **%d pane(s) applied to this change and did not run.** \"+\n\t\t\t\"See _What could not be determined_.\\n\\n\", len(rep.FailedSubstrates()))\n\t}\n}\n\n// prLink names the pull request under review, when there is one.\nfunc prLink(ch *change.Set) string {\n\tif ch == nil || ch.Target == nil || ch.Target.PR == nil {\n\t\treturn \"\"\n\t}\n\tpr := ch.Target.PR\n\tlabel := prLabel(pr.Number)\n\tif pr.URL != \"\" {\n\t\tlabel = fmt.Sprintf(\"[%s](%s)\", label, pr.URL)\n\t}\n\tif pr.Title != \"\" {\n\t\tlabel += \" \" + pr.Title\n\t}\n\treturn label\n}\n\nfunc prLabel(n int) string {\n\tif n == 0 {\n\t\treturn \"PR\"\n\t}\n\treturn fmt.Sprintf(\"PR #%d\", n)\n}\n\n// coverageSection is the number that stands in for reading the tests. An\n// absent profile is stated as absent: \"no test executes these lines\" and\n// \"nobody measured\" are different claims and only one is the author's problem.\n// A change no profile could describe gets no section at all.\nfunc coverageSection(b *strings.Builder, rep *findings.Report) {\n\tif !rep.Coverage.CoverageApplies() {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"## Coverage\\n\\n\")\n\tc := rep.Coverage.Diff\n\tif c == nil {\n\t\tfmt.Fprintf(b, \"_No coverage profile was found, so whether these changes are tested is unknown. \"+\n\t\t\t\"That is not the same as untested — run the suite with `-coverprofile=coverage.out`._\\n\\n\")\n\t\treturn\n\t}\n\tif c.Stale {\n\t\tfmt.Fprintf(b, \"\u003e **The profile `%s` predates this change**, so its number does not describe \"+\n\t\t\t\"the code under review. Re-run the suite with `-coverprofile`.\\n\\n\", c.Profile)\n\t}\n\tif c.Percent \u003c 0 {\n\t\tfmt.Fprintf(b, \"No added line is coverable, so there is nothing for a test to execute (`%s`).\\n\\n\", c.Profile)\n\t} else {\n\t\tfmt.Fprintf(b, \"**%.0f%%** of the %d coverable line(s) this change adds are executed by a test, \"+\n\t\t\t\"according to `%s`. %d covered, %d not.\\n\\n\",\n\t\t\tc.Percent, c.Lines, c.Profile, c.Covered, c.Lines-c.Covered)\n\t}\n\tif c.TotalPercent \u003e= 0 {\n\t\tfmt.Fprintf(b, \"Repository-wide, **%.0f%%** of %d coverable line(s) in `%s` are covered \"+\n\t\t\t\"(%d covered, %d not) — the profile's whole scope, not just what this change added.\\n\\n\",\n\t\t\tc.TotalPercent, c.TotalLines, c.Profile, c.TotalCovered, c.TotalLines-c.TotalCovered)\n\t}\n\tfor _, gap := range c.Uncovered {\n\t\tfmt.Fprintf(b, \"- `%s` — %d uncovered added line(s)\\n\", gap.Path, len(gap.Lines))\n\t}\n\tif len(c.Uncovered) \u003e 0 {\n\t\tfmt.Fprintln(b)\n\t}\n}\n\n// fileSection is the walkthrough: every changed file, with its finding count.\n// Shown even when no pane ran — that is when a reviewer most needs a\n// file-by-file account of what moved.\nfunc fileSection(b *strings.Builder, ch *change.Set, rep *findings.Report) {\n\tif ch == nil || len(ch.Files) == 0 {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"## Files\\n\\n\")\n\tfor _, row := range fileWalk(ch.Files, rep.Findings) {\n\t\tfmt.Fprintf(b, \"- `%s` (%s, +%d −%d)\", row.Path, row.Status, row.Added, row.Removed)\n\t\tif row.Findings \u003e 0 {\n\t\t\tfmt.Fprintf(b, \", %d finding(s)\", row.Findings)\n\t\t}\n\t\tif rep.Agent != nil {\n\t\t\tif s := rep.Agent.Files[row.Path]; s != \"\" {\n\t\t\t\tfmt.Fprintf(b, \": %s\", s)\n\t\t\t}\n\t\t}\n\t\tfmt.Fprintln(b)\n\t}\n\tfmt.Fprintln(b)\n}\n\n// compositionSection is the diff's lines grouped by language and kind — test\n// versus behavior versus config versus prose — so a reviewer knows the shape\n// of the change before reading a single line of it.\nfunc compositionSection(b *strings.Builder, ch *change.Set) {\n\tif ch == nil {\n\t\treturn\n\t}\n\trows := change.Composition(ch.Files)\n\tif len(rows) == 0 {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"## Lines by language and type\\n\\n\")\n\tfmt.Fprintf(b, \"| Language | Type | Files | + | − |\\n|---|---|---:|---:|---:|\\n\")\n\tfor _, r := range rows {\n\t\tfmt.Fprintf(b, \"| %s | %s | %d | %d | %d |\\n\", r.Language, r.Kind, r.Files, r.Added, r.Removed)\n\t}\n\tfmt.Fprintln(b)\n}\n\n// section1 is the rendered evidence, in the domain of the change.\nfunc section1(b *strings.Builder, renders []pane.Render) {\n\tfmt.Fprintf(b, \"## What changed\\n\\n\")\n\tif len(renders) == 0 {\n\t\tfmt.Fprintf(b, \"_No pane examined this change; there is no evidence to show._\\n\\n\")\n\t\treturn\n\t}\n\tfor _, r := range renders {\n\t\tfmt.Fprintf(b, \"### %s\\n\\n%s\\n\\n\", r.Title, r.Summary)\n\t\tif len(r.Lines) \u003e 0 {\n\t\t\tfmt.Fprintf(b, \"```\\n%s\\n```\\n\\n\", strings.Join(r.Lines, \"\\n\"))\n\t\t}\n\t}\n}\n\n// section2 is the confirmations: every question the reviewer does not need to\n// ask again. Collapsed for density, never discarded.\nfunc section2(b *strings.Builder, rep *findings.Report) {\n\tfmt.Fprintf(b, \"## What was checked and held\\n\\n\")\n\tif len(rep.Confirmations) == 0 {\n\t\tfmt.Fprintf(b, \"_Nothing was confirmed — no check reached a clean answer on this change._\\n\\n\")\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"\u003cdetails\u003e\\n\u003csummary\u003e%d confirmation(s)\u003c/summary\u003e\\n\\n\", len(rep.Confirmations))\n\tfor _, c := range rep.Confirmations {\n\t\tfmt.Fprintf(b, \"- **%s** — %s\\n\", c.Rule, c.Message)\n\t}\n\tfmt.Fprintf(b, \"\\n\u003c/details\u003e\\n\\n\")\n}\n\n// section3 is what could not be determined, and why. A pane that did not run\n// renders here loudly: an empty pane must never be readable as \"nothing to\n// worry about\".\nfunc section3(b *strings.Builder, rep *findings.Report) {\n\tfmt.Fprintf(b, \"## What could not be determined\\n\\n\")\n\tfailed := rep.FailedSubstrates()\n\tif len(rep.Unknowns) == 0 \u0026\u0026 len(failed) == 0 {\n\t\tif n := len(rep.Coverage.Unexamined); n \u003e 0 {\n\t\t\tfmt.Fprintf(b, \"Every pane that applies ran, but %d changed file(s) were not in any pane's scope.\\n\\n\", n)\n\t\t} else {\n\t\t\tfmt.Fprintf(b, \"Nothing. Every check that applies to these %d file(s) ran and answered.\\n\\n\",\n\t\t\t\trep.Coverage.ExaminedFiles)\n\t\t}\n\t}\n\tfor _, s := range failed {\n\t\tfmt.Fprintf(b, \"- **%s did not run.** %s\\n\", s.Name, s.Detail)\n\t}\n\tfor _, u := range rep.Unknowns {\n\t\tline := fmt.Sprintf(\"- **%s** — %s\", u.Substrate, u.Message)\n\t\tif u.Reason != \"\" {\n\t\t\tline += \" (\" + u.Reason + \")\"\n\t\t}\n\t\tfmt.Fprintf(b, \"%s\\n\", line)\n\t}\n\tif len(rep.Unknowns) \u003e 0 || len(failed) \u003e 0 {\n\t\tfmt.Fprintln(b)\n\t}\n\tif n := len(rep.Coverage.Unexamined); n \u003e 0 \u0026\u0026 rep.Coverage.ExaminedFiles \u003e 0 {\n\t\tfmt.Fprintf(b, \"\u003cdetails\u003e\\n\u003csummary\u003e%d changed file(s) no pane examined\u003c/summary\u003e\\n\\n\", n)\n\t\tfor _, path := range rep.Coverage.Unexamined {\n\t\t\tfmt.Fprintf(b, \"- `%s`\\n\", path)\n\t\t}\n\t\tfmt.Fprintf(b, \"\\n\u003c/details\u003e\\n\\n\")\n\t}\n\tif n := len(rep.Coverage.Generated); n \u003e 0 {\n\t\t// Named, not just counted. Excluding a file a human wrote is the one\n\t\t// way suppression can hide a real change, and the reader can only\n\t\t// catch that if the list is here.\n\t\tfmt.Fprintf(b, \"\u003cdetails\u003e\\n\u003csummary\u003e%d generated file(s) excluded from this review\u003c/summary\u003e\\n\\n\", n)\n\t\tfor _, path := range rep.Coverage.Generated {\n\t\t\tfmt.Fprintf(b, \"- `%s`\\n\", path)\n\t\t}\n\t\tfmt.Fprintf(b, \"\\n\u003c/details\u003e\\n\\n\")\n\t}\n\tskipped := 0\n\tfor _, s := range rep.Substrates {\n\t\tif s.State == findings.SubstrateSkipped {\n\t\t\tskipped++\n\t\t}\n\t}\n\tif skipped \u003e 0 {\n\t\tfmt.Fprintf(b, \"\u003cdetails\u003e\\n\u003csummary\u003e%d pane(s) did not apply to this change\u003c/summary\u003e\\n\\n\", skipped)\n\t\tfor _, s := range rep.Substrates {\n\t\t\tif s.State == findings.SubstrateSkipped {\n\t\t\t\tfmt.Fprintf(b, \"- `%s` — %s\\n\", s.Name, s.Detail)\n\t\t\t}\n\t\t}\n\t\tfmt.Fprintf(b, \"\\n\u003c/details\u003e\\n\\n\")\n\t}\n}\n\n// section4 is the findings, ranked.\nfunc section4(b *strings.Builder, rep *findings.Report, evidence map[string]pane.Artifact) {\n\tfmt.Fprintf(b, \"## Findings\\n\\n\")\n\tif len(rep.Findings) == 0 {\n\t\tif rep.Coverage.ExaminedFiles == 0 {\n\t\t\tfmt.Fprintf(b, \"None — because nothing was checked. See the note at the top.\\n\")\n\t\t} else {\n\t\t\tfmt.Fprintf(b, \"None.\\n\")\n\t\t}\n\t\treturn\n\t}\n\tfor _, f := range rep.Findings {\n\t\tloc := f.File\n\t\tif loc == \"\" {\n\t\t\tloc = f.Anchor.Key()\n\t\t}\n\t\tfmt.Fprintf(b, \"### %s — `%s`\\n\\n\", strings.ToUpper(string(f.Severity)), f.Rule)\n\t\tfmt.Fprintf(b, \"%s\\n\\n\", f.Message)\n\t\tfmt.Fprintf(b, \"- location: `%s`\\n\", loc)\n\t\tif f.Expected != \"\" {\n\t\t\tfmt.Fprintf(b, \"- expected: %s\\n\", f.Expected)\n\t\t}\n\t\tif f.Observed != \"\" {\n\t\t\tfmt.Fprintf(b, \"- observed: %s\\n\", f.Observed)\n\t\t}\n\t\tif f.Verdict != nil {\n\t\t\tfmt.Fprintf(b, \"- agent verdict: %s\", f.Verdict.Ruling)\n\t\t\tif f.Verdict.Rationale != \"\" {\n\t\t\t\tfmt.Fprintf(b, \" — %s\", f.Verdict.Rationale)\n\t\t\t}\n\t\t\tfmt.Fprintf(b, \"\\n\")\n\t\t\tif f.Verdict.Fix != \"\" {\n\t\t\t\tfmt.Fprintf(b, \"- agent fix: %s\\n\", f.Verdict.Fix)\n\t\t\t}\n\t\t}\n\t\tfmt.Fprintf(b, \"- source: %s\\n\", f.Source)\n\t\tif f.FixCmd != \"\" {\n\t\t\tfmt.Fprintf(b, \"- fix: %s\\n\", f.FixCmd)\n\t\t}\n\t\temitEvidence(b, f, evidence)\n\t\tif f.Context != \"\" {\n\t\t\tfmt.Fprintf(b, \"\\n\u003e %s\\n\", f.Context)\n\t\t}\n\t\tfmt.Fprintln(b)\n\t}\n}\n\n// maxInlineEvidence caps what is inlined into the report. Larger artifacts\n// stay on disk under .redline/evidence/ and are referenced by path.\nconst maxInlineEvidence = 4000\n\n// emitEvidence shows the artifact behind a finding. The claim and the thing it\n// rests on belong in the same place; a reviewer who has to go find the\n// evidence is back to taking the tool's word for it.\nfunc emitEvidence(b *strings.Builder, f findings.Finding, evidence map[string]pane.Artifact) {\n\tfor _, id := range f.Evidence {\n\t\ta, ok := evidence[id]\n\t\tif !ok || a.Content == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tif len(a.Content) \u003e maxInlineEvidence {\n\t\t\tfmt.Fprintf(b, \"- evidence: `.redline/evidence/%s` (%d bytes)\\n\", evidenceFile(id), len(a.Content))\n\t\t\tcontinue\n\t\t}\n\t\tfmt.Fprintf(b, \"\\n```%s\\n%s\\n```\\n\", a.Kind, strings.TrimRight(a.Content, \"\\n\"))\n\t}\n}\n\n// evidenceFile turns an observation ID into a filename under .redline/evidence/.\nfunc evidenceFile(id string) string {\n\trepl := strings.NewReplacer(\"/\", \"_\", \":\", \"_\", \" \", \"_\", \"..\", \"_\")\n\tname := filepath.Base(repl.Replace(id))\n\tif name == \"\" || name == \".\" {\n\t\treturn \"artifact\"\n\t}\n\treturn name\n}\n\n// EvidenceFile is evidenceFile, exported for the writer that persists artifacts.\nfunc EvidenceFile(id string) string { return evidenceFile(id) }\n\nfunc short(sha string) string {\n\tif len(sha) \u003e 8 {\n\t\treturn sha[:8]\n\t}\n\treturn sha\n}\n",
         "language": "go",
         "areas": [
           "code"
@@ -264,6 +351,7 @@
         "added": 5,
         "removed": 0,
         "diff": "diff --git a/skills/redline/SKILL.md b/skills/redline/SKILL.md\nindex aa53647..277fba3 100644\n--- a/skills/redline/SKILL.md\n+++ b/skills/redline/SKILL.md\n@@ -42,6 +42,11 @@ stderr.\n - Check `coverage`: `examinedFiles` versus `changedFiles`, `diffCoverage`,\n   and `unknowns[]`. These tell you what nobody has measured, which is where\n   your own reading matters most.\n+- If a gomutants report (`mutants.json`) is on disk, `mutation` carries the\n+  survivors on the changed lines: lines a test runs but nothing fails when they\n+  change, each naming the `original -\u003e replacement` that went uncaught. That is\n+  the assertion a test is missing. Produce one with `make mutants` or\n+  `gomutants --changed-since \u003cbase\u003e -o mutants.json ./...`.\n - Review with your own skills and tools: read the diff, follow the callers,\n   weigh the change against the repo's rules. That reading is your half of\n   the report — write it to `review.json` (below) and Redline renders it\n",
+        "head": "---\nname: redline\ndescription: Observe a change with Redline — the working tree, the latest commit, a commit range, a branch, or a GitHub PR — and fold its measured evidence into your review. Use when asked to review a commit, range, branch, or PR, before pushing, or whenever a change touches migrations, an API contract, or coverage-sensitive code.\n---\n\n# redline\n\nRedline measures a change and reports evidence: migration hygiene, API\ncontract breaking changes, diff coverage, what was examined and what was\nnot. It runs no model itself; it measures, and it carries your review —\ncomments and verdicts you write merge into the same report, marked as\nyours. Redline exists so you do not spend your context re-deriving what a\ndeterministic check already established.\n\n## When to use\n\n- \"Review this PR\" / \"review branch X\" / \"review the latest commit\" /\n  \"review these commits\" / \"review what I've got\".\n- Before a push or opening a PR.\n- Any change touching migrations, an API spec, or test coverage.\n\n## The loop\n\n**1. Run it.**\n\n```\nredline run                   # working tree (uncommitted work included)\nredline run --commit HEAD     # latest commit only\nredline run --range HEAD~3..HEAD\nredline run --branch feat/x\nredline run --pr 123\n```\n\nThis writes `findings.json`, `report.md`, and `report.html` under\n`.redline/`, prints the markdown report, and prints `Report: \u003curl\u003e` on\nstderr.\n\n**2. Read `findings.json`, then review the change yourself.**\n\n- Do not re-report anything in `findings[]`. Those are observed facts and\n  are already on the report.\n- Check `coverage`: `examinedFiles` versus `changedFiles`, `diffCoverage`,\n  and `unknowns[]`. These tell you what nobody has measured, which is where\n  your own reading matters most.\n- If a gomutants report (`mutants.json`) is on disk, `mutation` carries the\n  survivors on the changed lines: lines a test runs but nothing fails when they\n  change, each naming the `original -\u003e replacement` that went uncaught. That is\n  the assertion a test is missing. Produce one with `make mutants` or\n  `gomutants --changed-since \u003cbase\u003e -o mutants.json ./...`.\n- Review with your own skills and tools: read the diff, follow the callers,\n  weigh the change against the repo's rules. That reading is your half of\n  the report — write it to `review.json` (below) and Redline renders it\n  beside its own findings.\n\n**3. Present it.**\n\nLead with the `Report:` URL from stderr, exactly as printed — the port is\n8765 only when 8765 was free. Then keep the terminal short: your review,\nthe observed findings that matter, and what went unexamined. If\n`examinedFiles` is less than `changedFiles`, say which parts no check\ncovered; an empty findings list from a pane that does not exist is not a\npass, and the reviewer will read it as one unless you say otherwise.\n\nTwo numbers on the report are absences rather than results, and both read\nas a pass if you let them. `diffCoverage` is null when no coverage profile\nwas found — that is \"nobody measured\", not \"nothing is tested\". When\n`coverage.coverableFiles` is 0 the change has no file a profile could\ncover, and coverage is left off the report on purpose; do not raise it.\nLikewise a pane in `substrates[]` with state `not-applicable` means the\nrepository has no files it reads; say nothing about it.\n`coverage.generated` lists files excluded as machine output; if something\nthere looks hand-written, say so.\n\n## Reviewer requests come back to you\n\nThe report lets a human act on any diff line or finding without writing code:\ncomment on it, ask you to **Explain** it, or ask you to **Apply** a change. They\ncollect these and press **Copy for the agent**. What they paste looks like this:\n\n```json\n{\"redlineReviewComments\": {\n  \"instruction\": \"...\",\n  \"review\": \"abc12345:def67890\",\n  \"target\": \"PR #123 · owner/repo\",\n  \"comments\": [\n    {\"action\": \"comment\", \"file\": \"internal/foo.go\", \"line\": 42, \"side\": \"new\",\n     \"code\": \"\\treturn nil\", \"text\": \"this swallows the error\"},\n    {\"action\": \"explain\", \"file\": \"internal/foo.go\", \"line\": 51, \"side\": \"new\",\n     \"code\": \"\\tgo drain(ch)\"},\n    {\"action\": \"apply\", \"on\": \"finding\", \"file\": \"internal/foo.go\", \"line\": 42,\n     \"rule\": \"err-unchecked\", \"message\": \"error is discarded\",\n     \"fix\": \"wrap the call with %w and return it\"}\n  ]\n}}\n```\n\nWhen you receive it:\n\n1. **Check `target` is the change you are working on.** These items were written\n   against one tree. If the session has moved on, a different branch, a rebase,\n   new commits, say so and stop rather than applying them to code the reviewer\n   never saw.\n2. **Do what each item's `action` says.**\n   - `comment`: address the feedback in `text`. Make the change, or reply saying\n     why you did not.\n   - `explain`: explain that line or finding and the code around it. Do not\n     change code.\n   - `apply`: make the change the item asks for. When it carries a `fix`, apply\n     that fix.\n   `code` is the line as the reviewer saw it; use it to find the right place when\n   line numbers have shifted.\n3. **Do not re-review the rest of the diff.** They asked about these lines.\n4. **Re-run `redline run`** when you are done, so the report reflects the new\n   state. Use the same target flags.\n\n## Bring your review into the report\n\nIf you produce a review of the change, an overview, a per-file summary, and line\ncomments, write it to `.redline/review.json` and Redline folds it into the\nreport on the next run. This is the same file the verdicts below live in. Redline\nrenders what you wrote, marked as yours.\n\n```json\n{\n  \"overview\": \"One or two paragraphs on what this change is and why it exists.\",\n  \"files\": {\n    \"internal/foo.go\": \"Reworked the retry loop to bound attempts.\"\n  },\n  \"comments\": [\n    {\"file\": \"internal/foo.go\", \"line\": 42, \"severity\": \"warning\",\n     \"body\": \"This can loop forever if the server keeps returning 503.\"}\n  ]\n}\n```\n\n- `overview` renders as a Review section at the top of the report.\n- `files` maps a changed path to a one-line summary, shown on that file in the\n  drill-in. Key on the same repo-relative paths Redline reports.\n- `comments` become findings on their line, marked `source: llm`, sitting in the\n  drawer beside Redline's own with the coverage stripe and the line highlight.\n  `severity` is one of error, warning, info, and defaults to info. A comment on a\n  line the default diff does not show still renders: Redline expands the diff\n  around it.\n\n## Judge the suppressions\n\nRedline extracts the facts; the reading is still yours. For a finding it\ncannot judge — a `//nolint` or `eslint-disable` the change adds — you can\nrecord a verdict that rides on the same card, marked `source: llm`, beside\nRedline's deterministic fact.\n\nAfter a run, for each finding in `findings.json` with rule\n`suppression-added`, decide why the author silenced the linter and write\n`.redline/review.json`, keyed by the finding's own `fingerprint`:\n\n```json\n{\"verdicts\": {\n  \"\u003cfingerprint from findings.json\u003e\": {\n    \"ruling\": \"should-fix\",\n    \"rationale\": \"the error path is real, this is not a fixture\",\n    \"fix\": \"wrap the call with %w and drop the nolint\"\n  }\n}}\n```\n\n- `ruling` is one of **justified** (the silencing is warranted),\n  **should-fix** (fix the code rather than hide the finding), or\n  **rule-noisy** (the rule fires too often and should be tuned or scoped).\n- `rationale` is one line: why.\n- `fix` is your recommendation for how to resolve the finding, one or two lines.\n  Optional: leave it out when the ruling stands on its own.\n- Key on the exact `fingerprint` string Redline emitted. A verdict that\n  matches no finding is dropped.\n\nThen re-run `redline run` with the same target flags: it merges the verdicts\nonto the findings and renders them. Redline never writes `review.json` and\nnever overwrites it, so your judgments survive a re-run the way\n`comments.json` does.\n\nJudge only the suppressions here. This is triage of Redline's own evidence,\nnot a second pass over the whole diff.\n\n## Do not\n\n- Do not post anything to GitHub on your own. `redline post` is the only\n  command that writes, and only the person reviewing runs it. `run` is\n  read-only, so nothing you do reaches the pull request.\n- Do not claim Redline executed, ran, or tested anything it did not. Your\n  own findings are your reading of the code; say so.\n- Do not treat Redline as a GitHub approval. `post` is always COMMENT. A\n  `--profile` file stamps pass/fail markers a *separate* merge gate can\n  read; error and warning fail, info does not. Redline never approves or\n  requests changes.\n",
         "language": "markdown",
         "areas": [
           "code"
@@ -273,6 +361,16 @@
     "uiTouched": true
   },
   "renders": [
+    {
+      "Title": "Lint delta",
+      "Summary": "4 finding(s) introduced, 0 resolved (golangci-lint, gorefactor)",
+      "Lines": [
+        "+ internal/findings:0 high-coupling (gorefactor)",
+        "+ internal/mutation/mutation_test.go:23 funcorder-function (gorefactor)",
+        "+ internal/report/html.go:150 hard-to-maintain (gorefactor)",
+        "+ internal/report/html.go:150 long-function (gorefactor)"
+      ]
+    },
     {
       "Title": "Suppressions",
       "Summary": "0 lint-silencing directive(s) added by this change",
@@ -292,7 +390,7 @@
       "schemaVersion": 1,
       "provider": {
         "name": "gorefactor",
-        "version": "v0.0.0-20260906204439-a2ac4a145c9c+dirty",
+        "version": "v0.0.0-20260907222515-4833e7e8a214+dirty",
         "language": "go"
       },
       "baseSHA": "a9152c4bd97e0dbef9356878e594310c7fd68bf4",
@@ -1523,6 +1621,310 @@
             "callerSymbol": "cmd/redline.write",
             "kind": "call-site",
             "line": "252"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 70,
+          "symbol": "mutationSection",
+          "scope": "internal/report.mutationSection",
+          "file": "internal/report/markdown.go",
+          "startLine": 30,
+          "endLine": 34,
+          "content": "\tsection1(\u0026b, renders)\n\tcoverageSection(\u0026b, rep)\n\tmutationSection(\u0026b, rep)\n\tfileSection(\u0026b, ch, rep)\n\tcompositionSection(\u0026b, ch)\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/report.Markdown",
+            "kind": "call-site",
+            "line": "32"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 70,
+          "symbol": "attachMutation",
+          "scope": "internal/run.attachMutation",
+          "file": "internal/run/run.go",
+          "startLine": 232,
+          "endLine": 236,
+          "content": "\tattachDiffCoverage(\u0026res.Report, res.Change, tgt.Dir, covDir)\n\tres.LineCoverage = lineCoverageOverlay(tgt.Dir, covDir, res.Change)\n\tattachMutation(\u0026res.Report, res.Change, opts.Dir)\n\treturn res, nil\n}\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/run.Run",
+            "kind": "call-site",
+            "line": "234"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 68,
+          "symbol": "mutationsFor",
+          "scope": "internal/mutation.mutationsFor",
+          "file": "internal/mutation/mutation.go",
+          "startLine": 107,
+          "endLine": 111,
+          "content": "\tres := \u0026Result{Report: name}\n\tfor _, c := range changed {\n\t\tmuts := mutationsFor(r, c.Path)\n\t\tif muts == nil {\n\t\t\tcontinue\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/mutation.Compute",
+            "kind": "call-site",
+            "line": "109"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 60,
+          "symbol": "buildView",
+          "scope": "internal/report.buildView",
+          "file": "internal/report/html.go",
+          "startLine": 142,
+          "endLine": 146,
+          "content": "\t}\n\tvar b strings.Builder\n\tif err := tmpl.Execute(\u0026b, buildView(in)); err != nil {\n\t\treturn \"\", err\n\t}\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/report.HTML",
+            "kind": "call-site",
+            "line": "144"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 58,
+          "symbol": "rawMutant",
+          "scope": "internal/mutation.rawMutant",
+          "file": "internal/mutation/mutation.go",
+          "startLine": 45,
+          "endLine": 49,
+          "content": "type rawFile struct {\n\tFileName  string      `json:\"file_name\"`\n\tMutations []rawMutant `json:\"mutations\"`\n}\n\n",
+          "details": {
+            "callerKind": "type",
+            "callerSymbol": "internal/mutation.rawFile",
+            "kind": "call-site",
+            "line": "47"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 58,
+          "symbol": "rawMutant",
+          "scope": "internal/mutation.rawMutant",
+          "file": "internal/mutation/mutation.go",
+          "startLine": 148,
+          "endLine": 152,
+          "content": "// narrower target makes it a path suffix. Match by longest path-component suffix,\n// the same tactic cover.blocksFor uses for import-qualified profile keys.\nfunc mutationsFor(r raw, path string) []rawMutant {\n\tvar best []rawMutant\n\tbestLen := -1\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/mutation.mutationsFor",
+            "kind": "call-site",
+            "line": "150"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 58,
+          "symbol": "rawMutant",
+          "scope": "internal/mutation.rawMutant",
+          "file": "internal/mutation/mutation.go",
+          "startLine": 149,
+          "endLine": 153,
+          "content": "// the same tactic cover.blocksFor uses for import-qualified profile keys.\nfunc mutationsFor(r raw, path string) []rawMutant {\n\tvar best []rawMutant\n\tbestLen := -1\n\tfor i := range r.Files {\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/mutation.mutationsFor",
+            "kind": "call-site",
+            "line": "151"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 55,
+          "symbol": "normalize",
+          "scope": "internal/mutation.normalize",
+          "file": "internal/mutation/mutation.go",
+          "startLine": 120,
+          "endLine": 124,
+          "content": "\t\t\t\tcontinue\n\t\t\t}\n\t\t\tswitch normalize(m.Status) {\n\t\t\tcase \"killed\":\n\t\t\t\tres.Killed++\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/mutation.Compute",
+            "kind": "call-site",
+            "line": "122"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 54,
+          "symbol": "reportNames",
+          "scope": "internal/mutation.reportNames",
+          "file": "internal/mutation/mutation.go",
+          "startLine": 26,
+          "endLine": 30,
+          "content": "// answer: most repositories have no mutation report, and that is not a failure.\nfunc Locate(root string) string {\n\tfor _, n := range reportNames {\n\t\tif fi, err := os.Stat(filepath.Join(root, n)); err == nil \u0026\u0026 !fi.IsDir() {\n\t\t\treturn n\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/mutation.Locate",
+            "kind": "call-site",
+            "line": "28"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 54,
+          "symbol": "rawFile",
+          "scope": "internal/mutation.rawFile",
+          "file": "internal/mutation/mutation.go",
+          "startLine": 50,
+          "endLine": 54,
+          "content": "type raw struct {\n\tModule string    `json:\"go_module\"`\n\tFiles  []rawFile `json:\"files\"`\n}\n\n",
+          "details": {
+            "callerKind": "type",
+            "callerSymbol": "internal/mutation.raw",
+            "kind": "call-site",
+            "line": "52"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 54,
+          "symbol": "raw",
+          "scope": "internal/mutation.raw",
+          "file": "internal/mutation/mutation.go",
+          "startLine": 100,
+          "endLine": 104,
+          "content": "\t\treturn nil\n\t}\n\tvar r raw\n\tif err := json.Unmarshal(data, \u0026r); err != nil {\n\t\treturn nil\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/mutation.Compute",
+            "kind": "call-site",
+            "line": "102"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 54,
+          "symbol": "raw",
+          "scope": "internal/mutation.raw",
+          "file": "internal/mutation/mutation.go",
+          "startLine": 148,
+          "endLine": 152,
+          "content": "// narrower target makes it a path suffix. Match by longest path-component suffix,\n// the same tactic cover.blocksFor uses for import-qualified profile keys.\nfunc mutationsFor(r raw, path string) []rawMutant {\n\tvar best []rawMutant\n\tbestLen := -1\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/mutation.mutationsFor",
+            "kind": "call-site",
+            "line": "150"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 54,
+          "symbol": "view",
+          "scope": "internal/report.view",
+          "file": "internal/report/html.go",
+          "startLine": 148,
+          "endLine": 152,
+          "content": "}\n\nfunc buildView(in HTMLInput) view {\n\trep := in.Report\n\tv := view{\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/report.buildView",
+            "kind": "call-site",
+            "line": "150"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 54,
+          "symbol": "view",
+          "scope": "internal/report.view",
+          "file": "internal/report/html.go",
+          "startLine": 150,
+          "endLine": 154,
+          "content": "func buildView(in HTMLInput) view {\n\trep := in.Report\n\tv := view{\n\t\tTitle:    \"Redline\",\n\t\tCoverage: rep.Coverage,\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/report.buildView",
+            "kind": "call-site",
+            "line": "152"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 54,
+          "symbol": "view",
+          "scope": "internal/report.view",
+          "file": "internal/report/html.go",
+          "startLine": 248,
+          "endLine": 252,
+          "content": "// in step with the template: TestNavMatchesTheSectionsOnThePage fails if a\n// section gains or loses a heading without its entry moving too.\nfunc navFor(v view) []navLink {\n\t// A UI that moved with nothing captured is a gap; a change with no UI files\n\t// has no interface section. Coverage is the same: a change with no\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/report.navFor",
+            "kind": "call-site",
+            "line": "250"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 53,
+          "symbol": "navFor",
+          "scope": "internal/report.navFor",
+          "file": "internal/report/html.go",
+          "startLine": 241,
+          "endLine": 245,
+          "content": "\t\t}\n\t}\n\tv.Nav = navFor(v)\n\treturn v\n}\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/report.buildView",
+            "kind": "call-site",
+            "line": "243"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "fileView",
+          "scope": "internal/report.fileView",
+          "file": "internal/report/html.go",
+          "startLine": 68,
+          "endLine": 72,
+          "content": "\t// area, each with its diff. Rendered once into a hidden store the drawer\n\t// moves from, so a diff exists in exactly one place in the DOM.\n\tDiffFiles []fileView\n\tObserved  []findingView\n\n",
+          "details": {
+            "callerKind": "type",
+            "callerSymbol": "internal/report.view",
+            "kind": "call-site",
+            "line": "70"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "fileView",
+          "scope": "internal/report.fileView",
+          "file": "internal/report/html.go",
+          "startLine": 117,
+          "endLine": 121,
+          "content": "\tAdded   int\n\tRemoved int\n\tFiles   []fileView\n}\n\n",
+          "details": {
+            "callerKind": "type",
+            "callerSymbol": "internal/report.drillGroup",
+            "kind": "call-site",
+            "line": "119"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "fileView",
+          "scope": "internal/report.fileView",
+          "file": "internal/report/html.go",
+          "startLine": 225,
+          "endLine": 229,
+          "content": "\t\t\tfor _, f := range g.Files {\n\t\t\t\tdiff := expandForFindings(headDir, f.Path, f.Diff, findingLines[f.Path])\n\t\t\t\tfv := fileView{Path: f.Path, Status: f.Status, Added: f.Added, Removed: f.Removed,\n\t\t\t\t\tFindings: count[f.Path], Severity: string(worst[f.Path]),\n\t\t\t\t\tDiff: template.HTML(highlightDiffFor(f.Path, diff, in.LineCoverage[f.Path]))}\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/report.buildView",
+            "kind": "call-site",
+            "line": "227"
           }
         },
         {
@@ -2985,6 +3387,71 @@
           "details": {
             "kind": "line-history",
             "lines": "131-131",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "Makefile",
+          "startLine": 27,
+          "endLine": 27,
+          "content": "commit a9152c4bd97e0dbef9356878e594310c7fd68bf4\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T08:30:37-06:00\n\n    Add versioning and a GoReleaser release pipeline\n    \n    redline had no version. Add a version command that prints linker-injected build\n    info: version, commit, and date. A plain go build reads \"dev\"; make build stamps\n    a git-describe string; a released binary carries its tag.\n    \n    .goreleaser.yaml builds linux and darwin on amd64 and arm64, stamps the same\n    ldflags, and produces archives and checksums. .github/workflows/release.yml runs\n    it on a pushed v* tag and creates the GitHub release. make snapshot builds the\n    whole thing locally without tagging or publishing, and make release is the CI\n    command. dist/ is gitignored.\n\ndiff --git a/Makefile b/Makefile\n--- a/Makefile\n+++ b/Makefile\n@@ -19,1 +27,1 @@\n-        coverage bench mutate mutate-full\n+        coverage bench mutate mutate-full snapshot release\n\ncommit 7904b552ef53cf85da9af4d5d4e944e5db6cd665\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-06T10:00:57-06:00\n\n    feat: run and configure external lint tools, and act on findings in the report\n    \n    Dogfood tooling: tests, benchmarks, and fuzz targets across every package,\n    plus first tests for the findings, migrations, and change packages. Total\n    statement coverage 61% to ~71%. Adds .golangci.yml, .gorefactor.yaml, a\n    GitHub Actions workflow, and Makefile targets for lint, coverage, bench, and\n    diff-scoped mutation testing (gremlins).\n    \n    gorefactor lint-delta pane, detected by .gorefactor.yaml, run through the\n    same base-vs-head machinery as golangci-lint and eslint.\n    \n    .redline.yml declares any external tool with no code change: a command, the\n    globs it covers, and how to read its output (sarif, spectral, or a json\n    field mapping). A tool runs as a linter (base vs head) or a differ\n    (oasdiff-style, comparing one file at both revisions), with an optional\n    committed-baseline mode.\n    \n    Report: repository-wide coverage beside diff coverage; a lines-by-language-\n    and-type table; a \"What changed\" section in HTML to match the markdown;\n    per-finding offending-code snippets; per-finding Copy and Comment actions\n    that feed the agent payload; a --file mode that opens the report from disk\n    with no server; summaries now lead the page.\n    \n    Fixes the new tooling surfaced: cover.AddedLines and the post diff mapping\n    no longer invent line 0 from a malformed hunk header; the golangci-lint\n    parser reads one JSON value so v2's trailing summary line no longer breaks\n    it; gorefactor's module-qualified paths are made repo-relative; the diff and\n    snippet renderers no longer double-space every line; the report server sets\n    ReadHeaderTimeout; and the unchecked errors and staticcheck/gocritic\n    findings the new linters caught are cleared.\n\ndiff --git a/Makefile b/Makefile\n--- a/Makefile\n+++ b/Makefile\n@@ -15,1 +16,1 @@\n-        install-repo uninstall clean\n+        coverage bench mutate mutate-full\n\ncommit 5559f214419df5aefaf4442f75badb55177c07af\nAuthor: Claude \u003cnoreply@anthropic.com\u003e\nDate:   2026-08-30T16:05:45+00:00\n\n    docs: rewrite the design doc to follow the writing style guide\n    \n    Remove every em dash, the bold labels, and the contrast-built\n    sentences. Rename the title, turn the phase 2 groupings into\n    subheadings, and reword the coined \"audit line\" as a plain\n    description of the review body's opening. Content is unchanged.\n    \n    Co-Authored-By: Claude Fable 5 \u003cnoreply@anthropic.com\u003e\n    Claude-Session: https://claude.ai/code/session_017puic4LS4tbqkZz9JkX8YA\n\ndiff --git a/Makefile b/Makefile\n--- /dev/null\n+++ b/Makefile\n@@ -0,0 +15,1 @@\n+        install-repo uninstall clean\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "27-27 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "docs/plans/report-roadmap.md",
+          "startLine": 67,
+          "endLine": 71,
+          "content": "commit 0023bc8d58aae5ca9228064014baac439ae4565b\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-06T15:18:23-06:00\n\n    Ingest the agent's review file into the report\n    \n    review.json already carried the agent's per-finding verdicts. Extend it to\n    carry the rest of a review: an overview of the change, a per-file summary, and\n    line comments. The overview renders as a Review section at the top, the file\n    summaries land on their file in the drill-in, and each comment becomes a\n    finding marked source llm so it sits on its line in the drawer beside Redline's\n    own, with the coverage stripe and line highlight. Verdicts gain a fix field for\n    the how, not only the whether.\n    \n    Comments load before Finalize so they get fingerprints stamped with the rest;\n    verdicts still merge after. Redline composes none of it and calls no model: the\n    agent writes the file out of band, Redline merges and renders.\n    \n    docs/plans/report-roadmap.md tracks where the report is going.\n\ndiff --git a/docs/plans/report-roadmap.md b/docs/plans/report-roadmap.md\n--- /dev/null\n+++ b/docs/plans/report-roadmap.md\n@@ -0,0 +57,5 @@\n+## Later: mutation testing\n+\n+Run gremlins to find lines where no test fails when the line is mutated: covered\n+but not actually asserted. Mark those lines in the same per-line view. This is the\n+last layer of the unified line: changed, linted, covered, asserted.\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "67-71 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/report/assets/report.html.tmpl",
+          "startLine": 187,
+          "endLine": 187,
+          "content": "commit 2704adc3b927747718281565aeeaa81603d5729c\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-06T22:04:45-06:00\n\n    Make coverage gaps jump to the code\n    \n    The Coverage section listed the files with added lines no test runs, but the list\n    was inert. Make each entry open the drawer for that file at its first uncovered\n    line, which is already striped amber and highlighted. A reviewer goes from \"these\n    files have gaps\" to the exact untested line in one click, the same drawer the\n    drill-in and findings already use.\n\ndiff --git a/internal/report/assets/report.html.tmpl b/internal/report/assets/report.html.tmpl\n--- a/internal/report/assets/report.html.tmpl\n+++ b/internal/report/assets/report.html.tmpl\n@@ -187,0 +187,1 @@\n+.cov-jump{font:inherit;font-size:inherit;text-align:left;background:none;border:0;padding:2px 0;\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "187-187 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/report/assets/report.html.tmpl",
+          "startLine": 189,
+          "endLine": 189,
+          "content": "commit 2704adc3b927747718281565aeeaa81603d5729c\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-06T22:04:45-06:00\n\n    Make coverage gaps jump to the code\n    \n    The Coverage section listed the files with added lines no test runs, but the list\n    was inert. Make each entry open the drawer for that file at its first uncovered\n    line, which is already striped amber and highlighted. A reviewer goes from \"these\n    files have gaps\" to the exact untested line in one click, the same drawer the\n    drill-in and findings already use.\n\ndiff --git a/internal/report/assets/report.html.tmpl b/internal/report/assets/report.html.tmpl\n--- a/internal/report/assets/report.html.tmpl\n+++ b/internal/report/assets/report.html.tmpl\n@@ -187,0 +189,1 @@\n+.cov-jump:hover{color:var(--accent)}\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "189-189 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/report/assets/report.html.tmpl",
+          "startLine": 385,
+          "endLine": 385,
+          "content": "commit 7112c33f27d8d364653621ccd4d8a744de84054b\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-06T11:13:08-06:00\n\n    feat: fold the two diff views into one drill-in file list\n    \n    The HTML report showed a change two ways: a flat Files walk whose rows opened\n    a right-side drawer, and a Drill in section that expanded the same diffs inline\n    by area. Same diffs, two places. Now there is one: Drill in moves up to the\n    Files slot and is the file list, grouped by surface (Schema/API/Interface/\n    Code) so the briefing's ordering survives. Each file is a row that opens the\n    diff in the right drawer; the inline dropdowns are gone. Diffs render once into\n    a hidden store the drawer moves from, so a diff still exists in exactly one\n    place in the DOM and its per-line comment listeners bind once. Changed test\n    files stay listed by name in the counted note, since the flat walk was their\n    only listing. The markdown report is unchanged.\n\ndiff --git a/internal/report/assets/report.html.tmpl b/internal/report/assets/report.html.tmpl\n--- a/internal/report/assets/report.html.tmpl\n+++ b/internal/report/assets/report.html.tmpl\n@@ -383,0 +374,1 @@\n+\u003cdiv class=\"file\" data-path=\"{{.Path}}\"\u003e\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "385-385 at the base revision",
             "revisions": "3"
           }
         },

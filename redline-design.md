@@ -187,6 +187,46 @@ that governed only the context let a large diff carry the total to 205k tokens
 against a nominal 120k budget. A bound that does not bound is worse than none,
 because it is quoted.
 
+### What Copilot actually does, and what that changed here
+
+This design was planned against an assumption that turned out to be wrong, so
+the correction is recorded rather than quietly absorbed.
+
+The assumption was that Copilot code review is a single pass over a diff with
+repository context, and that its cost advantage came from not running an agent
+loop. It is the opposite. Copilot code review moved to an agentic tool-calling
+architecture in March 2026: it explores the repository, reads related files,
+and traces cross-file dependencies before commenting. It reads the full
+content of every changed file rather than the modified lines. It follows
+imports and call sites into the modules a change affects. And it blends those
+LLM detections with deterministic tools, CodeQL and ESLint among them.
+
+So the cost is not held down by avoiding turns. It is held down because the
+retrieval behind each tool call is a pre-built semantic index: repositories
+are indexed into embeddings in seconds, and a call returns a small relevant
+result instead of making the model grep and read. Cheap turns, not no turns.
+
+Three things follow, and all three are now implemented.
+
+The one-shot design still holds, for a reason narrower than the original one.
+Resending a large diff on every turn is what makes a loop expensive, and this
+tool's diffs are large. Two-stage retrieval was measured and rejected: on the
+largest change here it would have cost more than sending everything once,
+because the diff would be paid for twice.
+
+Whole changed files are now carried, up to four hundred lines, which is what
+Copilot does and what this did not. The gap was real: the model was seeing
+about three quarters of the lines in the files it was reviewing. It is close
+to free, because with the file present every enclosing-declaration expansion
+inside it is already shown and drops out of the budget. On the largest change
+here the total did not move at all; the whole files displaced weaker context
+at the same price.
+
+The deterministic half was the part this already had, and had more of. Copilot
+blends two linters. Wave one here runs the repository's own configured tools,
+scopes them to the delta, and hands the results to the review as priors it is
+told not to restate. That is the same architecture, further along.
+
 ### What is still open
 
 The producer ships with eight fixtures. The plan calls for twenty drawn from

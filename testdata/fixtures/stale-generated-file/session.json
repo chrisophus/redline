@@ -1,8 +1,8 @@
 {
   "report": {
     "schemaVersion": 1,
-    "baseRef": "8884bc01460ea896805738563739a7dc1f9596b9",
-    "baseSHA": "8884bc01460ea896805738563739a7dc1f9596b9",
+    "baseRef": "019941455aa3d12b678d8903d7778eb804b1b2b7",
+    "baseSHA": "019941455aa3d12b678d8903d7778eb804b1b2b7",
     "scope": [
       "api/schema.proto"
     ],
@@ -70,15 +70,15 @@
   "change": {
     "target": {
       "kind": "commit",
-      "dir": "/root/.redline/worktrees/46034d669ae08226/fe6791360e2631706259971ae3f5abdbcb8a2205",
-      "head": "fe6791360e2631706259971ae3f5abdbcb8a2205",
-      "base": "8884bc01460ea896805738563739a7dc1f9596b9",
+      "dir": "/root/.redline/worktrees/283ff42ff725d348/80e664baed4bd380505b69676f9ce1c9ad12a321",
+      "head": "80e664baed4bd380505b69676f9ce1c9ad12a321",
+      "base": "019941455aa3d12b678d8903d7778eb804b1b2b7",
       "label": "HEAD"
     },
-    "baseSHA": "8884bc01460ea896805738563739a7dc1f9596b9",
+    "baseSHA": "019941455aa3d12b678d8903d7778eb804b1b2b7",
     "commits": [
       {
-        "sha": "fe6791360e2631706259971ae3f5abdbcb8a2205",
+        "sha": "80e664baed4bd380505b69676f9ce1c9ad12a321",
         "author": "fixture",
         "subject": "add tenant_id to the user message"
       }
@@ -90,6 +90,7 @@
         "added": 1,
         "removed": 0,
         "diff": "diff --git a/api/schema.proto b/api/schema.proto\nindex f0751fe..b874e0d 100644\n--- a/api/schema.proto\n+++ b/api/schema.proto\n@@ -2,4 +2,5 @@ syntax = \"proto3\";\n message User {\n   string id = 1;\n   string email = 2;\n+  string tenant_id = 3;\n }\n",
+        "head": "syntax = \"proto3\";\nmessage User {\n  string id = 1;\n  string email = 2;\n  string tenant_id = 3;\n}\n",
         "areas": [
           "api"
         ]

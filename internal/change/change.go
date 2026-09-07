@@ -20,6 +20,19 @@ import (
 // crowd out every hand-written change on the report.
 const maxDiffBytes = 60000
 
+// maxHeadLines is how large a changed file may be and still be carried whole.
+//
+// A diff shows the hunks and three lines either side, which is enough to see
+// what changed and not enough to judge it. The rest of the file is where the
+// invariant the hunk breaks usually lives. Carrying the whole file is the
+// cheapest way to close that gap, and it costs less than it looks: with the
+// file present, every enclosing-declaration expansion inside it is already
+// shown and drops out of the context budget on its own.
+//
+// Four hundred lines is where a file stops being readable in one sitting and
+// starts being worth resolving selectively instead.
+const maxHeadLines = 400
+
 // Set is the change: the target, the commits, and every changed file.
 type Set struct {
 	Target  *target.Target `json:"target"`
@@ -37,11 +50,15 @@ type Set struct {
 
 // File is one changed file with its diff.
 type File struct {
-	Path     string `json:"path"`
-	Status   string `json:"status"` // added | modified | deleted
-	Added    int    `json:"added"`
-	Removed  int    `json:"removed"`
-	Diff     string `json:"diff,omitempty"`
+	Path    string `json:"path"`
+	Status  string `json:"status"` // added | modified | deleted
+	Added   int    `json:"added"`
+	Removed int    `json:"removed"`
+	Diff    string `json:"diff,omitempty"`
+	// Head is the file's whole content at the revision under review, for
+	// files small enough to carry. Empty for a large or deleted file, where
+	// the diff and the resolved expansions have to stand on their own.
+	Head     string `json:"head,omitempty"`
 	Language string `json:"language,omitempty"`
 	// Areas classifies the file for the report's drill-in sections.
 	Areas []string `json:"areas,omitempty"`
@@ -77,6 +94,12 @@ func Build(repo *gitx.Repo, tgt *target.Target, baseSHA string, changed []string
 		f.Status = fileStatus(path, baseBlobs, workBlobs)
 		if f.Status == "" {
 			f.Status = status(diff)
+		}
+		if f.Status != "deleted" {
+			if head := repo.File(tgt.Head, path); head != "" &&
+				strings.Count(head, "\n") < maxHeadLines {
+				f.Head = head
+			}
 		}
 		s.Files = append(s.Files, f)
 	}
