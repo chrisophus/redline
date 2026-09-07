@@ -1,8 +1,8 @@
 {
   "report": {
     "schemaVersion": 1,
-    "baseRef": "8609631f94c271b53365d3c7420bdc134655837e",
-    "baseSHA": "8609631f94c271b53365d3c7420bdc134655837e",
+    "baseRef": "e569c7d499e72bcc9180239dced4d178181faf7e",
+    "baseSHA": "e569c7d499e72bcc9180239dced4d178181faf7e",
     "scope": [
       "internal/queue/queue.go"
     ],
@@ -89,15 +89,15 @@
   "change": {
     "target": {
       "kind": "commit",
-      "dir": "/root/.redline/worktrees/6de40751b4ce3cd9/e1d37b09d5007be543b5b200196ca956c7c5ec9b",
-      "head": "e1d37b09d5007be543b5b200196ca956c7c5ec9b",
-      "base": "8609631f94c271b53365d3c7420bdc134655837e",
+      "dir": "/root/.redline/worktrees/6257cda8c8514092/dccc3f7f0eb39831bfbcd0c86aa4d06d42614b84",
+      "head": "dccc3f7f0eb39831bfbcd0c86aa4d06d42614b84",
+      "base": "e569c7d499e72bcc9180239dced4d178181faf7e",
       "label": "HEAD"
     },
-    "baseSHA": "8609631f94c271b53365d3c7420bdc134655837e",
+    "baseSHA": "e569c7d499e72bcc9180239dced4d178181faf7e",
     "commits": [
       {
-        "sha": "e1d37b09d5007be543b5b200196ca956c7c5ec9b",
+        "sha": "dccc3f7f0eb39831bfbcd0c86aa4d06d42614b84",
         "author": "fixture",
         "subject": "simplify Drain"
       }
@@ -145,7 +145,7 @@
         "version": "v0.0.0-20260907222515-4833e7e8a214+dirty",
         "language": "go"
       },
-      "baseSHA": "8609631f94c271b53365d3c7420bdc134655837e",
+      "baseSHA": "e569c7d499e72bcc9180239dced4d178181faf7e",
       "files": [
         {
           "path": "internal/queue/queue.go",
@@ -180,7 +180,7 @@
           "file": "internal/queue/queue.go",
           "startLine": 6,
           "endLine": 6,
-          "content": "commit 99a4799f2e60ec327c4f49d3a01db995a2e5e15a\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:53:00+00:00\n\n    add the queue\n\ndiff --git a/internal/queue/queue.go b/internal/queue/queue.go\n--- /dev/null\n+++ b/internal/queue/queue.go\n@@ -0,0 +6,1 @@\n+\tfor _, it := range items {\n",
+          "content": "commit 8cb1a7576c979ca306ab1bf65053e51880d4006c\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T23:00:55+00:00\n\n    add the queue\n\ndiff --git a/internal/queue/queue.go b/internal/queue/queue.go\n--- /dev/null\n+++ b/internal/queue/queue.go\n@@ -0,0 +6,1 @@\n+\tfor _, it := range items {\n",
           "details": {
             "kind": "line-history",
             "lines": "6-6",
@@ -193,7 +193,7 @@
           "file": "internal/queue/queue.go",
           "startLine": 7,
           "endLine": 11,
-          "content": "commit 8609631f94c271b53365d3c7420bdc134655837e\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:53:00+00:00\n\n    skip empty entries: nil from the retry path panicked in production\n\ndiff --git a/internal/queue/queue.go b/internal/queue/queue.go\n--- a/internal/queue/queue.go\n+++ b/internal/queue/queue.go\n@@ -7,0 +7,5 @@\n+\t\t// A nil entry reaches this from the retry path and panicked in\n+\t\t// production on 2026-03-11. Do not remove this guard.\n+\t\tif it == \"\" {\n+\t\t\tcontinue\n+\t\t}\n",
+          "content": "commit e569c7d499e72bcc9180239dced4d178181faf7e\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T23:00:55+00:00\n\n    skip empty entries: nil from the retry path panicked in production\n\ndiff --git a/internal/queue/queue.go b/internal/queue/queue.go\n--- a/internal/queue/queue.go\n+++ b/internal/queue/queue.go\n@@ -7,0 +7,5 @@\n+\t\t// A nil entry reaches this from the retry path and panicked in\n+\t\t// production on 2026-03-11. Do not remove this guard.\n+\t\tif it == \"\" {\n+\t\t\tcontinue\n+\t\t}\n",
           "details": {
             "kind": "removed-line-history",
             "lines": "7-11 at the base revision",

@@ -226,6 +226,11 @@
     },
     "confirmations": [
       {
+        "substrate": "redline/lint",
+        "rule": "lint-resolved",
+        "message": "this change resolves 1 linter finding(s) present at the base revision"
+      },
+      {
         "substrate": "redline/suppressions",
         "rule": "no-suppressions-added",
         "message": "this change adds no lint-silencing directive"
@@ -325,7 +330,7 @@
   "renders": [
     {
       "Title": "Lint delta",
-      "Summary": "2 finding(s) introduced, 0 resolved (golangci-lint, gorefactor)",
+      "Summary": "2 finding(s) introduced, 1 resolved (golangci-lint, gorefactor)",
       "Lines": [
         "+ internal/findings:0 high-coupling (gorefactor)",
         "+ internal/pane/testdelta/testdelta.go:0 data-clumps (gorefactor)"
