@@ -189,7 +189,7 @@ func commentBody(f findings.Finding, head string, prof *Profile) string {
 		b.WriteString(m)
 		b.WriteByte('\n')
 	}
-	fmt.Fprintf(&b, "**%s** — %s", severityLabel(f.Severity), f.Message)
+	fmt.Fprintf(&b, "**%s** — %s", findingLabel(f), f.Message)
 	if ctx := strings.TrimSpace(f.Context); ctx != "" {
 		b.WriteString("\n\n")
 		b.WriteString(ctx)
@@ -229,7 +229,7 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.F
 			if m := findingAttestMarker(prof, f.Severity); m != "" {
 				fmt.Fprintf(&b, "%s\n", m)
 			}
-			fmt.Fprintf(&b, "- **%s** — %s", severityLabel(f.Severity), f.Message)
+			fmt.Fprintf(&b, "- **%s** — %s", findingLabel(f), f.Message)
 			if loc := bodyLocation(f); loc != "" {
 				fmt.Fprintf(&b, " _(%s)_", loc)
 			}
@@ -372,6 +372,16 @@ func bodyLocation(f findings.Finding) string {
 }
 
 func marker(s string) string { return "<!-- " + s + " -->" }
+
+// findingLabel is the bold lead of a posted finding. An agent comment says so
+// in the label: on GitHub it reads with the same weight as a measured finding,
+// and the reader deserves to know which kind they are looking at.
+func findingLabel(f findings.Finding) string {
+	if f.Source == findings.SourceLLM {
+		return severityLabel(f.Severity) + " · agent"
+	}
+	return severityLabel(f.Severity)
+}
 
 func severityLabel(s findings.Severity) string {
 	switch s {

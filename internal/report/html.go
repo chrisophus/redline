@@ -267,6 +267,9 @@ func bannerText(rep *findings.Report) string {
 	case rep.Coverage.ChangedFiles == 0:
 		return "Nothing to review — the target matches the base revision."
 	case rep.Coverage.ExaminedFiles == 0:
+		if len(rep.Findings) > 0 {
+			return "Redline examined none of this change. No pane it currently ships covers these files; the findings below are the agent's own comments, not measured evidence."
+		}
 		return "Redline examined none of this change. No pane it currently ships covers these files, so an empty findings list says nothing about whether the change is correct."
 	case len(rep.DarkSubstrates()) > 0:
 		return fmt.Sprintf("%d pane(s) applied to this change and did not run. That part of the change is unreviewed.", len(rep.DarkSubstrates()))

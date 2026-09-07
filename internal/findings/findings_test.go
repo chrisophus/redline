@@ -209,3 +209,25 @@ func TestReviewCommentsBecomeFindings(t *testing.T) {
 		t.Errorf("a comment with no severity defaults to info, got %q", fs[1].Severity)
 	}
 }
+
+// review.json is written by an agent, and agents write "Warning" or "high"
+// where the schema says "warning". An unvalidated severity would outrank real
+// errors in Sort, appear in no severity tile, and never match the post gate's
+// blocking list, so anything but the three known values must normalize.
+func TestCommentFindingsNormalizesSeverity(t *testing.T) {
+	r := &findings.Review{Comments: []findings.ReviewComment{
+		{File: "a.go", Line: 1, Severity: "Warning", Body: "capitalized"},
+		{File: "a.go", Line: 2, Severity: "high", Body: "unknown value"},
+		{File: "a.go", Line: 3, Body: "empty"},
+	}}
+	got := r.CommentFindings()
+	want := []findings.Severity{findings.SeverityWarning, findings.SeverityInfo, findings.SeverityInfo}
+	if len(got) != len(want) {
+		t.Fatalf("got %d findings, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i].Severity != want[i] {
+			t.Errorf("comment %d: severity %q, want %q", i, got[i].Severity, want[i])
+		}
+	}
+}
