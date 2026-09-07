@@ -38,7 +38,11 @@ freeze() {
 #    the schema was widened to require. No single producer reaches that.
 R="$WORK/correlation"
 mkdir -p "$R/migrations" "$R/internal/store"
-git -C "$R" init -q 2>/dev/null || git init -q "$R"
+git init -q "$R"
+# A module and the provider's own config file, so the Go context provider is
+# detected and the frozen session carries a real envelope rather than a gap.
+printf 'module example.com/correlation\n\ngo 1.26\n' > "$R/go.mod"
+: > "$R/.gorefactor.yaml"
 cat > "$R/migrations/0001_init.up.sql" <<'EOF'
 CREATE TABLE users (
     id    uuid PRIMARY KEY,
@@ -125,6 +129,8 @@ freeze stale-generated-file "$R"
 R="$WORK/revert"
 mkdir -p "$R/internal/queue"
 git init -q "$R"
+printf 'module example.com/revert\n\ngo 1.26\n' > "$R/go.mod"
+: > "$R/.gorefactor.yaml"
 cat > "$R/internal/queue/queue.go" <<'EOF'
 package queue
 

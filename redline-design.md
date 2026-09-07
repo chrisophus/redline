@@ -1,11 +1,13 @@
 # Redline design
 
-Status: active. Supersedes the earlier design (in git history). Two things
+Status: active. Supersedes the earlier design (in git history). Three things
 changed since the last revision. The framing: Redline is the detail behind
-the gates, and this document now says so first. And the agent: the last
-revision cut the agent from the tool; this one keeps that cut and records
-how the agent came back, as a reviewer rather than as something Redline
-runs.
+the gates, and this document now says so first. The agent: an earlier
+revision cut the agent from the tool; this one keeps that cut and records how
+the agent came back, as a reviewer rather than as something Redline runs. And
+the review producer: one command now calls a model, which narrows a rule this
+document had stated absolutely, so the narrowing is argued rather than
+assumed.
 
 ## The framing
 
@@ -45,11 +47,14 @@ and write their decisions onto the same report. Every finding and every
 ruling carries its source, a pane or the reviewer, and the report shows
 that source without a warning attached.
 
-The rule that survives every revision: the redline binary never invokes a
-model, by any route. The agent's review reaches the report through a file
-it writes (`review.json`), and the reviewer's requests reach the agent
-through a payload a person copies out of the page. The tool orchestrates
-neither side.
+The rule that survived every revision until now: the redline binary never
+invokes a model, by any route. That rule has been narrowed, and the
+narrowing is argued in "The review producer" below. It now reads: `redline
+run` never invokes a model, by any route, and `redline review` is the only
+command that does. Everything else is unchanged. The agent's review still
+reaches the report through a file it writes (`review.json`), the reviewer's
+requests still reach the agent through a payload a person copies out of the
+page, and a repository with no API key still gets the whole report.
 
 ## What was cut, and what came back
 
@@ -61,8 +66,8 @@ instruction discovery, call-graph threads, the agent UI walk, and a
 Copilot-shaped posted review built from the agent's prose. Use showed that
 none of it made the review better than Claude Code or Cursor produce on
 their own, and the orchestration cost real maintenance. All of that stays
-gone. `redline run` is the one entry point, and no subcommand or flag runs a
-model.
+gone, and `run` remains model-free. What a later revision added in its place
+is one command, argued in "The review producer" below.
 
 What came back is narrower and sits on the other side of the boundary.
 The agent reviews the change with its own tools, writes `review.json`, and
@@ -74,6 +79,125 @@ requests ride the same copy-for-the-agent payload the click-a-line comments
 already used. None of this asks Redline to run anything. It asks Redline to
 carry both reviewers' decisions onto the facts, which is the job the
 framing gives it.
+
+## The review producer
+
+This section records a reversal. The revision before last cut everything
+Redline did to package an agent's review, and gave a reason: none of it made
+reviews better than Claude Code or Cursor produce on their own, and the
+orchestration cost real maintenance. That reasoning still holds for what it
+was aimed at. `redline review` is a different thing, and the difference is
+worth stating plainly, because a reader who finds a model call in a tool whose
+design doc says there is none has every reason to distrust the rest of it.
+
+What was cut was an orchestration layer: reviewer adapters that shelled out to
+a vendor's review command, a packet assembled for an agent to judge, a context
+brief that pre-gathered callers and docs, a review-and-ingest loop with its own
+schema, and a posted review built from agent prose. It wrapped an agent that
+was already better at the job than the wrapper, and its output could not be
+measured, because every part of the input moved with the repository.
+
+What replaced it is one function call. `redline review` takes the session
+`run` already wrote, sends one request with no tools, and writes the result
+through the same `review.json` a human or an agent writes by hand. Three
+properties make it a different proposition from the thing that was cut:
+
+- It is evaluable. The input is a frozen session, so the same fixture produces
+  the same prompt on every run, and a change to the prompt or the model can be
+  scored against annotations rather than argued about. The layer that was cut
+  had no fixed input and so no way to tell an improvement from a mood.
+- Its price is bounded and measured. One turn against a capped request means a
+  review cannot run away, and every run is priced into a ledger. The old loop's
+  cost grew with the conversation, because every turn re-sends the whole of it.
+- It reads what the tools already found. An agent reviewing on its own
+  re-derives what Redline measured. This producer is given those findings as
+  priors and told not to restate them, which moves its attention onto the one
+  thing no producer can reach alone: whether two facts from different
+  producers contradict each other.
+
+That last property is the argument for the producer existing at all. A
+migration that adds a non-nullable column is a fact. A struct field that
+cannot express absence is a fact. Neither pane can see the other, and static
+analysis structurally cannot cross that gap. Correlating them is the work.
+
+The boundary that makes it maintainable: the harness lives here, and
+everything language-specific lives behind a provider interface. Redline links
+no language toolchain, resolves no symbols, and knows no provider by name. A
+provider is a separate program run as a subprocess that fills in a context
+envelope; Redline ranks and truncates that envelope by role and priority hint
+without reading the code inside, which is what lets one budgeting
+implementation serve every language. The contract is in
+`docs/context-envelope.md`, and `internal/boundary` fails the build if this
+repository ever reaches for `go/ast`, `go/types`, or `x/tools`. The claim is
+worth exactly what its enforcement is worth.
+
+The prompt is split along the same line. Redline supplies the harness half:
+the output schema, the instruction not to restate priors, that connecting two
+priors is valuable, and that zero findings is a valid result. The provider
+ships the language half in the envelope, as data Redline concatenates and
+frames as advice. The cost of that cut, worth naming because it is the one
+argument against it: Go review knowledge ends up next to the provider's own
+rules rather than next to the harness, encoded in one repository and consumed
+in another. That is why the envelope carries a provider version.
+
+### Panes gate, reviewers advise
+
+Doctor's contract works because its findings are deterministic: errors gate,
+warnings report, only new findings count. A reviewer's finding is
+nondeterministic and costs money to reproduce. Folding one into a gate gives a
+merge queue a verdict the author cannot re-derive, and a gate that blocks on
+something you cannot reproduce gets bypassed with `--no-verify` inside a
+month.
+
+So the merge gate skips `source: llm` entirely: `GateVerdict` ignores those
+findings and no blocking marker is stamped on one, whatever severity it
+claims. This was not hypothetical when it was written down. An agent comment
+with severity error in `review.json` already failed the gate, which means the
+invariant was being violated before it was stated.
+
+There will be a moment when a review finding seems important enough to block
+on. The answer is here, and it is no.
+
+### The bar, and how cost is budgeted
+
+The goal is a review comparable to Copilot's code review in cost and in
+effectiveness, and both halves need numbers or "comparable" means whatever
+the reader wants it to mean.
+
+Effectiveness, from GitHub's published figures over 60M reviews: 71 percent of
+reviews produce actionable feedback averaging 5.1 comments, and 29 percent
+return clean. The clean rate is the target that decides whether anyone keeps
+reading the output. Cost: Copilot's code-review model carried a multiplier of
+13 premium requests, roughly 52 cents at the legacy overage rate. It now bills
+AI Credits against token consumption at list rates, so there is no pricing
+structure to arbitrage and matching the cost means matching the token spend.
+
+That target is an average, and the distinction changes what the ceiling is
+for. If every review had to come in under the average, the ceiling would be a
+governor, and it would trim context from the large changes that most need it.
+Because the target is an average, a large change is allowed to cost more than
+a small one, and the ceiling only has to stop the pathological tail. So the
+ceiling is set where a review stops being worth doing in one turn, the average
+is measured rather than assumed, and every run appends its cost to a ledger
+that `--stats` reads back.
+
+The ceiling bounds the whole request rather than the context block alone. That
+is not a detail: the first time this was wired to a real provider, a ceiling
+that governed only the context let a large diff carry the total to 205k tokens
+against a nominal 120k budget. A bound that does not bound is worse than none,
+because it is quoted.
+
+### What is still open
+
+The producer ships with eight fixtures. The plan calls for twenty drawn from
+real pull requests, and the number that matters most is the clean rate: how
+often a change that deserves no comment gets none. Configuration is unchosen
+until that sweep runs.
+
+Prompt caching stays off. Cache writes cost 1.25x base input at the
+five-minute TTL and 2x at the hour, and a pre-push tool firing a few times a
+day pays every write and reads none of them. It is worth revisiting only if
+measured review frequency shows clustering.
 
 ## The product
 
@@ -305,12 +429,16 @@ model, and it never composes a judgment of its own.
    runner.
 3. Done. The agent as reviewer: `review.json` ingest, suppression verdicts,
    explain and apply from the report.
-4. Decisions: the per-fact-type vocabulary above, stale rather than dropped
+4. Done, in part. The review producer: the context envelope, the provider
+   registry, the budgeting, `redline review`, and the fixtures it is scored
+   against. What remains is the fixture set at twenty rather than eight, and
+   the sweep that picks a configuration.
+5. Decisions: the per-fact-type vocabulary above, stale rather than dropped
    on a fingerprint miss, and the decided-versus-open summary.
-5. Coverage: function-level findings, coverage delta, error-path split,
+6. Coverage: function-level findings, coverage delta, error-path split,
    lcov, test-delta facts, then measured mode.
-6. vacuum and sqlc staleness, then the database pane, then UI capture.
-7. The check-run, and the Jira header when it earns its slot.
+7. vacuum and sqlc staleness, then the database pane, then UI capture.
+8. The check-run, and the Jira header when it earns its slot.
 
 ## Open questions
 
@@ -326,3 +454,9 @@ model, and it never composes a judgment of its own.
   The reference stack's Makefile convention has held so far.
 - Where the Jira credential lives when the fetcher gets built. Same answer
   as `gh`: a CLI or env token Redline never stores.
+- Whether the review producer should run more than one wave. Two waves cover
+  every producer that exists, and a dependency graph is more machinery than
+  the problem currently has. Revisit when a producer needs a third level.
+- Whether a second language provider wants a shared expansion engine.
+  Expansion is inherently language-specific, so expect the shared part to be
+  no larger than the envelope plus the budgeting, which already exist.

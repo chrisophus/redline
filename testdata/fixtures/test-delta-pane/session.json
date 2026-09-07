@@ -201,11 +201,6 @@
         "substrate": "redline/lint",
         "message": "pane applied to this change but did not run",
         "reason": "observe worktree: golangci-lint at head: golangci-lint exited 3: Error: can't load config: the Go language version (go1.25) used to build golangci-lint is lower than the targeted Go version (1.26)"
-      },
-      {
-        "substrate": "redline/context",
-        "message": "context provider gorefactor claimed files in this change but did not run",
-        "reason": "gorefactor is configured for this repository but not on PATH"
       }
     ]
   },
@@ -307,7 +302,1257 @@
       ]
     }
   ],
-  "contextAbsent": [
-    "gorefactor (context): gorefactor is configured for this repository but not on PATH"
+  "envelopes": [
+    {
+      "schemaVersion": 1,
+      "provider": {
+        "name": "gorefactor",
+        "version": "v0.0.0-20260906204439-a2ac4a145c9c+dirty",
+        "language": "go"
+      },
+      "baseSHA": "4cfafc4f0cb709d0313ef8a372ae49aff5bc168f",
+      "files": [
+        {
+          "path": "docs/plans/potential-enhancements.md",
+          "class": "other"
+        },
+        {
+          "path": "internal/findings/findings.go",
+          "class": "source",
+          "symbols": [
+            "Category.DefaultSeverity",
+            "CategoryTests"
+          ]
+        },
+        {
+          "path": "internal/pane/testdelta/testdelta.go",
+          "class": "source",
+          "symbols": [
+            "Pane",
+            "Pane.Diff",
+            "Pane.Name",
+            "Pane.Observe",
+            "Pane.Scope",
+            "Pane.assertionsRemoved",
+            "Pane.skipsAdded",
+            "Pane.sourceWithoutTest",
+            "Substrate",
+            "assertionRe",
+            "codeExts",
+            "focusRe",
+            "hasExt",
+            "isTestFile",
+            "observation",
+            "observation.ID",
+            "skipKind",
+            "skipRe"
+          ]
+        },
+        {
+          "path": "internal/pane/testdelta/testdelta_test.go",
+          "class": "test",
+          "symbols": [
+            "TestAssertionRe",
+            "TestIsTestFile",
+            "TestSkipKind",
+            "TestSourceWithoutTest"
+          ]
+        },
+        {
+          "path": "internal/run/run.go",
+          "class": "source",
+          "symbols": [
+            "Run"
+          ]
+        }
+      ],
+      "expansions": [
+        {
+          "role": "enclosing",
+          "priority": 100,
+          "symbol": "Pane.Diff",
+          "scope": "internal/pane/testdelta.Pane.Diff",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 71,
+          "endLine": 97,
+          "content": "// Diff emits the test-delta facts.\nfunc (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {\n\tbase, ok := before.(*observation)\n\tif !ok {\n\t\treturn pane.Result{}, fmt.Errorf(\"test-delta: base observation is %T\", before)\n\t}\n\tres := pane.Result{Evidence: map[string]pane.Artifact{}}\n\tvar lines []string\n\n\tp.sourceWithoutTest(\u0026res, \u0026lines)\n\tp.skipsAdded(base.Rev, \u0026res, \u0026lines)\n\tp.assertionsRemoved(base.Rev, \u0026res, \u0026lines)\n\n\tif len(res.Findings) == 0 {\n\t\tres.Confirmations = append(res.Confirmations, findings.Confirmation{\n\t\t\tSubstrate: Substrate,\n\t\t\tRule:      \"tests-move-with-code\",\n\t\t\tMessage:   \"every changed package changed a test, none were skipped or focused, and no assertions were removed\",\n\t\t})\n\t}\n\tres.Render = pane.Render{\n\t\tTitle:   \"Tests\",\n\t\tSummary: fmt.Sprintf(\"%d test-delta fact(s) from the diff\", len(res.Findings)),\n\t\tLines:   lines,\n\t}\n\treturn res, nil\n}\n",
+          "details": {
+            "changedLines": "27",
+            "exported": "true",
+            "kind": "method",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta",
+            "receiver": "Pane"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 100,
+          "symbol": "TestSkipKind",
+          "scope": "internal/pane/testdelta.TestSkipKind",
+          "file": "internal/pane/testdelta/testdelta_test.go",
+          "startLine": 10,
+          "endLine": 43,
+          "content": "func TestSkipKind(t *testing.T) {\n\tskips := []string{\n\t\t\"\\tt.Skip(\\\"flaky\\\")\",\n\t\t\"    b.SkipNow()\",\n\t\t\"  it.skip('x', () =\u003e {})\",\n\t\t\"@pytest.mark.skip\",\n\t\t\"  self.skipTest('n')\",\n\t\t\"  xit('x', () =\u003e {})\",\n\t}\n\tfocus := []string{\n\t\t\"  describe.only('x', () =\u003e {})\",\n\t\t\"  fit('x', () =\u003e {})\",\n\t}\n\tnone := []string{\n\t\t\"\\treturn nil\",\n\t\t\"\\tt.Errorf(\\\"boom\\\")\",\n\t\t\"\\t// skip this comment mentions skip but is not a directive\",\n\t}\n\tfor _, l := range skips {\n\t\tif got := skipKind(l); got != \"skips a test\" {\n\t\t\tt.Errorf(\"skipKind(%q) = %q, want a skip\", l, got)\n\t\t}\n\t}\n\tfor _, l := range focus {\n\t\tif got := skipKind(l); !strings.HasPrefix(got, \"focuses\") {\n\t\t\tt.Errorf(\"skipKind(%q) = %q, want a focus\", l, got)\n\t\t}\n\t}\n\tfor _, l := range none {\n\t\tif got := skipKind(l); got != \"\" {\n\t\t\tt.Errorf(\"skipKind(%q) = %q, want none\", l, got)\n\t\t}\n\t}\n}\n",
+          "details": {
+            "changedLines": "34",
+            "exported": "true",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 100,
+          "symbol": "TestIsTestFile",
+          "scope": "internal/pane/testdelta.TestIsTestFile",
+          "file": "internal/pane/testdelta/testdelta_test.go",
+          "startLine": 45,
+          "endLine": 65,
+          "content": "func TestIsTestFile(t *testing.T) {\n\tyes := []string{\n\t\t\"internal/foo/foo_test.go\",\n\t\t\"ui/src/a.test.ts\",\n\t\t\"ui/src/a.spec.tsx\",\n\t\t\"py/test_x.py\",\n\t\t\"py/x_test.py\",\n\t\t\"ui/src/__tests__/a.js\",\n\t}\n\tno := []string{\"internal/foo/foo.go\", \"ui/src/a.ts\", \"README.md\", \"py/x.py\"}\n\tfor _, f := range yes {\n\t\tif !isTestFile(f) {\n\t\t\tt.Errorf(\"isTestFile(%q) = false, want true\", f)\n\t\t}\n\t}\n\tfor _, f := range no {\n\t\tif isTestFile(f) {\n\t\t\tt.Errorf(\"isTestFile(%q) = true, want false\", f)\n\t\t}\n\t}\n}\n",
+          "details": {
+            "changedLines": "21",
+            "exported": "true",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 100,
+          "symbol": "TestAssertionRe",
+          "scope": "internal/pane/testdelta.TestAssertionRe",
+          "file": "internal/pane/testdelta/testdelta_test.go",
+          "startLine": 67,
+          "endLine": 86,
+          "content": "func TestAssertionRe(t *testing.T) {\n\tmatch := []string{\n\t\t\"\\tassert.Equal(t, a, b)\",\n\t\t\"\\trequire.NoError(t, err)\",\n\t\t\"\\texpect(x).toBe(1)\",\n\t\t\"\\tself.assertEqual(a, b)\",\n\t\t\"\\tt.Fatal(\\\"no\\\")\",\n\t}\n\tnone := []string{\"\\tx := 1\", \"\\treturn nil\", \"\\t// assert something\"}\n\tfor _, l := range match {\n\t\tif !assertionRe.MatchString(l) {\n\t\t\tt.Errorf(\"assertionRe should match %q\", l)\n\t\t}\n\t}\n\tfor _, l := range none {\n\t\tif assertionRe.MatchString(l) {\n\t\t\tt.Errorf(\"assertionRe should not match %q\", l)\n\t\t}\n\t}\n}\n",
+          "details": {
+            "changedLines": "20",
+            "exported": "true",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 100,
+          "symbol": "TestSourceWithoutTest",
+          "scope": "internal/pane/testdelta.TestSourceWithoutTest",
+          "file": "internal/pane/testdelta/testdelta_test.go",
+          "startLine": 88,
+          "endLine": 107,
+          "content": "// A Go package whose source changed with no test change in it is reported once;\n// a package that also changed a test is not.\nfunc TestSourceWithoutTest(t *testing.T) {\n\tp := \u0026Pane{changed: []string{\n\t\t\"internal/a/a.go\",\n\t\t\"internal/b/b.go\",\n\t\t\"internal/b/b_test.go\",\n\t\t\"README.md\",\n\t}}\n\tvar res pane.Result\n\tvar lines []string\n\tp.sourceWithoutTest(\u0026res, \u0026lines)\n\tif len(res.Findings) != 1 {\n\t\tt.Fatalf(\"want 1 finding, got %d: %+v\", len(res.Findings), res.Findings)\n\t}\n\tf := res.Findings[0]\n\tif f.Rule != \"source-without-test\" || f.Anchor == nil || f.Anchor.ID != \"internal/a\" {\n\t\tt.Fatalf(\"finding = %+v (anchor %+v)\", f, f.Anchor)\n\t}\n}\n",
+          "details": {
+            "changedLines": "20",
+            "exported": "true",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 95,
+          "symbol": "Pane.Scope",
+          "scope": "internal/pane/testdelta.Pane.Scope",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 44,
+          "endLine": 58,
+          "content": "// Scope selects the changed code files. It also stashes the full changed set:\n// the source-without-test fact must fire precisely when no test changed, and a\n// pane with an empty scope never runs, so scope must be non-empty whenever code\n// changed at all.\nfunc (p *Pane) Scope(changed []string) []string {\n\tp.changed = changed\n\tvar out []string\n\tfor _, f := range changed {\n\t\tif hasExt(f, codeExts) {\n\t\t\tout = append(out, f)\n\t\t}\n\t}\n\tp.scoped = out\n\treturn out\n}\n",
+          "details": {
+            "changedLines": "15",
+            "exported": "true",
+            "kind": "method",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta",
+            "receiver": "Pane"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 90,
+          "symbol": "Pane",
+          "scope": "internal/pane/testdelta.Pane",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 26,
+          "endLine": 35,
+          "content": "// Pane reports test-facing facts a diff shows on its own.\ntype Pane struct {\n\tRepo *gitx.Repo\n\n\t// changed is the whole changed set, kept for the source-without-test fact,\n\t// which is about files this pane does not otherwise open. scoped is the code\n\t// files it inspects line by line.\n\tchanged []string\n\tscoped  []string\n}\n",
+          "details": {
+            "changedLines": "10",
+            "exported": "true",
+            "kind": "type",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 86,
+          "symbol": "Pane.Observe",
+          "scope": "internal/pane/testdelta.Pane.Observe",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 64,
+          "endLine": 69,
+          "content": "// Observe records the revision. Like the suppressions pane, the real work reads\n// the diff in Diff, because every fact here is a property of added or removed\n// lines rather than of a whole-file snapshot.\nfunc (p *Pane) Observe(rev pane.Revision) (pane.Observation, error) {\n\treturn \u0026observation{Rev: rev.Rev}, nil\n}\n",
+          "details": {
+            "changedLines": "6",
+            "exported": "true",
+            "kind": "method",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta",
+            "receiver": "Pane"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 82,
+          "symbol": "Category.DefaultSeverity",
+          "scope": "internal/findings.Category.DefaultSeverity",
+          "file": "internal/findings/findings.go",
+          "startLine": 41,
+          "endLine": 55,
+          "content": "// DefaultSeverity derives a finding's severity from its category. Redline's\n// categories all describe changes that alter a contract with something outside\n// the diff, so they default to error; a pane may demote per finding.\nfunc (c Category) DefaultSeverity() Severity {\n\tswitch c {\n\tcase CategorySchema, CategoryContract:\n\t\treturn SeverityError\n\tcase CategoryReview:\n\t\treturn SeverityInfo\n\tcase CategoryTests:\n\t\treturn SeverityInfo\n\tdefault:\n\t\treturn SeverityWarning\n\t}\n}\n",
+          "details": {
+            "changedLines": "2",
+            "exported": "true",
+            "kind": "method",
+            "package": "github.com/chrisophus/redline/internal/findings",
+            "receiver": "Category"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 82,
+          "symbol": "Substrate",
+          "scope": "internal/pane/testdelta.Substrate",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 23,
+          "endLine": 24,
+          "content": "// Substrate is the pane's name in the findings schema.\nconst Substrate = \"redline/test-delta\"\n",
+          "details": {
+            "changedLines": "2",
+            "exported": "true",
+            "kind": "const",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 82,
+          "symbol": "Pane.Name",
+          "scope": "internal/pane/testdelta.Pane.Name",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 41,
+          "endLine": 42,
+          "content": "// Name implements pane.Pane.\nfunc (p *Pane) Name() string { return Substrate }\n",
+          "details": {
+            "changedLines": "2",
+            "exported": "true",
+            "kind": "method",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta",
+            "receiver": "Pane"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 81,
+          "symbol": "CategoryTests",
+          "scope": "internal/findings.CategoryTests",
+          "file": "internal/findings/findings.go",
+          "startLine": 38,
+          "endLine": 38,
+          "content": "\tCategoryTests    Category = \"tests\"    // test-delta facts from the diff\n",
+          "details": {
+            "changedLines": "1",
+            "exported": "true",
+            "kind": "const",
+            "package": "github.com/chrisophus/redline/internal/findings"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 81,
+          "symbol": "observation.ID",
+          "scope": "internal/pane/testdelta.observation.ID",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 62,
+          "endLine": 62,
+          "content": "func (o *observation) ID() string { return \"test-delta@\" + o.Rev }\n",
+          "details": {
+            "changedLines": "1",
+            "exported": "true",
+            "kind": "method",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta",
+            "receiver": "observation"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 81,
+          "symbol": "Run",
+          "scope": "internal/run.Run",
+          "file": "internal/run/run.go",
+          "startLine": 60,
+          "endLine": 261,
+          "content": "// Run executes every applicable pane. Applicability is computed from the diff,\n// never chosen by a caller: if the caller decides which checks to run, coverage\n// becomes a sample from a distribution and a check can be silently skipped.\nfunc Run(opts Options) (*Result, error) {\n\ttgt, err := target.Resolve(target.Options{\n\t\tDir: opts.Dir, PR: opts.PR, Branch: opts.Branch,\n\t\tCommit: opts.Commit, Range: opts.Range, Base: opts.Base,\n\t})\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\t// Panes observe the target's directory. For a PR or a branch that is a\n\t// detached worktree at the head commit, so \"the working tree\" and \"the\n\t// revision under review\" are the same thing and no pane needs to know\n\t// which kind of target it is looking at.\n\trepo, err := gitx.Open(tgt.Dir)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif tgt.Base != \"\" {\n\t\topts.Base = tgt.Base\n\t}\n\tbaseRef := resolveRef(repo, opts.Base)\n\tif baseRef == \"\" {\n\t\treturn nil, fmt.Errorf(\"cannot determine a base revision: tried %s. \"+\n\t\t\t\"Pass --base REF, or make a first commit if this repository has none\",\n\t\t\tstrings.Join(defaultRefs, \", \"))\n\t}\n\tbaseSHA, err := repo.MergeBase(baseRef)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"base %q: %w\", baseRef, err)\n\t}\n\tchanged, err := repo.ChangedPaths(baseSHA)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tchanged = excludeOwnOutput(changed, opts.Out, repo.Root)\n\n\t// Generated output leaves the change here, before any pane or the report\n\t// sees it, so the coverage denominator counts files a reviewer would\n\t// actually read. What was dropped is recorded and shown: an exclusion the\n\t// reader cannot see is indistinguishable from a file that never changed.\n\tchanged, generated := change.Generated(tgt.Dir, changed, repo.AttrSet(\"linguist-generated\", changed))\n\n\tcfg, err := harness.Load(harnessConfigRoot(opts.Dir, tgt))\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tconfigRoot := harnessConfigRoot(opts.Dir, tgt)\n\tprepared := map[string]bool{}\n\troots := harness.Roots{Observe: tgt.Dir, Origin: originCoverageDir(opts.Dir, tgt), Caller: configRoot}\n\tif err := harness.Require(roots, changed, cfg, harness.RequireOpts{\n\t\tSkipCoverage: opts.AllowMissingCoverage,\n\t}); err != nil {\n\t\treturn nil, err\n\t}\n\tif cfg != nil {\n\t\tif _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg, prepared); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n\n\tres := \u0026Result{Evidence: map[string]pane.Artifact{}, Target: tgt, Report: findings.Report{\n\t\tBaseRef: baseRef,\n\t\tBaseSHA: baseSHA,\n\t\tScope:   changed,\n\t}}\n\n\tpanes := []pane.Pane{\n\t\t\u0026migrations.Pane{Repo: repo, UpstreamRef: resolveRef(repo, opts.Upstream, baseRef), Dir: opts.MigDir},\n\t\t\u0026openapi.Pane{Repo: repo},\n\t\t\u0026lint.Delta{Repo: repo, Harness: cfg, HarnessRoot: configRoot, Prepared: prepared},\n\t\t\u0026lint.Suppressions{Repo: repo},\n\t\t\u0026lint.Config{Repo: repo},\n\t\t\u0026testdelta.Pane{Repo: repo},\n\t}\n\n\t// Every path in the tree under review, listed once and only if a pane\n\t// turns out to have nothing in the change to look at. It answers a\n\t// different question from scope: not \"does this pane apply to the change\"\n\t// but \"does this pane apply to the repository\". A repository with no\n\t// migrations gets no mention of migrations; one whose migrations this\n\t// change did not touch is told so, quietly.\n\tvar allPaths []string\n\tlistAll := func() []string {\n\t\tif allPaths != nil {\n\t\t\treturn allPaths\n\t\t}\n\t\tvar blobs map[string]string\n\t\tvar lerr error\n\t\tif tgt.Head == \"\" {\n\t\t\tblobs, lerr = repo.WorktreeBlobs()\n\t\t} else {\n\t\t\tblobs, lerr = repo.Blobs(tgt.Head)\n\t\t}\n\t\tif lerr != nil {\n\t\t\t// Unknown whether the pane applies: fall back to saying it was\n\t\t\t// skipped, the state that still gets a line on the report.\n\t\t\tallPaths = []string{}\n\t\t\treturn allPaths\n\t\t}\n\t\tallPaths = make([]string, 0, len(blobs))\n\t\tfor path := range blobs {\n\t\t\tallPaths = append(allPaths, path)\n\t\t}\n\t\tsort.Strings(allPaths)\n\t\treturn allPaths\n\t}\n\n\texamined := map[string]bool{}\n\tfor _, p := range panes {\n\t\tstatus := findings.SubstrateStatus{Name: p.Name()}\n\t\tscope := p.Scope(changed)\n\t\tfor _, path := range scope {\n\t\t\texamined[path] = true\n\t\t}\n\t\tif len(scope) == 0 {\n\t\t\t// Scope over the whole tree is only consulted for a pane that will\n\t\t\t// not run, so the state it leaves behind in the pane is unused.\n\t\t\tif all := listAll(); len(all) \u003e 0 \u0026\u0026 len(p.Scope(all)) == 0 {\n\t\t\t\tstatus.State = findings.SubstrateNotApplicable\n\t\t\t\tstatus.Detail = \"the repository has no files this pane reads\"\n\t\t\t} else {\n\t\t\t\tstatus.State = findings.SubstrateSkipped\n\t\t\t\tstatus.Detail = \"this change touches none of the files this pane reads\"\n\t\t\t}\n\t\t\tres.Report.Substrates = append(res.Report.Substrates, status)\n\t\t\tcontinue\n\t\t}\n\t\tout, err := runPane(p, baseSHA)\n\t\tif err != nil {\n\t\t\t// A pane that applied but did not run is recorded as failed and\n\t\t\t// as an unknown; it never reads as a pass.\n\t\t\tstatus.State = findings.SubstrateFailed\n\t\t\tstatus.Detail = err.Error()\n\t\t\tres.Report.Substrates = append(res.Report.Substrates, status)\n\t\t\tres.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{\n\t\t\t\tSubstrate: p.Name(),\n\t\t\t\tMessage:   \"pane applied to this change but did not run\",\n\t\t\t\tReason:    err.Error(),\n\t\t\t})\n\t\t\tcontinue\n\t\t}\n\t\tstatus.State = findings.SubstrateRan\n\t\tres.Report.Substrates = append(res.Report.Substrates, status)\n\t\tres.Report.Findings = append(res.Report.Findings, out.Findings...)\n\t\tres.Report.Confirmations = append(res.Report.Confirmations, out.Confirmations...)\n\t\tres.Report.Unknowns = append(res.Report.Unknowns, out.Unknowns...)\n\t\tres.Renders = append(res.Renders, out.Render)\n\t\tfor id, a := range out.Evidence {\n\t\t\tres.Evidence[id] = a\n\t\t}\n\t}\n\n\tres.Report.Coverage = coverage(changed, examined)\n\tres.Report.Coverage.Generated = generated\n\tres.Report.Unknowns = append(res.Report.Unknowns, unbuiltPanes(changed, examined)...)\n\t// The agent's review, if it has written one. Loaded before Finalize so its\n\t// line comments become findings that get fingerprints stamped with the rest;\n\t// verdicts merge after, joining on those fingerprints. Never fatal: a run\n\t// reports facts with or without a reading, and a broken file is stated.\n\treview, verr := findings.LoadReview(filepath.Join(opts.Out, \"review.json\"))\n\tif verr != nil {\n\t\tres.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{\n\t\t\tSubstrate: \"redline/review\",\n\t\t\tMessage:   \"review.json was present but could not be read, so no agent review was merged\",\n\t\t\tReason:    verr.Error(),\n\t\t})\n\t}\n\tif review != nil {\n\t\tres.Report.Findings = append(res.Report.Findings, review.CommentFindings()...)\n\t\tif review.Overview != \"\" || len(review.Files) \u003e 0 {\n\t\t\tres.Report.Agent = \u0026findings.AgentReview{Overview: review.Overview, Files: review.Files}\n\t\t}\n\t}\n\tif res.Report.Coverage.ExaminedFiles == 0 \u0026\u0026 len(changed) \u003e 0 {\n\t\t// No pane looked at any of it. This is not a clean review and must\n\t\t// never render as one. Stated after the agent's comments merge, so\n\t\t// the reason can be honest about whether the findings list is empty.\n\t\treason := \"this change is entirely unexamined; the empty findings list below is not evidence of correctness\"\n\t\tif len(res.Report.Findings) \u003e 0 {\n\t\t\treason = \"no pane covers these files; the findings below come from the agent's review\"\n\t\t}\n\t\tres.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{\n\t\t\tSubstrate: \"redline\",\n\t\t\tMessage:   fmt.Sprintf(\"none of the %d changed file(s) fall under any pane Redline currently ships\", len(changed)),\n\t\t\tReason:    reason,\n\t\t})\n\t}\n\tres.Report.Finalize()\n\tif review != nil {\n\t\tres.Report.MergeVerdicts(review.Verdicts)\n\t}\n\tfindings.Sort(res.Report.Findings)\n\n\tres.Change = change.Build(repo, tgt, baseSHA, changed)\n\tcovDir := originCoverageDir(opts.Dir, tgt)\n\tattachDiffCoverage(\u0026res.Report, res.Change, tgt.Dir, covDir, cfg)\n\tres.LineCoverage = lineCoverageOverlay(tgt.Dir, covDir, res.Change)\n\tattachMutation(\u0026res.Report, res.Change, roots, cfg)\n\treturn res, nil\n}\n",
+          "details": {
+            "changedLines": "1",
+            "exported": "true",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/run"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 70,
+          "symbol": "Pane.sourceWithoutTest",
+          "scope": "internal/pane/testdelta.Pane.sourceWithoutTest",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 99,
+          "endLine": 136,
+          "content": "// sourceWithoutTest names each Go package this change edits without touching a\n// test in it. Go only: its one-test-file-per-package convention makes \"a test in\n// this package changed\" a clean question, which JS and Python layouts do not\n// answer as cleanly.\nfunc (p *Pane) sourceWithoutTest(res *pane.Result, lines *[]string) {\n\tsrc := map[string]bool{}\n\ttest := map[string]bool{}\n\tfor _, f := range p.changed {\n\t\tif !strings.HasSuffix(f, \".go\") {\n\t\t\tcontinue\n\t\t}\n\t\tdir := path.Dir(f)\n\t\tif strings.HasSuffix(f, \"_test.go\") {\n\t\t\ttest[dir] = true\n\t\t} else {\n\t\t\tsrc[dir] = true\n\t\t}\n\t}\n\tvar dirs []string\n\tfor dir := range src {\n\t\tif !test[dir] {\n\t\t\tdirs = append(dirs, dir)\n\t\t}\n\t}\n\tsort.Strings(dirs)\n\tfor _, dir := range dirs {\n\t\tres.Findings = append(res.Findings, findings.Finding{\n\t\t\tAnchor:    \u0026findings.Anchor{Kind: \"package\", ID: dir},\n\t\t\tRule:      \"source-without-test\",\n\t\t\tSubstrate: Substrate,\n\t\t\tCategory:  findings.CategoryTests,\n\t\t\tSeverity:  findings.SeverityInfo,\n\t\t\tMessage:   fmt.Sprintf(\"code in %s changed but no test in that package did\", dir),\n\t\t\tContext:   \"Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.\",\n\t\t})\n\t\t*lines = append(*lines, \"~ \"+dir+\" (no test changed)\")\n\t}\n}\n",
+          "details": {
+            "changedLines": "38",
+            "exported": "false",
+            "kind": "method",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta",
+            "receiver": "Pane"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 70,
+          "symbol": "Pane.skipsAdded",
+          "scope": "internal/pane/testdelta.Pane.skipsAdded",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 138,
+          "endLine": 177,
+          "content": "// skipsAdded reports a skip or focus directive on a line this change adds to a\n// test file. A skip quietly removes a test from the run; a focus (.only, fit)\n// quietly removes every other test in the file.\nfunc (p *Pane) skipsAdded(baseRev string, res *pane.Result, lines *[]string) {\n\tfor _, f := range p.scoped {\n\t\tif !isTestFile(f) {\n\t\t\tcontinue\n\t\t}\n\t\tadded := map[int]bool{}\n\t\tfor _, n := range cover.AddedLines(p.Repo.DiffPath(baseRev, f)) {\n\t\t\tadded[n] = true\n\t\t}\n\t\tif len(added) == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tcontent := p.Repo.File(\"\", f)\n\t\tif content == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tfor n, line := range strings.Split(content, \"\\n\") {\n\t\t\tlineNo := n + 1\n\t\t\tif !added[lineNo] {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif what := skipKind(line); what != \"\" {\n\t\t\t\tres.Findings = append(res.Findings, findings.Finding{\n\t\t\t\t\tFile:      f,\n\t\t\t\t\tLine:      lineNo,\n\t\t\t\t\tRule:      \"test-skip-added\",\n\t\t\t\t\tSubstrate: Substrate,\n\t\t\t\t\tCategory:  findings.CategoryTests,\n\t\t\t\t\tSeverity:  findings.SeverityInfo,\n\t\t\t\t\tMessage:   \"this change \" + what,\n\t\t\t\t\tObserved:  strings.TrimSpace(line),\n\t\t\t\t})\n\t\t\t\t*lines = append(*lines, fmt.Sprintf(\"+ %s:%d %s\", f, lineNo, what))\n\t\t\t}\n\t\t}\n\t}\n}\n",
+          "details": {
+            "changedLines": "40",
+            "exported": "false",
+            "kind": "method",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta",
+            "receiver": "Pane"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 70,
+          "symbol": "Pane.assertionsRemoved",
+          "scope": "internal/pane/testdelta.Pane.assertionsRemoved",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 179,
+          "endLine": 222,
+          "content": "// assertionsRemoved reports a test file that ends the change with fewer\n// assertion-like lines than it started. Netting added against removed keeps a\n// pure move or rename from reading as a loss; only a real drop is reported, and\n// per file rather than per line, because a deleted line has no home in the head\n// tree to anchor on.\nfunc (p *Pane) assertionsRemoved(baseRev string, res *pane.Result, lines *[]string) {\n\tfor _, f := range p.scoped {\n\t\tif !isTestFile(f) {\n\t\t\tcontinue\n\t\t}\n\t\tdiff := p.Repo.DiffPath(baseRev, f)\n\t\tif diff == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tadded, removed := 0, 0\n\t\tfor _, l := range strings.Split(diff, \"\\n\") {\n\t\t\tif strings.HasPrefix(l, \"+++\") || strings.HasPrefix(l, \"---\") {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tswitch {\n\t\t\tcase strings.HasPrefix(l, \"+\"):\n\t\t\t\tif assertionRe.MatchString(l[1:]) {\n\t\t\t\t\tadded++\n\t\t\t\t}\n\t\t\tcase strings.HasPrefix(l, \"-\"):\n\t\t\t\tif assertionRe.MatchString(l[1:]) {\n\t\t\t\t\tremoved++\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\tif removed \u003e added {\n\t\t\tres.Findings = append(res.Findings, findings.Finding{\n\t\t\t\tFile:      f,\n\t\t\t\tRule:      \"assertions-removed\",\n\t\t\t\tSubstrate: Substrate,\n\t\t\t\tCategory:  findings.CategoryTests,\n\t\t\t\tSeverity:  findings.SeverityInfo,\n\t\t\t\tMessage:   fmt.Sprintf(\"this change removes %d more assertion-like line(s) than it adds in this test\", removed-added),\n\t\t\t\tContext:   \"Assertions are what let a test fail. A net drop can mean a weaker test; check it is intended.\",\n\t\t\t})\n\t\t\t*lines = append(*lines, fmt.Sprintf(\"- %s (-%d assertion-like line(s))\", f, removed-added))\n\t\t}\n\t}\n}\n",
+          "details": {
+            "changedLines": "44",
+            "exported": "false",
+            "kind": "method",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta",
+            "receiver": "Pane"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 66,
+          "symbol": "isTestFile",
+          "scope": "internal/pane/testdelta.isTestFile",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 251,
+          "endLine": 266,
+          "content": "// isTestFile reports whether a path is a test file in a supported language.\nfunc isTestFile(f string) bool {\n\tbase := path.Base(f)\n\tswitch {\n\tcase strings.HasSuffix(f, \"_test.go\"):\n\t\treturn true\n\tcase strings.HasPrefix(base, \"test_\") \u0026\u0026 strings.HasSuffix(base, \".py\"),\n\t\tstrings.HasSuffix(base, \"_test.py\"):\n\t\treturn true\n\tcase strings.Contains(base, \".test.\") || strings.Contains(base, \".spec.\"):\n\t\treturn true\n\tcase strings.Contains(f, \"__tests__/\"):\n\t\treturn true\n\t}\n\treturn false\n}\n",
+          "details": {
+            "changedLines": "16",
+            "exported": "false",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 60,
+          "symbol": "skipKind",
+          "scope": "internal/pane/testdelta.skipKind",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 224,
+          "endLine": 233,
+          "content": "// skipKind classifies a skip or focus directive, or returns \"\" for neither.\nfunc skipKind(line string) string {\n\tswitch {\n\tcase focusRe.MatchString(line):\n\t\treturn \"focuses tests, so the others in the file will not run\"\n\tcase skipRe.MatchString(line):\n\t\treturn \"skips a test\"\n\t}\n\treturn \"\"\n}\n",
+          "details": {
+            "changedLines": "10",
+            "exported": "false",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 58,
+          "symbol": "hasExt",
+          "scope": "internal/pane/testdelta.hasExt",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 268,
+          "endLine": 275,
+          "content": "func hasExt(f string, exts []string) bool {\n\tfor _, e := range exts {\n\t\tif strings.HasSuffix(f, e) {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}\n",
+          "details": {
+            "changedLines": "8",
+            "exported": "false",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 55,
+          "symbol": "skipRe",
+          "scope": "internal/pane/testdelta.skipRe",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 236,
+          "endLine": 240,
+          "content": "\tskipRe = regexp.MustCompile(`\\b[tbsf]\\.Skip(Now|f)?\\s*\\(` + // Go t.Skip / b.Skip\n\t\t`|\\b(it|test|describe|context)\\.skip\\b` + // JS/TS .skip\n\t\t`|\\bx(it|describe)\\b` + // JS/TS xit / xdescribe\n\t\t`|@(pytest\\.mark\\.skip|unittest\\.skip)` + // Python decorators\n\t\t`|\\bpytest\\.skip\\s*\\(|\\bself\\.skipTest\\s*\\(`)\n",
+          "details": {
+            "changedLines": "5",
+            "exported": "false",
+            "kind": "var",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 55,
+          "symbol": "assertionRe",
+          "scope": "internal/pane/testdelta.assertionRe",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 244,
+          "endLine": 248,
+          "content": "\tassertionRe = regexp.MustCompile(`\\b(assert|require)\\.\\w+` + // Go testify\n\t\t`|\\bt\\.(Error|Errorf|Fatal|Fatalf|Fail|FailNow)\\b` + // Go testing\n\t\t`|\\bexpect\\s*\\(|\\.should\\b` + // JS/TS\n\t\t`|\\bassert(Equal|True|False|Nil|NotNil|Error|NoError)?\\s*\\(` + // xUnit-style\n\t\t`|\\bself\\.assert\\w+\\s*\\(`) // Python unittest\n",
+          "details": {
+            "changedLines": "5",
+            "exported": "false",
+            "kind": "var",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 53,
+          "symbol": "codeExts",
+          "scope": "internal/pane/testdelta.codeExts",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 37,
+          "endLine": 39,
+          "content": "// codeExts are the files this pane inspects for skips and assertion changes, and\n// the ones whose packages the source-without-test fact reasons about.\nvar codeExts = []string{\".go\", \".js\", \".jsx\", \".ts\", \".tsx\", \".mjs\", \".cjs\", \".py\"}\n",
+          "details": {
+            "changedLines": "3",
+            "exported": "false",
+            "kind": "var",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 51,
+          "symbol": "observation",
+          "scope": "internal/pane/testdelta.observation",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 60,
+          "endLine": 60,
+          "content": "type observation struct{ Rev string }\n",
+          "details": {
+            "changedLines": "1",
+            "exported": "false",
+            "kind": "type",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 51,
+          "symbol": "focusRe",
+          "scope": "internal/pane/testdelta.focusRe",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 242,
+          "endLine": 242,
+          "content": "\tfocusRe = regexp.MustCompile(`\\b(it|test|describe|context)\\.only\\b|\\bf(it|describe)\\b`)\n",
+          "details": {
+            "changedLines": "1",
+            "exported": "false",
+            "kind": "var",
+            "package": "github.com/chrisophus/redline/internal/pane/testdelta"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 90,
+          "symbol": "Pane",
+          "scope": "internal/pane/testdelta.Pane",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 40,
+          "endLine": 44,
+          "content": "\n// Name implements pane.Pane.\nfunc (p *Pane) Name() string { return Substrate }\n\n// Scope selects the changed code files. It also stashes the full changed set:\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Name",
+            "kind": "call-site",
+            "line": "42"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 90,
+          "symbol": "Pane",
+          "scope": "internal/pane/testdelta.Pane",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 46,
+          "endLine": 50,
+          "content": "// pane with an empty scope never runs, so scope must be non-empty whenever code\n// changed at all.\nfunc (p *Pane) Scope(changed []string) []string {\n\tp.changed = changed\n\tvar out []string\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Scope",
+            "kind": "call-site",
+            "line": "48"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 90,
+          "symbol": "Pane",
+          "scope": "internal/pane/testdelta.Pane",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 65,
+          "endLine": 69,
+          "content": "// the diff in Diff, because every fact here is a property of added or removed\n// lines rather than of a whole-file snapshot.\nfunc (p *Pane) Observe(rev pane.Revision) (pane.Observation, error) {\n\treturn \u0026observation{Rev: rev.Rev}, nil\n}\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Observe",
+            "kind": "call-site",
+            "line": "67"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 90,
+          "symbol": "Pane",
+          "scope": "internal/pane/testdelta.Pane",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 70,
+          "endLine": 74,
+          "content": "\n// Diff emits the test-delta facts.\nfunc (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {\n\tbase, ok := before.(*observation)\n\tif !ok {\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Diff",
+            "kind": "call-site",
+            "line": "72"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 90,
+          "symbol": "Pane",
+          "scope": "internal/pane/testdelta.Pane",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 101,
+          "endLine": 105,
+          "content": "// this package changed\" a clean question, which JS and Python layouts do not\n// answer as cleanly.\nfunc (p *Pane) sourceWithoutTest(res *pane.Result, lines *[]string) {\n\tsrc := map[string]bool{}\n\ttest := map[string]bool{}\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.sourceWithoutTest",
+            "kind": "call-site",
+            "line": "103"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 90,
+          "symbol": "Pane",
+          "scope": "internal/pane/testdelta.Pane",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 139,
+          "endLine": 143,
+          "content": "// test file. A skip quietly removes a test from the run; a focus (.only, fit)\n// quietly removes every other test in the file.\nfunc (p *Pane) skipsAdded(baseRev string, res *pane.Result, lines *[]string) {\n\tfor _, f := range p.scoped {\n\t\tif !isTestFile(f) {\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.skipsAdded",
+            "kind": "call-site",
+            "line": "141"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 90,
+          "symbol": "Pane",
+          "scope": "internal/pane/testdelta.Pane",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 182,
+          "endLine": 186,
+          "content": "// per file rather than per line, because a deleted line has no home in the head\n// tree to anchor on.\nfunc (p *Pane) assertionsRemoved(baseRev string, res *pane.Result, lines *[]string) {\n\tfor _, f := range p.scoped {\n\t\tif !isTestFile(f) {\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.assertionsRemoved",
+            "kind": "call-site",
+            "line": "184"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 90,
+          "symbol": "Pane",
+          "scope": "internal/pane/testdelta.Pane",
+          "file": "internal/run/run.go",
+          "startLine": 132,
+          "endLine": 136,
+          "content": "\t\t\u0026lint.Suppressions{Repo: repo},\n\t\t\u0026lint.Config{Repo: repo},\n\t\t\u0026testdelta.Pane{Repo: repo},\n\t}\n\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/run.Run",
+            "kind": "call-site",
+            "line": "134"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 82,
+          "symbol": "Category.DefaultSeverity",
+          "scope": "internal/findings.Category.DefaultSeverity",
+          "file": "internal/findings/findings.go",
+          "startLine": 264,
+          "endLine": 268,
+          "content": "\t\tf := \u0026r.Findings[i]\n\t\tif f.Severity == \"\" {\n\t\t\tf.Severity = f.Category.DefaultSeverity()\n\t\t}\n\t\tif f.Source == \"\" {\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/findings.Report.Finalize",
+            "kind": "call-site",
+            "line": "266"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 82,
+          "symbol": "Category.DefaultSeverity",
+          "scope": "internal/findings.Category.DefaultSeverity",
+          "file": "internal/findings/review.go",
+          "startLine": 196,
+          "endLine": 200,
+          "content": "\t\treturn SeverityInfo\n\t}\n\treturn CategoryReview.DefaultSeverity()\n}\n\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/findings.normalizeSeverity",
+            "kind": "call-site",
+            "line": "198"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 82,
+          "symbol": "Substrate",
+          "scope": "internal/pane/testdelta.Substrate",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 40,
+          "endLine": 44,
+          "content": "\n// Name implements pane.Pane.\nfunc (p *Pane) Name() string { return Substrate }\n\n// Scope selects the changed code files. It also stashes the full changed set:\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Name",
+            "kind": "call-site",
+            "line": "42"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 82,
+          "symbol": "Substrate",
+          "scope": "internal/pane/testdelta.Substrate",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 84,
+          "endLine": 88,
+          "content": "\tif len(res.Findings) == 0 {\n\t\tres.Confirmations = append(res.Confirmations, findings.Confirmation{\n\t\t\tSubstrate: Substrate,\n\t\t\tRule:      \"tests-move-with-code\",\n\t\t\tMessage:   \"every changed package changed a test, none were skipped or focused, and no assertions were removed\",\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.Diff",
+            "kind": "call-site",
+            "line": "86"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 82,
+          "symbol": "Substrate",
+          "scope": "internal/pane/testdelta.Substrate",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 126,
+          "endLine": 130,
+          "content": "\t\t\tAnchor:    \u0026findings.Anchor{Kind: \"package\", ID: dir},\n\t\t\tRule:      \"source-without-test\",\n\t\t\tSubstrate: Substrate,\n\t\t\tCategory:  findings.CategoryTests,\n\t\t\tSeverity:  findings.SeverityInfo,\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.sourceWithoutTest",
+            "kind": "call-site",
+            "line": "128"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 82,
+          "symbol": "Substrate",
+          "scope": "internal/pane/testdelta.Substrate",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 165,
+          "endLine": 169,
+          "content": "\t\t\t\t\tLine:      lineNo,\n\t\t\t\t\tRule:      \"test-skip-added\",\n\t\t\t\t\tSubstrate: Substrate,\n\t\t\t\t\tCategory:  findings.CategoryTests,\n\t\t\t\t\tSeverity:  findings.SeverityInfo,\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.skipsAdded",
+            "kind": "call-site",
+            "line": "167"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 82,
+          "symbol": "Substrate",
+          "scope": "internal/pane/testdelta.Substrate",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 211,
+          "endLine": 215,
+          "content": "\t\t\t\tFile:      f,\n\t\t\t\tRule:      \"assertions-removed\",\n\t\t\t\tSubstrate: Substrate,\n\t\t\t\tCategory:  findings.CategoryTests,\n\t\t\t\tSeverity:  findings.SeverityInfo,\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.assertionsRemoved",
+            "kind": "call-site",
+            "line": "213"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 81,
+          "symbol": "Run",
+          "scope": "internal/run.Run",
+          "file": "cmd/redline/main.go",
+          "startLine": 244,
+          "endLine": 248,
+          "content": "\t\t}\n\t}\n\treturn run.Run(o.toRun(cwd))\n}\n\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "cmd/redline.execute",
+            "kind": "call-site",
+            "line": "246"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 81,
+          "symbol": "CategoryTests",
+          "scope": "internal/findings.CategoryTests",
+          "file": "internal/findings/findings.go",
+          "startLine": 48,
+          "endLine": 52,
+          "content": "\tcase CategoryReview:\n\t\treturn SeverityInfo\n\tcase CategoryTests:\n\t\treturn SeverityInfo\n\tdefault:\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/findings.Category.DefaultSeverity",
+            "kind": "call-site",
+            "line": "50"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 81,
+          "symbol": "CategoryTests",
+          "scope": "internal/findings.CategoryTests",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 127,
+          "endLine": 131,
+          "content": "\t\t\tRule:      \"source-without-test\",\n\t\t\tSubstrate: Substrate,\n\t\t\tCategory:  findings.CategoryTests,\n\t\t\tSeverity:  findings.SeverityInfo,\n\t\t\tMessage:   fmt.Sprintf(\"code in %s changed but no test in that package did\", dir),\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.sourceWithoutTest",
+            "kind": "call-site",
+            "line": "129"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 81,
+          "symbol": "CategoryTests",
+          "scope": "internal/findings.CategoryTests",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 166,
+          "endLine": 170,
+          "content": "\t\t\t\t\tRule:      \"test-skip-added\",\n\t\t\t\t\tSubstrate: Substrate,\n\t\t\t\t\tCategory:  findings.CategoryTests,\n\t\t\t\t\tSeverity:  findings.SeverityInfo,\n\t\t\t\t\tMessage:   \"this change \" + what,\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.skipsAdded",
+            "kind": "call-site",
+            "line": "168"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 81,
+          "symbol": "CategoryTests",
+          "scope": "internal/findings.CategoryTests",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 212,
+          "endLine": 216,
+          "content": "\t\t\t\tRule:      \"assertions-removed\",\n\t\t\t\tSubstrate: Substrate,\n\t\t\t\tCategory:  findings.CategoryTests,\n\t\t\t\tSeverity:  findings.SeverityInfo,\n\t\t\t\tMessage:   fmt.Sprintf(\"this change removes %d more assertion-like line(s) than it adds in this test\", removed-added),\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/testdelta.Pane.assertionsRemoved",
+            "kind": "call-site",
+            "line": "214"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 100,
+          "symbol": "Result",
+          "scope": "internal/pane.Result",
+          "file": "internal/pane/pane.go",
+          "startLine": 32,
+          "endLine": 44,
+          "content": "// Result is everything a pane produces in one run.\ntype Result struct {\n\tRender        Render\n\tFindings      []findings.Finding\n\tConfirmations []findings.Confirmation\n\tUnknowns      []findings.Unknown\n\n\t// Evidence maps an observation ID to the artifact backing it — the SQL a\n\t// migration edit actually changed, a schema dump, a captured response.\n\t// Findings reference these by ID. A finding a reviewer cannot check for\n\t// themselves is inference wearing evidence's clothes.\n\tEvidence map[string]Artifact\n}\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/pane/testdelta.Pane.Diff"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 86,
+          "symbol": "Revision",
+          "scope": "internal/pane.Revision",
+          "file": "internal/pane/pane.go",
+          "startLine": 7,
+          "endLine": 11,
+          "content": "// Revision names a side of the comparison. The working tree is a revision.\ntype Revision struct {\n\tName string // \"base\" | \"worktree\"\n\tRev  string // commit SHA, empty for the working tree\n}\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/pane/testdelta.Pane.Observe"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 86,
+          "symbol": "Observation",
+          "scope": "internal/pane.Observation",
+          "file": "internal/pane/pane.go",
+          "startLine": 16,
+          "endLine": 22,
+          "content": "// Observation is one pane's view of the system at one revision. Panes that\n// need a running system produce theirs by standing it up; panes that do not\n// produce theirs by static extraction. The interface does not change.\ntype Observation interface {\n\t// ID identifies this observation for the Evidence field of a finding.\n\tID() string\n}\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/pane/testdelta.Pane.Observe"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 82,
+          "symbol": "Severity",
+          "scope": "internal/findings.Severity",
+          "file": "internal/findings/findings.go",
+          "startLine": 17,
+          "endLine": 18,
+          "content": "// Severity of a finding.\ntype Severity string\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/findings.Category.DefaultSeverity"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 82,
+          "symbol": "Category",
+          "scope": "internal/findings.Category",
+          "file": "internal/findings/findings.go",
+          "startLine": 26,
+          "endLine": 29,
+          "content": "// Category classifies a finding. Redline adds its own categories rather than\n// overloading doctor's — doctor's \"api\" means undeclared Go exported-API\n// changes, which is a different thing from an HTTP contract change.\ntype Category string\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/findings.Category.DefaultSeverity"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 81,
+          "symbol": "Options",
+          "scope": "internal/run.Options",
+          "file": "internal/run/run.go",
+          "startLine": 24,
+          "endLine": 43,
+          "content": "// Options configures one run.\ntype Options struct {\n\tDir      string // any directory inside the repository\n\tBase     string // base ref; merge-base with HEAD is used\n\tUpstream string // branch new migrations must not collide with\n\tMigDir   string // optional migrations directory filter\n\n\t// These point Redline at something other than the working tree.\n\t// Each is materialized as a detached worktree, so the user's own\n\t// checkout is never moved.\n\tPR     string\n\tBranch string\n\tCommit string\n\tRange  string\n\tOut    string // evidence directory; excluded from the change like .redline/\n\n\t// AllowMissingCoverage skips the fail-fast check for configured coverage\n\t// harness profiles. Other configured profiles (mutation, etc.) still apply.\n\tAllowMissingCoverage bool\n}\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/run.Run"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 81,
+          "symbol": "Result",
+          "scope": "internal/run.Result",
+          "file": "internal/run/run.go",
+          "startLine": 45,
+          "endLine": 58,
+          "content": "// Result is a report plus the per-pane renders backing section 1 and the\n// evidence artifacts findings point at.\ntype Result struct {\n\tReport   findings.Report\n\tRenders  []pane.Render\n\tEvidence map[string]pane.Artifact\n\tTarget   *target.Target\n\t// Change is the file-by-file account of the diff the report renders its\n\t// walkthrough and drill-in sections from.\n\tChange *change.Set\n\t// LineCoverage overlays the profile onto the diff: per changed .go file,\n\t// each coverable line mapped to whether a test ran it. Nil when no profile.\n\tLineCoverage map[string]map[int]bool\n}\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/run.Run"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 90,
+          "symbol": "Config",
+          "scope": "internal/pane/lint.Config",
+          "file": "internal/pane/lint/config.go",
+          "startLine": 20,
+          "endLine": 34,
+          "content": "// Config reports lint-configuration drift: a rule this change disables,\n// downgrades, or newly excludes. A lint delta earned by turning a rule off\n// looks identical to one earned by fixing code unless something names the\n// rule, and this pane is that something.\n//\n// Enumeration is per format. golangci YAML and eslintrc JSON are parsed and\n// their rule changes named; formats Redline cannot parse (a JS eslint config,\n// a TOML golangci config) still produce a finding that the config changed,\n// with the diff as evidence, so drift is never silent just because it is\n// unparseable.\ntype Config struct {\n\tRepo *gitx.Repo\n\n\tscoped []string\n}\n",
+          "details": {
+            "interface": "internal/pane.Pane",
+            "kind": "implementation",
+            "peerOf": "internal/pane/testdelta.Pane"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 90,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 20,
+          "endLine": 50,
+          "content": "// Delta runs the repository's configured linters at the base revision and at\n// head, and reports the difference. This is the first pane that executes\n// tools rather than reading git: the base side runs in a detached worktree at\n// the base commit, the head side in the tree under review.\ntype Delta struct {\n\tRepo *gitx.Repo\n\n\t// tools caches detection, which reads the head tree. Detection is by the\n\t// head's config: the head defines what this repository lints with.\n\ttools     []tool\n\tdetected  bool\n\tdetectErr error\n\n\t// scoped is the changed files this pane examines, kept so Diff can run a\n\t// differ-kind tool (oasdiff) once per scoped file it covers.\n\tscoped []string\n\n\t// configChanged is set by Scope when the change touches a lint config. A\n\t// delta partly earned by editing the config has to say so: fewer findings\n\t// because a rule was turned off is not the same fact as fixed code.\n\tconfigChanged bool\n\n\t// Harness carries the run's .redline.yml config so this pane can run\n\t// harness.worktree steps (for example make stub-ui) in the base and head\n\t// trees before the linters read them. Set by run.Run, nil when there is no\n\t// config. Prepared is the run-scoped dedup set shared with the rest of the\n\t// run so a produce root runs at most once.\n\tHarness     *harness.Config\n\tHarnessRoot string\n\tPrepared    map[string]bool\n}\n",
+          "details": {
+            "interface": "internal/pane.Pane",
+            "kind": "implementation",
+            "peerOf": "internal/pane/testdelta.Pane"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 90,
+          "symbol": "Suppressions",
+          "scope": "internal/pane/lint.Suppressions",
+          "file": "internal/pane/lint/suppress.go",
+          "startLine": 18,
+          "endLine": 32,
+          "content": "// Suppressions collects every lint-silencing directive this change adds. It is\n// the highest-signal lint fact a diff carries: the author explicitly told a\n// linter to be quiet, and the reviewer should see where and about what.\n//\n// Only directives on lines the diff adds are reported. A directive that\n// merely moved keeps its old justification; one the change introduces is the\n// one that needs a fresh look. Findings are info severity: many silencings\n// are legitimate, and the point is visibility, not a gate — a repository that\n// wants them to block can list info in its profile.\ntype Suppressions struct {\n\tRepo *gitx.Repo\n\n\t// scoped is what Scope selected; Diff walks it.\n\tscoped []string\n}\n",
+          "details": {
+            "interface": "internal/pane.Pane",
+            "kind": "implementation",
+            "peerOf": "internal/pane/testdelta.Pane"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 90,
+          "symbol": "Pane",
+          "scope": "internal/pane/migrations.Pane",
+          "file": "internal/pane/migrations/migrations.go",
+          "startLine": 77,
+          "endLine": 86,
+          "content": "// Pane observes migration files at two revisions.\ntype Pane struct {\n\tRepo *gitx.Repo\n\t// UpstreamRef is the branch new migrations must not collide with,\n\t// typically origin/main.\n\tUpstreamRef string\n\t// Dir optionally restricts the pane to one migrations directory. Empty\n\t// means every path matching the golang-migrate naming convention.\n\tDir string\n}\n",
+          "details": {
+            "interface": "internal/pane.Pane",
+            "kind": "implementation",
+            "peerOf": "internal/pane/testdelta.Pane"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 90,
+          "symbol": "Pane",
+          "scope": "internal/pane/openapi.Pane",
+          "file": "internal/pane/openapi/openapi.go",
+          "startLine": 30,
+          "endLine": 35,
+          "content": "// Pane diffs OpenAPI specs between two revisions.\ntype Pane struct {\n\tRepo *gitx.Repo\n\t// Paths is the set of spec files in the change, set by Scope.\n\tPaths []string\n}\n",
+          "details": {
+            "interface": "internal/pane.Pane",
+            "kind": "implementation",
+            "peerOf": "internal/pane/testdelta.Pane"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 51,
+          "symbol": "configObservation",
+          "scope": "internal/pane/lint.configObservation",
+          "file": "internal/pane/lint/config.go",
+          "startLine": 74,
+          "endLine": 74,
+          "content": "type configObservation struct{ Rev string }\n",
+          "details": {
+            "interface": "internal/pane.Observation",
+            "kind": "implementation",
+            "peerOf": "internal/pane/testdelta.observation"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 51,
+          "symbol": "snapshot",
+          "scope": "internal/pane/lint.snapshot",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 94,
+          "endLine": 98,
+          "content": "// snapshot is one revision's lint state: per tool, its issues or its failure.\ntype snapshot struct {\n\tRev  string\n\tRuns []toolRun\n}\n",
+          "details": {
+            "interface": "internal/pane.Observation",
+            "kind": "implementation",
+            "peerOf": "internal/pane/testdelta.observation"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 51,
+          "symbol": "suppressObservation",
+          "scope": "internal/pane/lint.suppressObservation",
+          "file": "internal/pane/lint/suppress.go",
+          "startLine": 75,
+          "endLine": 78,
+          "content": "// suppressObservation records the revision; the pane model observes whole\n// revisions, but a directive is a fact about specific lines, so the real work\n// reads the diff per scoped file in Diff.\ntype suppressObservation struct{ Rev string }\n",
+          "details": {
+            "interface": "internal/pane.Observation",
+            "kind": "implementation",
+            "peerOf": "internal/pane/testdelta.observation"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 51,
+          "symbol": "Set",
+          "scope": "internal/pane/migrations.Set",
+          "file": "internal/pane/migrations/migrations.go",
+          "startLine": 40,
+          "endLine": 53,
+          "content": "// Set is the migration files visible at one revision.\ntype Set struct {\n\tRev   string\n\tFiles map[string]string // path → blob SHA\n\n\t// UpstreamVersions is the set of migration versions already published on\n\t// the upstream branch, and is populated on the base-side observation only:\n\t// it is part of \"what the world already has\". UpstreamRef is empty and\n\t// UpstreamErr set when the upstream ref could not be read — which is an\n\t// unknown, never a pass.\n\tUpstreamVersions map[string]string // version → representative path upstream\n\tUpstreamRef      string\n\tUpstreamErr      string\n}\n",
+          "details": {
+            "interface": "internal/pane.Observation",
+            "kind": "implementation",
+            "peerOf": "internal/pane/testdelta.observation"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 51,
+          "symbol": "Observation",
+          "scope": "internal/pane/openapi.Observation",
+          "file": "internal/pane/openapi/openapi.go",
+          "startLine": 66,
+          "endLine": 73,
+          "content": "// Observation is the parsed contract at one revision.\ntype Observation struct {\n\t// Side is \"base\" or \"worktree\"; Rev is the revision it resolved to, empty\n\t// for the working tree.\n\tSide  string\n\tRev   string\n\tSpecs map[string]*spec\n}\n",
+          "details": {
+            "interface": "internal/pane.Observation",
+            "kind": "implementation",
+            "peerOf": "internal/pane/testdelta.observation"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 90,
+          "symbol": "TestSourceWithoutTest",
+          "scope": "internal/pane/testdelta.TestSourceWithoutTest",
+          "file": "internal/pane/testdelta/testdelta_test.go",
+          "startLine": 88,
+          "endLine": 107,
+          "content": "// A Go package whose source changed with no test change in it is reported once;\n// a package that also changed a test is not.\nfunc TestSourceWithoutTest(t *testing.T) {\n\tp := \u0026Pane{changed: []string{\n\t\t\"internal/a/a.go\",\n\t\t\"internal/b/b.go\",\n\t\t\"internal/b/b_test.go\",\n\t\t\"README.md\",\n\t}}\n\tvar res pane.Result\n\tvar lines []string\n\tp.sourceWithoutTest(\u0026res, \u0026lines)\n\tif len(res.Findings) != 1 {\n\t\tt.Fatalf(\"want 1 finding, got %d: %+v\", len(res.Findings), res.Findings)\n\t}\n\tf := res.Findings[0]\n\tif f.Rule != \"source-without-test\" || f.Anchor == nil || f.Anchor.ID != \"internal/a\" {\n\t\tt.Fatalf(\"finding = %+v (anchor %+v)\", f, f.Anchor)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/testdelta.Pane",
+            "kind": "test",
+            "testFor": "Pane"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 81,
+          "symbol": "repo.run",
+          "scope": "internal/run.repo.run",
+          "file": "internal/run/run_test.go",
+          "startLine": 60,
+          "endLine": 68,
+          "content": "func (r *repo) run(opts run.Options) *run.Result {\n\tr.t.Helper()\n\topts.Dir = r.dir\n\tres, err := run.Run(opts)\n\tif err != nil {\n\t\tr.t.Fatalf(\"run: %v\", err)\n\t}\n\treturn res\n}\n",
+          "details": {
+            "covers": "internal/run.Run",
+            "kind": "test",
+            "testFor": "Run"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 81,
+          "symbol": "TestAllowMissingCoverageContinuesWithHarness",
+          "scope": "internal/run.TestAllowMissingCoverageContinuesWithHarness",
+          "file": "internal/run/run_test.go",
+          "startLine": 424,
+          "endLine": 449,
+          "content": "func TestAllowMissingCoverageContinuesWithHarness(t *testing.T) {\n\tr := baseline(t)\n\tr.write(\".redline.yml\", `harness:\n  profiles:\n    - id: go\n      path: coverage.out\n      produce: {command: true}\n      when: stale\n      scope: [\"**/*.go\"]\n`)\n\tr.write(\"internal/x/x.go\", \"package x\\n\\nfunc A() int {\\n\\treturn 1\\n}\\n\")\n\n\tres, err := run.Run(run.Options{Dir: r.dir, Base: \"main\", Upstream: \"upstream\", AllowMissingCoverage: true})\n\tif err != nil {\n\t\tt.Fatalf(\"allow-missing-coverage should continue: %v\", err)\n\t}\n\tvar found bool\n\tfor _, u := range res.Report.Unknowns {\n\t\tif u.Substrate == \"redline/tests\" {\n\t\t\tfound = true\n\t\t}\n\t}\n\tif !found {\n\t\tt.Fatal(\"expected coverage unknown on the report when allowed to continue\")\n\t}\n}\n",
+          "details": {
+            "covers": "internal/run.Run",
+            "kind": "test",
+            "testFor": "Run"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 81,
+          "symbol": "TestMissingHarnessProfileBalks",
+          "scope": "internal/run.TestMissingHarnessProfileBalks",
+          "file": "internal/run/run_test.go",
+          "startLine": 451,
+          "endLine": 470,
+          "content": "func TestMissingHarnessProfileBalks(t *testing.T) {\n\tr := baseline(t)\n\tr.write(\".redline.yml\", `harness:\n  profiles:\n    - id: go\n      path: coverage.out\n      produce: {command: true}\n      when: stale\n      scope: [\"**/*.go\"]\n`)\n\tr.write(\"internal/x/x.go\", \"package x\\n\\nfunc A() int {\\n\\treturn 1\\n}\\n\")\n\n\t_, err := run.Run(run.Options{Dir: r.dir, Base: \"main\", Upstream: \"upstream\"})\n\tif err == nil {\n\t\tt.Fatal(\"expected an error when a configured profile is missing\")\n\t}\n\tif !strings.Contains(err.Error(), `harness profile \"go\"`) {\n\t\tt.Fatalf(\"unexpected error: %v\", err)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/run.Run",
+            "kind": "test",
+            "testFor": "Run"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 70,
+          "symbol": "TestSourceWithoutTest",
+          "scope": "internal/pane/testdelta.TestSourceWithoutTest",
+          "file": "internal/pane/testdelta/testdelta_test.go",
+          "startLine": 88,
+          "endLine": 107,
+          "content": "// A Go package whose source changed with no test change in it is reported once;\n// a package that also changed a test is not.\nfunc TestSourceWithoutTest(t *testing.T) {\n\tp := \u0026Pane{changed: []string{\n\t\t\"internal/a/a.go\",\n\t\t\"internal/b/b.go\",\n\t\t\"internal/b/b_test.go\",\n\t\t\"README.md\",\n\t}}\n\tvar res pane.Result\n\tvar lines []string\n\tp.sourceWithoutTest(\u0026res, \u0026lines)\n\tif len(res.Findings) != 1 {\n\t\tt.Fatalf(\"want 1 finding, got %d: %+v\", len(res.Findings), res.Findings)\n\t}\n\tf := res.Findings[0]\n\tif f.Rule != \"source-without-test\" || f.Anchor == nil || f.Anchor.ID != \"internal/a\" {\n\t\tt.Fatalf(\"finding = %+v (anchor %+v)\", f, f.Anchor)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/testdelta.Pane.sourceWithoutTest",
+            "kind": "test",
+            "testFor": "Pane.sourceWithoutTest"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 66,
+          "symbol": "TestIsTestFile",
+          "scope": "internal/pane/testdelta.TestIsTestFile",
+          "file": "internal/pane/testdelta/testdelta_test.go",
+          "startLine": 45,
+          "endLine": 65,
+          "content": "func TestIsTestFile(t *testing.T) {\n\tyes := []string{\n\t\t\"internal/foo/foo_test.go\",\n\t\t\"ui/src/a.test.ts\",\n\t\t\"ui/src/a.spec.tsx\",\n\t\t\"py/test_x.py\",\n\t\t\"py/x_test.py\",\n\t\t\"ui/src/__tests__/a.js\",\n\t}\n\tno := []string{\"internal/foo/foo.go\", \"ui/src/a.ts\", \"README.md\", \"py/x.py\"}\n\tfor _, f := range yes {\n\t\tif !isTestFile(f) {\n\t\t\tt.Errorf(\"isTestFile(%q) = false, want true\", f)\n\t\t}\n\t}\n\tfor _, f := range no {\n\t\tif isTestFile(f) {\n\t\t\tt.Errorf(\"isTestFile(%q) = true, want false\", f)\n\t\t}\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/testdelta.isTestFile",
+            "kind": "test",
+            "testFor": "isTestFile"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 60,
+          "symbol": "TestSkipKind",
+          "scope": "internal/pane/testdelta.TestSkipKind",
+          "file": "internal/pane/testdelta/testdelta_test.go",
+          "startLine": 10,
+          "endLine": 43,
+          "content": "func TestSkipKind(t *testing.T) {\n\tskips := []string{\n\t\t\"\\tt.Skip(\\\"flaky\\\")\",\n\t\t\"    b.SkipNow()\",\n\t\t\"  it.skip('x', () =\u003e {})\",\n\t\t\"@pytest.mark.skip\",\n\t\t\"  self.skipTest('n')\",\n\t\t\"  xit('x', () =\u003e {})\",\n\t}\n\tfocus := []string{\n\t\t\"  describe.only('x', () =\u003e {})\",\n\t\t\"  fit('x', () =\u003e {})\",\n\t}\n\tnone := []string{\n\t\t\"\\treturn nil\",\n\t\t\"\\tt.Errorf(\\\"boom\\\")\",\n\t\t\"\\t// skip this comment mentions skip but is not a directive\",\n\t}\n\tfor _, l := range skips {\n\t\tif got := skipKind(l); got != \"skips a test\" {\n\t\t\tt.Errorf(\"skipKind(%q) = %q, want a skip\", l, got)\n\t\t}\n\t}\n\tfor _, l := range focus {\n\t\tif got := skipKind(l); !strings.HasPrefix(got, \"focuses\") {\n\t\t\tt.Errorf(\"skipKind(%q) = %q, want a focus\", l, got)\n\t\t}\n\t}\n\tfor _, l := range none {\n\t\tif got := skipKind(l); got != \"\" {\n\t\t\tt.Errorf(\"skipKind(%q) = %q, want none\", l, got)\n\t\t}\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/testdelta.skipKind",
+            "kind": "test",
+            "testFor": "skipKind"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 55,
+          "symbol": "TestAssertionRe",
+          "scope": "internal/pane/testdelta.TestAssertionRe",
+          "file": "internal/pane/testdelta/testdelta_test.go",
+          "startLine": 67,
+          "endLine": 86,
+          "content": "func TestAssertionRe(t *testing.T) {\n\tmatch := []string{\n\t\t\"\\tassert.Equal(t, a, b)\",\n\t\t\"\\trequire.NoError(t, err)\",\n\t\t\"\\texpect(x).toBe(1)\",\n\t\t\"\\tself.assertEqual(a, b)\",\n\t\t\"\\tt.Fatal(\\\"no\\\")\",\n\t}\n\tnone := []string{\"\\tx := 1\", \"\\treturn nil\", \"\\t// assert something\"}\n\tfor _, l := range match {\n\t\tif !assertionRe.MatchString(l) {\n\t\t\tt.Errorf(\"assertionRe should match %q\", l)\n\t\t}\n\t}\n\tfor _, l := range none {\n\t\tif assertionRe.MatchString(l) {\n\t\t\tt.Errorf(\"assertionRe should not match %q\", l)\n\t\t}\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/testdelta.assertionRe",
+            "kind": "test",
+            "testFor": "assertionRe"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 100,
+          "symbol": "TestSkipKind",
+          "scope": "internal/pane/testdelta.TestSkipKind",
+          "file": "internal/pane/testdelta/testdelta_test.go",
+          "startLine": 1,
+          "endLine": 107,
+          "content": "commit fe2df5828d395b0ef9847285dd0ea8658137d808\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T14:12:38-06:00\n\n    Add a test-delta pane: what the diff shows about the tests\n    \n    Coverage says a test ran a line and mutation says a test would catch it\n    breaking. This pane answers the third question the diff alone can settle: did\n    the tests move with the code. Three info findings, no config and no test runs.\n    \n    - source-without-test: a Go package whose source changed with no test in it\n      changed. Anchored on the package, not a gate; an existing test may cover it.\n    - test-skip-added: a t.Skip, .skip, or focus (.only, fit) on a line the change\n      adds to a test file, on the line so the drawer shows it.\n    - assertions-removed: a test file that ends with fewer assertion-like lines than\n      it started, netted so a move or rename does not read as a loss.\n    \n    New CategoryTests, pane registered in run.go. Detectors and the package logic\n    are unit-tested; an end-to-end run confirms all three fire on a real diff.\n\ndiff --git a/internal/pane/testdelta/testdelta_test.go b/internal/pane/testdelta/testdelta_test.go\n--- /dev/null\n+++ b/internal/pane/testdelta/testdelta_test.go\n@@ -0,0 +1,107 @@\n+package testdelta\n+\n+import (\n+\t\"strings\"\n+\t\"testing\"\n+\n+\t\"github.com/chrisophus/redline/internal/pane\"\n+)\n+\n+func TestSkipKind(t *testing.T) {\n+\tskips := []string{\n+\t\t\"\\tt.Skip(\\\"flaky\\\")\",\n+\t\t\"    b.SkipNow()\",\n+\t\t\"  it.skip('x', () =\u003e {})\",\n+\t\t\"@pytest.mark.skip\",\n+\t\t\"  self.skipTest('n')\",\n+\t\t\"  xit('x', () =\u003e {})\",\n+\t}\n+\tfocus := []string{\n+\t\t\"  describe.only('x', () =\u003e {})\",\n+\t\t\"  fit('x', () =\u003e {})\",\n+\t}\n+\tnone := []string{\n+\t\t\"\\treturn nil\",\n+\t\t\"\\tt.Errorf(\\\"boom\\\")\",\n+\t\t\"\\t// skip this comment mentions skip but is not a directive\",\n+\t}\n+\tfor _, l := range skips {\n+\t\tif got := skipKind(l); got != \"skips a test\" {\n+\t\t\tt.Errorf(\"skipKind(%q) = %q, want a skip\", l, got)\n+\t\t}\n+\t}\n+\tfor _, l := range focus {\n+\t\tif got := skipKind(l); !strings.HasPrefix(got, \"focuses\") {\n+\t\t\tt.Errorf(\"skipKind(%q) = %q, want a focus\", l, got)\n+\t\t}\n+\t}\n+\tfor _, l := range none {\n+\t\tif got := skipKind(l); got != \"\" {\n+\t\t\tt.Errorf(\"skipKind(%q) = %q, want none\", l, got)\n+\t\t}\n+\t}\n+}\n+\n+func TestIsTestFile(t *testing.T) {\n+\tyes := []string{\n+\t\t\"internal/foo/foo_test.go\",\n+\t\t\"ui/src/a.test.ts\",\n+\t\t\"ui/src/a.spec.tsx\",\n+\t\t\"py/test_x.py\",\n+\t\t\"py/x_test.py\",\n+\t\t\"ui/src/__tests__/a.js\",\n+\t}\n+\tno := []string{\"internal/foo/foo.go\", \"ui/src/a.ts\", \"README.md\", \"py/x.py\"}\n+\tfor _, f := range yes {\n+\t\tif !isTestFile(f) {\n+\t\t\tt.Errorf(\"isTestFile(%q) = false, want true\", f)\n+\t\t}\n+\t}\n+\tfor _, f := range no {\n+\t\tif isTestFile(f) {\n+\t\t\tt.Errorf(\"isTestFile(%q) = true, want false\", f)\n+\t\t}\n+\t}\n+}\n+\n+func TestAssertionRe(t *testing.T) {\n+\tmatch := []string{\n+\t\t\"\\tassert.Equal(t, a, b)\",\n+\t\t\"\\trequire.NoError(t, err)\",\n+\t\t\"\\texpect(x).toBe(1)\",\n+\t\t\"\\tself.assertEqual(a, b)\",\n+\t\t\"\\tt.Fatal(\\\"no\\\")\",\n+\t}\n+\tnone := []string{\"\\tx := 1\", \"\\treturn nil\", \"\\t// assert something\"}\n+\tfor _, l := range match {\n+\t\tif !assertionRe.MatchString(l) {\n+\t\t\tt.Errorf(\"assertionRe should match %q\", l)\n+\t\t}\n+\t}\n+\tfor _, l := range none {\n+\t\tif assertionRe.MatchString(l) {\n+\t\t\tt.Errorf(\"assertionRe should not match %q\", l)\n+\t\t}\n+\t}\n+}\n+\n+// A Go package whose source changed with no test change in it is reported once;\n+// a package that also changed a test is not.\n+func TestSourceWithoutTest(t *testing.T) {\n+\tp := \u0026Pane{changed: []string{\n+\t\t\"internal/a/a.go\",\n+\t\t\"internal/b/b.go\",\n+\t\t\"internal/b/b_test.go\",\n+\t\t\"README.md\",\n+\t}}\n+\tvar res pane.Result\n+\tvar lines []string\n+\tp.sourceWithoutTest(\u0026res, \u0026lines)\n+\tif len(res.Findings) != 1 {\n+\t\tt.Fatalf(\"want 1 finding, got %d: %+v\", len(res.Findings), res.Findings)\n+\t}\n+\tf := res.Findings[0]\n+\tif f.Rule != \"source-without-test\" || f.Anchor == nil || f.Anchor.ID != \"internal/a\" {\n+\t\tt.Fatalf(\"finding = %+v (anchor %+v)\", f, f.Anchor)\n+\t}\n+}\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "1-107",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 82,
+          "symbol": "Category.DefaultSeverity",
+          "scope": "internal/findings.Category.DefaultSeverity",
+          "file": "internal/findings/findings.go",
+          "startLine": 50,
+          "endLine": 51,
+          "content": "commit fe2df5828d395b0ef9847285dd0ea8658137d808\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T14:12:38-06:00\n\n    Add a test-delta pane: what the diff shows about the tests\n    \n    Coverage says a test ran a line and mutation says a test would catch it\n    breaking. This pane answers the third question the diff alone can settle: did\n    the tests move with the code. Three info findings, no config and no test runs.\n    \n    - source-without-test: a Go package whose source changed with no test in it\n      changed. Anchored on the package, not a gate; an existing test may cover it.\n    - test-skip-added: a t.Skip, .skip, or focus (.only, fit) on a line the change\n      adds to a test file, on the line so the drawer shows it.\n    - assertions-removed: a test file that ends with fewer assertion-like lines than\n      it started, netted so a move or rename does not read as a loss.\n    \n    New CategoryTests, pane registered in run.go. Detectors and the package logic\n    are unit-tested; an end-to-end run confirms all three fire on a real diff.\n\ndiff --git a/internal/findings/findings.go b/internal/findings/findings.go\n--- a/internal/findings/findings.go\n+++ b/internal/findings/findings.go\n@@ -49,0 +50,2 @@\n+\tcase CategoryTests:\n+\t\treturn SeverityInfo\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "50-51",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 82,
+          "symbol": "Substrate",
+          "scope": "internal/pane/testdelta.Substrate",
+          "file": "internal/pane/testdelta/testdelta.go",
+          "startLine": 1,
+          "endLine": 275,
+          "content": "commit fe2df5828d395b0ef9847285dd0ea8658137d808\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T14:12:38-06:00\n\n    Add a test-delta pane: what the diff shows about the tests\n    \n    Coverage says a test ran a line and mutation says a test would catch it\n    breaking. This pane answers the third question the diff alone can settle: did\n    the tests move with the code. Three info findings, no config and no test runs.\n    \n    - source-without-test: a Go package whose source changed with no test in it\n      changed. Anchored on the package, not a gate; an existing test may cover it.\n    - test-skip-added: a t.Skip, .skip, or focus (.only, fit) on a line the change\n      adds to a test file, on the line so the drawer shows it.\n    - assertions-removed: a test file that ends with fewer assertion-like lines than\n      it started, netted so a move or rename does not read as a loss.\n    \n    New CategoryTests, pane registered in run.go. Detectors and the package logic\n    are unit-tested; an end-to-end run confirms all three fire on a real diff.\n\ndiff --git a/internal/pane/testdelta/testdelta.go b/internal/pane/testdelta/testdelta.go\n--- /dev/null\n+++ b/internal/pane/testdelta/testdelta.go\n@@ -0,0 +1,275 @@\n+// Package testdelta reports cheap, deterministic facts about how a change treats\n+// its tests, read from the diff alone: source that changed with no test beside\n+// it, tests newly skipped or focused, and assertions removed. These are info\n+// findings, signals for the reviewer to weigh, not gates. They sit next to\n+// coverage (did a test run this line) and mutation (would a test catch it\n+// breaking) with the third question the diff can answer for free: did the tests\n+// move with the code.\n+package testdelta\n+\n+import (\n+\t\"fmt\"\n+\t\"path\"\n+\t\"regexp\"\n+\t\"sort\"\n+\t\"strings\"\n+\n+\t\"github.com/chrisophus/redline/internal/cover\"\n+\t\"github.com/chrisophus/redline/internal/findings\"\n+\t\"github.com/chrisophus/redline/internal/gitx\"\n+\t\"github.com/chrisophus/redline/internal/pane\"\n+)\n+\n+// Substrate is the pane's name in the findings schema.\n+const Substrate = \"redline/test-delta\"\n+\n+// Pane reports test-facing facts a diff shows on its own.\n+type Pane struct {\n+\tRepo *gitx.Repo\n+\n+\t// changed is the whole changed set, kept for the source-without-test fact,\n+\t// which is about files this pane does not otherwise open. scoped is the code\n+\t// files it inspects line by line.\n+\tchanged []string\n+\tscoped  []string\n+}\n+\n+// codeExts are the files this pane inspects for skips and assertion changes, and\n+// the ones whose packages the source-without-test fact reasons about.\n+var codeExts = []string{\".go\", \".js\", \".jsx\", \".ts\", \".tsx\", \".mjs\", \".cjs\", \".py\"}\n+\n+// Name implements pane.Pane.\n+func (p *Pane) Name() string { return Substrate }\n+\n+// Scope selects the changed code files. It also stashes the full changed set:\n+// the source-without-test fact must fire precisely when no test changed, and a\n+// pane with an empty scope never runs, so scope must be non-empty whenever code\n+// changed at all.\n+func (p *Pane) Scope(changed []string) []string {\n+\tp.changed = changed\n+\tvar out []string\n+\tfor _, f := range changed {\n+\t\tif hasExt(f, codeExts) {\n+\t\t\tout = append(out, f)\n+\t\t}\n+\t}\n+\tp.scoped = out\n+\treturn out\n+}\n+\n+type observation struct{ Rev string }\n+\n+func (o *observation) ID() string { return \"test-delta@\" + o.Rev }\n+\n+// Observe records the revision. Like the suppressions pane, the real work reads\n+// the diff in Diff, because every fact here is a property of added or removed\n+// lines rather than of a whole-file snapshot.\n+func (p *Pane) Observe(rev pane.Revision) (pane.Observation, error) {\n+\treturn \u0026observation{Rev: rev.Rev}, nil\n+}\n+\n+// Diff emits the test-delta facts.\n+func (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {\n+\tbase, ok := before.(*observation)\n+\tif !ok {\n+\t\treturn pane.Result{}, fmt.Errorf(\"test-delta: base observation is %T\", before)\n+\t}\n+\tres := pane.Result{Evidence: map[string]pane.Artifact{}}\n+\tvar lines []string\n+\n+\tp.sourceWithoutTest(\u0026res, \u0026lines)\n+\tp.skipsAdded(base.Rev, \u0026res, \u0026lines)\n+\tp.assertionsRemoved(base.Rev, \u0026res, \u0026lines)\n+\n+\tif len(res.Findings) == 0 {\n+\t\tres.Confirmations = append(res.Confirmations, findings.Confirmation{\n+\t\t\tSubstrate: Substrate,\n+\t\t\tRule:      \"tests-move-with-code\",\n+\t\t\tMessage:   \"every changed package changed a test, none were skipped or focused, and no assertions were removed\",\n+\t\t})\n+\t}\n+\tres.Render = pane.Render{\n+\t\tTitle:   \"Tests\",\n+\t\tSummary: fmt.Sprintf(\"%d test-delta fact(s) from the diff\", len(res.Findings)),\n+\t\tLines:   lines,\n+\t}\n+\treturn res, nil\n+}\n+\n+// sourceWithoutTest names each Go package this change edits without touching a\n+// test in it. Go only: its one-test-file-per-package convention makes \"a test in\n+// this package changed\" a clean question, which JS and Python layouts do not\n+// answer as cleanly.\n+func (p *Pane) sourceWithoutTest(res *pane.Result, lines *[]string) {\n+\tsrc := map[string]bool{}\n+\ttest := map[string]bool{}\n+\tfor _, f := range p.changed {\n+\t\tif !strings.HasSuffix(f, \".go\") {\n+\t\t\tcontinue\n+\t\t}\n+\t\tdir := path.Dir(f)\n+\t\tif strings.HasSuffix(f, \"_test.go\") {\n+\t\t\ttest[dir] = true\n+\t\t} else {\n+\t\t\tsrc[dir] = true\n+\t\t}\n+\t}\n+\tvar dirs []string\n+\tfor dir := range src {\n+\t\tif !test[dir] {\n+\t\t\tdirs = append(dirs, dir)\n+\t\t}\n+\t}\n+\tsort.Strings(dirs)\n+\tfor _, dir := range dirs {\n+\t\tres.Findings = append(res.Findings, findings.Finding{\n+\t\t\tAnchor:    \u0026findings.Anchor{Kind: \"package\", ID: dir},\n+\t\t\tRule:      \"source-without-test\",\n+\t\t\tSubstrate: Substrate,\n+\t\t\tCategory:  findings.CategoryTests,\n+\t\t\tSeverity:  findings.SeverityInfo,\n+\t\t\tMessage:   fmt.Sprintf(\"code in %s changed but no test in that package did\", dir),\n+\t\t\tContext:   \"Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.\",\n+\t\t})\n+\t\t*lines = append(*lines, \"~ \"+dir+\" (no test changed)\")\n+\t}\n+}\n+\n+// skipsAdded reports a skip or focus directive on a line this change adds to a\n+// test file. A skip quietly removes a test from the run; a focus (.only, fit)\n+// quietly removes every other test in the file.\n+func (p *Pane) skipsAdded(baseRev string, res *pane.Result, lines *[]string) {\n+\tfor _, f := range p.scoped {\n+\t\tif !isTestFile(f) {\n+\t\t\tcontinue\n+\t\t}\n+\t\tadded := map[int]bool{}\n+\t\tfor _, n := range cover.AddedLines(p.Repo.DiffPath(baseRev, f)) {\n+\t\t\tadded[n] = true\n+\t\t}\n+\t\tif len(added) == 0 {\n+\t\t\tcontinue\n+\t\t}\n+\t\tcontent := p.Repo.File(\"\", f)\n+\t\tif content == \"\" {\n+\t\t\tcontinue\n+\t\t}\n+\t\tfor n, line := range strings.Split(content, \"\\n\") {\n+\t\t\tlineNo := n + 1\n+\t\t\tif !added[lineNo] {\n+\t\t\t\tcontinue\n+\t\t\t}\n+\t\t\tif what := skipKind(line); what != \"\" {\n+\t\t\t\tres.Findings = append(res.Findings, findings.Finding{\n+\t\t\t\t\tFile:      f,\n+\t\t\t\t\tLine:      lineNo,\n+\t\t\t\t\tRule:      \"test-skip-added\",\n+\t\t\t\t\tSubstrate: Substrate,\n+\t\t\t\t\tCategory:  findings.CategoryTests,\n+\t\t\t\t\tSeverity:  findings.SeverityInfo,\n+\t\t\t\t\tMessage:   \"this change \" + what,\n+\t\t\t\t\tObserved:  strings.TrimSpace(line),\n+\t\t\t\t})\n+\t\t\t\t*lines = append(*lines, fmt.Sprintf(\"+ %s:%d %s\", f, lineNo, what))\n+\t\t\t}\n+\t\t}\n+\t}\n+}\n+\n+// assertionsRemoved reports a test file that ends the change with fewer\n+// assertion-like lines than it started. Netting added against removed keeps a\n+// pure move or rename from reading as a loss; only a real drop is reported, and\n+// per file rather than per line, because a deleted line has no home in the head\n+// tree to anchor on.\n+func (p *Pane) assertionsRemoved(baseRev string, res *pane.Result, lines *[]string) {\n+\tfor _, f := range p.scoped {\n+\t\tif !isTestFile(f) {\n+\t\t\tcontinue\n+\t\t}\n+\t\tdiff := p.Repo.DiffPath(baseRev, f)\n+\t\tif diff == \"\" {\n+\t\t\tcontinue\n+\t\t}\n+\t\tadded, removed := 0, 0\n+\t\tfor _, l := range strings.Split(diff, \"\\n\") {\n+\t\t\tif strings.HasPrefix(l, \"+++\") || strings.HasPrefix(l, \"---\") {\n+\t\t\t\tcontinue\n+\t\t\t}\n+\t\t\tswitch {\n+\t\t\tcase strings.HasPrefix(l, \"+\"):\n+\t\t\t\tif assertionRe.MatchString(l[1:]) {\n+\t\t\t\t\tadded++\n+\t\t\t\t}\n+\t\t\tcase strings.HasPrefix(l, \"-\"):\n+\t\t\t\tif assertionRe.MatchString(l[1:]) {\n+\t\t\t\t\tremoved++\n+\t\t\t\t}\n+\t\t\t}\n+\t\t}\n+\t\tif removed \u003e added {\n+\t\t\tres.Findings = append(res.Findings, findings.Finding{\n+\t\t\t\tFile:      f,\n+\t\t\t\tRule:      \"assertions-removed\",\n+\t\t\t\tSubstrate: Substrate,\n+\t\t\t\tCategory:  findings.CategoryTests,\n+\t\t\t\tSeverity:  findings.SeverityInfo,\n+\t\t\t\tMessage:   fmt.Sprintf(\"this change removes %d more assertion-like line(s) than it adds in this test\", removed-added),\n+\t\t\t\tContext:   \"Assertions are what let a test fail. A net drop can mean a weaker test; check it is intended.\",\n+\t\t\t})\n+\t\t\t*lines = append(*lines, fmt.Sprintf(\"- %s (-%d assertion-like line(s))\", f, removed-added))\n+\t\t}\n+\t}\n+}\n+\n+// skipKind classifies a skip or focus directive, or returns \"\" for neither.\n+func skipKind(line string) string {\n+\tswitch {\n+\tcase focusRe.MatchString(line):\n+\t\treturn \"focuses tests, so the others in the file will not run\"\n+\tcase skipRe.MatchString(line):\n+\t\treturn \"skips a test\"\n+\t}\n+\treturn \"\"\n+}\n+\n+var (\n+\tskipRe = regexp.MustCompile(`\\b[tbsf]\\.Skip(Now|f)?\\s*\\(` + // Go t.Skip / b.Skip\n+\t\t`|\\b(it|test|describe|context)\\.skip\\b` + // JS/TS .skip\n+\t\t`|\\bx(it|describe)\\b` + // JS/TS xit / xdescribe\n+\t\t`|@(pytest\\.mark\\.skip|unittest\\.skip)` + // Python decorators\n+\t\t`|\\bpytest\\.skip\\s*\\(|\\bself\\.skipTest\\s*\\(`)\n+\n+\tfocusRe = regexp.MustCompile(`\\b(it|test|describe|context)\\.only\\b|\\bf(it|describe)\\b`)\n+\n+\tassertionRe = regexp.MustCompile(`\\b(assert|require)\\.\\w+` + // Go testify\n+\t\t`|\\bt\\.(Error|Errorf|Fatal|Fatalf|Fail|FailNow)\\b` + // Go testing\n+\t\t`|\\bexpect\\s*\\(|\\.should\\b` + // JS/TS\n+\t\t`|\\bassert(Equal|True|False|Nil|NotNil|Error|NoError)?\\s*\\(` + // xUnit-style\n+\t\t`|\\bself\\.assert\\w+\\s*\\(`) // Python unittest\n+)\n+\n+// isTestFile reports whether a path is a test file in a supported language.\n+func isTestFile(f string) bool {\n+\tbase := path.Base(f)\n+\tswitch {\n+\tcase strings.HasSuffix(f, \"_test.go\"):\n+\t\treturn true\n+\tcase strings.HasPrefix(base, \"test_\") \u0026\u0026 strings.HasSuffix(base, \".py\"),\n+\t\tstrings.HasSuffix(base, \"_test.py\"):\n+\t\treturn true\n+\tcase strings.Contains(base, \".test.\") || strings.Contains(base, \".spec.\"):\n+\t\treturn true\n+\tcase strings.Contains(f, \"__tests__/\"):\n+\t\treturn true\n+\t}\n+\treturn false\n+}\n+\n+func hasExt(f string, exts []string) bool {\n+\tfor _, e := range exts {\n+\t\tif strings.HasSuffix(f, e) {\n+\t\t\treturn true\n+\t\t}\n+\t}\n+\treturn false\n+}\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "1-275",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 81,
+          "symbol": "CategoryTests",
+          "scope": "internal/findings.CategoryTests",
+          "file": "internal/findings/findings.go",
+          "startLine": 38,
+          "endLine": 38,
+          "content": "commit fe2df5828d395b0ef9847285dd0ea8658137d808\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T14:12:38-06:00\n\n    Add a test-delta pane: what the diff shows about the tests\n    \n    Coverage says a test ran a line and mutation says a test would catch it\n    breaking. This pane answers the third question the diff alone can settle: did\n    the tests move with the code. Three info findings, no config and no test runs.\n    \n    - source-without-test: a Go package whose source changed with no test in it\n      changed. Anchored on the package, not a gate; an existing test may cover it.\n    - test-skip-added: a t.Skip, .skip, or focus (.only, fit) on a line the change\n      adds to a test file, on the line so the drawer shows it.\n    - assertions-removed: a test file that ends with fewer assertion-like lines than\n      it started, netted so a move or rename does not read as a loss.\n    \n    New CategoryTests, pane registered in run.go. Detectors and the package logic\n    are unit-tested; an end-to-end run confirms all three fire on a real diff.\n\ndiff --git a/internal/findings/findings.go b/internal/findings/findings.go\n--- a/internal/findings/findings.go\n+++ b/internal/findings/findings.go\n@@ -38,0 +38,1 @@\n+\tCategoryTests    Category = \"tests\"    // test-delta facts from the diff\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "38-38",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 81,
+          "symbol": "Run",
+          "scope": "internal/run.Run",
+          "file": "internal/run/run.go",
+          "startLine": 134,
+          "endLine": 134,
+          "content": "commit fe2df5828d395b0ef9847285dd0ea8658137d808\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T14:12:38-06:00\n\n    Add a test-delta pane: what the diff shows about the tests\n    \n    Coverage says a test ran a line and mutation says a test would catch it\n    breaking. This pane answers the third question the diff alone can settle: did\n    the tests move with the code. Three info findings, no config and no test runs.\n    \n    - source-without-test: a Go package whose source changed with no test in it\n      changed. Anchored on the package, not a gate; an existing test may cover it.\n    - test-skip-added: a t.Skip, .skip, or focus (.only, fit) on a line the change\n      adds to a test file, on the line so the drawer shows it.\n    - assertions-removed: a test file that ends with fewer assertion-like lines than\n      it started, netted so a move or rename does not read as a loss.\n    \n    New CategoryTests, pane registered in run.go. Detectors and the package logic\n    are unit-tested; an end-to-end run confirms all three fire on a real diff.\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -133,0 +134,1 @@\n+\t\t\u0026testdelta.Pane{Repo: repo},\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "134-134",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "file": "internal/run/run.go",
+          "startLine": 20,
+          "endLine": 20,
+          "content": "commit fe2df5828d395b0ef9847285dd0ea8658137d808\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T14:12:38-06:00\n\n    Add a test-delta pane: what the diff shows about the tests\n    \n    Coverage says a test ran a line and mutation says a test would catch it\n    breaking. This pane answers the third question the diff alone can settle: did\n    the tests move with the code. Three info findings, no config and no test runs.\n    \n    - source-without-test: a Go package whose source changed with no test in it\n      changed. Anchored on the package, not a gate; an existing test may cover it.\n    - test-skip-added: a t.Skip, .skip, or focus (.only, fit) on a line the change\n      adds to a test file, on the line so the drawer shows it.\n    - assertions-removed: a test file that ends with fewer assertion-like lines than\n      it started, netted so a move or rename does not read as a loss.\n    \n    New CategoryTests, pane registered in run.go. Detectors and the package logic\n    are unit-tested; an end-to-end run confirms all three fire on a real diff.\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -20,0 +20,1 @@\n+\t\"github.com/chrisophus/redline/internal/pane/testdelta\"\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "20-20",
+            "revisions": "3"
+          }
+        }
+      ],
+      "promptFragment": "Reviewing Go.\n\nErrors are values and the wrapping chain is the contract. A function that adds\ncontext to an error wraps it with %w when a caller may need errors.Is or\nerrors.As to match it, and formats with %v when the chain should stop there.\nAn error is handled once: code that logs it and returns it has handled it\ntwice, and the caller reports it again. A dropped error is a finding unless the\ncode says why.\n\ncontext.Context is the first parameter, named ctx, and travels down every call\nthat can block. Look for a function that takes one and ignores it, for\ncontext.Background() created deep inside a request path, and for a context\nkept in a struct field. Cancellation only works when the value carrying it\nreaches the blocking call.\n\nEvery goroutine needs a defined end. Ask what stops it and what happens when\nthe caller returns first. A goroutine started per request with no cancellation\nis a leak. A WaitGroup whose Add runs inside the goroutine is a race. Anything\na closure captures and two goroutines write needs a mutex or a channel.\n\nNil is legal for slices, maps, channels, function values, pointers, and\ninterfaces, and it behaves differently for each. Reading a nil map works and\nwriting one panics. A nil pointer inside a non-nil interface compares unequal\nto nil, which is how a returned error becomes non-nil by accident.\n\nInterfaces belong to the consumer. A new interface declared beside its only\nimplementation usually belongs in the package that calls it. Satisfaction is\nchecked at compile time, so a method added only to satisfy an interface is\neither used or dead.\n\nTests are table-driven by convention: a slice of named cases with a subtest per\ncase under t.Run. Look for state shared between cases, for t.Parallel over a\ncaptured loop variable, and for assertions on error strings where errors.Is\nsays what was meant.\n\nLoad-bearing idioms: defer for cleanup that must run on every path, a zero\nvalue that is usable without construction, and early returns over nesting.\n"
+    }
   ]
 }

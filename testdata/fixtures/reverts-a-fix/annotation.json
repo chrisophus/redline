@@ -9,9 +9,17 @@
       "key": "undoes-a-deliberate-fix",
       "what": "The deleted guard was added on purpose to stop a production panic, and the change removes it with no replacement and no explanation.",
       "file": "internal/queue/queue.go",
-      "any_of": ["deliberate", "guard", "panic", "production", "added", "revert", "undo"],
-      "needs_history": true,
-      "note": "Requires the history expansion in the envelope. Expected to be missed until a context provider is on PATH."
+      "any_of": [
+        "deliberate",
+        "guard",
+        "panic",
+        "production",
+        "added",
+        "revert",
+        "undo"
+      ],
+      "note": "The envelope carries this as a removed-line-history expansion: the span is traced against the base revision, which is the only place the deleted lines' numbers mean anything. Tracing only surviving lines misses it entirely.",
+      "needs_history": true
     }
   ],
   "quiet": []

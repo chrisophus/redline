@@ -279,8 +279,25 @@ func TestSweep(t *testing.T) {
 	if e := os.Getenv("REDLINE_EVAL_EFFORT"); e != "" {
 		label += " effort=" + e
 	}
+	tot := Sum(cards)
 	fmt.Println(TableHeader)
-	fmt.Println(Table(label, median(costs), Sum(cards)))
+	fmt.Println(Table(label, median(costs), tot))
+	fmt.Println()
+	// The goal is stated against Copilot in both cost and effectiveness, so
+	// print it that way. The mean is the cost number that matters: the target
+	// is an average across reviews, and a median hides the expensive tail.
+	fmt.Println(Scoreboard(label, mean(costs), RatesOf(cards), tot))
+}
+
+func mean(xs []float64) float64 {
+	if len(xs) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, x := range xs {
+		sum += x
+	}
+	return sum / float64(len(xs))
 }
 
 func median(xs []float64) float64 {
@@ -290,4 +307,41 @@ func median(xs []float64) float64 {
 	s := append([]float64{}, xs...)
 	sort.Float64s(s)
 	return s[len(s)/2]
+}
+
+func TestRatesMatchThePublishedShape(t *testing.T) {
+	cards := []Scorecard{
+		{Comments: 0}, {Comments: 0}, {Comments: 4}, {Comments: 6}, {Comments: 5},
+	}
+	r := RatesOf(cards)
+	if r.Reviews != 5 || r.Silent != 2 {
+		t.Fatalf("rates = %+v", r)
+	}
+	if got := r.CleanRate(); got != 0.4 {
+		t.Fatalf("clean rate = %.2f, want 0.40", got)
+	}
+	// 15 comments across the three reviews that said anything, not across
+	// all five: averaging the silent ones in measures the clean rate twice.
+	if got := r.CommentRate(); got != 5 {
+		t.Fatalf("comment rate = %.2f, want 5.0", got)
+	}
+}
+
+func TestRatesOnAnEmptySetDoNotDivideByZero(t *testing.T) {
+	r := RatesOf(nil)
+	if r.CleanRate() != 0 || r.CommentRate() != 0 {
+		t.Fatal("an empty set has no rates")
+	}
+	if r := (Rates{Reviews: 3, Silent: 3}); r.CommentRate() != 0 {
+		t.Fatal("no review said anything, so there is no comments-per-speaking-review")
+	}
+}
+
+func TestScoreboardShowsBothHalvesOfTheGoal(t *testing.T) {
+	got := Scoreboard("sonnet", 0.31, RatesOf([]Scorecard{{Comments: 0}, {Comments: 5}}), Totals{Caught: 1, Expected: 2})
+	for _, want := range []string{"Mean cost", "Clean rate", "Comments per speaking review", "Copilot"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("scoreboard is missing %q:\n%s", want, got)
+		}
+	}
 }
