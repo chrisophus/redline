@@ -322,21 +322,94 @@ func (in Input) diffSection() string {
 	}
 	var b strings.Builder
 	b.WriteString("## The diff\n\n")
-	b.WriteString("Each file shows what changed. Where the file is small enough it is also " +
-		"given whole, at its state after the change, because the invariant a hunk breaks " +
-		"usually lives in the part of the file the hunk does not touch.\n\n")
+	b.WriteString("Where a file is small enough it is given whole, at its state after the " +
+		"change, with the changed line ranges named and any removed lines listed above it. " +
+		"The invariant a change breaks usually lives in the part of the file the change did " +
+		"not touch, and the added lines are already in the file, so repeating them as a diff " +
+		"would only send them twice. Larger files are shown as a diff instead.\n\n")
 	for _, f := range in.Change.Files {
 		if f.Diff == "" && f.Head == "" {
 			continue
 		}
 		fmt.Fprintf(&b, "### %s\n\n", f.Path)
-		if f.Diff != "" {
-			fmt.Fprintf(&b, "```diff\n%s\n```\n\n", strings.TrimRight(f.Diff, "\n"))
+		if f.Head == "" {
+			// No whole file, so the diff is the only view of this one.
+			if f.Diff != "" {
+				fmt.Fprintf(&b, "```diff\n%s\n```\n\n", strings.TrimRight(f.Diff, "\n"))
+			}
+			continue
 		}
-		if f.Head != "" {
-			fmt.Fprintf(&b, "The whole file after the change:\n\n```%s\n%s\n```\n\n",
-				f.Language, strings.TrimRight(f.Head, "\n"))
+		// The whole file is below, so every added line is already about to
+		// be sent. Repeating the unified diff sends it twice, which on a
+		// change that is mostly additions is most of the prompt. What the
+		// file cannot show is what left and where the edits landed, so that
+		// is what the diff is reduced to.
+		ranges, removed := changeShape(f.Diff)
+		if len(ranges) > 0 {
+			fmt.Fprintf(&b, "Changed lines: %s.\n", strings.Join(ranges, ", "))
 		}
+		if len(removed) > 0 {
+			b.WriteString("\nRemoved by this change, so no longer in the file below:\n\n```\n")
+			for _, r := range removed {
+				b.WriteString(r + "\n")
+			}
+			b.WriteString("```\n")
+		}
+		fmt.Fprintf(&b, "\nThe file after the change:\n\n```%s\n%s\n```\n\n",
+			f.Language, strings.TrimRight(f.Head, "\n"))
 	}
 	return b.String()
+}
+
+// changeShape reduces a unified diff to what a whole file cannot say: which
+// line ranges the change touched, and the lines it removed.
+//
+// Additions are dropped on purpose. They are in the file that follows, and on
+// a change that is mostly new code they are nearly the whole diff.
+func changeShape(diff string) (ranges []string, removed []string) {
+	var oldLine int
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "@@") {
+			if start, count, ok := parseHunkHeader(line); ok {
+				switch {
+				case count == 0:
+					ranges = append(ranges, fmt.Sprintf("at %d", start))
+				case count == 1:
+					ranges = append(ranges, strconv.Itoa(start))
+				default:
+					ranges = append(ranges, fmt.Sprintf("%d-%d", start, start+count-1))
+				}
+			}
+			oldLine = parseOldStart(line)
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "---"), strings.HasPrefix(line, "+++"):
+		case strings.HasPrefix(line, "-"):
+			removed = append(removed, fmt.Sprintf("%d: %s", oldLine, line[1:]))
+			oldLine++
+		case strings.HasPrefix(line, "+"):
+		default:
+			oldLine++
+		}
+	}
+	return ranges, removed
+}
+
+// parseOldStart reads the "-start" half of a hunk header, which is where the
+// removed lines are numbered from.
+func parseOldStart(line string) int {
+	i := strings.Index(line, "-")
+	if i < 0 {
+		return 0
+	}
+	rest := line[i+1:]
+	if j := strings.IndexAny(rest, " ,@+"); j >= 0 {
+		rest = rest[:j]
+	}
+	n, err := strconv.Atoi(rest)
+	if err != nil {
+		return 0
+	}
+	return n
 }
