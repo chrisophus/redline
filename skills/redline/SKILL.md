@@ -42,6 +42,11 @@ stderr.
 - Check `coverage`: `examinedFiles` versus `changedFiles`, `diffCoverage`,
   and `unknowns[]`. These tell you what nobody has measured, which is where
   your own reading matters most.
+- If a gomutants report (`mutants.json`) is on disk, `mutation` carries the
+  survivors on the changed lines: lines a test runs but nothing fails when they
+  change, each naming the `original -> replacement` that went uncaught. That is
+  the assertion a test is missing. Produce one with `make mutants` or
+  `gomutants --changed-since <base> -o mutants.json ./...`.
 - Review with your own skills and tools: read the diff, follow the callers,
   weigh the change against the repo's rules. That reading is your half of
   the report — write it to `review.json` (below) and Redline renders it

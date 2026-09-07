@@ -29,6 +29,7 @@ func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]p
 	}
 	section1(&b, renders)
 	coverageSection(&b, rep)
+	mutationSection(&b, rep)
 	fileSection(&b, ch, rep)
 	compositionSection(&b, ch)
 	section2(&b, rep)
@@ -44,6 +45,30 @@ func overviewSection(b *strings.Builder, rep *findings.Report) {
 		return
 	}
 	fmt.Fprintf(b, "## Review (agent)\n\n%s\n\n", rep.Agent.Overview)
+}
+
+// mutationSection renders the diff-scoped gomutants result, when a report was
+// read. A survivor is a line a test runs but nothing asserts.
+func mutationSection(b *strings.Builder, rep *findings.Report) {
+	m := rep.Mutation
+	if m == nil {
+		return
+	}
+	fmt.Fprintf(b, "## Mutation\n\n")
+	fmt.Fprintf(b, "%d mutant(s) on the added lines survived (a test runs the line but nothing fails when it changes); %d killed. From `%s`.\n\n",
+		m.Lived, m.Killed, m.Report)
+	for _, fs := range m.Survived {
+		for _, mt := range fs.Mutants {
+			fmt.Fprintf(b, "- `%s:%d` — %s", fs.Path, mt.Line, mt.Mutator)
+			if mt.Original != "" {
+				fmt.Fprintf(b, ": `%s` -> `%s`", mt.Original, mt.Replacement)
+			}
+			fmt.Fprintln(b)
+		}
+	}
+	if len(m.Survived) > 0 {
+		fmt.Fprintln(b)
+	}
 }
 
 // banner states up front when Redline covered little or none of the change.

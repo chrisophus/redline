@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/ccason/redline/internal/cover"
+	"github.com/ccason/redline/internal/mutation"
 )
 
 // SchemaVersion guards the JSON encoding of Report. Kept in lockstep with
@@ -222,6 +223,12 @@ type Report struct {
 	// Agent is the review narrative the agent wrote, read from review.json: an
 	// overview of the change and a per-file summary, rendered as the agent's.
 	Agent *AgentReview `json:"agent,omitempty"`
+
+	// Mutation is the diff-scoped result of a gomutants report, when one is on
+	// disk: of the mutants on the lines this change adds, which a test killed and
+	// which lived. A lived mutant is a line a test runs but nothing asserts. Nil
+	// when no report was found.
+	Mutation *mutation.Result `json:"mutation,omitempty"`
 }
 
 // AgentReview is the agent's prose layer over a change, ingested from

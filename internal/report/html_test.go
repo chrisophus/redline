@@ -10,6 +10,7 @@ import (
 	"github.com/ccason/redline/internal/change"
 	"github.com/ccason/redline/internal/cover"
 	"github.com/ccason/redline/internal/findings"
+	"github.com/ccason/redline/internal/mutation"
 	"github.com/ccason/redline/internal/pane"
 	"github.com/ccason/redline/internal/target"
 )
@@ -796,6 +797,35 @@ func TestCoverageGapsAreClickable(t *testing.T) {
 	for _, want := range []string{`class="cov-jump"`, `data-jump="a.go"`, `data-line="7"`} {
 		if !strings.Contains(html, want) {
 			t.Errorf("coverage gap should be a drawer link; missing %q", want)
+		}
+	}
+}
+
+// A gomutants report folds into the report: a Mutation section, a clickable
+// survivor that opens the drawer at the line, the mutator and its uncaught
+// change, and the survived line tagged on the file store for the drawer marker.
+func TestReportRendersMutationSurvivors(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Mutation: &mutation.Result{
+				Report: "mutants.json", Killed: 2, Lived: 1,
+				Survived: []mutation.FileSurvivors{{Path: "a.go", Mutants: []mutation.Mutant{
+					{Line: 7, Mutator: "CONDITIONALS_BOUNDARY", Original: "x > 0", Replacement: "x >= 0"},
+				}}},
+			},
+		},
+		Change: &change.Set{Files: []change.File{{Path: "a.go", Language: "go", Diff: "@@ -1 +1,7 @@\n+x\n"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`data-nav="mutation"`, `id="mutation"`, `class="mut-jump"`, `data-jump="a.go"`,
+		`data-line="7"`, "CONDITIONALS_BOUNDARY", `data-survived="7"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("mutation report is missing %q", want)
 		}
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/ccason/redline/internal/cover"
 	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/gitx"
+	"github.com/ccason/redline/internal/mutation"
 	"github.com/ccason/redline/internal/pane"
 	"github.com/ccason/redline/internal/pane/lint"
 	"github.com/ccason/redline/internal/pane/migrations"
@@ -230,6 +231,7 @@ func Run(opts Options) (*Result, error) {
 	covDir := originCoverageDir(opts.Dir, tgt)
 	attachDiffCoverage(&res.Report, res.Change, tgt.Dir, covDir)
 	res.LineCoverage = lineCoverageOverlay(tgt.Dir, covDir, res.Change)
+	attachMutation(&res.Report, res.Change, opts.Dir)
 	return res, nil
 }
 
@@ -279,6 +281,29 @@ func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir, originDir str
 			Reason:    "re-run the suite with -coverprofile",
 		})
 	}
+}
+
+// attachMutation reads a gomutants report from the directory redline was run in
+// and scopes it to the change. Unlike coverage it does not fall back to the
+// origin checkout: the report is written where the developer or CI ran
+// gomutants, which is this working directory, not the pristine worktree the
+// panes observe. Nil result when no report is present, the same silence the
+// cover package keeps when there is no profile.
+func attachMutation(rep *findings.Report, ch *change.Set, dir string) {
+	if ch == nil || len(ch.Files) == 0 {
+		return
+	}
+	changed := make([]mutation.Changed, 0, len(ch.Files))
+	for _, f := range ch.Files {
+		if filepath.Ext(f.Path) != ".go" {
+			continue
+		}
+		changed = append(changed, mutation.Changed{Path: f.Path, Added: cover.AddedLines(f.Diff)})
+	}
+	if len(changed) == 0 {
+		return
+	}
+	rep.Mutation = mutation.Compute(dir, changed)
 }
 
 // originCoverageDir returns the origin checkout's root when the reviewed

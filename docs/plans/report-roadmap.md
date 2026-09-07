@@ -64,11 +64,20 @@ the default `run` behavior. Options to decide before building: an opt-in flag
 a separate command, or leaving it to the agent to produce the map as another
 ingested file. This is the same data mutation testing needs, so build it once.
 
-## Later: mutation testing
+## Shipped: mutation testing marks covered-but-unasserted lines
 
-Run gremlins to find lines where no test fails when the line is mutated: covered
-but not actually asserted. Mark those lines in the same per-line view. This is the
-last layer of the unified line: changed, linted, covered, asserted.
+redline reads a gomutants (github.com/szhekpisov/gomutants) report, `mutants.json`,
+the same way it reads a coverage profile: off disk, produced by the developer or
+CI, never run during `redline run`. It scopes the report to the lines the change
+adds and renders a Mutation section plus a red right-edge marker in the drawer on
+each line where a mutant survived, a test runs the line but nothing fails when it
+is changed. Coverage says a test ran the line; mutation says whether a test would
+catch it breaking. `make mutants` produces the report. The survivors are in
+findings.json under `mutation`, so the agent can act on them.
+
+This is most of the unified line: changed, linted, covered, asserted. What is
+still missing is naming the exact tests behind a line, which neither the coverage
+profile nor the gomutants report exposes (see the section above).
 
 ## Backlog
 

@@ -6,6 +6,9 @@
 # artifact, and one that got committed once already.
 /coverage.out
 /cover.out
+# gomutants writes its report and incremental cache here; both are local.
+/mutants.json
+/.gomutants-cache.json
 .compound-engineering/*.local.yaml
 
 /.planning/

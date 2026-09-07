@@ -24,7 +24,7 @@ LDFLAGS  := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(D
 
 .PHONY: all build test vet check install install-bin install-skill \
         install-repo uninstall clean lint gorefactor-lint gorefactor-doctor \
-        coverage bench mutate mutate-full snapshot release
+        coverage bench mutate mutate-full mutants snapshot release
 
 all: build
 
@@ -97,6 +97,17 @@ mutate-full:
 	  exit 0; \
 	fi
 	gremlins unleash ./... --timeout-coefficient=10
+
+# gomutants (github.com/szhekpisov/gomutants) writes mutants.json, the report
+# redline's mutation section reads. Diff-scoped against origin/main so it stays
+# a per-change check, not a whole-repo batch. Self-skips if gomutants is absent.
+GOMUTANTS_BASE ?= origin/main
+mutants:
+	@if ! command -v gomutants >/dev/null 2>&1; then \
+	  echo "skip: gomutants not on PATH (go install github.com/szhekpisov/gomutants@latest)"; \
+	  exit 0; \
+	fi
+	gomutants --changed-since $(GOMUTANTS_BASE) -o mutants.json ./...
 
 check: vet test lint gorefactor-lint
 

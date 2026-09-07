@@ -19,6 +19,7 @@ import (
 
 	"github.com/ccason/redline/internal/change"
 	"github.com/ccason/redline/internal/findings"
+	"github.com/ccason/redline/internal/mutation"
 	"github.com/ccason/redline/internal/pane"
 )
 
@@ -50,6 +51,10 @@ type view struct {
 	// when the agent wrote none; the Review section and its nav entry render
 	// only when it is present.
 	Overview string
+
+	// Mutation is the diff-scoped gomutants result, when a report was on disk.
+	// Nil leaves the Mutation section and its nav entry off the page.
+	Mutation *mutation.Result
 
 	// Renders is what changed, in the domain where it lives — a pane's own
 	// account (e.g. the lint delta's introduced/resolved count, or a
@@ -123,6 +128,7 @@ type fileView struct {
 	Findings int
 	Severity string
 	Diff     template.HTML
+	Survived []int // new-side lines with a mutant a test ran but did not catch
 }
 
 // HTML renders the report page.
@@ -180,6 +186,7 @@ func buildView(in HTMLInput) view {
 	if rep.Agent != nil {
 		v.Overview = rep.Agent.Overview
 	}
+	v.Mutation = rep.Mutation
 
 	for _, f := range rep.Findings {
 		v.Counts[string(f.Severity)]++
@@ -204,6 +211,14 @@ func buildView(in HTMLInput) view {
 		if in.Change.Target != nil {
 			headDir = in.Change.Target.Dir
 		}
+		survived := map[string][]int{}
+		if rep.Mutation != nil {
+			for _, fs := range rep.Mutation.Survived {
+				for _, m := range fs.Mutants {
+					survived[fs.Path] = append(survived[fs.Path], m.Line)
+				}
+			}
+		}
 		seen := map[string]bool{}
 		for _, g := range change.CompositionGroups(in.Change.Files) {
 			dg := drillGroup{Label: g.Language + " " + g.Kind, Count: len(g.Files), Added: g.Added, Removed: g.Removed}
@@ -215,6 +230,7 @@ func buildView(in HTMLInput) view {
 				if rep.Agent != nil {
 					fv.Summary = rep.Agent.Files[f.Path]
 				}
+				fv.Survived = survived[f.Path]
 				dg.Files = append(dg.Files, fv)
 				if !seen[f.Path] {
 					seen[f.Path] = true
@@ -247,6 +263,9 @@ func navFor(v view) []navLink {
 	}
 	if v.Coverage.CoverageApplies() {
 		nav = append(nav, navLink{ID: "coverage", Label: "Coverage", Warn: coverageGap})
+	}
+	if v.Mutation != nil {
+		nav = append(nav, navLink{ID: "mutation", Label: "Mutation", Count: v.Mutation.Lived, Warn: v.Mutation.Lived > 0})
 	}
 	if len(v.Groups) > 0 {
 		nav = append(nav, navLink{ID: "drill", Label: "Drill in", Count: len(v.Groups)})
