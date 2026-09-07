@@ -58,11 +58,17 @@ uncommitted work, and on an open pull request. `--pr` fetches via `gh`
 ## Install
 
 ```
-make install          # build, symlink the binary onto PATH, symlink the skill
+make install          # build, symlink the binary onto PATH, symlink the skills
 ```
 
-Both are symlinks into this checkout, so `make install` once and a later
-`make build` is all it takes to keep the skill and the binary in step. A
+Two skills come with it. `/redline` drives a review. `/redline-setup` is
+run once per repository: it walks the repo for the analysis tools it
+already runs, says which ones Redline picks up on its own, writes the
+`.redline.yml` entries for the rest, and suggests tools that apply to the
+repo but are not in use. It installs nothing and commits nothing.
+
+The binary and the skills are symlinks into this checkout, so `make install`
+once and a later `make build` is all it takes to keep them in step. A
 binary older than the skill driving it is the failure mode this prevents.
 
 `BINDIR` (default `~/.local/bin`) and `SKILLDIR` (default `~/.claude/skills`)
@@ -72,7 +78,7 @@ That installs the skill for every repository on this machine. To commit it
 into one repository instead, for teammates without this checkout:
 
 ```
-make install-repo REPO=/path/to/repo    # writes .claude/skills/redline/SKILL.md
+make install-repo REPO=/path/to/repo    # copies both skills into .claude/skills/
 ```
 
 A project skill overrides the personal one. Teammates still need the binary.
@@ -129,7 +135,8 @@ Three panes, scoped to the change, none of which re-reports what CI gates:
 
   Other tools are added in `.redline.yml`, with no code change: a command,
   the globs it covers, and how to read its output (`sarif`, `spectral`, or a
-  `json` field mapping). A `kind: differ` tool (oasdiff) is run once
+  `json` field mapping). `/redline-setup` writes these entries from what
+  the repository already runs. A `kind: differ` tool (oasdiff) is run once
   comparing the file at base and head directly rather than linting one
   snapshot; a `baseline: {mode: file}` tool reads a committed accepted-debt
   file as its base set instead of a second run. See `.redline.yml.example`.
@@ -244,4 +251,5 @@ internal/report       markdown and self-contained HTML
 internal/run          dispatcher
 internal/target       working tree, branch, or PR
 skills/redline        the agent skill that drives the binary
+skills/redline-setup  the skill that wires a repository's tools into it
 ```
