@@ -104,3 +104,7 @@ tools:
 #         args: [test-coverage]
 #       when: stale                  # missing | stale | always (default stale)
 #       scope: ["**/*.go"]           # optional: skip when change does not touch
+#
+# Mutation (gomutants): not harness. Redline reads mutants.json or
+# mutation-report.json at the repo root when present. Wire the repository's
+# mutate make target to pass -o mutants.json; run mutate by hand before review.

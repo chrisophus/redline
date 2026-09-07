@@ -20,7 +20,7 @@ import (
 // reportNames are the conventional places a gomutants JSON report lands. There
 // is no standard, so this is a search rather than a lookup, the same as the
 // cover package's profile search.
-var reportNames = []string{"mutants.json", ".mutants.json", "gomutants.json"}
+var reportNames = []string{"mutants.json", "mutation-report.json", ".mutants.json", "gomutants.json"}
 
 // Locate finds a gomutants report under root, or returns "". Absence is a normal
 // answer: most repositories have no mutation report, and that is not a failure.

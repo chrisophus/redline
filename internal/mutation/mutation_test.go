@@ -75,3 +75,11 @@ func TestComputeNilWhenNothingOnChangedLines(t *testing.T) {
 		t.Fatalf("no measured line must read as nil, got %+v", res)
 	}
 }
+
+func TestComputeFindsMutationReportJSON(t *testing.T) {
+	dir := writeReport(t, "mutation-report.json", sample)
+	res := mutation.Compute(dir, []mutation.Changed{{Path: "internal/foo/foo.go", Added: []int{12}}})
+	if res == nil || res.Lived != 1 {
+		t.Fatalf("mutation-report.json: %+v", res)
+	}
+}

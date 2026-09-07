@@ -25,7 +25,7 @@ Read, in this order, and note every analysis tool each one mentions:
 - Hooks: `.pre-commit-config.yaml`, `lefthook.yml`, `.husky/`,
   `.githooks/`.
 - Tool configs at the root and one level down: `.golangci.*`,
-  `.eslintrc*`, `eslint.config.*`, `biome.json`, `.gorefactor.*`,
+  `.eslintrc*`, `eslint.config.*`, `biome.json`, `.gorefactor.*`, `.gomutants.yml`,
   `.spectral.*`, `redocly.yaml`, `.sqlfluff`, `.squawk.toml`, `atlas.hcl`,
   `sqlc.yaml`, `.hadolint.yaml`, `.shellcheckrc`, `ruff.toml`, `mypy.ini`,
   `.tflint.hcl`, `buf.yaml`.
@@ -73,6 +73,16 @@ See `.redline.yml.example` for the schema (`when: stale|missing|always`,
 optional `scope` globs, optional `env.from` script sourced before each
 produce step). Point `path` at `coverage.out` (or where the suite writes)
 and `produce` at the same command CI uses (`make test-coverage`, etc.).
+
+Mutation testing (gomutants), when `.gomutants.yml` exists or the
+repository has a `make mutate` target: Redline reads a gomutants JSON
+report at `mutants.json` or `mutation-report.json` at the repo root and
+shows surviving mutants on the changed lines (covered but unasserted).
+Redline never runs gomutants. Ensure the repository's mutate command
+passes `-o mutants.json` (or writes `mutation-report.json` there). A
+full mutation run is minutes; do not add it to `harness:` or
+`redline run --prepare`. The owner runs mutate by hand when they want
+that overlay, then `redline run` from the same checkout.
 
 For each of these, confirm the binary is on PATH and, for coverage, that
 the profile exists and is fresh. Those are the two ways a built-in pane
@@ -199,6 +209,10 @@ configured, else `redline run`, and read `.redline/findings.json`:
   wrong; fix it before reporting the tool as wired.
 - `coverage.examinedFiles` against `coverage.changedFiles` tells you
   whether scope globs cover what changed.
+- When the repository uses gomutants, run its mutate target once (with any
+  env it needs, e.g. database DSNs), confirm `mutants.json` or
+  `mutation-report.json` exists at the repo root, then re-run redline and
+  check `findings.json` for `mutation` and the Mutation section on the report.
 - If the change touched no file any tool covers, make a throwaway edit to
   a file in scope, run again, and revert it, so the validation exercised
   the tool.
