@@ -2,9 +2,10 @@
 // range, a branch, or a GitHub pull request.
 //
 // `redline run` observes the change and reports what it can establish
-// deterministically: findings.json, report.md, and report.html. Redline
-// measures; it never invokes a model, and the judgment of the change stays
-// with whoever is reviewing it.
+// deterministically: findings.json, report.md, and report.html. The
+// reviewer's own comments and verdicts — human or agent, via review.json —
+// merge into the same report, each finding marked with its source. Redline
+// itself invokes no model.
 //
 // `redline post` is the one command that writes to GitHub: it submits the
 // session's observed findings as one pull request review. It is always

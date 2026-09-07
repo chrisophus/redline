@@ -25,8 +25,8 @@ already reads.
 - Each verdict gains a `fix` field: the agent's recommendation for how to fix the
   finding, not only whether it should be fixed.
 
-Redline composes none of this. It renders what the agent wrote, attributed to the
-agent. No model call enters the tool.
+Redline renders what the agent wrote, attributed to the agent. No model call
+enters the tool.
 
 ## Shipped: ask the agent from the report
 
