@@ -66,6 +66,11 @@ flags:
                     free port is used if it is taken)
   --model NAME      with review: model to review with (default claude-sonnet-5)
   --effort LEVEL    with review: low|medium|high|xhigh|max (default: the model's)
+  --mode MODE       with review: oneshot (default) sends the context Redline
+                    chose; explore sends a catalogue and lets the reviewer
+                    fetch what it wants, costing more by design. In explore
+                    mode --max-cost is a governor, not a tripwire.
+  --max-turns N     with review --mode explore: turn limit (default 5)
   --ceiling N       with review: token ceiling for the whole request
                     (default 250000). A tail bound, not a per-review budget.
   --max-tokens N    with review: cap on the response (default 16000)
@@ -105,10 +110,10 @@ func main() {
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
 	reportURL, profile, olderThan                                     string
-	model, effort                                                     string
+	model, effort, mode                                               string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
 	stats                                                             bool
-	port, ceiling, maxTokens                                          int
+	port, ceiling, maxTokens, maxTurns                                int
 	maxCost                                                           float64
 }
 
@@ -146,6 +151,8 @@ func runMain(args []string) error {
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 	fs.StringVar(&o.model, "model", "", "with review: model to review with")
 	fs.StringVar(&o.effort, "effort", "", "with review: low|medium|high|xhigh|max")
+	fs.StringVar(&o.mode, "mode", "", "with review: oneshot or explore")
+	fs.IntVar(&o.maxTurns, "max-turns", 0, "with review --mode explore: turn limit")
 	fs.IntVar(&o.ceiling, "ceiling", 0, "with review: token ceiling for the context block")
 	fs.IntVar(&o.maxTokens, "max-tokens", 0, "with review: cap on the response")
 	fs.Float64Var(&o.maxCost, "max-cost", 0, "with review: refuse a request estimated above this many dollars")
