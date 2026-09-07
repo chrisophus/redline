@@ -4,6 +4,7 @@ package run
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/ccason/redline/internal/change"
@@ -107,6 +108,38 @@ func Run(opts Options) (*Result, error) {
 		&lint.Config{Repo: repo},
 	}
 
+	// Every path in the tree under review, listed once and only if a pane
+	// turns out to have nothing in the change to look at. It answers a
+	// different question from scope: not "does this pane apply to the change"
+	// but "does this pane apply to the repository". A repository with no
+	// migrations gets no mention of migrations; one whose migrations this
+	// change did not touch is told so, quietly.
+	var allPaths []string
+	listAll := func() []string {
+		if allPaths != nil {
+			return allPaths
+		}
+		var blobs map[string]string
+		var lerr error
+		if tgt.Head == "" {
+			blobs, lerr = repo.WorktreeBlobs()
+		} else {
+			blobs, lerr = repo.Blobs(tgt.Head)
+		}
+		if lerr != nil {
+			// Unknown whether the pane applies: fall back to saying it was
+			// skipped, the state that still gets a line on the report.
+			allPaths = []string{}
+			return allPaths
+		}
+		allPaths = make([]string, 0, len(blobs))
+		for path := range blobs {
+			allPaths = append(allPaths, path)
+		}
+		sort.Strings(allPaths)
+		return allPaths
+	}
+
 	examined := map[string]bool{}
 	for _, p := range panes {
 		status := findings.SubstrateStatus{Name: p.Name()}
@@ -115,8 +148,15 @@ func Run(opts Options) (*Result, error) {
 			examined[path] = true
 		}
 		if len(scope) == 0 {
-			status.State = findings.SubstrateSkipped
-			status.Detail = "no files in scope for this pane"
+			// Scope over the whole tree is only consulted for a pane that will
+			// not run, so the state it leaves behind in the pane is unused.
+			if all := listAll(); len(all) > 0 && len(p.Scope(all)) == 0 {
+				status.State = findings.SubstrateNotApplicable
+				status.Detail = "the repository has no files this pane reads"
+			} else {
+				status.State = findings.SubstrateSkipped
+				status.Detail = "this change touches none of the files this pane reads"
+			}
 			res.Report.Substrates = append(res.Report.Substrates, status)
 			continue
 		}
@@ -213,6 +253,7 @@ func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir, originDir str
 		goFiles++
 		changed = append(changed, cover.Changed{Path: f.Path, Added: cover.AddedLines(f.Diff)})
 	}
+	rep.Coverage.CoverableFiles = goFiles
 	if goFiles == 0 {
 		return
 	}

@@ -129,8 +129,15 @@ type SubstrateState string
 
 const (
 	SubstrateRan     SubstrateState = "ran"
-	SubstrateSkipped SubstrateState = "skipped" // did not apply, or could not run
+	SubstrateSkipped SubstrateState = "skipped" // the repository has such files; this change touched none
 	SubstrateFailed  SubstrateState = "failed"  // started and errored
+	// SubstrateNotApplicable is a pane the repository has no files for at all:
+	// no migrations, no API spec, no linter configured. It is recorded here so
+	// findings.json says the pane exists, and rendered nowhere. A report on a
+	// repository with no API should not mention the API; naming an absence
+	// the reader already knows about is noise, and worse, it makes the panes
+	// that did apply and failed harder to see.
+	SubstrateNotApplicable SubstrateState = "not-applicable"
 )
 
 // SubstrateStatus is the per-pane availability record. Redline is non-gating,
@@ -177,10 +184,25 @@ type Coverage struct {
 	// and naming every exclusion is what makes that recoverable.
 	Generated []string `json:"generated,omitempty"`
 
+	// CoverableFiles counts the changed files a coverage profile could
+	// describe (Go files, until the pane reads other formats). Zero means the
+	// coverage number does not apply to this change, and the report leaves
+	// coverage out entirely rather than reporting a profile as missing for a
+	// change no profile could ever cover.
+	CoverableFiles int `json:"coverableFiles"`
+
 	// Diff is the share of added lines a test profile shows executed. Nil when
 	// no profile was found, which must render as "nobody knows" rather than as
-	// zero per cent — those are very different claims.
+	// zero per cent — those are very different claims. Only meaningful when
+	// CoverableFiles is non-zero.
 	Diff *cover.Result `json:"diffCoverage,omitempty"`
+}
+
+// CoverageApplies reports whether the coverage number has anything to say
+// about this change: a profile was read, or a changed file could have been
+// covered by one. When false, coverage is left off the report.
+func (c Coverage) CoverageApplies() bool {
+	return c.Diff != nil || c.CoverableFiles > 0
 }
 
 // Report is the merged result of one Redline run.

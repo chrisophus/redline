@@ -58,7 +58,11 @@ pass, and the reviewer will read it as one unless you say otherwise.
 
 Two numbers on the report are absences rather than results, and both read
 as a pass if you let them. `diffCoverage` is null when no coverage profile
-was found — that is "nobody measured", not "nothing is tested".
+was found — that is "nobody measured", not "nothing is tested". When
+`coverage.coverableFiles` is 0 the change has no file a profile could
+cover, and coverage is left off the report on purpose; do not raise it.
+Likewise a pane in `substrates[]` with state `not-applicable` means the
+repository has no files it reads; say nothing about it.
 `coverage.generated` lists files excluded as machine output; if something
 there looks hand-written, say so.
 

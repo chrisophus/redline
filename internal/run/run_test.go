@@ -223,6 +223,59 @@ func TestPaneSkippedWhenNoMigrationsTouched(t *testing.T) {
 	}
 }
 
+// A repository with no migrations and no API spec is not told that its
+// migrations and API went unexamined. The pane is recorded as not applicable,
+// which no renderer mentions, rather than skipped, which they list.
+func TestPaneNotApplicableWhenRepositoryHasNoSuchFiles(t *testing.T) {
+	r := newRepo(t)
+	r.write("main.go", "package main\n")
+	r.commit("init")
+	r.git("checkout", "-b", "feature")
+	r.write("main.go", "package main\n\nfunc main() {}\n")
+
+	rep := r.run(run.Options{Base: "main"}).Report
+	states := map[string]findings.SubstrateState{}
+	for _, s := range rep.Substrates {
+		states[s.Name] = s.State
+	}
+	for _, name := range []string{"redline/sql", "redline/api"} {
+		if states[name] != findings.SubstrateNotApplicable {
+			t.Errorf("%s: expected not-applicable in a repository with no such files, got %q", name, states[name])
+		}
+	}
+	if rep.Coverage.CoverableFiles != 1 {
+		t.Errorf("one Go file changed, coverableFiles = %d", rep.Coverage.CoverableFiles)
+	}
+	md := report.Markdown(&rep, nil, nil, nil)
+	if strings.Contains(md, "redline/sql") || strings.Contains(md, "redline/api") {
+		t.Errorf("the markdown report must not mention panes the repository has no files for:\n%s", md)
+	}
+}
+
+// The same repository, with the change touching only a docs file: nothing is
+// coverable, so coverage is left out rather than reported as unmeasured.
+func TestCoverageNotMentionedWhenNothingIsCoverable(t *testing.T) {
+	r := newRepo(t)
+	r.write("README.md", "# hi\n")
+	r.commit("init")
+	r.git("checkout", "-b", "feature")
+	r.write("README.md", "# hi\n\nmore\n")
+
+	res := r.run(run.Options{Base: "main"})
+	if res.Report.Coverage.CoverableFiles != 0 || res.Report.Coverage.Diff != nil {
+		t.Fatalf("nothing coverable: %+v", res.Report.Coverage)
+	}
+	for _, u := range res.Report.Unknowns {
+		if u.Substrate == "redline/tests" {
+			t.Errorf("no coverage unknown should be raised for a change with no coverable file: %+v", u)
+		}
+	}
+	md := report.Markdown(&res.Report, res.Renders, res.Evidence, res.Change)
+	if strings.Contains(md, "coverage") {
+		t.Errorf("markdown must not mention coverage:\n%s", md)
+	}
+}
+
 func TestMigrationsDirFilter(t *testing.T) {
 	r := baseline(t)
 	r.write("vendor/other/000001_init.up.sql", "SELECT 1;\n")

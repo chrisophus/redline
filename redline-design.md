@@ -287,7 +287,10 @@ exclusion named; a pane that applies but cannot run reports loudly.
 New this revision: the default source for a measurement is the artifact the
 harness already produced, and re-running is the fallback; the report
 states a fact's source, a pane or a reviewer, and attaches no caveat to
-it; a decision survives a re-run.
+it; a decision survives a re-run; a pane the repository has no files for
+is recorded as not applicable and mentioned nowhere, while a pane that
+applied and could not run stays loud. Absence is stated when it is a gap
+in the review and left out when it is a fact about the repository.
 
 Retired: the rule that Redline never transports a model's judgment. It
 does, through `review.json`, in the same way it transports a person's

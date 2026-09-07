@@ -245,9 +245,9 @@ func TestNavMatchesTheSectionsOnThePage(t *testing.T) {
 // The sidebar should show where the gaps are without scrolling to find them.
 func TestNavMarksSectionsThatAreGaps(t *testing.T) {
 	html, err := HTML(HTMLInput{
-		// UI moved with nothing captured, and no coverage profile.
+		// UI moved with nothing captured, and a coverable file with no profile.
 		Report: &findings.Report{
-			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0},
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0, CoverableFiles: 1},
 			Unknowns: []findings.Unknown{{Substrate: "s", Message: "u"}},
 		},
 		Change: &change.Set{
@@ -350,8 +350,53 @@ func TestInterfaceSectionIsHonestWhenEmpty(t *testing.T) {
 	if strings.Contains(html, "touches the interface and no routes were captured") {
 		t.Error("a change with no UI files must not claim a UI gap")
 	}
-	if !strings.Contains(html, "absence of looking") {
-		t.Error("even then, absence must not read as a finding of no change")
+	if strings.Contains(html, `id="interface"`) {
+		t.Error("a change with no UI files gets no interface section: there is nothing to say")
+	}
+}
+
+// A report on a repository with no Go code, no API, and no migrations says
+// nothing about coverage, the API, or migrations. Naming those absences tells
+// the reader nothing they did not know and buries the panes that did apply
+// and could not run.
+func TestWhatDoesNotApplyIsNotMentioned(t *testing.T) {
+	rep := &findings.Report{
+		Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+		Substrates: []findings.SubstrateStatus{
+			{Name: "migrations", State: findings.SubstrateNotApplicable, Detail: "the repository has no files this pane reads"},
+			{Name: "openapi", State: findings.SubstrateNotApplicable, Detail: "the repository has no files this pane reads"},
+			{Name: "lint", State: findings.SubstrateSkipped, Detail: "this change touches none of the files this pane reads"},
+		},
+	}
+	ch := &change.Set{Files: []change.File{{Path: "README.md", Areas: []string{"docs"}}}}
+
+	html, err := HTML(HTMLInput{Report: rep, Change: ch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, absent := range []string{
+		`id="coverage"`, "No coverage profile was found", "diff covered",
+		`id="interface"`,
+		"<code>migrations</code>", "<code>openapi</code>",
+	} {
+		if strings.Contains(html, absent) {
+			t.Errorf("page must not mention %q for a change it does not apply to", absent)
+		}
+	}
+	// The pane the repository does have, that this change did not reach, is
+	// still listed, folded away.
+	if !strings.Contains(html, "1 pane did not apply") || !strings.Contains(html, "<code>lint</code>") {
+		t.Error("a pane the repository has but the change did not touch is still listed")
+	}
+
+	md := Markdown(rep, nil, nil, ch)
+	for _, absent := range []string{"## Coverage", "No coverage profile", "`migrations`", "`openapi`"} {
+		if strings.Contains(md, absent) {
+			t.Errorf("markdown must not mention %q", absent)
+		}
+	}
+	if !strings.Contains(md, "1 pane(s) did not apply to this change") || !strings.Contains(md, "`lint`") {
+		t.Error("markdown still lists the pane the change did not touch")
 	}
 }
 
@@ -382,7 +427,7 @@ func TestTestFilesAreBrowsableInTheDrill(t *testing.T) {
 // legible as its presence. A missing profile rendering as 0% would read as
 // "nothing is tested", which is a much stronger claim than "nobody measured".
 func TestMissingCoverageProfileReadsAsUnknownNotZero(t *testing.T) {
-	rep := &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}}
+	rep := &findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1, CoverableFiles: 1}}
 	ch := &change.Set{Files: []change.File{{Path: "a.go", Areas: []string{"code"}}}}
 
 	html, err := HTML(HTMLInput{Report: rep, Change: ch})

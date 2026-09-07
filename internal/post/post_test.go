@@ -10,10 +10,11 @@ import (
 
 func sampleReport() *findings.Report {
 	rep := &findings.Report{
-		Coverage: findings.Coverage{ChangedFiles: 5, ExaminedFiles: 3},
+		Coverage: findings.Coverage{ChangedFiles: 5, ExaminedFiles: 3, CoverableFiles: 2},
 		Substrates: []findings.SubstrateStatus{
 			{Name: "migrations", State: findings.SubstrateRan},
-			{Name: "openapi", State: findings.SubstrateSkipped, Detail: "no files in scope for this pane"},
+			{Name: "openapi", State: findings.SubstrateSkipped, Detail: "this change touches none of the files this pane reads"},
+			{Name: "lint", State: findings.SubstrateNotApplicable, Detail: "the repository has no files this pane reads"},
 		},
 		Findings: []findings.Finding{
 			{File: "a.go", Line: 12, Rule: "migration-modified-after-merge", Substrate: "migrations",
@@ -162,6 +163,20 @@ func TestBuildBodyLeadsWithVerdictAndEvidenceTable(t *testing.T) {
 		if !strings.Contains(p.Body, want) {
 			t.Fatalf("body missing %q:\n%s", want, p.Body)
 		}
+	}
+}
+
+// A pane the repository has no files for gets no row: the table accounts for
+// the checks that could have run, and "no linter is configured" is not one.
+// The same for coverage on a change with nothing a profile could cover.
+func TestBuildBodyOmitsWhatDoesNotApply(t *testing.T) {
+	rep := sampleReport()
+	if p := Build(rep, prTarget(), "", nil); strings.Contains(p.Body, "| lint |") {
+		t.Fatalf("a not-applicable pane must not get a row:\n%s", p.Body)
+	}
+	rep.Coverage.CoverableFiles = 0
+	if p := Build(rep, prTarget(), "", nil); strings.Contains(p.Body, "diff coverage") {
+		t.Fatalf("coverage must not be mentioned when no changed file is coverable:\n%s", p.Body)
 	}
 }
 

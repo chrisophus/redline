@@ -30,9 +30,10 @@ uncommitted work, and on an open pull request. `--pr` fetches via `gh`
 
 ## The page
 
-1. **Interface** - captures when the pane ships; until then, an honest gap
-   banner when the change touches UI
-2. **Coverage** - the diff-coverage number, its profile, and its staleness
+1. **Interface** - captures when the pane ships; until then, a gap banner,
+   present only when the change touches UI
+2. **Coverage** - the diff-coverage number, its profile, and its staleness,
+   present only when the change has a file a profile could cover
 3. **Files** - the walkthrough, with finding counts per file
 4. **What Redline observed** - the findings, each with its evidence
 5. **Drill in** - per-area diffs with click-a-line comments and viewed state
@@ -208,6 +209,17 @@ one way this can go wrong, and listing them is what makes that recoverable.
 
 Test file contents are not rendered either; they are counted, and the
 coverage number stands in for reading them.
+
+A pane the repository has no files for is not mentioned. A report on a
+repository with no migrations says nothing about migrations, one with no
+API spec says nothing about the contract, and a change with no coverable
+file gets no coverage section, because naming an absence the reader already
+knows about is noise and it buries the line that matters: a pane that did
+apply and could not run, which is always stated. A pane the repository does
+have that this change did not reach is listed, folded away, so the reader
+can tell "not touched" from "not checked". `findings.json` keeps every pane
+with its state (`ran`, `skipped`, `failed`, `not-applicable`) so an agent
+reading it knows which panes exist.
 
 ## What use taught it
 
