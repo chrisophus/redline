@@ -1,0 +1,23 @@
+{
+  "name": "correlation-not-null-column",
+  "origin": "synthetic, built by make-synthetic.sh",
+  "summary": "A migration widens users with a NOT NULL tenant_id column, and the struct that writes the row gains a plain string field in the same commit. Each half is unremarkable. Together they say every insert that does not set TenantID writes an empty string into a column the schema was just made to require, and the migration itself fails outright if the table has rows.",
+  "clean": false,
+  "why_this_fixture_exists": "This is the case that justifies a second wave at all. The migration pane sees SQL and no Go. A Go provider sees a new struct field and no SQL. Neither can reach the conclusion, and an LLM given both can.",
+  "expect": [
+    {
+      "key": "not-null-against-the-struct-field",
+      "what": "The new NOT NULL column and the new non-pointer struct field are about the same data, and nothing fills the column for rows that already exist or for inserts that omit the field.",
+      "correlation": true,
+      "relates_to_rules": ["migration-add-not-null-no-default"],
+      "any_of": ["tenant", "not null", "default", "backfill", "empty"]
+    }
+  ],
+  "quiet": [
+    {
+      "about": "restating the migration finding on its own",
+      "note": "The NOT NULL column with no default is already a wave-one finding. Saying it again is not a review.",
+      "matches_without_correlation": ["migration 0002", "no default"]
+    }
+  ]
+}

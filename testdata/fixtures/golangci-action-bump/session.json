@@ -1,0 +1,97 @@
+{
+  "report": {
+    "schemaVersion": 1,
+    "baseRef": "825b052c17de408d67ae58481b85229d474594aa",
+    "baseSHA": "825b052c17de408d67ae58481b85229d474594aa",
+    "scope": [
+      ".github/workflows/ci.yml"
+    ],
+    "findings": [],
+    "substrates": [
+      {
+        "name": "redline/sql",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/api",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/suppressions",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint-config",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/test-delta",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      }
+    ],
+    "newCount": {},
+    "coverage": {
+      "changedFiles": 1,
+      "examinedFiles": 0,
+      "unexamined": [
+        ".github/workflows/ci.yml"
+      ],
+      "coverableFiles": 0
+    },
+    "unknowns": [
+      {
+        "substrate": "redline",
+        "message": "none of the 1 changed file(s) fall under any pane Redline currently ships",
+        "reason": "this change is entirely unexamined; the empty findings list below is not evidence of correctness"
+      }
+    ]
+  },
+  "change": {
+    "target": {
+      "kind": "commit",
+      "dir": "/root/.redline/worktrees/f8fa56f79f58c4c1/fe6ff2711d1a752e56222732d04fb5cafee75e4c",
+      "head": "fe6ff2711d1a752e56222732d04fb5cafee75e4c",
+      "base": "825b052c17de408d67ae58481b85229d474594aa",
+      "label": "fe6ff27"
+    },
+    "baseSHA": "825b052c17de408d67ae58481b85229d474594aa",
+    "commits": [
+      {
+        "sha": "fe6ff2711d1a752e56222732d04fb5cafee75e4c",
+        "author": "ccason",
+        "subject": "Update golangci-lint-action to v7 for golangci-lint v2",
+        "body": "golangci-lint-action v6 rejects golangci-lint v2 with \"invalid version string\n'v2.13.2' ... you must update to golangci-lint-action v7\", failing every CI run.\nv7 is the release that supports the v2 line we pin."
+      }
+    ],
+    "files": [
+      {
+        "path": ".github/workflows/ci.yml",
+        "status": "modified",
+        "added": 1,
+        "removed": 1,
+        "diff": "diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml\nindex ad0c9d1..9c39a61 100644\n--- a/.github/workflows/ci.yml\n+++ b/.github/workflows/ci.yml\n@@ -25,7 +25,7 @@ jobs:\n       - run: go test ./... -coverprofile=coverage.out -covermode=atomic\n       - run: go tool cover -func=coverage.out | tail -1\n \n-      - uses: golangci/golangci-lint-action@v6\n+      - uses: golangci/golangci-lint-action@v7\n         with:\n           version: v2.13.2\n \n",
+        "language": "yaml",
+        "areas": [
+          "code"
+        ]
+      }
+    ],
+    "uiTouched": false
+  }
+}

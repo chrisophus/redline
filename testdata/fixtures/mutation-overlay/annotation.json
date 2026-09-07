@@ -1,0 +1,15 @@
+{
+  "name": "mutation-overlay",
+  "origin": "chrisophus/redline commit 8b6d6c6",
+  "summary": "Reads a gomutants report off disk and renders surviving mutants on the changed lines, in findings.json, the markdown report, and the HTML drawer. Adds the mutation package and wires it through run.",
+  "clean": false,
+  "why_this_fixture_exists": "A wide feature change touching a dozen files across rendering and orchestration. It is here to check the reviewer stays quiet about the mechanical parts and spends its output on the one or two places where behaviour is decided.",
+  "expect": [],
+  "quiet": [
+    {
+      "about": "summarizing what the diff plainly shows",
+      "note": "A per-file account of what changed is the report's job, not a finding.",
+      "matches_without_correlation": ["this change adds", "this commit introduces", "overall this is a"]
+    }
+  ]
+}

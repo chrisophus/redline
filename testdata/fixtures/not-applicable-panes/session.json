@@ -1,0 +1,282 @@
+{
+  "report": {
+    "schemaVersion": 1,
+    "baseRef": "782e36aa4b351021d821dc3660588a525f18b5d5",
+    "baseSHA": "782e36aa4b351021d821dc3660588a525f18b5d5",
+    "scope": [
+      "README.md",
+      "internal/findings/findings.go",
+      "internal/post/post.go",
+      "internal/post/post_test.go",
+      "internal/report/assets/report.html.tmpl",
+      "internal/report/html.go",
+      "internal/report/html_test.go",
+      "internal/report/markdown.go",
+      "internal/run/run.go",
+      "internal/run/run_test.go",
+      "redline-design.md",
+      "skills/redline/SKILL.md"
+    ],
+    "findings": [
+      {
+        "rule": "source-without-test",
+        "substrate": "redline/test-delta",
+        "category": "tests",
+        "severity": "info",
+        "message": "code in internal/findings changed but no test in that package did",
+        "new": true,
+        "fingerprint": "package:internal/findings\u0000source-without-test\u0000code in internal/findings changed but no test in that package did",
+        "id": "fde9de223b0",
+        "context": "Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.",
+        "anchor": {
+          "kind": "package",
+          "id": "internal/findings"
+        },
+        "source": "deterministic"
+      }
+    ],
+    "substrates": [
+      {
+        "name": "redline/sql",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/api",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint",
+        "state": "failed",
+        "detail": "observe worktree: golangci-lint at head: golangci-lint exited 3: Error: can't load config: the Go language version (go1.25) used to build golangci-lint is lower than the targeted Go version (1.26)",
+        "gating": false
+      },
+      {
+        "name": "redline/suppressions",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/lint-config",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/test-delta",
+        "state": "ran",
+        "gating": false
+      }
+    ],
+    "newCount": {
+      "info": 1
+    },
+    "coverage": {
+      "changedFiles": 12,
+      "examinedFiles": 8,
+      "unexamined": [
+        "README.md",
+        "internal/report/assets/report.html.tmpl",
+        "redline-design.md",
+        "skills/redline/SKILL.md"
+      ],
+      "coverableFiles": 8
+    },
+    "confirmations": [
+      {
+        "substrate": "redline/suppressions",
+        "rule": "no-suppressions-added",
+        "message": "this change adds no lint-silencing directive"
+      }
+    ],
+    "unknowns": [
+      {
+        "substrate": "redline/lint",
+        "message": "pane applied to this change but did not run",
+        "reason": "observe worktree: golangci-lint at head: golangci-lint exited 3: Error: can't load config: the Go language version (go1.25) used to build golangci-lint is lower than the targeted Go version (1.26)"
+      },
+      {
+        "substrate": "redline/ui",
+        "message": "1 file(s) in this change fall under the ui pane, which examined none of them",
+        "reason": "checks 15-16 (before/after route screenshots, console and network errors) are not built"
+      },
+      {
+        "substrate": "redline/context",
+        "message": "context provider gorefactor claimed files in this change but did not run",
+        "reason": "gorefactor is configured for this repository but not on PATH"
+      }
+    ]
+  },
+  "change": {
+    "target": {
+      "kind": "commit",
+      "dir": "/root/.redline/worktrees/f8fa56f79f58c4c1/825b052c17de408d67ae58481b85229d474594aa",
+      "head": "825b052c17de408d67ae58481b85229d474594aa",
+      "base": "782e36aa4b351021d821dc3660588a525f18b5d5",
+      "label": "825b052"
+    },
+    "baseSHA": "782e36aa4b351021d821dc3660588a525f18b5d5",
+    "commits": [
+      {
+        "sha": "825b052c17de408d67ae58481b85229d474594aa",
+        "author": "Claude",
+        "subject": "Leave panes the repository has no files for off the report",
+        "body": "A report on a repository with no migrations said its migrations pane did\nnot apply, one with no API spec said the same of the contract, and a change\nwith no Go file was told no coverage profile was found. None of that tells\nthe reader anything, and it buries the one line that matters: a pane that\ndid apply and could not run.\n\nRun now asks each pane with nothing in the change whether it has anything\nin the whole tree. A pane with no files anywhere is recorded as\nnot-applicable, a new substrate state findings.json keeps and no renderer\nmentions. A pane the repository has that this change did not reach stays\nskipped and is still listed, folded away, so \"not touched\" and \"not\nchecked\" remain distinguishable. Coverage gains a coverableFiles count;\nwhen it is zero the markdown, the page, the sidebar, and the posted\nevidence table leave coverage out. The page's interface section now\nrenders only when the change touches UI, for the same reason.\n\nCo-Authored-By: Claude Fable 5.1 \u003cnoreply@anthropic.com\u003e\nClaude-Session: https://claude.ai/code/session_01BX9m5Bv1AXr9d9N34uACjm"
+      }
+    ],
+    "files": [
+      {
+        "path": "README.md",
+        "status": "modified",
+        "added": 15,
+        "removed": 3,
+        "diff": "diff --git a/README.md b/README.md\nindex c1517dc..9abef0d 100644\n--- a/README.md\n+++ b/README.md\n@@ -30,9 +30,10 @@ uncommitted work, and on an open pull request. `--pr` fetches via `gh`\n \n ## The page\n \n-1. **Interface** - captures when the pane ships; until then, an honest gap\n-   banner when the change touches UI\n-2. **Coverage** - the diff-coverage number, its profile, and its staleness\n+1. **Interface** - captures when the pane ships; until then, a gap banner,\n+   present only when the change touches UI\n+2. **Coverage** - the diff-coverage number, its profile, and its staleness,\n+   present only when the change has a file a profile could cover\n 3. **Files** - the walkthrough, with finding counts per file\n 4. **What Redline observed** - the findings, each with its evidence\n 5. **Drill in** - per-area diffs with click-a-line comments and viewed state\n@@ -209,6 +210,17 @@ one way this can go wrong, and listing them is what makes that recoverable.\n Test file contents are not rendered either; they are counted, and the\n coverage number stands in for reading them.\n \n+A pane the repository has no files for is not mentioned. A report on a\n+repository with no migrations says nothing about migrations, one with no\n+API spec says nothing about the contract, and a change with no coverable\n+file gets no coverage section, because naming an absence the reader already\n+knows about is noise and it buries the line that matters: a pane that did\n+apply and could not run, which is always stated. A pane the repository does\n+have that this change did not reach is listed, folded away, so the reader\n+can tell \"not touched\" from \"not checked\". `findings.json` keeps every pane\n+with its state (`ran`, `skipped`, `failed`, `not-applicable`) so an agent\n+reading it knows which panes exist.\n+\n ## What use taught it\n \n Dogfooding rung 1 on its own repository changed three things, all the same\n",
+        "language": "markdown",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "internal/findings/findings.go",
+        "status": "modified",
+        "added": 24,
+        "removed": 2,
+        "diff": "diff --git a/internal/findings/findings.go b/internal/findings/findings.go\nindex eb7725f..d918d47 100644\n--- a/internal/findings/findings.go\n+++ b/internal/findings/findings.go\n@@ -129,8 +129,15 @@ type SubstrateState string\n \n const (\n \tSubstrateRan     SubstrateState = \"ran\"\n-\tSubstrateSkipped SubstrateState = \"skipped\" // did not apply, or could not run\n+\tSubstrateSkipped SubstrateState = \"skipped\" // the repository has such files; this change touched none\n \tSubstrateFailed  SubstrateState = \"failed\"  // started and errored\n+\t// SubstrateNotApplicable is a pane the repository has no files for at all:\n+\t// no migrations, no API spec, no linter configured. It is recorded here so\n+\t// findings.json says the pane exists, and rendered nowhere. A report on a\n+\t// repository with no API should not mention the API; naming an absence\n+\t// the reader already knows about is noise, and worse, it makes the panes\n+\t// that did apply and failed harder to see.\n+\tSubstrateNotApplicable SubstrateState = \"not-applicable\"\n )\n \n // SubstrateStatus is the per-pane availability record. Redline is non-gating,\n@@ -177,12 +184,27 @@ type Coverage struct {\n \t// and naming every exclusion is what makes that recoverable.\n \tGenerated []string `json:\"generated,omitempty\"`\n \n+\t// CoverableFiles counts the changed files a coverage profile could\n+\t// describe (Go files, until the pane reads other formats). Zero means the\n+\t// coverage number does not apply to this change, and the report leaves\n+\t// coverage out entirely rather than reporting a profile as missing for a\n+\t// change no profile could ever cover.\n+\tCoverableFiles int `json:\"coverableFiles\"`\n+\n \t// Diff is the share of added lines a test profile shows executed. Nil when\n \t// no profile was found, which must render as \"nobody knows\" rather than as\n-\t// zero per cent — those are very different claims.\n+\t// zero per cent — those are very different claims. Only meaningful when\n+\t// CoverableFiles is non-zero.\n \tDiff *cover.Result `json:\"diffCoverage,omitempty\"`\n }\n \n+// CoverageApplies reports whether the coverage number has anything to say\n+// about this change: a profile was read, or a changed file could have been\n+// covered by one. When false, coverage is left off the report.\n+func (c Coverage) CoverageApplies() bool {\n+\treturn c.Diff != nil || c.CoverableFiles \u003e 0\n+}\n+\n // Report is the merged result of one Redline run.\n type Report struct {\n \tSchemaVersion int               `json:\"schemaVersion\"`\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "internal/post/post.go",
+        "status": "modified",
+        "added": 4,
+        "removed": 1,
+        "diff": "diff --git a/internal/post/post.go b/internal/post/post.go\nindex 8baa805..ed3317f 100644\n--- a/internal/post/post.go\n+++ b/internal/post/post.go\n@@ -268,6 +268,9 @@ func evidenceTable(rep *findings.Report) string {\n \t\t\tresult = fmt.Sprintf(\"ran — %d finding(s)\", perSubstrate[s.Name])\n \t\tcase findings.SubstrateSkipped:\n \t\t\tresult = \"did not apply\"\n+\t\tcase findings.SubstrateNotApplicable:\n+\t\t\t// The repository has no such files; the row would only say so.\n+\t\t\tcontinue\n \t\tdefault:\n \t\t\tresult = fmt.Sprintf(\"**did not run** — %s\", escapeCell(s.Detail))\n \t\t}\n@@ -282,7 +285,7 @@ func evidenceTable(rep *findings.Report) string {\n \t\tdefault:\n \t\t\tfmt.Fprintf(\u0026b, \"| diff coverage | %.0f%% of %d added line(s) (`%s`) |\\n\", c.Percent, c.Lines, c.Profile)\n \t\t}\n-\t} else {\n+\t} else if rep.Coverage.CoverableFiles \u003e 0 {\n \t\tb.WriteString(\"| diff coverage | not measured — no profile found |\\n\")\n \t}\n \tfmt.Fprintf(\u0026b, \"| files examined | %d/%d |\\n\", rep.Coverage.ExaminedFiles, rep.Coverage.ChangedFiles)\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "internal/post/post_test.go",
+        "status": "modified",
+        "added": 17,
+        "removed": 2,
+        "diff": "diff --git a/internal/post/post_test.go b/internal/post/post_test.go\nindex 81183c4..e9aac01 100644\n--- a/internal/post/post_test.go\n+++ b/internal/post/post_test.go\n@@ -10,10 +10,11 @@ import (\n \n func sampleReport() *findings.Report {\n \trep := \u0026findings.Report{\n-\t\tCoverage: findings.Coverage{ChangedFiles: 5, ExaminedFiles: 3},\n+\t\tCoverage: findings.Coverage{ChangedFiles: 5, ExaminedFiles: 3, CoverableFiles: 2},\n \t\tSubstrates: []findings.SubstrateStatus{\n \t\t\t{Name: \"migrations\", State: findings.SubstrateRan},\n-\t\t\t{Name: \"openapi\", State: findings.SubstrateSkipped, Detail: \"no files in scope for this pane\"},\n+\t\t\t{Name: \"openapi\", State: findings.SubstrateSkipped, Detail: \"this change touches none of the files this pane reads\"},\n+\t\t\t{Name: \"lint\", State: findings.SubstrateNotApplicable, Detail: \"the repository has no files this pane reads\"},\n \t\t},\n \t\tFindings: []findings.Finding{\n \t\t\t{File: \"a.go\", Line: 12, Rule: \"migration-modified-after-merge\", Substrate: \"migrations\",\n@@ -165,6 +166,20 @@ func TestBuildBodyLeadsWithVerdictAndEvidenceTable(t *testing.T) {\n \t}\n }\n \n+// A pane the repository has no files for gets no row: the table accounts for\n+// the checks that could have run, and \"no linter is configured\" is not one.\n+// The same for coverage on a change with nothing a profile could cover.\n+func TestBuildBodyOmitsWhatDoesNotApply(t *testing.T) {\n+\trep := sampleReport()\n+\tif p := Build(rep, prTarget(), \"\", nil); strings.Contains(p.Body, \"| lint |\") {\n+\t\tt.Fatalf(\"a not-applicable pane must not get a row:\\n%s\", p.Body)\n+\t}\n+\trep.Coverage.CoverableFiles = 0\n+\tif p := Build(rep, prTarget(), \"\", nil); strings.Contains(p.Body, \"diff coverage\") {\n+\t\tt.Fatalf(\"coverage must not be mentioned when no changed file is coverable:\\n%s\", p.Body)\n+\t}\n+}\n+\n // A pane that applied and did not run is named in the body, loudly. That row is\n // what makes the posted review's scope verifiable from the pull request alone.\n func TestBuildBodyNamesAFailedPane(t *testing.T) {\n",
+        "language": "go",
+        "areas": [
+          "tests"
+        ]
+      },
+      {
+        "path": "internal/report/assets/report.html.tmpl",
+        "status": "modified",
+        "added": 5,
+        "removed": 6,
+        "diff": "diff --git a/internal/report/assets/report.html.tmpl b/internal/report/assets/report.html.tmpl\nindex 3883cb8..7e102cb 100644\n--- a/internal/report/assets/report.html.tmpl\n+++ b/internal/report/assets/report.html.tmpl\n@@ -215,11 +215,11 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p\n   \u003cbutton type=\"button\" class=\"tile\" data-goto=\"observed\" data-only=\"warning\"\u003e\u003cdiv class=\"n warning\"\u003e{{with index .Counts \"warning\"}}{{.}}{{else}}0{{end}}\u003c/div\u003e\u003cdiv class=\"l\"\u003ewarnings\u003c/div\u003e\u003c/button\u003e\n   \u003cbutton type=\"button\" class=\"tile\" data-goto=\"observed\" data-only=\"info\"\u003e\u003cdiv class=\"n\"\u003e{{with index .Counts \"info\"}}{{.}}{{else}}0{{end}}\u003c/div\u003e\u003cdiv class=\"l\"\u003einfo\u003c/div\u003e\u003c/button\u003e\n   \u003cbutton type=\"button\" class=\"tile\" data-goto=\"drill\"\u003e\u003cdiv class=\"n\"\u003e{{.Coverage.ExaminedFiles}}/{{.Coverage.ChangedFiles}}\u003c/div\u003e\u003cdiv class=\"l\"\u003efiles examined\u003c/div\u003e\u003c/button\u003e\n-  {{with .Coverage.Diff}}\n+  {{if .Coverage.CoverageApplies}}{{with .Coverage.Diff}}\n   \u003cbutton type=\"button\" class=\"tile\" data-goto=\"coverage\"\u003e\u003cdiv class=\"n{{if .Stale}} warning{{end}}\"\u003e{{if lt .Percent 0.0}}—{{else}}{{printf \"%.0f\" .Percent}}%{{end}}\u003c/div\u003e\u003cdiv class=\"l\"\u003ediff covered\u003c/div\u003e\u003c/button\u003e\n   {{else}}\n   \u003cbutton type=\"button\" class=\"tile\" data-goto=\"coverage\"\u003e\u003cdiv class=\"n warning\"\u003e?\u003c/div\u003e\u003cdiv class=\"l\"\u003ediff covered\u003c/div\u003e\u003c/button\u003e\n-  {{end}}\n+  {{end}}{{end}}\n   \u003cbutton type=\"button\" class=\"tile\" data-goto=\"confirms\"\u003e\u003cdiv class=\"n\"\u003e{{len .Confirms}}\u003c/div\u003e\u003cdiv class=\"l\"\u003econfirmed\u003c/div\u003e\u003c/button\u003e\n   \u003cbutton type=\"button\" class=\"tile\" data-goto=\"unknowns\"\u003e\u003cdiv class=\"n\"\u003e{{len .Unknowns}}\u003c/div\u003e\u003cdiv class=\"l\"\u003eundetermined\u003c/div\u003e\u003c/button\u003e\n \u003c/div\u003e\n@@ -228,14 +228,12 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p\n \u003cdiv class=\"overview\"\u003e\u003cspan class=\"tag vd\"\u003eagent\u003c/span\u003e\u003cp\u003e{{.Overview}}\u003c/p\u003e\u003c/div\u003e\n {{end}}\n \n-\u003ch2 id=\"interface\"\u003eWhat it looks like\u003c/h2\u003e\n {{if .UITouched}}\n+\u003ch2 id=\"interface\"\u003eWhat it looks like\u003c/h2\u003e\n \u003cdiv class=\"banner\"\u003eThis change touches the interface and no routes were captured. Nobody has seen what it looks like — that is a gap in this review, not a clean result.\u003c/div\u003e\n-{{else}}\n-\u003cp class=\"empty\"\u003eNo routes were captured. No changed file is classified as interface, so there was probably nothing to see — but this is an absence of looking, not a finding that the interface is unchanged.\u003c/p\u003e\n {{end}}\n \n-\n+{{if .Coverage.CoverageApplies}}\n \u003ch2 id=\"coverage\"\u003eCoverage\u003c/h2\u003e\n {{with .Coverage.Diff}}\n {{if .Stale}}\u003cdiv class=\"banner\"\u003eThe profile \u003ccode\u003e{{.Profile}}\u003c/code\u003e is older than a file in this change, so this number does not describe the code under review. Re-run the suite with \u003ccode\u003e-coverprofile\u003c/code\u003e.\u003c/div\u003e{{end}}\n@@ -258,6 +256,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p\n {{else}}\n \u003cp class=\"empty\"\u003eNo coverage profile was found, so whether these changes are tested is unknown. That is not the same as untested — run the suite with \u003ccode\u003e-coverprofile=coverage.out\u003c/code\u003e to get the number.\u003c/p\u003e\n {{end}}\n+{{end}}\n \n {{if .Groups}}\n \u003ch2 id=\"drill\"\u003eDrill in\u003c/h2\u003e\n",
+        "areas": [
+          "ui"
+        ]
+      },
+      {
+        "path": "internal/report/html.go",
+        "status": "modified",
+        "added": 12,
+        "removed": 9,
+        "diff": "diff --git a/internal/report/html.go b/internal/report/html.go\nindex c0cc633..523bc6b 100644\n--- a/internal/report/html.go\n+++ b/internal/report/html.go\n@@ -70,9 +70,9 @@ type view struct {\n \tUnknowns []findings.Unknown\n \tFailed   []findings.SubstrateStatus\n \tSkipped  []findings.SubstrateStatus\n-\t// UITouched is whether the change moves the interface at all. It decides\n-\t// how loud the absence of captures should be: no captures on a change that\n-\t// touches no UI is unremarkable, and on one that does it is a gap.\n+\t// UITouched is whether the change moves the interface at all. A change\n+\t// that touches no UI gets no interface section; on one that does, the\n+\t// absence of captures is a gap and is said so.\n \tUITouched bool\n \t// Nav is the sidebar: one entry per section actually rendered, in the order\n \t// they appear. Built here rather than scanned out of the DOM so the page\n@@ -233,18 +233,21 @@ func buildView(in HTMLInput) view {\n // section gains or loses a heading without its entry moving too.\n func navFor(v view) []navLink {\n \t// A UI that moved with nothing captured is a gap; a change with no UI files\n-\t// is not.\n-\tuiGap := v.UITouched\n+\t// has no interface section. Coverage is the same: a change with no\n+\t// coverable file has no coverage section, and one with a coverable file\n+\t// and no profile is a gap.\n \tcoverageGap := v.Coverage.Diff == nil || v.Coverage.Diff.Stale\n \n \tnav := []navLink{}\n \tif v.Overview != \"\" {\n \t\tnav = append(nav, navLink{ID: \"review\", Label: \"Review\"})\n \t}\n-\tnav = append(nav,\n-\t\tnavLink{ID: \"interface\", Label: \"What it looks like\", Warn: uiGap},\n-\t\tnavLink{ID: \"coverage\", Label: \"Coverage\", Warn: coverageGap},\n-\t)\n+\tif v.UITouched {\n+\t\tnav = append(nav, navLink{ID: \"interface\", Label: \"What it looks like\", Warn: true})\n+\t}\n+\tif v.Coverage.CoverageApplies() {\n+\t\tnav = append(nav, navLink{ID: \"coverage\", Label: \"Coverage\", Warn: coverageGap})\n+\t}\n \tif len(v.Groups) \u003e 0 {\n \t\tnav = append(nav, navLink{ID: \"drill\", Label: \"Drill in\", Count: len(v.Groups)})\n \t}\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "internal/report/html_test.go",
+        "status": "modified",
+        "added": 50,
+        "removed": 5,
+        "diff": "diff --git a/internal/report/html_test.go b/internal/report/html_test.go\nindex a0b6cb1..bd18560 100644\n--- a/internal/report/html_test.go\n+++ b/internal/report/html_test.go\n@@ -245,9 +245,9 @@ func TestNavMatchesTheSectionsOnThePage(t *testing.T) {\n // The sidebar should show where the gaps are without scrolling to find them.\n func TestNavMarksSectionsThatAreGaps(t *testing.T) {\n \thtml, err := HTML(HTMLInput{\n-\t\t// UI moved with nothing captured, and no coverage profile.\n+\t\t// UI moved with nothing captured, and a coverable file with no profile.\n \t\tReport: \u0026findings.Report{\n-\t\t\tCoverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0},\n+\t\t\tCoverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 0, CoverableFiles: 1},\n \t\t\tUnknowns: []findings.Unknown{{Substrate: \"s\", Message: \"u\"}},\n \t\t},\n \t\tChange: \u0026change.Set{\n@@ -350,8 +350,53 @@ func TestInterfaceSectionIsHonestWhenEmpty(t *testing.T) {\n \tif strings.Contains(html, \"touches the interface and no routes were captured\") {\n \t\tt.Error(\"a change with no UI files must not claim a UI gap\")\n \t}\n-\tif !strings.Contains(html, \"absence of looking\") {\n-\t\tt.Error(\"even then, absence must not read as a finding of no change\")\n+\tif strings.Contains(html, `id=\"interface\"`) {\n+\t\tt.Error(\"a change with no UI files gets no interface section: there is nothing to say\")\n+\t}\n+}\n+\n+// A report on a repository with no Go code, no API, and no migrations says\n+// nothing about coverage, the API, or migrations. Naming those absences tells\n+// the reader nothing they did not know and buries the panes that did apply\n+// and could not run.\n+func TestWhatDoesNotApplyIsNotMentioned(t *testing.T) {\n+\trep := \u0026findings.Report{\n+\t\tCoverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},\n+\t\tSubstrates: []findings.SubstrateStatus{\n+\t\t\t{Name: \"migrations\", State: findings.SubstrateNotApplicable, Detail: \"the repository has no files this pane reads\"},\n+\t\t\t{Name: \"openapi\", State: findings.SubstrateNotApplicable, Detail: \"the repository has no files this pane reads\"},\n+\t\t\t{Name: \"lint\", State: findings.SubstrateSkipped, Detail: \"this change touches none of the files this pane reads\"},\n+\t\t},\n+\t}\n+\tch := \u0026change.Set{Files: []change.File{{Path: \"README.md\", Areas: []string{\"docs\"}}}}\n+\n+\thtml, err := HTML(HTMLInput{Report: rep, Change: ch})\n+\tif err != nil {\n+\t\tt.Fatal(err)\n+\t}\n+\tfor _, absent := range []string{\n+\t\t`id=\"coverage\"`, \"No coverage profile was found\", \"diff covered\",\n+\t\t`id=\"interface\"`,\n+\t\t\"\u003ccode\u003emigrations\u003c/code\u003e\", \"\u003ccode\u003eopenapi\u003c/code\u003e\",\n+\t} {\n+\t\tif strings.Contains(html, absent) {\n+\t\t\tt.Errorf(\"page must not mention %q for a change it does not apply to\", absent)\n+\t\t}\n+\t}\n+\t// The pane the repository does have, that this change did not reach, is\n+\t// still listed, folded away.\n+\tif !strings.Contains(html, \"1 pane did not apply\") || !strings.Contains(html, \"\u003ccode\u003elint\u003c/code\u003e\") {\n+\t\tt.Error(\"a pane the repository has but the change did not touch is still listed\")\n+\t}\n+\n+\tmd := Markdown(rep, nil, nil, ch)\n+\tfor _, absent := range []string{\"## Coverage\", \"No coverage profile\", \"`migrations`\", \"`openapi`\"} {\n+\t\tif strings.Contains(md, absent) {\n+\t\t\tt.Errorf(\"markdown must not mention %q\", absent)\n+\t\t}\n+\t}\n+\tif !strings.Contains(md, \"1 pane(s) did not apply to this change\") || !strings.Contains(md, \"`lint`\") {\n+\t\tt.Error(\"markdown still lists the pane the change did not touch\")\n \t}\n }\n \n@@ -382,7 +427,7 @@ func TestTestFilesAreBrowsableInTheDrill(t *testing.T) {\n // legible as its presence. A missing profile rendering as 0% would read as\n // \"nothing is tested\", which is a much stronger claim than \"nobody measured\".\n func TestMissingCoverageProfileReadsAsUnknownNotZero(t *testing.T) {\n-\trep := \u0026findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}}\n+\trep := \u0026findings.Report{Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1, CoverableFiles: 1}}\n \tch := \u0026change.Set{Files: []change.File{{Path: \"a.go\", Areas: []string{\"code\"}}}}\n \n \thtml, err := HTML(HTMLInput{Report: rep, Change: ch})\n",
+        "language": "go",
+        "areas": [
+          "tests"
+        ]
+      },
+      {
+        "path": "internal/report/markdown.go",
+        "status": "modified",
+        "added": 4,
+        "removed": 0,
+        "diff": "diff --git a/internal/report/markdown.go b/internal/report/markdown.go\nindex bb584f8..d3bc963 100644\n--- a/internal/report/markdown.go\n+++ b/internal/report/markdown.go\n@@ -97,7 +97,11 @@ func prLabel(n int) string {\n // coverageSection is the number that stands in for reading the tests. An\n // absent profile is stated as absent: \"no test executes these lines\" and\n // \"nobody measured\" are different claims and only one is the author's problem.\n+// A change no profile could describe gets no section at all.\n func coverageSection(b *strings.Builder, rep *findings.Report) {\n+\tif !rep.Coverage.CoverageApplies() {\n+\t\treturn\n+\t}\n \tfmt.Fprintf(b, \"## Coverage\\n\\n\")\n \tc := rep.Coverage.Diff\n \tif c == nil {\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "internal/run/run.go",
+        "status": "modified",
+        "added": 43,
+        "removed": 2,
+        "diff": "diff --git a/internal/run/run.go b/internal/run/run.go\nindex 0698209..713d287 100644\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -4,6 +4,7 @@ package run\n import (\n \t\"fmt\"\n \t\"path/filepath\"\n+\t\"sort\"\n \t\"strings\"\n \n \t\"github.com/ccason/redline/internal/change\"\n@@ -107,6 +108,38 @@ func Run(opts Options) (*Result, error) {\n \t\t\u0026lint.Config{Repo: repo},\n \t}\n \n+\t// Every path in the tree under review, listed once and only if a pane\n+\t// turns out to have nothing in the change to look at. It answers a\n+\t// different question from scope: not \"does this pane apply to the change\"\n+\t// but \"does this pane apply to the repository\". A repository with no\n+\t// migrations gets no mention of migrations; one whose migrations this\n+\t// change did not touch is told so, quietly.\n+\tvar allPaths []string\n+\tlistAll := func() []string {\n+\t\tif allPaths != nil {\n+\t\t\treturn allPaths\n+\t\t}\n+\t\tvar blobs map[string]string\n+\t\tvar lerr error\n+\t\tif tgt.Head == \"\" {\n+\t\t\tblobs, lerr = repo.WorktreeBlobs()\n+\t\t} else {\n+\t\t\tblobs, lerr = repo.Blobs(tgt.Head)\n+\t\t}\n+\t\tif lerr != nil {\n+\t\t\t// Unknown whether the pane applies: fall back to saying it was\n+\t\t\t// skipped, the state that still gets a line on the report.\n+\t\t\tallPaths = []string{}\n+\t\t\treturn allPaths\n+\t\t}\n+\t\tallPaths = make([]string, 0, len(blobs))\n+\t\tfor path := range blobs {\n+\t\t\tallPaths = append(allPaths, path)\n+\t\t}\n+\t\tsort.Strings(allPaths)\n+\t\treturn allPaths\n+\t}\n+\n \texamined := map[string]bool{}\n \tfor _, p := range panes {\n \t\tstatus := findings.SubstrateStatus{Name: p.Name()}\n@@ -115,8 +148,15 @@ func Run(opts Options) (*Result, error) {\n \t\t\texamined[path] = true\n \t\t}\n \t\tif len(scope) == 0 {\n-\t\t\tstatus.State = findings.SubstrateSkipped\n-\t\t\tstatus.Detail = \"no files in scope for this pane\"\n+\t\t\t// Scope over the whole tree is only consulted for a pane that will\n+\t\t\t// not run, so the state it leaves behind in the pane is unused.\n+\t\t\tif all := listAll(); len(all) \u003e 0 \u0026\u0026 len(p.Scope(all)) == 0 {\n+\t\t\t\tstatus.State = findings.SubstrateNotApplicable\n+\t\t\t\tstatus.Detail = \"the repository has no files this pane reads\"\n+\t\t\t} else {\n+\t\t\t\tstatus.State = findings.SubstrateSkipped\n+\t\t\t\tstatus.Detail = \"this change touches none of the files this pane reads\"\n+\t\t\t}\n \t\t\tres.Report.Substrates = append(res.Report.Substrates, status)\n \t\t\tcontinue\n \t\t}\n@@ -213,6 +253,7 @@ func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir, originDir str\n \t\tgoFiles++\n \t\tchanged = append(changed, cover.Changed{Path: f.Path, Added: cover.AddedLines(f.Diff)})\n \t}\n+\trep.Coverage.CoverableFiles = goFiles\n \tif goFiles == 0 {\n \t\treturn\n \t}\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "internal/run/run_test.go",
+        "status": "modified",
+        "added": 53,
+        "removed": 0,
+        "diff": "diff --git a/internal/run/run_test.go b/internal/run/run_test.go\nindex 0cdd38e..f986a1f 100644\n--- a/internal/run/run_test.go\n+++ b/internal/run/run_test.go\n@@ -223,6 +223,59 @@ func TestPaneSkippedWhenNoMigrationsTouched(t *testing.T) {\n \t}\n }\n \n+// A repository with no migrations and no API spec is not told that its\n+// migrations and API went unexamined. The pane is recorded as not applicable,\n+// which no renderer mentions, rather than skipped, which they list.\n+func TestPaneNotApplicableWhenRepositoryHasNoSuchFiles(t *testing.T) {\n+\tr := newRepo(t)\n+\tr.write(\"main.go\", \"package main\\n\")\n+\tr.commit(\"init\")\n+\tr.git(\"checkout\", \"-b\", \"feature\")\n+\tr.write(\"main.go\", \"package main\\n\\nfunc main() {}\\n\")\n+\n+\trep := r.run(run.Options{Base: \"main\"}).Report\n+\tstates := map[string]findings.SubstrateState{}\n+\tfor _, s := range rep.Substrates {\n+\t\tstates[s.Name] = s.State\n+\t}\n+\tfor _, name := range []string{\"redline/sql\", \"redline/api\"} {\n+\t\tif states[name] != findings.SubstrateNotApplicable {\n+\t\t\tt.Errorf(\"%s: expected not-applicable in a repository with no such files, got %q\", name, states[name])\n+\t\t}\n+\t}\n+\tif rep.Coverage.CoverableFiles != 1 {\n+\t\tt.Errorf(\"one Go file changed, coverableFiles = %d\", rep.Coverage.CoverableFiles)\n+\t}\n+\tmd := report.Markdown(\u0026rep, nil, nil, nil)\n+\tif strings.Contains(md, \"redline/sql\") || strings.Contains(md, \"redline/api\") {\n+\t\tt.Errorf(\"the markdown report must not mention panes the repository has no files for:\\n%s\", md)\n+\t}\n+}\n+\n+// The same repository, with the change touching only a docs file: nothing is\n+// coverable, so coverage is left out rather than reported as unmeasured.\n+func TestCoverageNotMentionedWhenNothingIsCoverable(t *testing.T) {\n+\tr := newRepo(t)\n+\tr.write(\"README.md\", \"# hi\\n\")\n+\tr.commit(\"init\")\n+\tr.git(\"checkout\", \"-b\", \"feature\")\n+\tr.write(\"README.md\", \"# hi\\n\\nmore\\n\")\n+\n+\tres := r.run(run.Options{Base: \"main\"})\n+\tif res.Report.Coverage.CoverableFiles != 0 || res.Report.Coverage.Diff != nil {\n+\t\tt.Fatalf(\"nothing coverable: %+v\", res.Report.Coverage)\n+\t}\n+\tfor _, u := range res.Report.Unknowns {\n+\t\tif u.Substrate == \"redline/tests\" {\n+\t\t\tt.Errorf(\"no coverage unknown should be raised for a change with no coverable file: %+v\", u)\n+\t\t}\n+\t}\n+\tmd := report.Markdown(\u0026res.Report, res.Renders, res.Evidence, res.Change)\n+\tif strings.Contains(md, \"coverage\") {\n+\t\tt.Errorf(\"markdown must not mention coverage:\\n%s\", md)\n+\t}\n+}\n+\n func TestMigrationsDirFilter(t *testing.T) {\n \tr := baseline(t)\n \tr.write(\"vendor/other/000001_init.up.sql\", \"SELECT 1;\\n\")\n",
+        "language": "go",
+        "areas": [
+          "tests"
+        ]
+      },
+      {
+        "path": "redline-design.md",
+        "status": "modified",
+        "added": 4,
+        "removed": 1,
+        "diff": "diff --git a/redline-design.md b/redline-design.md\nindex 898afb9..3537b83 100644\n--- a/redline-design.md\n+++ b/redline-design.md\n@@ -287,7 +287,10 @@ exclusion named; a pane that applies but cannot run reports loudly.\n New this revision: the default source for a measurement is the artifact the\n harness already produced, and re-running is the fallback; the report\n states a fact's source, a pane or a reviewer, and attaches no caveat to\n-it; a decision survives a re-run.\n+it; a decision survives a re-run; a pane the repository has no files for\n+is recorded as not applicable and mentioned nowhere, while a pane that\n+applied and could not run stays loud. Absence is stated when it is a gap\n+in the review and left out when it is a fact about the repository.\n \n Retired: the rule that Redline never transports a model's judgment. It\n does, through `review.json`, in the same way it transports a person's\n",
+        "language": "markdown",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "skills/redline/SKILL.md",
+        "status": "modified",
+        "added": 5,
+        "removed": 1,
+        "diff": "diff --git a/skills/redline/SKILL.md b/skills/redline/SKILL.md\nindex 0e6d859..aa53647 100644\n--- a/skills/redline/SKILL.md\n+++ b/skills/redline/SKILL.md\n@@ -58,7 +58,11 @@ pass, and the reviewer will read it as one unless you say otherwise.\n \n Two numbers on the report are absences rather than results, and both read\n as a pass if you let them. `diffCoverage` is null when no coverage profile\n-was found — that is \"nobody measured\", not \"nothing is tested\".\n+was found — that is \"nobody measured\", not \"nothing is tested\". When\n+`coverage.coverableFiles` is 0 the change has no file a profile could\n+cover, and coverage is left off the report on purpose; do not raise it.\n+Likewise a pane in `substrates[]` with state `not-applicable` means the\n+repository has no files it reads; say nothing about it.\n `coverage.generated` lists files excluded as machine output; if something\n there looks hand-written, say so.\n \n",
+        "language": "markdown",
+        "areas": [
+          "code"
+        ]
+      }
+    ],
+    "uiTouched": true
+  },
+  "renders": [
+    {
+      "Title": "Suppressions",
+      "Summary": "0 lint-silencing directive(s) added by this change",
+      "Lines": null
+    },
+    {
+      "Title": "Tests",
+      "Summary": "1 test-delta fact(s) from the diff",
+      "Lines": [
+        "~ internal/findings (no test changed)"
+      ]
+    }
+  ],
+  "contextAbsent": [
+    "gorefactor (context): gorefactor is configured for this repository but not on PATH"
+  ]
+}

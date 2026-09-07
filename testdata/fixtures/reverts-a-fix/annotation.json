@@ -1,0 +1,18 @@
+{
+  "name": "reverts-a-fix",
+  "origin": "synthetic, built by make-synthetic.sh",
+  "summary": "A guard that skips empty entries is deleted under the commit message 'simplify Drain'. Two commits earlier that guard was added deliberately, with the reason in its comment and in its own commit message: a nil entry from the retry path panicked in production.",
+  "clean": false,
+  "why_this_fixture_exists": "Nothing in the diff says this is a revert. Only the history of the changed lines does, which is why the envelope carries a history role at all. Without it a reviewer reads this as a tidy simplification and approves it.",
+  "expect": [
+    {
+      "key": "undoes-a-deliberate-fix",
+      "what": "The deleted guard was added on purpose to stop a production panic, and the change removes it with no replacement and no explanation.",
+      "file": "internal/queue/queue.go",
+      "any_of": ["deliberate", "guard", "panic", "production", "added", "revert", "undo"],
+      "needs_history": true,
+      "note": "Requires the history expansion in the envelope. Expected to be missed until a context provider is on PATH."
+    }
+  ],
+  "quiet": []
+}

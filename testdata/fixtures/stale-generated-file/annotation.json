@@ -1,0 +1,17 @@
+{
+  "name": "stale-generated-file",
+  "origin": "synthetic, built by make-synthetic.sh",
+  "summary": "A field is added to a proto message and the checked-in generated Go for that message is not regenerated, so the two disagree.",
+  "clean": false,
+  "why_this_fixture_exists": "This should be caught by running the generator and diffing, not by a model reasoning about it. The fixture is here to state a gap: Redline has no regeneration check yet, so today nothing catches it and the eval records a miss. When the check lands this fixture should move from missed to caught with no model involved.",
+  "expect": [
+    {
+      "key": "generated-file-not-regenerated",
+      "what": "schema.proto gained tenant_id and schema.pb.go was not regenerated.",
+      "file": "api/schema.proto",
+      "any_of": ["regenerat", "generated", "stale", "pb.go", "out of date"],
+      "known_gap": "No regeneration check ships yet. Deterministic verification belongs in a provider, which knows how to run the generator; see docs/context-envelope.md."
+    }
+  ],
+  "quiet": []
+}

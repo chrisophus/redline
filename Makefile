@@ -22,7 +22,7 @@ COMMIT   := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE     := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS  := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 
-.PHONY: all build test vet check install install-bin install-skill \
+.PHONY: all build test vet check boundary install install-bin install-skill \
         install-repo uninstall clean lint gorefactor-lint gorefactor-doctor \
         coverage bench mutate mutate-full mutants snapshot release
 
@@ -109,7 +109,13 @@ mutants:
 	fi
 	gomutants --changed-since $(GOMUTANTS_BASE) -o mutants.json ./...
 
-check: vet test lint gorefactor-lint
+# Redline is language-agnostic, and everything language-specific lives behind
+# the provider interface. That claim is worth what its enforcement is worth,
+# so it has a target of its own and runs in CI as its own step.
+boundary:
+	go test ./internal/boundary/ -v
+
+check: vet test lint gorefactor-lint boundary
 
 # install is for this machine: the skill becomes available in every repo.
 install: install-bin install-skill

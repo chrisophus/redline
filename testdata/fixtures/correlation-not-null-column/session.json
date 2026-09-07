@@ -1,0 +1,181 @@
+{
+  "report": {
+    "schemaVersion": 1,
+    "baseRef": "4ada52ba5c2a8bc780f9f1647d89c031fc90756e",
+    "baseSHA": "4ada52ba5c2a8bc780f9f1647d89c031fc90756e",
+    "scope": [
+      "internal/store/user.go",
+      "migrations/0002_add_tenant.up.sql"
+    ],
+    "findings": [
+      {
+        "file": "migrations/0002_add_tenant.up.sql",
+        "rule": "migration-add-not-null-no-default",
+        "substrate": "redline/sql",
+        "category": "schema",
+        "severity": "warning",
+        "message": "migration 0002 adds NOT NULL column users.tenant_id with no default",
+        "new": true,
+        "fingerprint": "migrations/0002_add_tenant.up.sql\u0000migration-add-not-null-no-default\u0000migration # adds NOT NULL column users.tenant_id with no default",
+        "id": "f2076e74fbd",
+        "fixCmd": "add a DEFAULT, or split into add-nullable, backfill, then set NOT NULL",
+        "context": "Every row that already exists needs a value. Without a default the statement fails on a non-empty table, and any write path that omits the column starts failing the moment this lands.",
+        "anchor": {
+          "kind": "table.column",
+          "id": "users.tenant_id"
+        },
+        "evidence": [
+          "migrations@4ada52ba5c2a8bc780f9f1647d89c031fc90756e",
+          "migrations@worktree"
+        ],
+        "expected": "a default, or a backfill before the constraint",
+        "observed": "ADD COLUMN tenant_id uuid NOT NULL",
+        "source": "deterministic"
+      },
+      {
+        "rule": "source-without-test",
+        "substrate": "redline/test-delta",
+        "category": "tests",
+        "severity": "info",
+        "message": "code in internal/store changed but no test in that package did",
+        "new": true,
+        "fingerprint": "package:internal/store\u0000source-without-test\u0000code in internal/store changed but no test in that package did",
+        "id": "f8c947a2476",
+        "context": "Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.",
+        "anchor": {
+          "kind": "package",
+          "id": "internal/store"
+        },
+        "source": "deterministic"
+      }
+    ],
+    "substrates": [
+      {
+        "name": "redline/sql",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/api",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/suppressions",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/lint-config",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/test-delta",
+        "state": "ran",
+        "gating": false
+      }
+    ],
+    "newCount": {
+      "info": 1,
+      "warning": 1
+    },
+    "coverage": {
+      "changedFiles": 2,
+      "examinedFiles": 2,
+      "coverableFiles": 1
+    },
+    "confirmations": [
+      {
+        "substrate": "redline/sql",
+        "rule": "migration-version-unique",
+        "message": "version 0002 is not present on 4ada52ba5c2a8bc780f9f1647d89c031fc90756e",
+        "anchor": {
+          "kind": "migration",
+          "id": "0002"
+        }
+      },
+      {
+        "substrate": "redline/sql",
+        "rule": "migration-immutable",
+        "message": "all 1 migration file(s) already merged at the base are byte-identical in this change"
+      },
+      {
+        "substrate": "redline/suppressions",
+        "rule": "no-suppressions-added",
+        "message": "this change adds no lint-silencing directive"
+      }
+    ]
+  },
+  "change": {
+    "target": {
+      "kind": "commit",
+      "dir": "/root/.redline/worktrees/cb7c0ef7ade824f6/a981837e9f8e0bec616e65f0f08a7b72024f4a61",
+      "head": "a981837e9f8e0bec616e65f0f08a7b72024f4a61",
+      "base": "4ada52ba5c2a8bc780f9f1647d89c031fc90756e",
+      "label": "HEAD"
+    },
+    "baseSHA": "4ada52ba5c2a8bc780f9f1647d89c031fc90756e",
+    "commits": [
+      {
+        "sha": "a981837e9f8e0bec616e65f0f08a7b72024f4a61",
+        "author": "fixture",
+        "subject": "add tenant scoping to users"
+      }
+    ],
+    "files": [
+      {
+        "path": "internal/store/user.go",
+        "status": "modified",
+        "added": 3,
+        "removed": 2,
+        "diff": "diff --git a/internal/store/user.go b/internal/store/user.go\nindex 696c8de..851dfbb 100644\n--- a/internal/store/user.go\n+++ b/internal/store/user.go\n@@ -2,8 +2,9 @@ package store\n \n // User is one row of the users table.\n type User struct {\n-\tID    string\n-\tEmail string\n+\tID       string\n+\tEmail    string\n+\tTenantID string\n }\n \n // Insert writes a user. Every column the table requires must be set here.\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "migrations/0002_add_tenant.up.sql",
+        "status": "added",
+        "added": 1,
+        "removed": 0,
+        "diff": "diff --git a/migrations/0002_add_tenant.up.sql b/migrations/0002_add_tenant.up.sql\nnew file mode 100644\nindex 0000000..edba266\n--- /dev/null\n+++ b/migrations/0002_add_tenant.up.sql\n@@ -0,0 +1 @@\n+ALTER TABLE users ADD COLUMN tenant_id uuid NOT NULL;\n",
+        "language": "sql",
+        "areas": [
+          "sql"
+        ]
+      }
+    ],
+    "uiTouched": false
+  },
+  "renders": [
+    {
+      "Title": "Migrations",
+      "Summary": "1 migration version(s) added, 0 pre-existing file(s) touched",
+      "Lines": [
+        "+ version 0002 — migrations/0002_add_tenant.up.sql"
+      ]
+    },
+    {
+      "Title": "Suppressions",
+      "Summary": "0 lint-silencing directive(s) added by this change",
+      "Lines": null
+    },
+    {
+      "Title": "Tests",
+      "Summary": "1 test-delta fact(s) from the diff",
+      "Lines": [
+        "~ internal/store (no test changed)"
+      ]
+    }
+  ]
+}

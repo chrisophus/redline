@@ -1,0 +1,24 @@
+{
+  "name": "harness-injected-config",
+  "origin": "chrisophus/redline commit 4cfafc4",
+  "summary": "Two package-level globals holding harness state are replaced by fields on the lint pane, and PrepareWorktree gains a prepared map parameter. Every call site is updated in the same commit. Glob patterns gain a compile cache.",
+  "clean": false,
+  "why_this_fixture_exists": "An exported signature changes and the callers live in other packages. The review should confirm the callers moved rather than invent a break, which is the failure mode a caller-blind reviewer has here.",
+  "expect": [
+    {
+      "key": "nil-prepared-map",
+      "what": "The prepared map is read before it is written and the write is guarded by a nil check, so passing nil is accepted and silently disables the deduplication the parameter exists for.",
+      "file": "internal/harness/harness.go",
+      "any_of": ["nil", "prepared", "dedup", "silently"],
+      "optional": true,
+      "note": "Worth having, not required. Marked optional so a run that misses it is not scored as a miss."
+    }
+  ],
+  "quiet": [
+    {
+      "about": "claiming a caller was missed",
+      "note": "Every caller of PrepareWorktree is updated in this same commit. A finding that says one was not is a false positive, and the expensive kind: it sends the author looking for a break that is not there.",
+      "matches_without_correlation": ["missed caller", "caller was not updated", "will not compile", "breaks the build"]
+    }
+  ]
+}
