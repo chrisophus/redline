@@ -37,13 +37,20 @@ func cmdReview(o opts) error {
 		Envelopes: res.Envelopes,
 		Absent:    res.ContextAbsent,
 	}
+	// Price the estimate against what this installation's reviews actually
+	// emit, when it has emitted any.
+	var expected int64
+	if entries, lerr := review.ReadLedger(o.out); lerr == nil {
+		expected = review.Summarize(entries).ExpectedOutput()
+	}
 	ropts := review.Options{
-		Model:      o.model,
-		Effort:     o.effort,
-		Ceiling:    o.ceiling,
-		MaxTokens:  int64(o.maxTokens),
-		MaxCostUSD: o.maxCost,
-		DryRun:     o.dryRun,
+		Model:          o.model,
+		Effort:         o.effort,
+		Ceiling:        o.ceiling,
+		MaxTokens:      int64(o.maxTokens),
+		MaxCostUSD:     o.maxCost,
+		ExpectedOutput: expected,
+		DryRun:         o.dryRun,
 	}
 
 	out, err := review.Run(context.Background(), in, ropts)
@@ -69,8 +76,10 @@ func cmdReview(o opts) error {
 		// run is to see exactly what would be sent, and the estimated price
 		// of sending it.
 		fmt.Print(out.Prompt)
-		fmt.Fprintf(os.Stderr, "\nredline: %d input tokens estimated, at most %s to send\n",
-			out.InputEstimate, review.FormatCost(out.CostUSD, out.CostKnown))
+		fmt.Fprintf(os.Stderr, "\nredline: %d input tokens estimated; expect %s, at most %s\n",
+			out.InputEstimate,
+			review.FormatCost(out.CostUSD, out.CostKnown),
+			review.FormatCost(out.CostCeilingUSD, out.CostKnown))
 		return nil
 	}
 	fmt.Fprintln(os.Stderr, "redline: review", out.Summary())

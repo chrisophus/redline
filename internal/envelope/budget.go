@@ -20,12 +20,24 @@ import (
 // will show it as one.
 const DefaultCeiling = 250_000
 
-// charsPerToken is the estimate used to price an expansion. Redline cannot
-// tokenize without linking a tokenizer for a specific model, and the budget
-// is a ceiling rather than an accounting record, so an estimate that errs
-// toward over-counting is the right tool. Four characters per token is the
-// usual rule of thumb for source code.
-const charsPerToken = 4
+// Tokens are estimated from character count, because tokenizing properly
+// means linking a tokenizer for one specific model and this number has to
+// hold for any of them.
+//
+// The ratio is for code, not prose. Four characters per token is the rule of
+// thumb for English; source is denser in punctuation and identifiers and runs
+// closer to three, so dividing by four under-counts a code prompt by roughly
+// a fifth. That is the wrong direction for a number a ceiling is enforced
+// against: it would let a request through that then exceeds the budget it was
+// admitted under. Three and a half is the compromise, and it errs high on
+// prose, which is the harmless side.
+//
+// Anything that needs a real count should ask the API's own token counter,
+// which is free and exact. This is the offline approximation for budgeting.
+const (
+	charsPerTokenNum = 2 // divide by 7/2, i.e. 3.5 characters per token
+	charsPerTokenDen = 7
+)
 
 // EstimateTokens prices a string. Deliberately crude and deliberately
 // pessimistic: rounding up means a change never exceeds the ceiling it was
@@ -34,7 +46,7 @@ func EstimateTokens(s string) int {
 	if s == "" {
 		return 0
 	}
-	return (len(s) + charsPerToken - 1) / charsPerToken
+	return (len(s)*charsPerTokenNum + charsPerTokenDen - 1) / charsPerTokenDen
 }
 
 // Tokens is what one expansion costs, including the header Redline renders

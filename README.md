@@ -196,6 +196,13 @@ distribution:
 range $0.0120 to $0.5100, mean wall 14.2s
 ```
 
+Two numbers are reported before a call, and they answer different questions.
+The expected cost prices the input against what a review actually writes; the
+worst case prices it against every output token the model is allowed. The
+tripwire measures the worst case, because that is what a tripwire is for. The
+expected figure starts from a documented default and switches to this
+installation's own measured median output as soon as the ledger has one.
+
 The bar is GitHub Copilot's code review, in cost and in effectiveness. Cost:
 Copilot's code-review model carried a published multiplier of 13 premium
 requests, roughly 52 cents at the legacy overage rate; it has since moved to
@@ -213,7 +220,7 @@ something the author cannot reproduce gets bypassed inside a month.
 
 Flags: `--model` (default `claude-sonnet-5`), `--effort`, `--ceiling`
 (default 250000 tokens, bounding the whole request), `--max-tokens`,
-`--max-cost` (a tripwire checked against the estimated cost before anything
+`--max-cost` (a tripwire checked against the worst-case cost before anything
 is sent), `--stats`, `--dry-run`.
 
 Credentials come from `ANTHROPIC_API_KEY` or an `ant auth login` profile.

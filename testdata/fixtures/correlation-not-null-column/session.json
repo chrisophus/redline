@@ -1,8 +1,8 @@
 {
   "report": {
     "schemaVersion": 1,
-    "baseRef": "38810b869dfca819a264aba3b36cfd19467a34a0",
-    "baseSHA": "38810b869dfca819a264aba3b36cfd19467a34a0",
+    "baseRef": "529db32b6bbd2a8ab1433b73fb51845fa8cc404d",
+    "baseSHA": "529db32b6bbd2a8ab1433b73fb51845fa8cc404d",
     "scope": [
       "internal/store/user.go",
       "migrations/0002_add_tenant.up.sql"
@@ -25,7 +25,7 @@
           "id": "users.tenant_id"
         },
         "evidence": [
-          "migrations@38810b869dfca819a264aba3b36cfd19467a34a0",
+          "migrations@529db32b6bbd2a8ab1433b73fb51845fa8cc404d",
           "migrations@worktree"
         ],
         "expected": "a default, or a backfill before the constraint",
@@ -96,7 +96,7 @@
       {
         "substrate": "redline/sql",
         "rule": "migration-version-unique",
-        "message": "version 0002 is not present on 38810b869dfca819a264aba3b36cfd19467a34a0",
+        "message": "version 0002 is not present on 529db32b6bbd2a8ab1433b73fb51845fa8cc404d",
         "anchor": {
           "kind": "migration",
           "id": "0002"
@@ -128,15 +128,15 @@
   "change": {
     "target": {
       "kind": "commit",
-      "dir": "/root/.redline/worktrees/9044ca979c078bb4/776bd2f36b727893b6b94178e10e032a6437c07e",
-      "head": "776bd2f36b727893b6b94178e10e032a6437c07e",
-      "base": "38810b869dfca819a264aba3b36cfd19467a34a0",
+      "dir": "/root/.redline/worktrees/f6aa32fc9bd5390a/665a736220d967b480b5d8904742e7de3fd6eda5",
+      "head": "665a736220d967b480b5d8904742e7de3fd6eda5",
+      "base": "529db32b6bbd2a8ab1433b73fb51845fa8cc404d",
       "label": "HEAD"
     },
-    "baseSHA": "38810b869dfca819a264aba3b36cfd19467a34a0",
+    "baseSHA": "529db32b6bbd2a8ab1433b73fb51845fa8cc404d",
     "commits": [
       {
-        "sha": "776bd2f36b727893b6b94178e10e032a6437c07e",
+        "sha": "665a736220d967b480b5d8904742e7de3fd6eda5",
         "author": "fixture",
         "subject": "add tenant scoping to users"
       }
@@ -203,7 +203,7 @@
         "version": "v0.0.0-20260907222515-4833e7e8a214+dirty",
         "language": "go"
       },
-      "baseSHA": "38810b869dfca819a264aba3b36cfd19467a34a0",
+      "baseSHA": "529db32b6bbd2a8ab1433b73fb51845fa8cc404d",
       "files": [
         {
           "path": "internal/store/user.go",
@@ -258,7 +258,7 @@
           "file": "internal/store/user.go",
           "startLine": 5,
           "endLine": 7,
-          "content": "commit 776bd2f36b727893b6b94178e10e032a6437c07e\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:43:45+00:00\n\n    add tenant scoping to users\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- a/internal/store/user.go\n+++ b/internal/store/user.go\n@@ -5,2 +5,3 @@\n-\tID    string\n-\tEmail string\n+\tID       string\n+\tEmail    string\n+\tTenantID string\n\ncommit 38810b869dfca819a264aba3b36cfd19467a34a0\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:43:44+00:00\n\n    initial schema and store\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +5,2 @@\n+\tID    string\n+\tEmail string\n",
+          "content": "commit 665a736220d967b480b5d8904742e7de3fd6eda5\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:52:58+00:00\n\n    add tenant scoping to users\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- a/internal/store/user.go\n+++ b/internal/store/user.go\n@@ -5,2 +5,3 @@\n-\tID    string\n-\tEmail string\n+\tID       string\n+\tEmail    string\n+\tTenantID string\n\ncommit 529db32b6bbd2a8ab1433b73fb51845fa8cc404d\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:52:58+00:00\n\n    initial schema and store\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +5,2 @@\n+\tID    string\n+\tEmail string\n",
           "details": {
             "kind": "line-history",
             "lines": "5-7",
@@ -271,7 +271,7 @@
           "file": "internal/store/user.go",
           "startLine": 5,
           "endLine": 6,
-          "content": "commit 38810b869dfca819a264aba3b36cfd19467a34a0\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:43:44+00:00\n\n    initial schema and store\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +5,2 @@\n+\tID    string\n+\tEmail string\n",
+          "content": "commit 529db32b6bbd2a8ab1433b73fb51845fa8cc404d\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:52:58+00:00\n\n    initial schema and store\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +5,2 @@\n+\tID    string\n+\tEmail string\n",
           "details": {
             "kind": "removed-line-history",
             "lines": "5-6 at the base revision",
