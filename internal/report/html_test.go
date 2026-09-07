@@ -732,3 +732,25 @@ func TestReportRendersAgentReview(t *testing.T) {
 		}
 	}
 }
+
+// The uncovered-files list is clickable: each opens the drawer for that file at
+// its first uncovered line, so a reviewer can jump from the gap to the code.
+func TestCoverageGapsAreClickable(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1, Diff: &cover.Result{
+				Profile: "coverage.out", Lines: 4, Covered: 2, Percent: 50,
+				Uncovered: []cover.FileGap{{Path: "a.go", Lines: []int{7, 9}}},
+			}},
+		},
+		Change: &change.Set{Files: []change.File{{Path: "a.go", Language: "go", Diff: "@@ -1 +1,9 @@\n+x\n"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`class="cov-jump"`, `data-jump="a.go"`, `data-line="7"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("coverage gap should be a drawer link; missing %q", want)
+		}
+	}
+}

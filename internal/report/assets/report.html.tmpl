@@ -184,6 +184,9 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   border-radius:6px;background:var(--bg);color:var(--ink);cursor:pointer}
 .line-tools button:hover{background:var(--code)}
 .cmt .act{font-weight:600;color:var(--accent);text-transform:uppercase;font-size:10px;letter-spacing:.06em;margin-right:6px}
+.cov-jump{font:inherit;font-size:inherit;text-align:left;background:none;border:0;padding:2px 0;
+  color:inherit;cursor:pointer;width:100%}
+.cov-jump:hover{color:var(--accent)}
 </style>
 </head>
 <body data-review="{{.Identity}}" data-target="{{.Subtitle}}">
@@ -248,7 +251,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <details>
   <summary>{{len .Uncovered}} file{{if ne (len .Uncovered) 1}}s{{end}} with added lines no test executes</summary>
   <div class="body"><ul class="plain">
-  {{range .Uncovered}}<li><code>{{.Path}}</code> — {{len .Lines}} line{{if ne (len .Lines) 1}}s{{end}}: {{range $i, $l := .Lines}}{{if $i}}, {{end}}{{$l}}{{end}}</li>{{end}}
+  {{range .Uncovered}}<li><button type="button" class="cov-jump" data-jump="{{.Path}}" data-line="{{index .Lines 0}}"><code>{{.Path}}</code> · {{len .Lines}} line{{if ne (len .Lines) 1}}s{{end}} not covered: {{range $i, $l := .Lines}}{{if $i}}, {{end}}{{$l}}{{end}}</button></li>{{end}}
   </ul></div>
 </details>
 {{end}}
@@ -704,6 +707,11 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 
   document.querySelectorAll(".walk-row.jump").forEach(function (row) {
     row.addEventListener("click", function () { open(row.getAttribute("data-jump"), row); });
+  });
+  document.querySelectorAll(".cov-jump").forEach(function (b) {
+    b.addEventListener("click", function () {
+      open(b.getAttribute("data-jump"), b, parseInt(b.getAttribute("data-line"), 10) || 0);
+    });
   });
   document.querySelectorAll(".f-view").forEach(function (b) {
     b.addEventListener("click", function () {

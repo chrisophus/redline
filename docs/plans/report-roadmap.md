@@ -42,17 +42,27 @@ the same as the review comments. `redline serve` is the upgrade path if a live
 loop is worth a running process later. This is the prequel affordance minus the
 server.
 
-## Now: see coverage and click through
+## Shipped: jump from a coverage gap to the code
 
 The coverage overlay stripes each changed head line green (a test ran it), amber
-(none did), or nothing (not coverable). Two things are missing.
+(none did), or nothing (not coverable). The uncovered-files list in the Coverage
+section is now clickable: each entry opens the drawer for that file at its first
+uncovered line, already amber and highlighted.
 
-- The uncovered-files list in the Coverage section is not clickable. Make each
-  entry open the drawer for that file at its first uncovered line.
-- Click a line, see the tests that cover it. The profile knows covered from
-  uncovered but not which test ran a line. That needs per-test coverage: run the
-  suite per test or per package with `-coverprofile` and map tests to blocks.
-  This is the same data mutation testing needs, so it is worth building once.
+## Next: click a line, see the tests that cover it
+
+The profile knows covered from uncovered but not which test ran a line. Showing
+the tests behind a line needs per-test coverage: run the suite per test, or per
+package with a narrowed `-run`, and map tests to blocks.
+
+This one fights a design principle. cover.go reads a profile the repo already has
+rather than running the suite, on purpose: tests can need a database or minutes of
+wall time, and a tool that silently runs your suite before every push is not one
+you reach for. Per-test coverage means running tests, many times. So it cannot be
+the default `run` behavior. Options to decide before building: an opt-in flag
+(`redline cover --per-test`) that writes a per-line-to-tests map the report reads,
+a separate command, or leaving it to the agent to produce the map as another
+ingested file. This is the same data mutation testing needs, so build it once.
 
 ## Later: mutation testing
 
