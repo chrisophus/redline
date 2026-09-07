@@ -227,10 +227,6 @@ func (r *Review) CommentFindings() []Finding {
 // flowing through verbatim, where an unknown value would outrank real errors
 // in Sort, appear in no severity tile, and never match the post gate's
 // blocking list.
-func normalizeSeverity(s Severity) Severity {
-	return normalizeSeverityFor(s, CategoryReview)
-}
-
 // normalizeSeverityFor maps whatever the review file wrote onto the three
 // severities, falling back to the category's own default rather than letting
 // an unknown value through, where it would outrank real errors in Sort,

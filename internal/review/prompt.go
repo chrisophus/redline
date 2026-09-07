@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/findings"
 )
@@ -266,17 +265,4 @@ func (in Input) diffSection() string {
 		fmt.Fprintf(&b, "### %s\n```diff\n%s\n```\n\n", f.Path, strings.TrimRight(f.Diff, "\n"))
 	}
 	return b.String()
-}
-
-// diffTokens estimates what the diff costs, so the caller can tell a change
-// too large to review from one the ceiling merely trimmed.
-func diffTokens(c *change.Set) int {
-	if c == nil {
-		return 0
-	}
-	var n int
-	for _, f := range c.Files {
-		n += envelope.EstimateTokens(f.Diff)
-	}
-	return n
 }
