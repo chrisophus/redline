@@ -49,7 +49,8 @@ flags:
   --migrations DIR  restrict migration checks to one directory
   --format FMT      report|json  (default report)
   --out DIR         evidence directory (default .redline)
-  --prepare         run harness produce steps from .redline.yml before observe
+	--prepare         run harness produce steps from .redline.yml before observe
+  --allow-missing-coverage  continue when no coverage profile (default: fail)
   --open            open the HTML report when done
   --no-open         never open a browser
   --file            open (or print) the report as a file:// path, no server
@@ -84,7 +85,7 @@ func main() {
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
 	reportURL, profile, olderThan                                     string
-	open, noOpen, stop, dryRun, file, prepare                          bool
+	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage          bool
 	port                                                              int
 }
 
@@ -110,6 +111,7 @@ func runMain(args []string) error {
 	fs.StringVar(&o.commit, "commit", "", "commit to review against its parent")
 	fs.StringVar(&o.revRange, "range", "", "commit range A..B")
 	fs.BoolVar(&o.prepare, "prepare", false, "run harness produce steps from .redline.yml before observe")
+	fs.BoolVar(&o.allowMissingCoverage, "allow-missing-coverage", false, "continue when changed Go files have no coverage profile")
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
 	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")
@@ -154,25 +156,34 @@ func (o opts) target() target.Options {
 func (o opts) toRun(dir string) run.Options {
 	return run.Options{Dir: dir, Base: o.base, Upstream: o.upstream,
 		MigDir: o.migDir, PR: o.pr, Branch: o.branch, Commit: o.commit,
-		Range: o.revRange, Out: o.out}
+		Range: o.revRange, Out: o.out, AllowMissingCoverage: o.allowMissingCoverage}
 }
 
 func cmdRun(o opts) error {
-	res, err := execute(o)
-	if err != nil {
-		return err
+	res, runErr := execute(o)
+	if res == nil {
+		return runErr
 	}
 	if err := write(o, res); err != nil {
 		return err
 	}
 	if o.format == "json" {
-		return emitJSON(res.Report)
+		if err := emitJSON(res.Report); err != nil {
+			return err
+		}
+		return runErr
 	}
 	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence, res.Change))
 	if o.file {
-		return openFile(o.out, o.open && !o.noOpen)
+		if err := openFile(o.out, o.open && !o.noOpen); err != nil {
+			return err
+		}
+		return runErr
 	}
-	return announce(o.out, o.port, o.open && !o.noOpen)
+	if err := announce(o.out, o.port, o.open && !o.noOpen); err != nil {
+		return err
+	}
+	return runErr
 }
 
 // openFile points at report.html on disk, no server. The page is

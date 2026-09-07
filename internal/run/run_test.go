@@ -60,6 +60,7 @@ func (r *repo) commit(msg string) {
 func (r *repo) run(opts run.Options) *run.Result {
 	r.t.Helper()
 	opts.Dir = r.dir
+	opts.AllowMissingCoverage = true
 	res, err := run.Run(opts)
 	if err != nil {
 		r.t.Fatalf("run: %v", err)
@@ -423,6 +424,19 @@ func TestMissingCoverageProfileIsUndetermined(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("a missing profile must be an unknown, got %+v", rep.Unknowns)
+	}
+}
+
+func TestMissingCoverageProfileBalksByDefault(t *testing.T) {
+	r := baseline(t)
+	r.write("internal/x/x.go", "package x\n\nfunc A() int {\n\treturn 1\n}\n")
+
+	_, err := run.Run(run.Options{Dir: r.dir, Base: "main", Upstream: "upstream"})
+	if err == nil {
+		t.Fatal("expected an error when coverage is missing")
+	}
+	if !strings.Contains(err.Error(), "coverage profile missing or stale") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

@@ -26,6 +26,7 @@ deterministic check already established.
 ```
 redline run                   # working tree (uncommitted work included)
 redline run --prepare         # run harness produce steps first (coverage, etc.)
+redline run --allow-missing-coverage  # skip coverage when no profile (default: fail)
 redline run --commit HEAD     # latest commit only
 redline run --range HEAD~3..HEAD
 redline run --branch feat/x
@@ -33,6 +34,8 @@ redline run --pr 123
 ```
 
 For coverage, `--prepare` is usually enough when `harness:` is configured.
+Without a profile, `redline run` exits non-zero by default. Pass
+`--allow-missing-coverage` only when you accept an unmeasured diff.
 For mutation (gomutants), run the repository's mutate target first when you
 want that overlay (`make mutate` in MCT; needs `eval $(make db-dsns)` when
 data packages are in scope). It writes `mutants.json` at the repo root.

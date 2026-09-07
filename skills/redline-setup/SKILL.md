@@ -74,6 +74,15 @@ optional `scope` globs, optional `env.from` script sourced before each
 produce step). Point `path` at `coverage.out` (or where the suite writes)
 and `produce` at the same command CI uses (`make test-coverage`, etc.).
 
+When the repository embeds built assets for Go compile (for example
+`ui/embed.go` with `//go:embed dist`), add `harness.worktree` steps that
+run in the tree under review before linters execute. Detached PR worktrees
+do not carry gitignored build dirs, so the same precondition Make uses
+(`make stub-ui`, `_ensure-ui-embed`) must run there. Use `when: missing`
+and point `path` at the file the embed needs (for example
+`ui/dist/index.html`). Do not put these in `profiles:`; they are not
+artifacts Redline reads from the origin checkout.
+
 Mutation testing (gomutants), when `.gomutants.yml` exists or the
 repository has a `make mutate` target: Redline reads a gomutants JSON
 report at `mutants.json` or `mutation-report.json` at the repo root and

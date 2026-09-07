@@ -10,9 +10,9 @@ import (
 )
 
 // Prepare runs harness produce steps declared in .redline.yml before observe.
-// It uses the caller's checkout (opts.Dir) for artifacts, not a detached PR
-// worktree, because coverage profiles and make targets live where the developer
-// runs tests.
+// Profiles run in the tree under review when that is a detached worktree (PR
+// or branch), so coverage.out describes the revision being reviewed. Otherwise
+// they run in the caller's checkout.
 func Prepare(opts Options) ([]string, error) {
 	tgt, err := target.Resolve(target.Options{
 		Dir: opts.Dir, PR: opts.PR, Branch: opts.Branch,
@@ -46,9 +46,32 @@ func Prepare(opts Options) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := harness.Load(origin.Root)
+	cfg, err := harness.Load(harnessConfigRoot(opts.Dir, tgt))
 	if err != nil {
 		return nil, err
 	}
-	return harness.Prepare(origin.Root, changed, cfg)
+	return harness.Prepare(harnessProduceRoot(origin.Root, tgt.Dir), changed, cfg)
+}
+
+// harnessProduceRoot is where harness profiles write artifacts. A detached PR
+// or branch worktree must run test-coverage itself; the origin checkout's
+// profile does not describe that revision unless it is checked out there.
+func harnessProduceRoot(originRoot, observeRoot string) string {
+	if observeRoot != "" && observeRoot != originRoot {
+		return observeRoot
+	}
+	return originRoot
+}
+
+// harnessConfigRoot is where .redline.yml is read from: the checkout the user
+// ran redline in, not necessarily the detached worktree under review.
+func harnessConfigRoot(dir string, tgt *target.Target) string {
+	if dir == "" {
+		return tgt.Dir
+	}
+	orig, err := gitx.Open(dir)
+	if err != nil {
+		return tgt.Dir
+	}
+	return orig.Root
 }

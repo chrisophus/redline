@@ -22,8 +22,12 @@ var configNames = []string{".redline.yml", ".redline.yaml"}
 
 // Config is the harness section of .redline.yml.
 type Config struct {
-	Env      EnvConfig `yaml:"env"`
-	Profiles []Profile `yaml:"profiles"`
+	Env       EnvConfig `yaml:"env"`
+	Profiles  []Profile `yaml:"profiles"`
+	// Worktree steps run in the tree under review (including detached PR
+	// worktrees) before panes that execute tools there, for example make
+	// stub-ui so go:embed dist exists for golangci-lint typecheck.
+	Worktree []Profile `yaml:"worktree"`
 }
 
 // EnvConfig is optional environment setup before each produce step.
@@ -67,7 +71,7 @@ func Load(root string) (*Config, error) {
 		if err := yaml.Unmarshal(data, &cfg); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
-		if len(cfg.Harness.Profiles) == 0 {
+		if len(cfg.Harness.Profiles) == 0 && len(cfg.Harness.Worktree) == 0 {
 			return nil, nil
 		}
 		if err := validate(&cfg.Harness, name); err != nil {
@@ -80,26 +84,41 @@ func Load(root string) (*Config, error) {
 
 func validate(cfg *Config, file string) error {
 	seen := map[string]bool{}
-	for i, p := range cfg.Profiles {
+	if err := validateProfiles(&cfg.Profiles, file, "profiles", "stale", seen); err != nil {
+		return err
+	}
+	return validateProfiles(&cfg.Worktree, file, "worktree", "missing", seen)
+}
+
+func validateProfiles(profiles *[]Profile, file, section, defaultWhen string, seen map[string]bool) error {
+	for i, p := range *profiles {
 		if p.Path == "" {
-			return fmt.Errorf("%s: harness.profiles[%d] has no path", file, i)
+			return fmt.Errorf("%s: harness.%s[%d] has no path", file, section, i)
 		}
 		if p.Produce.Command == "" {
-			return fmt.Errorf("%s: harness profile %q has no produce.command", file, p.ID)
+			id := p.ID
+			if id == "" {
+				id = p.Path
+			}
+			return fmt.Errorf("%s: harness %s profile %q has no produce.command", file, section, id)
 		}
 		when := strings.TrimSpace(p.When)
 		if when == "" {
-			cfg.Profiles[i].When = "stale"
+			(*profiles)[i].When = defaultWhen
 		} else if when != "missing" && when != "stale" && when != "always" {
-			return fmt.Errorf("%s: harness profile %q: when must be missing, stale, or always", file, p.ID)
+			id := p.ID
+			if id == "" {
+				id = p.Path
+			}
+			return fmt.Errorf("%s: harness %s profile %q: when must be missing, stale, or always", file, section, id)
 		}
-		if p.ID == "" {
-			cfg.Profiles[i].ID = p.Path
+		if (*profiles)[i].ID == "" {
+			(*profiles)[i].ID = p.Path
 		}
-		if seen[cfg.Profiles[i].ID] {
-			return fmt.Errorf("%s: duplicate harness profile id %q", file, cfg.Profiles[i].ID)
+		if seen[(*profiles)[i].ID] {
+			return fmt.Errorf("%s: duplicate harness profile id %q", file, (*profiles)[i].ID)
 		}
-		seen[cfg.Profiles[i].ID] = true
+		seen[(*profiles)[i].ID] = true
 	}
 	return nil
 }
@@ -107,20 +126,35 @@ func validate(cfg *Config, file string) error {
 // Prepare runs produce for profiles that need fresh artifacts. changed is the
 // paths in the diff under review. Returns the profile ids that were produced.
 func Prepare(root string, changed []string, cfg *Config) ([]string, error) {
-	if cfg == nil || len(cfg.Profiles) == 0 {
+	if cfg == nil {
+		return nil, nil
+	}
+	return runProfiles(root, changed, cfg.Env.From, cfg.Profiles, "preparing")
+}
+
+// PrepareWorktree runs harness.worktree steps in the tree under review before
+// tool panes execute there (detached PR worktrees included).
+func PrepareWorktree(root string, changed []string, cfg *Config) ([]string, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+	return runProfiles(root, changed, cfg.Env.From, cfg.Worktree, "worktree")
+}
+
+func runProfiles(root string, changed []string, envFrom string, profiles []Profile, label string) ([]string, error) {
+	if len(profiles) == 0 {
 		return nil, nil
 	}
 	var produced []string
-	for _, p := range cfg.Profiles {
+	for _, p := range profiles {
 		if !needsProduce(root, p, changed) {
 			continue
 		}
-		label := p.ID
-		fmt.Fprintf(os.Stderr, "redline: preparing %s: %s %s\n", label, p.Produce.Command, strings.Join(p.Produce.Args, " "))
-		if err := runProduce(root, cfg.Env.From, p.Produce); err != nil {
-			return produced, fmt.Errorf("harness profile %s: %w", label, err)
+		fmt.Fprintf(os.Stderr, "redline: %s %s: %s %s\n", label, p.ID, p.Produce.Command, strings.Join(p.Produce.Args, " "))
+		if err := runProduce(root, envFrom, p.Produce); err != nil {
+			return produced, fmt.Errorf("harness profile %s: %w", p.ID, err)
 		}
-		produced = append(produced, label)
+		produced = append(produced, p.ID)
 	}
 	return produced, nil
 }

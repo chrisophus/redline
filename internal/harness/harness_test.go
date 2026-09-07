@@ -94,6 +94,43 @@ func TestLoadValidates(t *testing.T) {
 	}
 }
 
+func TestLoadWorktreeOnly(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".redline.yml"), []byte(`harness:
+  worktree:
+    - path: ui/dist/index.html
+      produce: {command: make, args: [stub-ui]}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil || cfg == nil || len(cfg.Worktree) != 1 {
+		t.Fatalf("cfg=%v err=%v", cfg, err)
+	}
+	if cfg.Worktree[0].When != "missing" {
+		t.Fatalf("default when: %q", cfg.Worktree[0].When)
+	}
+}
+
+func TestPrepareWorktreeMissing(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{
+		Worktree: []Profile{{
+			ID:      "ui",
+			Path:    "ui/dist/index.html",
+			When:    "missing",
+			Produce: ProduceConfig{Command: "mkdir", Args: []string{"-p", "ui/dist"}},
+		}},
+	}
+	produced, err := PrepareWorktree(dir, nil, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(produced) != 1 {
+		t.Fatalf("produced: %v", produced)
+	}
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	cfg, err := Load(t.TempDir())
 	if err != nil || cfg != nil {

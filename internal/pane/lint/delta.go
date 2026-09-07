@@ -10,6 +10,7 @@ import (
 	"github.com/ccason/redline/internal/cover"
 	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/gitx"
+	"github.com/ccason/redline/internal/harness"
 	"github.com/ccason/redline/internal/pane"
 )
 
@@ -118,6 +119,11 @@ func (p *Delta) Observe(rev pane.Revision) (pane.Observation, error) {
 		dir, werr = p.Repo.AddWorktree(rev.Rev)
 		if werr != nil {
 			return nil, fmt.Errorf("checking out the base revision to lint it: %w", werr)
+		}
+	}
+	if cfg := harness.Active; cfg != nil {
+		if _, err := harness.PrepareWorktree(dir, p.scoped, cfg); err != nil {
+			return nil, err
 		}
 	}
 	snap := &snapshot{Rev: rev.Rev}

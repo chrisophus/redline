@@ -105,6 +105,15 @@ tools:
 #       when: stale                  # missing | stale | always (default stale)
 #       scope: ["**/*.go"]           # optional: skip when change does not touch
 #
+# harness.worktree — steps in the tree under review before linters run (PR
+# worktrees included), for example make stub-ui when go:embed needs ui/dist:
+#
+#   worktree:
+#     - id: ui-embed
+#       path: ui/dist/index.html
+#       produce: {command: make, args: [stub-ui]}
+#       when: missing
+#
 # Mutation (gomutants): not harness. Redline reads mutants.json or
 # mutation-report.json at the repo root when present. Wire the repository's
 # mutate make target to pass -o mutants.json; run mutate by hand before review.

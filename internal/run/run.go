@@ -2,6 +2,7 @@
 package run
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -11,6 +12,7 @@ import (
 	"github.com/ccason/redline/internal/cover"
 	"github.com/ccason/redline/internal/findings"
 	"github.com/ccason/redline/internal/gitx"
+	"github.com/ccason/redline/internal/harness"
 	"github.com/ccason/redline/internal/mutation"
 	"github.com/ccason/redline/internal/pane"
 	"github.com/ccason/redline/internal/pane/lint"
@@ -34,6 +36,10 @@ type Options struct {
 	Commit string
 	Range  string
 	Out    string // evidence directory; excluded from the change like .redline/
+
+	// AllowMissingCoverage skips the error when changed Go files have no
+	// coverage profile or the profile is stale. Default is to fail.
+	AllowMissingCoverage bool
 }
 
 // Result is a report plus the per-pane renders backing section 1 and the
@@ -94,6 +100,18 @@ func Run(opts Options) (*Result, error) {
 	// actually read. What was dropped is recorded and shown: an exclusion the
 	// reader cannot see is indistinguishable from a file that never changed.
 	changed, generated := change.Generated(tgt.Dir, changed, repo.AttrSet("linguist-generated", changed))
+
+	cfg, err := harness.Load(harnessConfigRoot(opts.Dir, tgt))
+	if err != nil {
+		return nil, err
+	}
+	harness.Active = cfg
+	defer func() { harness.Active = nil }()
+	if cfg != nil {
+		if _, err := harness.PrepareWorktree(tgt.Dir, changed, cfg); err != nil {
+			return nil, err
+		}
+	}
 
 	res := &Result{Evidence: map[string]pane.Artifact{}, Target: tgt, Report: findings.Report{
 		BaseRef: baseRef,
@@ -232,7 +250,34 @@ func Run(opts Options) (*Result, error) {
 	attachDiffCoverage(&res.Report, res.Change, tgt.Dir, covDir)
 	res.LineCoverage = lineCoverageOverlay(tgt.Dir, covDir, res.Change)
 	attachMutation(&res.Report, res.Change, opts.Dir)
+	if err := coverageGate(&res.Report, opts.AllowMissingCoverage); err != nil {
+		return res, err
+	}
 	return res, nil
+}
+
+// ErrMissingCoverage is returned when changed Go files have no usable profile.
+var ErrMissingCoverage = errors.New("coverage profile missing or stale")
+
+func coverageGate(rep *findings.Report, allowMissing bool) error {
+	if allowMissing || !coverageProfileRequired(rep) {
+		return nil
+	}
+	msg := fmt.Sprintf("coverage profile missing or stale for %d changed Go file(s)", rep.Coverage.CoverableFiles)
+	if harness.Active != nil && len(harness.Active.Profiles) > 0 {
+		msg += "; run with --prepare"
+	}
+	return fmt.Errorf("%s: %w", msg, ErrMissingCoverage)
+}
+
+func coverageProfileRequired(rep *findings.Report) bool {
+	if rep.Coverage.CoverableFiles == 0 {
+		return false
+	}
+	if rep.Coverage.Diff == nil {
+		return true
+	}
+	return rep.Coverage.Diff.Stale
 }
 
 // attachDiffCoverage computes the number that stands in for reading the tests.
@@ -269,10 +314,14 @@ func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir, originDir str
 	}
 	switch {
 	case rep.Coverage.Diff == nil:
+		reason := "looked for coverage.out, cover.out, coverage.txt and c.out; run the suite with -coverprofile to get this number"
+		if harness.Active != nil && len(harness.Active.Profiles) > 0 {
+			reason += "; or run redline with --prepare to produce it via harness"
+		}
 		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
 			Substrate: "redline/tests",
 			Message:   fmt.Sprintf("no coverage profile was found, so whether any test executes the %d changed Go file(s) is unknown", goFiles),
-			Reason:    "looked for coverage.out, cover.out, coverage.txt and c.out; run the suite with -coverprofile to get this number",
+			Reason:    reason,
 		})
 	case rep.Coverage.Diff.Stale:
 		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
