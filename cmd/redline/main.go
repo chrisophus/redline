@@ -49,6 +49,7 @@ flags:
   --migrations DIR  restrict migration checks to one directory
   --format FMT      report|json  (default report)
   --out DIR         evidence directory (default .redline)
+  --prepare         run harness produce steps from .redline.yml before observe
   --open            open the HTML report when done
   --no-open         never open a browser
   --file            open (or print) the report as a file:// path, no server
@@ -83,7 +84,7 @@ func main() {
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
 	reportURL, profile, olderThan                                     string
-	open, noOpen, stop, dryRun, file                                  bool
+	open, noOpen, stop, dryRun, file, prepare                          bool
 	port                                                              int
 }
 
@@ -108,6 +109,7 @@ func runMain(args []string) error {
 	fs.StringVar(&o.branch, "branch", "", "branch to review")
 	fs.StringVar(&o.commit, "commit", "", "commit to review against its parent")
 	fs.StringVar(&o.revRange, "range", "", "commit range A..B")
+	fs.BoolVar(&o.prepare, "prepare", false, "run harness produce steps from .redline.yml before observe")
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
 	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")
@@ -224,6 +226,11 @@ func execute(o opts) (*run.Result, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, err
+	}
+	if o.prepare {
+		if _, err := run.Prepare(o.toRun(cwd)); err != nil {
+			return nil, err
+		}
 	}
 	return run.Run(o.toRun(cwd))
 }

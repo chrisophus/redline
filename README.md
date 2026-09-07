@@ -89,6 +89,7 @@ A project skill overrides the personal one. Teammates still need the binary.
 ```
 go build ./cmd/redline
 ./redline run                     # observe; markdown report on stdout
+./redline run --prepare           # run harness produce steps from .redline.yml first
 ./redline run --format json       # findings schema on stdout
 ./redline run --pr 123            # observe an open pull request
 ./redline post --pr 123           # post the session's findings as one PR review

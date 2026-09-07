@@ -380,6 +380,16 @@ func totalCoverage(blocks map[string][]block) (lines, covered int) {
 	return lines, covered
 }
 
+// ArtifactStale reports whether artifact at root/rel is older than any of the
+// changed paths. Used by the harness to decide whether to re-run a produce step.
+func ArtifactStale(root, rel string, changedPaths []string) bool {
+	changed := make([]Changed, len(changedPaths))
+	for i, p := range changedPaths {
+		changed[i] = Changed{Path: p}
+	}
+	return isStale(root, filepath.Join(root, rel), changed)
+}
+
 // isStale compares the profile's timestamp with the files under review. A
 // profile written before the code it supposedly covers cannot be describing it.
 func isStale(root, profile string, changed []Changed) bool {

@@ -221,7 +221,7 @@ func TestCommentFindingsNormalizesSeverity(t *testing.T) {
 		{File: "a.go", Line: 3, Body: "empty"},
 	}}
 	got := r.CommentFindings()
-	want := []findings.Severity{findings.SeverityWarning, findings.SeverityInfo, findings.SeverityInfo}
+	want := []findings.Severity{findings.SeverityWarning, findings.SeverityError, findings.SeverityInfo}
 	if len(got) != len(want) {
 		t.Fatalf("got %d findings, want %d", len(got), len(want))
 	}
@@ -229,5 +229,40 @@ func TestCommentFindingsNormalizesSeverity(t *testing.T) {
 		if got[i].Severity != want[i] {
 			t.Errorf("comment %d: severity %q, want %q", i, got[i].Severity, want[i])
 		}
+	}
+}
+
+func TestLoadReviewAcceptsAliases(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "review.json")
+	data := `{
+  "what_it_does": "Adds partner targeting.",
+  "files": [
+    {"path": "internal/foo.go", "summary": "New mapping."},
+    {"path": "internal/bar.go", "summary": "Tests."}
+  ],
+  "findings": [
+    {"path": "internal/foo.go", "line": 12, "side": "RIGHT", "severity": "high", "body": "nil deref"}
+  ]
+}`
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := findings.LoadReview(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Overview != "Adds partner targeting." {
+		t.Fatalf("overview = %q", r.Overview)
+	}
+	if r.Files["internal/foo.go"] != "New mapping." || r.Files["internal/bar.go"] != "Tests." {
+		t.Fatalf("files = %+v", r.Files)
+	}
+	if len(r.Comments) != 1 || r.Comments[0].File != "internal/foo.go" || r.Comments[0].Side != "RIGHT" {
+		t.Fatalf("comments = %+v", r.Comments)
+	}
+	fs := r.CommentFindings()
+	if len(fs) != 1 || fs[0].Severity != findings.SeverityError {
+		t.Fatalf("finding severity = %+v", fs[0])
 	}
 }

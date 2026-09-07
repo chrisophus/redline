@@ -159,6 +159,8 @@ func runTool(dir string, name string, args ...string) (stdout string, stderr str
 // runGolangci runs golangci-lint with JSON output. Exit 0 is clean and exit 1
 // is issues found; anything else is the tool failing. The output flag changed
 // between major versions, so the v2 spelling is tried when v1's is refused.
+// Linter choice, path exclusions, and rule settings come from the repository's
+// own .golangci.yml; Redline does not override them.
 func runGolangci(dir string) ([]Issue, error) {
 	stdout, stderr, exit, err := runTool(dir, "golangci-lint", "run", "--out-format", "json", "./...")
 	if err != nil {

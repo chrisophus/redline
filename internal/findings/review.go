@@ -2,6 +2,7 @@ package findings
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 )
@@ -28,13 +29,42 @@ type ReviewComment struct {
 	File      string   `json:"file"`
 	Line      int      `json:"line,omitempty"`
 	StartLine int      `json:"startLine,omitempty"`
+	Side      string   `json:"side,omitempty"`
 	Severity  Severity `json:"severity,omitempty"`
 	Body      string   `json:"body"`
+}
+
+// reviewWire is the on-disk shape before aliases and flexible fields normalize.
+type reviewWire struct {
+	Overview   string             `json:"overview"`
+	WhatItDoes string             `json:"what_it_does"`
+	Files      json.RawMessage    `json:"files"`
+	Comments   json.RawMessage    `json:"comments"`
+	Findings   json.RawMessage    `json:"findings"`
+	Verdicts   map[string]Verdict `json:"verdicts"`
+}
+
+type reviewCommentWire struct {
+	File      string `json:"file"`
+	Path      string `json:"path"`
+	Line      int    `json:"line"`
+	StartLine int    `json:"startLine"`
+	Side      string `json:"side"`
+	Severity  string `json:"severity"`
+	Body      string `json:"body"`
+}
+
+type reviewFileEntry struct {
+	Path    string `json:"path"`
+	Summary string `json:"summary"`
 }
 
 // LoadReview reads a review file. A missing file is not an error: most runs have
 // no review yet. Every verdict and comment reads as source "llm" regardless of
 // what the file claims: Redline attributes the reading, the file does not.
+//
+// Aliases accepted for cross-tool compatibility: what_it_does for overview;
+// findings for comments; path for file; high/medium/low severities.
 func LoadReview(path string) (*Review, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -43,15 +73,82 @@ func LoadReview(path string) (*Review, error) {
 	if err != nil {
 		return nil, err
 	}
-	var r Review
-	if err := json.Unmarshal(data, &r); err != nil {
+	var wire reviewWire
+	if err := json.Unmarshal(data, &wire); err != nil {
 		return nil, err
 	}
+	r := &Review{Verdicts: wire.Verdicts}
+	r.Overview = strings.TrimSpace(wire.Overview)
+	if r.Overview == "" {
+		r.Overview = strings.TrimSpace(wire.WhatItDoes)
+	}
+	files, err := parseReviewFiles(wire.Files)
+	if err != nil {
+		return nil, fmt.Errorf("review files: %w", err)
+	}
+	r.Files = files
+	comments, err := parseReviewComments(wire.Comments, wire.Findings)
+	if err != nil {
+		return nil, fmt.Errorf("review comments: %w", err)
+	}
+	r.Comments = comments
 	for k, v := range r.Verdicts {
 		v.Source = SourceLLM
 		r.Verdicts[k] = v
 	}
-	return &r, nil
+	return r, nil
+}
+
+func parseReviewFiles(raw json.RawMessage) (map[string]string, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var asMap map[string]string
+	if err := json.Unmarshal(raw, &asMap); err == nil {
+		return asMap, nil
+	}
+	var asList []reviewFileEntry
+	if err := json.Unmarshal(raw, &asList); err != nil {
+		return nil, fmt.Errorf("want object or array of {path, summary}")
+	}
+	out := make(map[string]string, len(asList))
+	for _, e := range asList {
+		if e.Path == "" {
+			continue
+		}
+		out[e.Path] = e.Summary
+	}
+	return out, nil
+}
+
+func parseReviewComments(commentsRaw, findingsRaw json.RawMessage) ([]ReviewComment, error) {
+	raw := commentsRaw
+	if len(raw) == 0 || string(raw) == "null" {
+		raw = findingsRaw
+	}
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var wires []reviewCommentWire
+	if err := json.Unmarshal(raw, &wires); err != nil {
+		return nil, err
+	}
+	out := make([]ReviewComment, 0, len(wires))
+	for _, w := range wires {
+		file := strings.TrimSpace(w.File)
+		if file == "" {
+			file = strings.TrimSpace(w.Path)
+		}
+		out = append(out, ReviewComment{
+			File:      file,
+			Line:      w.Line,
+			StartLine: w.StartLine,
+			Side:      w.Side,
+			Severity:  Severity(strings.TrimSpace(w.Severity)),
+			Body:      w.Body,
+		})
+	}
+	return out, nil
 }
 
 // CommentFindings turns the agent's line comments into findings so they carry a
@@ -91,11 +188,11 @@ func (r *Review) CommentFindings() []Finding {
 // blocking list.
 func normalizeSeverity(s Severity) Severity {
 	switch Severity(strings.ToLower(strings.TrimSpace(string(s)))) {
-	case SeverityError:
+	case SeverityError, "high", "critical":
 		return SeverityError
-	case SeverityWarning:
+	case SeverityWarning, "medium", "med":
 		return SeverityWarning
-	case SeverityInfo:
+	case SeverityInfo, "low", "hint":
 		return SeverityInfo
 	}
 	return CategoryReview.DefaultSeverity()

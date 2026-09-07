@@ -66,6 +66,14 @@ already wired:
   in that shape that are not migrations.
 - Suppression triage and lint config drift need nothing.
 
+For coverage, also add a `harness:` section when the repository has a make
+target or script that writes the profile. `redline run --prepare` runs
+`produce` when the artifact is missing or stale relative to this change.
+See `.redline.yml.example` for the schema (`when: stale|missing|always`,
+optional `scope` globs, optional `env.from` script sourced before each
+produce step). Point `path` at `coverage.out` (or where the suite writes)
+and `produce` at the same command CI uses (`make test-coverage`, etc.).
+
 For each of these, confirm the binary is on PATH and, for coverage, that
 the profile exists and is fresh. Those are the two ways a built-in pane
 fails in practice.
@@ -182,8 +190,9 @@ command. Do not install it.
 
 ## 5. Validate
 
-After writing `.redline.yml`, run `redline run` on the working tree (or
-`--commit HEAD` in a clean tree) and read `.redline/findings.json`:
+After writing `.redline.yml`, run `redline run --prepare` on the working
+tree (or `--commit HEAD` in a clean tree) when harness profiles are
+configured, else `redline run`, and read `.redline/findings.json`:
 
 - Every tool you wired appears in the lint delta's tool list with a status
   other than failed. A failed tool means the command, flags, or mapping is

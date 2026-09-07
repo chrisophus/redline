@@ -25,6 +25,7 @@ deterministic check already established.
 
 ```
 redline run                   # working tree (uncommitted work included)
+redline run --prepare         # run harness produce steps first (coverage, etc.)
 redline run --commit HEAD     # latest commit only
 redline run --range HEAD~3..HEAD
 redline run --branch feat/x
@@ -117,15 +118,16 @@ When you receive it:
 
 If you produce a review of the change, an overview, a per-file summary, and line
 comments, write it to `.redline/review.json` and Redline folds it into the
-report on the next run. This is the same file the verdicts below live in. Redline
-renders what you wrote, marked as yours.
+report on the next run. This is the same file MCT publishes to GitHub via
+`scripts/publish-agent-review.sh --reviewer …` and the same file the verdicts
+below live in. Redline renders what you wrote, marked as yours.
 
 ```json
 {
   "overview": "One or two paragraphs on what this change is and why it exists.",
-  "files": {
-    "internal/foo.go": "Reworked the retry loop to bound attempts."
-  },
+  "files": [
+    {"path": "internal/foo.go", "summary": "Reworked the retry loop to bound attempts."}
+  ],
   "comments": [
     {"file": "internal/foo.go", "line": 42, "severity": "warning",
      "body": "This can loop forever if the server keeps returning 503."}
@@ -133,14 +135,14 @@ renders what you wrote, marked as yours.
 }
 ```
 
-- `overview` renders as a Review section at the top of the report.
-- `files` maps a changed path to a one-line summary, shown on that file in the
-  drill-in. Key on the same repo-relative paths Redline reports.
-- `comments` become findings on their line, marked `source: llm`, sitting in the
-  drawer beside Redline's own with the coverage stripe and the line highlight.
-  `severity` is one of error, warning, info, and defaults to info. A comment on a
-  line the default diff does not show still renders: Redline expands the diff
-  around it.
+- `overview` renders as a Review section at the top of the report. `what_it_does`
+  is accepted as an alias.
+- `files` is a list of `{path, summary}` (preferred) or a map of path to
+  one-line summary. MCT's publisher fills any PR diff path missing from the list
+  with "No notes."
+- `comments` become findings on their line, marked `source: llm`. `findings` is
+  accepted as an alias; `path` aliases `file`. `severity` is `error`, `warning`,
+  or `info` (aliases `high`, `medium`, `low` accepted on ingest).
 
 ## Judge the suppressions
 
