@@ -57,9 +57,15 @@ func banner(b *strings.Builder, rep *findings.Report) {
 	}
 	switch {
 	case rep.Coverage.ExaminedFiles == 0:
-		fmt.Fprintf(b, "> **Redline examined none of this change.** No pane it currently ships "+
-			"covers these files, so the empty findings list below says nothing about whether "+
-			"the change is correct. Review it by hand.\n\n")
+		if len(rep.Findings) > 0 {
+			fmt.Fprintf(b, "> **Redline examined none of this change.** No pane it currently ships "+
+				"covers these files; the findings below are the agent's own comments, not "+
+				"measured evidence. Review it by hand.\n\n")
+		} else {
+			fmt.Fprintf(b, "> **Redline examined none of this change.** No pane it currently ships "+
+				"covers these files, so the empty findings list below says nothing about whether "+
+				"the change is correct. Review it by hand.\n\n")
+		}
 	case len(rep.DarkSubstrates()) > 0:
 		fmt.Fprintf(b, "> **%d pane(s) applied to this change and did not run.** "+
 			"See _What could not be determined_.\n\n", len(rep.DarkSubstrates()))

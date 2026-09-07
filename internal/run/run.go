@@ -148,15 +148,6 @@ func Run(opts Options) (*Result, error) {
 	res.Report.Coverage = coverage(changed, examined)
 	res.Report.Coverage.Generated = generated
 	res.Report.Unknowns = append(res.Report.Unknowns, unbuiltPanes(changed, examined)...)
-	if res.Report.Coverage.ExaminedFiles == 0 && len(changed) > 0 {
-		// No pane looked at any of it. This is not a clean review and must
-		// never render as one.
-		res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
-			Substrate: "redline",
-			Message:   fmt.Sprintf("none of the %d changed file(s) fall under any pane Redline currently ships", len(changed)),
-			Reason:    "this change is entirely unexamined; the empty findings list below is not evidence of correctness",
-		})
-	}
 	// The agent's review, if it has written one. Loaded before Finalize so its
 	// line comments become findings that get fingerprints stamped with the rest;
 	// verdicts merge after, joining on those fingerprints. Never fatal: a run
@@ -174,6 +165,20 @@ func Run(opts Options) (*Result, error) {
 		if review.Overview != "" || len(review.Files) > 0 {
 			res.Report.Agent = &findings.AgentReview{Overview: review.Overview, Files: review.Files}
 		}
+	}
+	if res.Report.Coverage.ExaminedFiles == 0 && len(changed) > 0 {
+		// No pane looked at any of it. This is not a clean review and must
+		// never render as one. Stated after the agent's comments merge, so
+		// the reason can be honest about whether the findings list is empty.
+		reason := "this change is entirely unexamined; the empty findings list below is not evidence of correctness"
+		if len(res.Report.Findings) > 0 {
+			reason = "this change is entirely unexamined by Redline's panes; the findings below are the agent's reading, not measured evidence"
+		}
+		res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
+			Substrate: "redline",
+			Message:   fmt.Sprintf("none of the %d changed file(s) fall under any pane Redline currently ships", len(changed)),
+			Reason:    reason,
+		})
 	}
 	res.Report.Finalize()
 	if review != nil {

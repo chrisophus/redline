@@ -400,3 +400,16 @@ func TestCommentableLinesIgnoresNoNewlineMarker(t *testing.T) {
 		t.Fatalf("only line 1 should be commentable: %v", got)
 	}
 }
+
+// An agent comment posted to GitHub reads with the same weight as a measured
+// finding unless the label says otherwise.
+func TestFindingLabelNamesTheAgent(t *testing.T) {
+	f := findings.Finding{Severity: findings.SeverityWarning, Source: findings.SourceLLM}
+	if got := findingLabel(f); got != "Warning · agent" {
+		t.Fatalf("got %q", got)
+	}
+	f.Source = findings.SourceDeterministic
+	if got := findingLabel(f); got != "Warning" {
+		t.Fatalf("got %q", got)
+	}
+}

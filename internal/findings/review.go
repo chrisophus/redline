@@ -3,6 +3,7 @@ package findings
 import (
 	"encoding/json"
 	"os"
+	"strings"
 )
 
 // Review is the agent's layer over a run, read from review.json. The agent reads
@@ -66,10 +67,7 @@ func (r *Review) CommentFindings() []Finding {
 		if c.Body == "" {
 			continue
 		}
-		sev := c.Severity
-		if sev == "" {
-			sev = CategoryReview.DefaultSeverity()
-		}
+		sev := normalizeSeverity(c.Severity)
 		out = append(out, Finding{
 			File:      c.File,
 			Line:      c.Line,
@@ -83,6 +81,24 @@ func (r *Review) CommentFindings() []Finding {
 		})
 	}
 	return out
+}
+
+// normalizeSeverity maps whatever the review file wrote onto the three
+// severities the rest of the pipeline understands. Case and whitespace are
+// forgiven; anything else falls back to the review default rather than
+// flowing through verbatim, where an unknown value would outrank real errors
+// in Sort, appear in no severity tile, and never match the post gate's
+// blocking list.
+func normalizeSeverity(s Severity) Severity {
+	switch Severity(strings.ToLower(strings.TrimSpace(string(s)))) {
+	case SeverityError:
+		return SeverityError
+	case SeverityWarning:
+		return SeverityWarning
+	case SeverityInfo:
+		return SeverityInfo
+	}
+	return CategoryReview.DefaultSeverity()
 }
 
 // MergeVerdicts attaches verdicts to findings by fingerprint. Call after
