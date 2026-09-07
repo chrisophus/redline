@@ -35,6 +35,18 @@ type ReviewComment struct {
 	Side      string   `json:"side,omitempty"`
 	Severity  Severity `json:"severity,omitempty"`
 	Body      string   `json:"body"`
+	// RelatedFindings are fingerprints from findings.json this comment
+	// builds on. A comment that carries them is a correlation: it connects
+	// facts the reviewer was given rather than restating one of them.
+	RelatedFindings []string `json:"relatedFindings,omitempty"`
+	// Confidence folds a weak remark away on the report without asking the
+	// reviewer to withhold it.
+	Confidence Confidence `json:"confidence,omitempty"`
+	// Category overrides the default. Only "correlation" is accepted; every
+	// other value falls back to the review default, because a reviewer
+	// labelling its own remark as a schema measurement would put an opinion
+	// in the place the report reserves for facts.
+	Category Category `json:"category,omitempty"`
 }
 
 // reviewWire is the on-disk shape before aliases and flexible fields normalize.
@@ -49,13 +61,17 @@ type reviewWire struct {
 }
 
 type reviewCommentWire struct {
-	File      string `json:"file"`
-	Path      string `json:"path"`
-	Line      int    `json:"line"`
-	StartLine int    `json:"startLine"`
-	Side      string `json:"side"`
-	Severity  string `json:"severity"`
-	Body      string `json:"body"`
+	File            string   `json:"file"`
+	Path            string   `json:"path"`
+	Line            int      `json:"line"`
+	StartLine       int      `json:"startLine"`
+	Side            string   `json:"side"`
+	Severity        string   `json:"severity"`
+	Body            string   `json:"body"`
+	RelatedFindings []string `json:"relatedFindings"`
+	Related         []string `json:"related"`
+	Confidence      string   `json:"confidence"`
+	Category        string   `json:"category"`
 }
 
 type reviewFileEntry struct {
@@ -148,13 +164,20 @@ func parseReviewComments(commentsRaw, findingsRaw json.RawMessage) ([]ReviewComm
 		if file == "" {
 			file = strings.TrimSpace(w.Path)
 		}
+		related := w.RelatedFindings
+		if len(related) == 0 {
+			related = w.Related
+		}
 		out = append(out, ReviewComment{
-			File:      file,
-			Line:      w.Line,
-			StartLine: w.StartLine,
-			Side:      w.Side,
-			Severity:  Severity(strings.TrimSpace(w.Severity)),
-			Body:      w.Body,
+			File:            file,
+			Line:            w.Line,
+			StartLine:       w.StartLine,
+			Side:            w.Side,
+			Severity:        Severity(strings.TrimSpace(w.Severity)),
+			Body:            w.Body,
+			RelatedFindings: related,
+			Confidence:      Confidence(strings.TrimSpace(w.Confidence)),
+			Category:        Category(strings.TrimSpace(w.Category)),
 		})
 	}
 	return out, nil
@@ -173,17 +196,26 @@ func (r *Review) CommentFindings() []Finding {
 		if c.Body == "" {
 			continue
 		}
-		sev := normalizeSeverity(c.Severity)
+		cat, rule := CategoryReview, "agent-comment"
+		if c.Category == CategoryCorrelation {
+			cat, rule = CategoryCorrelation, "correlation"
+		}
+		sev := c.Severity
+		if strings.TrimSpace(string(sev)) == "" {
+			sev = cat.DefaultSeverity()
+		}
 		out = append(out, Finding{
-			File:      c.File,
-			Line:      c.Line,
-			StartLine: c.StartLine,
-			Rule:      "agent-comment",
-			Substrate: "redline/review",
-			Category:  CategoryReview,
-			Severity:  sev,
-			Message:   c.Body,
-			Source:    SourceLLM,
+			File:            c.File,
+			Line:            c.Line,
+			StartLine:       c.StartLine,
+			Rule:            rule,
+			Substrate:       "redline/review",
+			Category:        cat,
+			Severity:        normalizeSeverityFor(sev, cat),
+			Message:         c.Body,
+			Source:          SourceLLM,
+			RelatedFindings: c.RelatedFindings,
+			Confidence:      NormalizeConfidence(c.Confidence),
 		})
 	}
 	return out
@@ -196,6 +228,14 @@ func (r *Review) CommentFindings() []Finding {
 // in Sort, appear in no severity tile, and never match the post gate's
 // blocking list.
 func normalizeSeverity(s Severity) Severity {
+	return normalizeSeverityFor(s, CategoryReview)
+}
+
+// normalizeSeverityFor maps whatever the review file wrote onto the three
+// severities, falling back to the category's own default rather than letting
+// an unknown value through, where it would outrank real errors in Sort,
+// appear in no severity tile, and never match the post gate's blocking list.
+func normalizeSeverityFor(s Severity, cat Category) Severity {
 	switch Severity(strings.ToLower(strings.TrimSpace(string(s)))) {
 	case SeverityError, "high", "critical":
 		return SeverityError
@@ -204,7 +244,7 @@ func normalizeSeverity(s Severity) Severity {
 	case SeverityInfo, "low", "hint":
 		return SeverityInfo
 	}
-	return CategoryReview.DefaultSeverity()
+	return cat.DefaultSeverity()
 }
 
 // MergeVerdicts attaches verdicts to findings by fingerprint. Call after

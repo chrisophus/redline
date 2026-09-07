@@ -9,6 +9,7 @@ import (
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/cover"
+	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/gitx"
 	"github.com/chrisophus/redline/internal/harness"
@@ -18,6 +19,7 @@ import (
 	"github.com/chrisophus/redline/internal/pane/migrations"
 	"github.com/chrisophus/redline/internal/pane/openapi"
 	"github.com/chrisophus/redline/internal/pane/testdelta"
+	"github.com/chrisophus/redline/internal/provider"
 	"github.com/chrisophus/redline/internal/target"
 )
 
@@ -55,6 +57,16 @@ type Result struct {
 	// LineCoverage overlays the profile onto the diff: per changed .go file,
 	// each coverable line mapped to whether a test ran it. Nil when no profile.
 	LineCoverage map[string]map[int]bool
+
+	// Envelopes is the resolved context, one per language provider that ran.
+	// It is produced here, in the deterministic wave, so `redline review` is
+	// a pure function of a saved session and a frozen fixture carries the
+	// exact input its review was given.
+	Envelopes []*envelope.Envelope
+	// ContextAbsent names providers that were configured and did not run. A
+	// provider that errors degrades to a missing input rather than blocking
+	// anything, and the eval needs to tell a genuine miss from a gap.
+	ContextAbsent []string
 }
 
 // Run executes every applicable pane. Applicability is computed from the diff,
@@ -253,6 +265,7 @@ func Run(opts Options) (*Result, error) {
 	}
 	findings.Sort(res.Report.Findings)
 
+	res.Envelopes, res.ContextAbsent = resolveContext(&res.Report, configRoot, tgt.Dir, baseSHA, changed)
 	res.Change = change.Build(repo, tgt, baseSHA, changed)
 	covDir := originCoverageDir(opts.Dir, tgt)
 	attachDiffCoverage(&res.Report, res.Change, tgt.Dir, covDir, cfg)
@@ -262,6 +275,58 @@ func Run(opts Options) (*Result, error) {
 		mergeMutationVerdicts(res.Report.Mutation, review.MutationVerdicts)
 	}
 	return res, nil
+}
+
+// resolveContext runs the language providers this repository configured and
+// collects their envelopes.
+//
+// Nothing here is fatal. A provider that is missing, broken, or slow leaves a
+// gap in the context the review gets, and the gap is recorded as an unknown
+// so a later empty review can be told apart from one that had nothing to work
+// with. Redline links no provider and knows none by name: the registry finds
+// them by config file and by .redline.yml.
+func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA string, changed []string) ([]*envelope.Envelope, []string) {
+	providers, err := provider.Detect(configRoot)
+	if err != nil {
+		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+			Substrate: "redline/context",
+			Message:   "a context provider is declared but could not be read, so its context is missing from the review",
+			Reason:    err.Error(),
+		})
+	}
+	var envs []*envelope.Envelope
+	var absent []string
+	for _, p := range providers {
+		if len(p.Claimed(changed)) == 0 {
+			continue
+		}
+		env, runErr := p.Run(observeRoot, baseSHA)
+		if runErr != nil {
+			absent = append(absent, fmt.Sprintf("%s (context): %v", p.Name, runErr))
+			rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+				Substrate: "redline/context",
+				Message:   fmt.Sprintf("context provider %s claimed files in this change but did not run", p.Name),
+				Reason:    runErr.Error(),
+			})
+			continue
+		}
+		for _, note := range env.Notes {
+			rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+				Substrate: "redline/context",
+				Message:   fmt.Sprintf("%s could not fully resolve this change", p.Name),
+				Reason:    note,
+			})
+		}
+		if unknown := env.UnknownRoles(); len(unknown) > 0 {
+			rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+				Substrate: "redline/context",
+				Message:   fmt.Sprintf("%s tagged expansions with role(s) this Redline does not rank: %s", p.Name, strings.Join(unknown, ", ")),
+				Reason:    "they are ranked last rather than dropped; a newer provider may want a newer Redline",
+			})
+		}
+		envs = append(envs, env)
+	}
+	return envs, absent
 }
 
 // attachDiffCoverage computes the number that stands in for reading the tests.
@@ -540,3 +605,40 @@ func coverage(changed []string, examined map[string]bool) findings.Coverage {
 	}
 	return c
 }
+
+// ReapplyReview swaps the reviewer's own findings on a loaded session for a
+// fresh review, so the report can be re-rendered without observing the change
+// again.
+//
+// The reviewer's findings are removed by source and substrate rather than
+// merged: re-running a review produces a new set, and appending would leave
+// the previous run's remarks on the page forever. Every pane's finding is
+// untouched, and so are the verdicts, which live in review.json and belong to
+// whoever wrote them.
+func ReapplyReview(res *Result, rev *findings.Review) {
+	kept := res.Report.Findings[:0:0]
+	for _, f := range res.Report.Findings {
+		if f.Source == findings.SourceLLM && f.Substrate == reviewSubstrate {
+			continue
+		}
+		kept = append(kept, f)
+	}
+	res.Report.Findings = kept
+	res.Report.Agent = nil
+	if rev != nil {
+		res.Report.Findings = append(res.Report.Findings, rev.CommentFindings()...)
+		if rev.Overview != "" || len(rev.Files) > 0 {
+			res.Report.Agent = &findings.AgentReview{Overview: rev.Overview, Files: rev.Files}
+		}
+	}
+	res.Report.Finalize()
+	if rev != nil {
+		res.Report.MergeVerdicts(rev.Verdicts)
+		mergeMutationVerdicts(res.Report.Mutation, rev.MutationVerdicts)
+	}
+	findings.Sort(res.Report.Findings)
+}
+
+// reviewSubstrate is the name every finding that came from a reviewer rather
+// than a pane carries.
+const reviewSubstrate = "redline/review"

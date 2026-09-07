@@ -42,6 +42,12 @@ type Set struct {
 	Rev   string
 	Files map[string]string // path → blob SHA
 
+	// Content is the SQL itself, populated on the head-side observation
+	// only. Check 3 reads statements rather than comparing blobs, and the
+	// base side has nothing it needs to read: an existing migration that
+	// already adds a NOT NULL column is the world as it is.
+	Content map[string]string
+
 	// UpstreamVersions is the set of migration versions already published on
 	// the upstream branch, and is populated on the base-side observation only:
 	// it is part of "what the world already has". UpstreamRef is empty and
@@ -133,6 +139,13 @@ func (p *Pane) Observe(rev pane.Revision) (pane.Observation, error) {
 	}
 	if rev.Name == "base" {
 		p.observeUpstream(set)
+		return set, nil
+	}
+	set.Content = map[string]string{}
+	for path := range set.Files {
+		if sql := p.Repo.File(rev.Rev, path); sql != "" {
+			set.Content[path] = sql
+		}
 	}
 	return set, nil
 }
@@ -182,6 +195,9 @@ func (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {
 	res.Findings = append(res.Findings, collisions...)
 	res.Unknowns = append(res.Unknowns, unknowns...)
 	res.Confirmations = append(res.Confirmations, confirmed...)
+	nullFindings, nullConfirmed := p.checkNotNull(base, head, evidence)
+	res.Findings = append(res.Findings, nullFindings...)
+	res.Confirmations = append(res.Confirmations, nullConfirmed...)
 
 	// State the denominator. "1 file unchanged" alongside a modified sibling
 	// reads as reassurance; "1 of 2" reads as what it is.

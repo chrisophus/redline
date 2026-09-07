@@ -5,6 +5,7 @@ package findings
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/chrisophus/redline/internal/cover"
 	"github.com/chrisophus/redline/internal/mutation"
@@ -36,6 +37,12 @@ const (
 	CategoryLint     Category = "lint"     // lint delta, suppressions, lint config
 	CategoryReview   Category = "review"   // agent review comment
 	CategoryTests    Category = "tests"    // test-delta facts from the diff
+	// CategoryCorrelation is a finding that connects two facts no single
+	// producer could have reached: a migration against a struct field, an
+	// API removal against a view that still renders. Correlating across
+	// producers is what static analysis structurally cannot do, so it gets
+	// its own category rather than arriving as an ordinary review comment.
+	CategoryCorrelation Category = "correlation"
 )
 
 // DefaultSeverity derives a finding's severity from its category. Redline's
@@ -45,6 +52,10 @@ func (c Category) DefaultSeverity() Severity {
 	switch c {
 	case CategorySchema, CategoryContract:
 		return SeverityError
+	case CategoryCorrelation:
+		// A contradiction between two producers is worth more than a
+		// remark, and less than a measurement. It never gates: see Verdict.
+		return SeverityWarning
 	case CategoryReview:
 		return SeverityInfo
 	case CategoryTests:
@@ -63,6 +74,35 @@ const (
 	SourceDeterministic Source = "deterministic"
 	SourceLLM           Source = "llm"
 )
+
+// Confidence is how sure a reviewer is of a finding it could not measure.
+// It applies to source "llm" only: a pane's finding is an observation, and
+// an observation is not more or less confident, it either happened or did
+// not.
+//
+// The field exists so the report can fold the weak ones rather than ask the
+// model to censor itself. A model told to report only what it is sure of
+// stops reporting the class of finding this whole layer exists to surface.
+type Confidence string
+
+const (
+	ConfidenceHigh   Confidence = "high"
+	ConfidenceMedium Confidence = "medium"
+	ConfidenceLow    Confidence = "low"
+)
+
+// NormalizeConfidence maps whatever a review file wrote onto the three
+// levels, falling back to medium so the fold rule is total. An unknown
+// spelling must not sort a finding out of every bucket.
+func NormalizeConfidence(c Confidence) Confidence {
+	switch Confidence(strings.ToLower(strings.TrimSpace(string(c)))) {
+	case ConfidenceHigh, "certain":
+		return ConfidenceHigh
+	case ConfidenceLow, "speculative", "unsure":
+		return ConfidenceLow
+	}
+	return ConfidenceMedium
+}
 
 // Anchor is a pane-relative location, for findings that have no file:line.
 // Kind names the pane's identity scheme ("migration", "table.column",
@@ -96,7 +136,11 @@ type Finding struct {
 	Message     string   `json:"message"`
 	New         bool     `json:"new"`
 	Fingerprint string   `json:"fingerprint"`
-	FixCmd      string   `json:"fixCmd,omitempty"`
+	// ID is the printable handle for Fingerprint. It is what a reviewer
+	// puts in relatedFindings, because the fingerprint itself is
+	// NUL-separated and cannot survive being written down.
+	ID     string `json:"id"`
+	FixCmd string `json:"fixCmd,omitempty"`
 	// Suggestion is a literal single-file replacement for the anchored lines,
 	// rendered as a GitHub suggestion block when short enough. Empty means no
 	// proposed fix; a suggestion that would need more than one file is refused
@@ -109,6 +153,15 @@ type Finding struct {
 	Expected string   `json:"expected,omitempty"` // for surprise ranking
 	Observed string   `json:"observed,omitempty"`
 	Source   Source   `json:"source,omitempty"`
+	// RelatedFindings are the fingerprints of findings this one builds on.
+	// It is what makes the contract bidirectional: a producer that consumes
+	// the schema it emits can reference a prior finding instead of restating
+	// it, and the report renders the connection against both sources rather
+	// than duplicating the text.
+	RelatedFindings []string `json:"relatedFindings,omitempty"`
+	// Confidence is meaningful for source "llm" only. Empty on a
+	// deterministic finding, where it would be a category error.
+	Confidence Confidence `json:"confidence,omitempty"`
 	// Verdict is the agent's judgment of this finding, merged from review.json
 	// after fingerprints are stamped. Nil until an agent has ruled on it.
 	Verdict *Verdict `json:"verdict,omitempty"`
@@ -285,8 +338,16 @@ func (r *Report) Finalize() {
 		if f.Source == "" {
 			f.Source = SourceDeterministic
 		}
+		if f.Source == SourceLLM {
+			f.Confidence = NormalizeConfidence(f.Confidence)
+		} else {
+			// A measurement carries no confidence. Clearing it here means a
+			// review file cannot smuggle one onto a pane's finding.
+			f.Confidence = ""
+		}
 		f.New = true
 		f.Fingerprint = Fingerprint(*f)
+		f.ID = ShortID(f.Fingerprint)
 		r.NewCount[f.Severity]++
 	}
 	if r.Findings == nil {
@@ -295,6 +356,22 @@ func (r *Report) Finalize() {
 	if r.Substrates == nil {
 		r.Substrates = []SubstrateStatus{}
 	}
+}
+
+// FindRef resolves a reference written in relatedFindings, accepting either
+// the printable id or the raw fingerprint. Nil when nothing matches, which is
+// how a reviewer referencing a finding this run does not have is rendered:
+// the reference is dropped rather than shown as a broken link.
+func (r *Report) FindRef(ref string) *Finding {
+	if ref == "" {
+		return nil
+	}
+	for i := range r.Findings {
+		if r.Findings[i].ID == ref || r.Findings[i].Fingerprint == ref {
+			return &r.Findings[i]
+		}
+	}
+	return nil
 }
 
 // Sort orders by severity, then substrate, then rule, then location, so

@@ -4,8 +4,15 @@
 // `redline run` observes the change and reports what it can establish
 // deterministically: findings.json, report.md, and report.html. The
 // reviewer's own comments and verdicts — human or agent, via review.json —
-// merge into the same report, each finding marked with its source. Redline
-// itself invokes no model.
+// merge into the same report, each finding marked with its source. `run`
+// invokes no model, by any route.
+//
+// `redline review` is the one command that does. It reviews the session
+// `run` already wrote, in a single call with no tools, and merges the result
+// through the same review.json every other reviewer writes. Keeping it a
+// separate command is the whole boundary: observing costs nothing and needs
+// no credentials, judging costs money, and a repository without an API key
+// gets the entire report minus the judgment.
 //
 // `redline post` is the one command that writes to GitHub: it submits the
 // session's observed findings as one pull request review. It is always
@@ -30,6 +37,7 @@ const usage = `redline — observe a change and report the evidence
 
 usage:
   redline run     [flags]   observe the change and report (the entry point)
+  redline review  [flags]   review the last run with a model and merge the result
   redline post    [flags]   post the session's findings as one PR review (--pr)
   redline open    [flags]   serve and open the last report (--file opens it from disk, no server)
   redline serve   [flags]   serve .redline over http (blocks; --stop ends it)
@@ -56,12 +64,20 @@ flags:
   --file            open (or print) the report as a file:// path, no server
   --port N          loopback port for open/serve (default 8765; the next
                     free port is used if it is taken)
+  --model NAME      with review: model to review with (default claude-sonnet-5)
+  --effort LEVEL    with review: low|medium|high|xhigh|max (default: the model's)
+  --ceiling N       with review: token ceiling for the context block (default 120000)
+  --max-tokens N    with review: cap on the response (default 16000)
+  --max-cost USD    with review: refuse to send a request estimated above this
+                    (default 2.00). A tripwire, not a governor.
   --report-url URL  with post: link to the full report in the review body
   --profile PATH    with post: YAML that stamps pass/fail markers a merge
                     gate can read (error and warning fail unless the file
                     says otherwise). Without it, post still comments and
                     never approves.
-  --dry-run         with post: print the review payload instead of posting
+  --dry-run         with post: print the review payload instead of posting;
+                    with review: print the assembled prompt and its estimated
+                    cost, and call nothing
   --stop            with serve: stop the server for --out
   --older-than D    with gc: only remove cached worktrees older than D (e.g. 168h)
 `
@@ -85,8 +101,10 @@ func main() {
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
 	reportURL, profile, olderThan                                     string
+	model, effort                                                     string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
-	port                                                              int
+	port, ceiling, maxTokens                                          int
+	maxCost                                                           float64
 }
 
 func runMain(args []string) error {
@@ -120,6 +138,11 @@ func runMain(args []string) error {
 	fs.StringVar(&o.profile, "profile", "", "with post: YAML profile for merge-gate pass/fail markers")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "with post: print the review payload as JSON instead of posting")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
+	fs.StringVar(&o.model, "model", "", "with review: model to review with")
+	fs.StringVar(&o.effort, "effort", "", "with review: low|medium|high|xhigh|max")
+	fs.IntVar(&o.ceiling, "ceiling", 0, "with review: token ceiling for the context block")
+	fs.IntVar(&o.maxTokens, "max-tokens", 0, "with review: cap on the response")
+	fs.Float64Var(&o.maxCost, "max-cost", 0, "with review: refuse a request estimated above this many dollars")
 	fs.StringVar(&o.olderThan, "older-than", "", "with gc: only remove cached worktrees older than this duration (e.g. 168h)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -128,6 +151,8 @@ func runMain(args []string) error {
 	switch cmd {
 	case "run":
 		return cmdRun(o)
+	case "review":
+		return cmdReview(o)
 	case "post":
 		return cmdPost(o)
 	case "open":

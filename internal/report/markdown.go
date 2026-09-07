@@ -333,6 +333,10 @@ func section4(b *strings.Builder, rep *findings.Report, evidence map[string]pane
 			}
 		}
 		fmt.Fprintf(b, "- source: %s\n", f.Source)
+		if f.Confidence != "" {
+			fmt.Fprintf(b, "- confidence: %s\n", f.Confidence)
+		}
+		emitRelated(b, rep, f)
 		if f.FixCmd != "" {
 			fmt.Fprintf(b, "- fix: %s\n", f.FixCmd)
 		}
@@ -351,6 +355,29 @@ const maxInlineEvidence = 4000
 // emitEvidence shows the artifact behind a finding. The claim and the thing it
 // rests on belong in the same place; a reviewer who has to go find the
 // evidence is back to taking the tool's word for it.
+// emitRelated names the findings a correlation was built from, rather than
+// repeating what they said. The point of the reference is that the reader can
+// see both halves of the connection without the same text appearing twice on
+// one page.
+func emitRelated(b *strings.Builder, rep *findings.Report, f findings.Finding) {
+	if len(f.RelatedFindings) == 0 {
+		return
+	}
+	for _, ref := range f.RelatedFindings {
+		prior := rep.FindRef(ref)
+		if prior == nil {
+			// A reference to a finding this run does not have is dropped.
+			// Rendering a broken link would be worse than saying nothing.
+			continue
+		}
+		loc := prior.File
+		if loc == "" && prior.Anchor != nil {
+			loc = prior.Anchor.Key()
+		}
+		fmt.Fprintf(b, "- builds on: `%s` (%s · %s)\n", prior.Rule, prior.Substrate, loc)
+	}
+}
+
 func emitEvidence(b *strings.Builder, f findings.Finding, evidence map[string]pane.Artifact) {
 	for _, id := range f.Evidence {
 		a, ok := evidence[id]
