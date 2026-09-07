@@ -14,14 +14,22 @@ ROOT     := $(abspath $(dir $(firstword $(MAKEFILE_LIST))))
 # redline-setup wires a repository's tools into it.
 SKILLS   := $(notdir $(wildcard $(ROOT)/skills/*))
 
+# Version stamped into the binary. A tagged checkout gets the tag; anything else
+# gets a describe string or "dev", so `redline version` never claims to be a
+# release it is not.
+VERSION  := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT   := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
+DATE     := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS  := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
+
 .PHONY: all build test vet check install install-bin install-skill \
         install-repo uninstall clean lint gorefactor-lint gorefactor-doctor \
-        coverage bench mutate mutate-full
+        coverage bench mutate mutate-full snapshot release
 
 all: build
 
 build:
-	go build -o $(BIN) ./cmd/redline
+	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/redline
 
 test:
 	go test ./...
@@ -148,3 +156,11 @@ uninstall:
 
 clean:
 	rm -f $(BIN)
+
+# goreleaser cuts the cross-platform release. snapshot builds locally without a
+# tag or publishing, to check the config; release runs in CI on a pushed tag.
+snapshot:
+	goreleaser release --snapshot --clean
+
+release:
+	goreleaser release --clean

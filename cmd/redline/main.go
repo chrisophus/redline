@@ -34,6 +34,7 @@ usage:
   redline open    [flags]   serve and open the last report (--file opens it from disk, no server)
   redline serve   [flags]   serve .redline over http (blocks; --stop ends it)
   redline gc      [flags]   remove this repo's cached review worktrees (~/.redline/worktrees)
+  redline version           print the version and build info
 
 target (all subcommands; pass only one):
   (default)         working tree, uncommitted work included
@@ -63,6 +64,15 @@ flags:
   --older-than D    with gc: only remove cached worktrees older than D (e.g. 168h)
 `
 
+// Build information, injected by the linker at release time (see
+// .goreleaser.yaml). A plain `go build` leaves these at their defaults, so
+// `redline version` reads "dev" off a local build and the tag off a release.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	if err := runMain(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "redline:", err)
@@ -80,6 +90,10 @@ type opts struct {
 func runMain(args []string) error {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		fmt.Print(usage)
+		return nil
+	}
+	if args[0] == "version" || args[0] == "--version" || args[0] == "-v" {
+		fmt.Printf("redline %s (commit %s, built %s)\n", version, commit, date)
 		return nil
 	}
 	cmd := args[0]
