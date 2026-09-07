@@ -22,6 +22,16 @@ import (
 // cover package's profile search.
 var reportNames = []string{"mutants.json", "mutation-report.json", ".mutants.json", "gomutants.json"}
 
+// IsReportPath reports whether rel is a conventional gomutants report path.
+func IsReportPath(rel string) bool {
+	for _, n := range reportNames {
+		if rel == n {
+			return true
+		}
+	}
+	return false
+}
+
 // Locate finds a gomutants report under root, or returns "". Absence is a normal
 // answer: most repositories have no mutation report, and that is not a failure.
 func Locate(root string) string {

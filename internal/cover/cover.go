@@ -92,6 +92,16 @@ func UsableProfile(observeDir, originDir string, changedPaths []string) (profile
 	return "", false
 }
 
+// IsProfilePath reports whether rel is a conventional Go coverage profile path.
+func IsProfilePath(rel string) bool {
+	for _, n := range profileNames {
+		if rel == n {
+			return true
+		}
+	}
+	return false
+}
+
 // Locate finds a coverage profile in the repository, or returns empty. Absence
 // is a normal answer and the caller must report it as absence, never as zero.
 func Locate(root string) string {

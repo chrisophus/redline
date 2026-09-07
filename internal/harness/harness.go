@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/chrisophus/redline/internal/cover"
-	"github.com/chrisophus/redline/internal/globmatch"
 	"gopkg.in/yaml.v3"
 )
 
@@ -95,7 +94,7 @@ func validateProfiles(profiles *[]Profile, file, section, defaultWhen string, se
 		if p.Path == "" {
 			return fmt.Errorf("%s: harness.%s[%d] has no path", file, section, i)
 		}
-		if p.Produce.Command == "" {
+		if p.Produce.Command == "" && section == "worktree" {
 			id := p.ID
 			if id == "" {
 				id = p.Path
@@ -157,6 +156,9 @@ func runProfiles(produceRoot, configRoot string, changed []string, envFrom strin
 	}
 	var produced []string
 	for _, p := range profiles {
+		if p.Produce.Command == "" {
+			continue
+		}
 		if !needsProduce(produceRoot, p, changed) {
 			continue
 		}
@@ -170,17 +172,8 @@ func runProfiles(produceRoot, configRoot string, changed []string, envFrom strin
 }
 
 func needsProduce(root string, p Profile, changed []string) bool {
-	if len(p.Scope) > 0 {
-		touched := false
-		for _, path := range changed {
-			if globmatch.MatchesAny(p.Scope, filepath.ToSlash(path)) {
-				touched = true
-				break
-			}
-		}
-		if !touched {
-			return false
-		}
+	if !appliesToProduce(p, changed) {
+		return false
 	}
 	exists := artifactExists(root, p.Path)
 	switch p.When {

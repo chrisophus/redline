@@ -2,7 +2,6 @@
 package run
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -37,8 +36,8 @@ type Options struct {
 	Range  string
 	Out    string // evidence directory; excluded from the change like .redline/
 
-	// AllowMissingCoverage skips the error when changed Go files have no
-	// coverage profile or the profile is stale. Default is to fail.
+	// AllowMissingCoverage skips the fail-fast check for configured coverage
+	// harness profiles. Other configured profiles (mutation, etc.) still apply.
 	AllowMissingCoverage bool
 }
 
@@ -113,10 +112,11 @@ func Run(opts Options) (*Result, error) {
 		harness.ActiveRoot = ""
 		harness.ResetWorktreePrepared()
 	}()
-	if !opts.AllowMissingCoverage {
-		if err := requireCoverageProfile(opts, tgt, changed); err != nil {
-			return nil, err
-		}
+	roots := harness.Roots{Observe: tgt.Dir, Origin: originCoverageDir(opts.Dir, tgt), Caller: configRoot}
+	if err := harness.Require(roots, changed, cfg, harness.RequireOpts{
+		SkipCoverage: opts.AllowMissingCoverage,
+	}); err != nil {
+		return nil, err
 	}
 	if cfg != nil {
 		if _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg); err != nil {
@@ -258,82 +258,46 @@ func Run(opts Options) (*Result, error) {
 
 	res.Change = change.Build(repo, tgt, baseSHA, changed)
 	covDir := originCoverageDir(opts.Dir, tgt)
-	attachDiffCoverage(&res.Report, res.Change, tgt.Dir, covDir)
+	attachDiffCoverage(&res.Report, res.Change, tgt.Dir, covDir, cfg)
 	res.LineCoverage = lineCoverageOverlay(tgt.Dir, covDir, res.Change)
-	attachMutation(&res.Report, res.Change, opts.Dir)
+	attachMutation(&res.Report, res.Change, roots, cfg)
 	return res, nil
 }
 
-// ErrMissingCoverage is returned when changed Go files have no usable profile.
-var ErrMissingCoverage = errors.New("missing coverage profile")
-
-func requireCoverageProfile(opts Options, tgt *target.Target, changed []string) error {
-	goFiles := 0
-	for _, path := range changed {
-		if filepath.Ext(path) == ".go" {
-			goFiles++
-		}
-	}
-	if goFiles == 0 {
-		return nil
-	}
-	covDir := originCoverageDir(opts.Dir, tgt)
-	profile, stale := cover.UsableProfile(tgt.Dir, covDir, changed)
-	if profile == "" {
-		msg := fmt.Sprintf("no coverage profile for %d changed Go file(s)", goFiles)
-		if harness.Active != nil && len(harness.Active.Profiles) > 0 {
-			msg += "; run with --prepare"
-		}
-		return fmt.Errorf("%s: %w", msg, ErrMissingCoverage)
-	}
-	if stale {
-		msg := fmt.Sprintf("coverage profile %s is stale for this change (%d changed Go file(s))", profile, goFiles)
-		if harness.Active != nil && len(harness.Active.Profiles) > 0 {
-			msg += "; run with --prepare"
-		}
-		return fmt.Errorf("%s: %w", msg, ErrMissingCoverage)
-	}
-	return nil
-}
-
 // attachDiffCoverage computes the number that stands in for reading the tests.
-// It needs the per-file diffs, so it runs after change.Build.
-//
-// A missing profile is recorded as an unknown. This is the whole point of the
-// number: "no test executes these lines" and "nobody measured" look identical on
-// a page that only shows a percentage, and only one of them is a problem the
-// author can fix by writing a test.
-func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir, originDir string) {
+// It needs the per-file diffs, so it runs after change.Build. When no harness
+// coverage profile is configured, a missing profile is left off the report.
+func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir, originDir string, cfg *harness.Config) {
 	if ch == nil || len(ch.Files) == 0 {
 		return
 	}
 	changed := make([]cover.Changed, 0, len(ch.Files))
+	changedPaths := make([]string, 0, len(ch.Files))
 	goFiles := 0
 	for _, f := range ch.Files {
 		if filepath.Ext(f.Path) != ".go" {
 			continue
 		}
 		goFiles++
+		changedPaths = append(changedPaths, f.Path)
 		changed = append(changed, cover.Changed{Path: f.Path, Added: cover.AddedLines(f.Diff)})
 	}
 	rep.Coverage.CoverableFiles = goFiles
 	if goFiles == 0 {
 		return
 	}
+	requires := cfg != nil && cfg.RequiresCoverage(changedPaths)
 	rep.Coverage.Diff = cover.Compute(dir, changed)
 	if rep.Coverage.Diff == nil && originDir != "" && originDir != dir {
-		// The panes observe a pristine worktree of the reviewed revision, which
-		// holds no local coverage profile. When that revision is the origin
-		// checkout's own HEAD, the developer's profile there describes exactly
-		// this code, so read it instead of reporting the tests as unmeasured.
 		rep.Coverage.Diff = cover.Compute(originDir, changed)
+	}
+	if !requires {
+		return
 	}
 	switch {
 	case rep.Coverage.Diff == nil:
 		reason := "looked for coverage.out, cover.out, coverage.txt and c.out; run the suite with -coverprofile to get this number"
-		if harness.Active != nil && len(harness.Active.Profiles) > 0 {
-			reason += "; or run redline with --prepare to produce it via harness"
-		}
+		reason += "; or run redline with --prepare when produce is configured"
 		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
 			Substrate: "redline/tests",
 			Message:   fmt.Sprintf("no coverage profile was found, so whether any test executes the %d changed Go file(s) is unknown", goFiles),
@@ -348,14 +312,10 @@ func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir, originDir str
 	}
 }
 
-// attachMutation reads a gomutants report from the directory redline was run in
-// and scopes it to the change. Unlike coverage it does not fall back to the
-// origin checkout: the report is written where the developer or CI ran
-// gomutants, which is this working directory, not the pristine worktree the
-// panes observe. Nil result when no report is present, the same silence the
-// cover package keeps when there is no profile.
-func attachMutation(rep *findings.Report, ch *change.Set, dir string) {
-	if ch == nil || len(ch.Files) == 0 {
+// attachMutation reads a configured gomutants report when present. Unconfigured
+// mutation profiles are ignored entirely.
+func attachMutation(rep *findings.Report, ch *change.Set, roots harness.Roots, cfg *harness.Config) {
+	if ch == nil || len(ch.Files) == 0 || cfg == nil {
 		return
 	}
 	changed := make([]mutation.Changed, 0, len(ch.Files))
@@ -368,7 +328,16 @@ func attachMutation(rep *findings.Report, ch *change.Set, dir string) {
 	if len(changed) == 0 {
 		return
 	}
-	rep.Mutation = mutation.Compute(dir, changed)
+	for _, rel := range cfg.MutationPaths() {
+		root := harness.ArtifactRoot(roots, rel)
+		if root == "" {
+			continue
+		}
+		if res := mutation.Compute(root, changed); res != nil {
+			rep.Mutation = res
+			return
+		}
+	}
 }
 
 // originCoverageDir returns the origin checkout's root when the reviewed

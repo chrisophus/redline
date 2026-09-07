@@ -26,20 +26,23 @@ deterministic check already established.
 ```
 redline run                   # working tree (uncommitted work included)
 redline run --prepare         # run harness produce steps first (coverage, etc.)
-redline run --allow-missing-coverage  # skip coverage when no profile (default: fail)
+redline run --allow-missing-coverage  # continue without a configured coverage profile
 redline run --commit HEAD     # latest commit only
 redline run --range HEAD~3..HEAD
 redline run --branch feat/x
 redline run --pr 123
 ```
 
-For coverage, `--prepare` is usually enough when `harness:` is configured.
-Without a profile, `redline run` exits non-zero by default. Pass
-`--allow-missing-coverage` only when you accept an unmeasured diff.
-For mutation (gomutants), run the repository's mutate target first when you
-want that overlay (`make mutate` in MCT; needs `eval $(make db-dsns)` when
-data packages are in scope). It writes `mutants.json` at the repo root.
-Then run redline from the same checkout. Mutation is not part of `--prepare`.
+Harness profiles in `.redline.yml` are required when the change matches
+their scope. `--prepare` runs produce for profiles that declare it.
+Pass `--allow-missing-coverage` to continue without a configured coverage
+profile; the report still records it as unknown. Profiles without produce
+(for example mutation) must be produced by hand. When a profile is not
+configured, redline ignores that artifact entirely.
+For mutation (gomutants), add a harness profile with `path: mutants.json`
+when you want it required; run the repository's mutate target first (`make
+mutate` in MCT; needs `eval $(make db-dsns)` when data packages are in
+scope). Mutation is never part of `--prepare`.
 
 This writes `findings.json`, `report.md`, and `report.html` under
 `.redline/`, prints the markdown report, and prints `Report: <url>` on
@@ -52,8 +55,8 @@ stderr.
 - Check `coverage`: `examinedFiles` versus `changedFiles`, `diffCoverage`,
   and `unknowns[]`. These tell you what nobody has measured, which is where
   your own reading matters most.
-- If a gomutants report (`mutants.json`) is on disk, `mutation` carries the
-  survivors on the changed lines: lines a test runs but nothing fails when they
+- If a gomutants report is configured in `harness.profiles` and present,
+  `mutation` carries the survivors on the changed lines: lines a test runs but nothing fails when they
   change, each naming the `original -> replacement` that went uncaught. That is
   the assertion a test is missing. Produce one with the repository's mutate
   target (`make mutate` in MCT) or `gomutants --changed-since <base> -o

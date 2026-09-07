@@ -89,9 +89,8 @@ tools:
 #   lineOffset   added to every line number (set 1 for 0-indexed tools)
 #   baseline     mode "revision" (default) or "file" + the baseline file path
 #
-# harness — artifacts Redline reads but does not compute (coverage profiles,
-# and similar). `redline run --prepare` runs produce when a profile is
-# missing or stale relative to this change.
+# harness — artifacts listed in profiles are required when scope matches.
+# `redline run --prepare` runs produce when a profile declares it.
 #
 # harness:
 #   env:
@@ -103,7 +102,11 @@ tools:
 #         command: make
 #         args: [test-coverage]
 #       when: stale                  # missing | stale | always (default stale)
-#       scope: ["**/*.go"]           # optional: skip when change does not touch
+#       scope: ["**/*.go"]
+#     - id: mutation                 # require-only: no produce (--prepare skips)
+#       path: mutants.json
+#       when: stale
+#       scope: ["**/*.go"]
 #
 # harness.worktree — steps in the tree under review before linters run (PR
 # worktrees included), for example make stub-ui when go:embed needs ui/dist:
@@ -114,6 +117,3 @@ tools:
 #       produce: {command: make, args: [stub-ui]}
 #       when: missing
 #
-# Mutation (gomutants): not harness. Redline reads mutants.json or
-# mutation-report.json at the repo root when present. Wire the repository's
-# mutate make target to pass -o mutants.json; run mutate by hand before review.

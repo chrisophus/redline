@@ -60,7 +60,6 @@ func (r *repo) commit(msg string) {
 func (r *repo) run(opts run.Options) *run.Result {
 	r.t.Helper()
 	opts.Dir = r.dir
-	opts.AllowMissingCoverage = true
 	res, err := run.Run(opts)
 	if err != nil {
 		r.t.Fatalf("run: %v", err)
@@ -406,9 +405,8 @@ func TestDiffCoverageNoFallbackForARevisionThatIsNotHead(t *testing.T) {
 	}
 }
 
-// Absence has to be recorded, not merely omitted: an empty coverage section and
-// a fully covered change look the same to a reader who is scanning.
-func TestMissingCoverageProfileIsUndetermined(t *testing.T) {
+// Without a harness coverage profile, a missing profile is left off the report.
+func TestMissingCoverageIgnoredWithoutHarness(t *testing.T) {
 	r := baseline(t)
 	r.write("internal/x/x.go", "package x\n\nfunc A() int {\n\treturn 1\n}\n")
 
@@ -416,26 +414,57 @@ func TestMissingCoverageProfileIsUndetermined(t *testing.T) {
 	if rep.Coverage.Diff != nil {
 		t.Fatalf("expected no coverage result, got %+v", rep.Coverage.Diff)
 	}
-	var found bool
 	for _, u := range rep.Unknowns {
-		if u.Substrate == "redline/tests" && strings.Contains(u.Message, "no coverage profile") {
+		if u.Substrate == "redline/tests" {
+			t.Fatalf("must not report coverage without harness config: %+v", u)
+		}
+	}
+}
+
+func TestAllowMissingCoverageContinuesWithHarness(t *testing.T) {
+	r := baseline(t)
+	r.write(".redline.yml", `harness:
+  profiles:
+    - id: go
+      path: coverage.out
+      produce: {command: true}
+      when: stale
+      scope: ["**/*.go"]
+`)
+	r.write("internal/x/x.go", "package x\n\nfunc A() int {\n\treturn 1\n}\n")
+
+	res, err := run.Run(run.Options{Dir: r.dir, Base: "main", Upstream: "upstream", AllowMissingCoverage: true})
+	if err != nil {
+		t.Fatalf("allow-missing-coverage should continue: %v", err)
+	}
+	var found bool
+	for _, u := range res.Report.Unknowns {
+		if u.Substrate == "redline/tests" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("a missing profile must be an unknown, got %+v", rep.Unknowns)
+		t.Fatal("expected coverage unknown on the report when allowed to continue")
 	}
 }
 
-func TestMissingCoverageProfileBalksByDefault(t *testing.T) {
+func TestMissingHarnessProfileBalks(t *testing.T) {
 	r := baseline(t)
+	r.write(".redline.yml", `harness:
+  profiles:
+    - id: go
+      path: coverage.out
+      produce: {command: true}
+      when: stale
+      scope: ["**/*.go"]
+`)
 	r.write("internal/x/x.go", "package x\n\nfunc A() int {\n\treturn 1\n}\n")
 
 	_, err := run.Run(run.Options{Dir: r.dir, Base: "main", Upstream: "upstream"})
 	if err == nil {
-		t.Fatal("expected an error when coverage is missing")
+		t.Fatal("expected an error when a configured profile is missing")
 	}
-	if !strings.Contains(err.Error(), "no coverage profile for") {
+	if !strings.Contains(err.Error(), `harness profile "go"`) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

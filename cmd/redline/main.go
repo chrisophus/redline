@@ -49,8 +49,8 @@ flags:
   --migrations DIR  restrict migration checks to one directory
   --format FMT      report|json  (default report)
   --out DIR         evidence directory (default .redline)
-	--prepare         run harness produce steps from .redline.yml before observe
-  --allow-missing-coverage  continue when no coverage profile (default: fail)
+  --prepare         run harness produce steps from .redline.yml before observe
+  --allow-missing-coverage  do not fail when a configured coverage profile is absent
   --open            open the HTML report when done
   --no-open         never open a browser
   --file            open (or print) the report as a file:// path, no server
@@ -111,7 +111,7 @@ func runMain(args []string) error {
 	fs.StringVar(&o.commit, "commit", "", "commit to review against its parent")
 	fs.StringVar(&o.revRange, "range", "", "commit range A..B")
 	fs.BoolVar(&o.prepare, "prepare", false, "run harness produce steps from .redline.yml before observe")
-	fs.BoolVar(&o.allowMissingCoverage, "allow-missing-coverage", false, "continue when changed Go files have no coverage profile")
+	fs.BoolVar(&o.allowMissingCoverage, "allow-missing-coverage", false, "do not fail when a configured coverage profile is missing or stale")
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
 	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")

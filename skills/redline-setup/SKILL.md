@@ -84,14 +84,12 @@ and point `path` at the file the embed needs (for example
 artifacts Redline reads from the origin checkout.
 
 Mutation testing (gomutants), when `.gomutants.yml` exists or the
-repository has a `make mutate` target: Redline reads a gomutants JSON
-report at `mutants.json` or `mutation-report.json` at the repo root and
-shows surviving mutants on the changed lines (covered but unasserted).
-Redline never runs gomutants. Ensure the repository's mutate command
-passes `-o mutants.json` (or writes `mutation-report.json` there). A
-full mutation run is minutes; do not add it to `harness:` or
-`redline run --prepare`. The owner runs mutate by hand when they want
-that overlay, then `redline run` from the same checkout.
+repository has a `make mutate` target: add a `harness.profiles` entry
+with `path: mutants.json` (or `mutation-report.json`) and no `produce`
+when you want the report required for matching changes. Redline never runs
+gomutants and `--prepare` does not produce mutation reports. Ensure the
+repository's mutate command passes `-o mutants.json`. Run mutate by hand
+before `redline run` when the profile is configured.
 
 For each of these, confirm the binary is on PATH and, for coverage, that
 the profile exists and is fresh. Those are the two ways a built-in pane
