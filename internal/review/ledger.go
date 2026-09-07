@@ -110,12 +110,32 @@ type Stats struct {
 	Unknown int
 	// MeanSeconds is wall time, the other number a pre-push tool is judged on.
 	MeanSeconds float64
+	// MedianOutput is what reviews actually emitted. It replaces the guess
+	// in ExpectedOutputTokens once there is enough evidence to have a
+	// median, so the estimate converges on this installation's own reviews
+	// rather than staying at a constant somebody picked.
+	MedianOutput int64
+}
+
+// minForMedianOutput is how many recorded reviews it takes before the measured
+// median is trusted over the default. Three is enough to stop one unusually
+// long review from setting the estimate for every later one.
+const minForMedianOutput = 3
+
+// ExpectedOutput returns the output size to price the next review at: the
+// measured median when there is one, and the documented default before that.
+func (s Stats) ExpectedOutput() int64 {
+	if s.Count >= minForMedianOutput && s.MedianOutput > 0 {
+		return s.MedianOutput
+	}
+	return ExpectedOutputTokens
 }
 
 // Summarize computes the distribution.
 func Summarize(entries []Entry) Stats {
 	var s Stats
 	var costs []float64
+	var outs []int64
 	var secs float64
 	for _, e := range entries {
 		if !e.Known {
@@ -124,6 +144,13 @@ func Summarize(entries []Entry) Stats {
 		}
 		costs = append(costs, e.CostUSD)
 		secs += e.Seconds
+		if e.Usage.OutputTokens > 0 {
+			outs = append(outs, e.Usage.OutputTokens)
+		}
+	}
+	if len(outs) > 0 {
+		sort.Slice(outs, func(i, j int) bool { return outs[i] < outs[j] })
+		s.MedianOutput = outs[len(outs)/2]
 	}
 	s.Count = len(costs)
 	if s.Count == 0 {

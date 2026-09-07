@@ -78,10 +78,33 @@ func (u Usage) Cost(model string) (usd float64, ok bool) {
 	return in + out, true
 }
 
+// ExpectedOutputTokens is what a review actually writes, as opposed to what
+// it is allowed to write.
+//
+// The distinction matters more than it looks. Pricing every review at its full
+// output allowance adds a fixed sixteen cents on Sonnet whether the review
+// says five things or nothing, which puts a floor under the reported cost that
+// has no counterpart in the bill. A review is an overview, a line per changed
+// file, and about five comments; two and a half thousand tokens covers that
+// with room to spare.
+//
+// It is a starting value, and it stops being used as soon as there is
+// evidence: the ledger records what real reviews emitted, and Stats.
+// MedianOutput replaces this once enough runs exist to have a median.
+const ExpectedOutputTokens int64 = 2500
+
 // EstimateCost prices a request before it is sent, from an input-token
-// estimate and the output ceiling. It assumes the model spends its whole
-// output allowance, so the number is an upper bound.
-func EstimateCost(model string, inputTokens int, maxOutput int64) (usd float64, ok bool) {
+// estimate and an expected output size. Pass the measured median output when
+// the ledger has one, and ExpectedOutputTokens before that.
+func EstimateCost(model string, inputTokens int, expectedOutput int64) (usd float64, ok bool) {
+	return Usage{InputTokens: int64(inputTokens), OutputTokens: expectedOutput}.Cost(model)
+}
+
+// CeilingCost is the most a request can cost: the input it is about to send
+// plus every output token it is allowed. This is what a tripwire measures
+// against, because a tripwire exists for the case where the model does spend
+// its whole allowance.
+func CeilingCost(model string, inputTokens int, maxOutput int64) (usd float64, ok bool) {
 	return Usage{InputTokens: int64(inputTokens), OutputTokens: maxOutput}.Cost(model)
 }
 

@@ -1,8 +1,8 @@
 {
   "report": {
     "schemaVersion": 1,
-    "baseRef": "019941455aa3d12b678d8903d7778eb804b1b2b7",
-    "baseSHA": "019941455aa3d12b678d8903d7778eb804b1b2b7",
+    "baseRef": "7cecbeed8a5d27715fdf818050ebd10496fef190",
+    "baseSHA": "7cecbeed8a5d27715fdf818050ebd10496fef190",
     "scope": [
       "api/schema.proto"
     ],
@@ -70,15 +70,15 @@
   "change": {
     "target": {
       "kind": "commit",
-      "dir": "/root/.redline/worktrees/283ff42ff725d348/80e664baed4bd380505b69676f9ce1c9ad12a321",
-      "head": "80e664baed4bd380505b69676f9ce1c9ad12a321",
-      "base": "019941455aa3d12b678d8903d7778eb804b1b2b7",
+      "dir": "/root/.redline/worktrees/48f6d9ba8e7c0a69/de4fd406d88aa27a793f36f5ac07465f307097c4",
+      "head": "de4fd406d88aa27a793f36f5ac07465f307097c4",
+      "base": "7cecbeed8a5d27715fdf818050ebd10496fef190",
       "label": "HEAD"
     },
-    "baseSHA": "019941455aa3d12b678d8903d7778eb804b1b2b7",
+    "baseSHA": "7cecbeed8a5d27715fdf818050ebd10496fef190",
     "commits": [
       {
-        "sha": "80e664baed4bd380505b69676f9ce1c9ad12a321",
+        "sha": "de4fd406d88aa27a793f36f5ac07465f307097c4",
         "author": "fixture",
         "subject": "add tenant_id to the user message"
       }

@@ -75,7 +75,11 @@ type Options struct {
 	// about to be sent, which is the only enforcement point a single-turn
 	// producer has.
 	MaxCostUSD float64
-	APIKey     string
+	// ExpectedOutput prices the estimate. Zero uses the documented default;
+	// the command fills it from the ledger's measured median once there is
+	// one, so the number converges on this installation's own reviews.
+	ExpectedOutput int64
+	APIKey         string
 	// DryRun assembles the prompt and prices it without calling anything.
 	DryRun bool
 }
@@ -98,12 +102,16 @@ func (o Options) withDefaults() Options {
 
 // Result is one review and what it cost.
 type Result struct {
-	Review    findings.Review `json:"review"`
-	Model     string          `json:"model"`
-	Usage     Usage           `json:"usage"`
-	CostUSD   float64         `json:"costUSD"`
-	CostKnown bool            `json:"costKnown"`
-	Duration  time.Duration   `json:"durationNS"`
+	Review  findings.Review `json:"review"`
+	Model   string          `json:"model"`
+	Usage   Usage           `json:"usage"`
+	CostUSD float64         `json:"costUSD"`
+	// CostCeilingUSD is the most the request could cost, with the model
+	// spending every output token it is allowed. The tripwire measures
+	// against this; CostUSD is what to expect.
+	CostCeilingUSD float64       `json:"costCeilingUSD"`
+	CostKnown      bool          `json:"costKnown"`
+	Duration       time.Duration `json:"durationNS"`
 	// Budget records what fit in the context ceiling and what did not.
 	Budget envelope.Budgeted `json:"-"`
 	// Prompt is the assembled user-side prompt, kept for --dry-run and for
@@ -161,18 +169,24 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	budget := envelope.FitAll(in.Envelopes, room, in.shownLines())
 	prompt := in.build(budget)
 	est := envelope.EstimateTokens(systemPrompt) + envelope.EstimateTokens(prompt)
-	cost, known := EstimateCost(opts.Model, est, opts.MaxTokens)
+	expected := opts.ExpectedOutput
+	if expected <= 0 {
+		expected = ExpectedOutputTokens
+	}
+	cost, known := EstimateCost(opts.Model, est, expected)
+	ceiling, _ := CeilingCost(opts.Model, est, opts.MaxTokens)
 	return &Result{
-		Model:         opts.Model,
-		Budget:        budget,
-		Prompt:        prompt,
-		InputEstimate: est,
-		FixedEstimate: fixed,
-		ContextRoom:   room,
-		OverCeiling:   fixed > opts.Ceiling,
-		Ceiling:       opts.Ceiling,
-		CostUSD:       cost,
-		CostKnown:     known,
+		Model:          opts.Model,
+		Budget:         budget,
+		Prompt:         prompt,
+		InputEstimate:  est,
+		FixedEstimate:  fixed,
+		ContextRoom:    room,
+		OverCeiling:    fixed > opts.Ceiling,
+		Ceiling:        opts.Ceiling,
+		CostUSD:        cost,
+		CostCeilingUSD: ceiling,
+		CostKnown:      known,
 	}, nil
 }
 
@@ -183,12 +197,14 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if res.CostKnown && res.CostUSD > opts.MaxCostUSD {
+	// The tripwire measures the worst case, not the expected one. Its whole
+	// job is the run where the model does spend its entire allowance.
+	if res.CostKnown && res.CostCeilingUSD > opts.MaxCostUSD {
 		return res, fmt.Errorf(
-			"estimated cost %s exceeds the %s tripwire: %d input tokens against a %d-token ceiling. "+
+			"worst-case cost %s exceeds the %s tripwire (expected %s): %d input tokens against a %d-token ceiling. "+
 				"Raise --max-cost to proceed, or lower --ceiling",
-			FormatCost(res.CostUSD, true), FormatCost(opts.MaxCostUSD, true),
-			res.InputEstimate, opts.Ceiling)
+			FormatCost(res.CostCeilingUSD, true), FormatCost(opts.MaxCostUSD, true),
+			FormatCost(res.CostUSD, true), res.InputEstimate, opts.Ceiling)
 	}
 	if opts.DryRun {
 		return res, nil

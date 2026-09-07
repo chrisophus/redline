@@ -29,9 +29,11 @@ const maxDiffBytes = 60000
 // file present, every enclosing-declaration expansion inside it is already
 // shown and drops out of the context budget on its own.
 //
-// Four hundred lines is where a file stops being readable in one sitting and
-// starts being worth resolving selectively instead.
-const maxHeadLines = 400
+// Five hundred lines, because that is where this repository caps a production
+// file. A cap the codebase already enforces is a better threshold than a round
+// number: it means every hand-written file is carried whole, and the ones that
+// are not are generated or vendored, which a reviewer does not read anyway.
+const maxHeadLines = 500
 
 // Set is the change: the target, the commits, and every changed file.
 type Set struct {
