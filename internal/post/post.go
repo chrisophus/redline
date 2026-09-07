@@ -185,7 +185,7 @@ func lineCommentable(m map[string]map[int]bool, file string, line int) bool {
 // fingerprint marker so a re-post against the same head can skip it.
 func commentBody(f findings.Finding, head string, prof *Profile) string {
 	var b strings.Builder
-	if m := findingAttestMarker(prof, f.Severity); m != "" {
+	if m := findingAttestMarker(prof, f); m != "" {
 		b.WriteString(m)
 		b.WriteByte('\n')
 	}
@@ -226,7 +226,7 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.F
 	if len(inBody) > 0 {
 		b.WriteString("### Findings not shown inline\n\n")
 		for _, f := range inBody {
-			if m := findingAttestMarker(prof, f.Severity); m != "" {
+			if m := findingAttestMarker(prof, f); m != "" {
 				fmt.Fprintf(&b, "%s\n", m)
 			}
 			fmt.Fprintf(&b, "- **%s** — %s", findingLabel(f), f.Message)

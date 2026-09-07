@@ -110,6 +110,13 @@ func (p *Profile) Blocks(s findings.Severity) bool {
 // GateVerdict is pass when nothing blocking is present and every pane that
 // applied to the change ran. fail otherwise. Empty profile yields an empty
 // string: post is not attesting.
+//
+// Only deterministic findings reach the gate. A reviewer's finding is
+// nondeterministic and costs money to reproduce, so gating on one gives a
+// merge queue a verdict the author cannot re-derive, and a gate that blocks
+// on something you cannot reproduce is bypassed within a month. Panes gate,
+// reviewers advise. There will be a reviewer finding that seems important
+// enough to block on; the answer is here, and it is no.
 func GateVerdict(rep *findings.Report, p *Profile) string {
 	if p == nil {
 		return ""
@@ -119,12 +126,17 @@ func GateVerdict(rep *findings.Report, p *Profile) string {
 	}
 	if rep != nil {
 		for _, f := range rep.Findings {
-			if p.Blocks(f.Severity) {
+			if gates(f) && p.Blocks(f.Severity) {
 				return "fail"
 			}
 		}
 	}
 	return "pass"
+}
+
+// gates reports whether a finding is one the merge gate may act on.
+func gates(f findings.Finding) bool {
+	return f.Source != findings.SourceLLM
 }
 
 // reviewAttestMarker is the hidden line a merge gate scans for.
@@ -137,11 +149,15 @@ func reviewAttestMarker(p *Profile, verdict, head string) string {
 
 // findingAttestMarker tags one blocking inline finding. Severity is mapped to
 // the high/medium/low vocabulary GitHub review gates already parse.
-func findingAttestMarker(p *Profile, s findings.Severity) string {
-	if p == nil || !p.Blocks(s) {
+//
+// A reviewer's finding never gets a marker, whatever severity it claims. It
+// is still posted and still visible; it just does not open a blocking thread.
+// See GateVerdict.
+func findingAttestMarker(p *Profile, f findings.Finding) string {
+	if p == nil || !gates(f) || !p.Blocks(f.Severity) {
 		return ""
 	}
-	return marker(fmt.Sprintf("%s severity=%s", p.FindingMarker, gateSeverity(s)))
+	return marker(fmt.Sprintf("%s severity=%s", p.FindingMarker, gateSeverity(f.Severity)))
 }
 
 func gateSeverity(s findings.Severity) string {

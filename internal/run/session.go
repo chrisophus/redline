@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/pane"
 )
@@ -21,6 +22,16 @@ type session struct {
 	Change   *change.Set              `json:"change"`
 	Renders  []pane.Render            `json:"renders,omitempty"`
 	Evidence map[string]pane.Artifact `json:"evidence,omitempty"`
+	// LineCoverage is saved so a command that re-renders from a session
+	// produces the same page `run` did. Without it the coverage stripe
+	// silently disappears on any re-render, which reads as "nobody measured".
+	LineCoverage map[string]map[int]bool `json:"lineCoverage,omitempty"`
+	// Envelopes and ContextAbsent make the session the whole input to
+	// `redline review`. A fixture is a session, and a fixture that had to
+	// re-derive its context from source could not reproduce the review it
+	// was recorded against.
+	Envelopes     []*envelope.Envelope `json:"envelopes,omitempty"`
+	ContextAbsent []string             `json:"contextAbsent,omitempty"`
 }
 
 // SaveSession writes the run so post can work from it without re-observing.
@@ -29,7 +40,8 @@ func SaveSession(dir string, res *Result) error {
 		return err
 	}
 	s := session{Report: res.Report, Change: res.Change, Renders: res.Renders,
-		Evidence: res.Evidence}
+		Evidence: res.Evidence, LineCoverage: res.LineCoverage,
+		Envelopes: res.Envelopes, ContextAbsent: res.ContextAbsent}
 	buf, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
@@ -49,7 +61,8 @@ func LoadSession(dir string) (*Result, error) {
 		return nil, fmt.Errorf("session: %w", err)
 	}
 	res := &Result{Report: s.Report, Change: s.Change, Renders: s.Renders,
-		Evidence: s.Evidence}
+		Evidence: s.Evidence, LineCoverage: s.LineCoverage,
+		Envelopes: s.Envelopes, ContextAbsent: s.ContextAbsent}
 	if res.Evidence == nil {
 		res.Evidence = map[string]pane.Artifact{}
 	}
