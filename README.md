@@ -1,19 +1,23 @@
 # Redline
 
-The reviewer's instrument.
+Gates say pass or fail. Redline shows what they saw.
 
-Redline measures a change and puts the evidence in one browser view: the
-migrations, the `openapi.yaml` diff, a diff-coverage number, the file-by-file
-walkthrough, and a plain account of what was examined and what was not. It
-suppresses what reviewers skip: generated code, test bodies, lint CI already
-gates.
+A repository's harness answers each question with one bit: the tests pass,
+coverage clears the threshold, the linter is quiet. That bit is the right
+shape for a merge queue and the wrong shape for a reviewer, because it drops
+the detail a decision needs. Which added lines does nothing execute? Which
+lint findings did this change introduce, and which did it inherit? Where did
+the author tell the linter to be quiet? Did the number move, and which way?
+Redline measures the change and keeps that detail, in one browser view,
+beside the facts no gate computes at all: the migrations, the `openapi.yaml`
+diff, and a plain account of what was examined and what was not. It hides
+what reviewers skip: generated code, test bodies, findings CI already gates.
 
-Redline itself runs no model; it measures. Claude Code and Cursor review
-code well on their own; what they do not do on their own is measure.
-Redline supplies the deterministic facts, folds the reviewer's own
-comments and verdicts — human or agent — into the same report, and every
-finding says which of the two produced it.
-See `redline-design.md` for the design and the plan.
+Redline itself runs no model. Judging the facts is the reviewer's job, and
+the reviewer is whoever is reading: a person in the browser, or an agent
+reading `findings.json`. They see the same facts and write their decisions
+onto the same report, and every finding and every ruling says which of the
+two produced it. See `redline-design.md` for the design and the plan.
 
 Reviewing is read-only; posting is not, and never happens on its own.
 `redline post` is the one command that writes to GitHub: it submits the
@@ -213,11 +217,14 @@ support:
 - Check 1 reported `blob a007a0ec → 933f33a1`. It now captures the unified SQL
   diff and shows it beside the finding.
 
-A fourth lesson reshaped the tool itself: the agent-review half - reviewer
-adapters, a packet of facts for the agent to judge, a context brief, a
-Copilot-shaped posted review built from agent prose - did not make reviews
-better than the agents produce on their own, and was cut. The reasoning and
-the removal inventory are in `redline-design.md`.
+A fourth lesson reshaped the tool itself. Redline once ran the agent's
+review: reviewer adapters, a packet of facts for the agent to judge, a
+context brief, a Copilot-shaped posted review built from agent prose. None
+of it made reviews better than the agents produce on their own, and it was
+cut. The agent came back on the other side of the line, as a reviewer that
+reads `findings.json` and writes `review.json`, which Redline renders beside
+its own facts. The reasoning and the removal inventory are in
+`redline-design.md`.
 
 ## Layout
 
@@ -226,7 +233,7 @@ cmd/redline           CLI
 internal/change       the change under review: files, diffs, classification;
                       generated-file detection
 internal/cover        diff coverage from an existing profile
-internal/findings     wire format — doctor's schema, reimplemented and extended
+internal/findings     wire format: doctor's schema, reimplemented and extended
 internal/gitx         git layer (observe; fetch/worktrees for PR/branch)
 internal/pane         the observe/diff pane interface
 internal/pane/lint         lint delta, suppression triage, config drift
