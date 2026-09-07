@@ -91,6 +91,16 @@ result.
 wants the diff runs git; the evidence it should not re-derive is in
 `findings.json`; its own conclusions go in `review.json`.
 
+Redline can only show the detail behind gates it can run, and which
+tools a repository runs is a fact about the repository that no detection
+rule fully recovers. So setup is an agent's job, through a second skill.
+`/redline-setup` walks CI, the task runner, hooks, and tool configs for
+the analysis tools already in use, states which ones Redline detects on
+its own, writes `.redline.yml` entries for the rest after running each
+tool once to read its output shape, validates with a run, and suggests
+tools that apply to the repository's files but are missing. It installs
+nothing and commits nothing; the owner reviews the file.
+
 ## Decisions
 
 The facts are the better-built half. The decisions a reviewer records

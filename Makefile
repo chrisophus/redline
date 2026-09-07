@@ -10,6 +10,9 @@ BIN      := redline
 BINDIR   ?= $(HOME)/.local/bin
 SKILLDIR ?= $(HOME)/.claude/skills
 ROOT     := $(abspath $(dir $(firstword $(MAKEFILE_LIST))))
+# Every directory under skills/ is a skill: redline drives the binary,
+# redline-setup wires a repository's tools into it.
+SKILLS   := $(notdir $(wildcard $(ROOT)/skills/*))
 
 .PHONY: all build test vet check install install-bin install-skill \
         install-repo uninstall clean lint gorefactor-lint gorefactor-doctor \
@@ -92,7 +95,7 @@ check: vet test lint gorefactor-lint
 # install is for this machine: the skill becomes available in every repo.
 install: install-bin install-skill
 	@echo
-	@echo "Installed. Run /redline in any repository."
+	@echo "Installed. Run /redline-setup once per repository, then /redline."
 	@case ":$$PATH:" in \
 	  *":$(BINDIR):"*) ;; \
 	  *) echo "warning: $(BINDIR) is not on PATH; add it to your shell profile" ;; \
@@ -109,16 +112,18 @@ install-bin: build
 # through them, so the link breaks silently and the drift is invisible.
 install-skill:
 	@mkdir -p $(SKILLDIR)
-	@if [ -e "$(SKILLDIR)/redline" ] && [ ! -L "$(SKILLDIR)/redline" ]; then \
-	  if diff -q "$(SKILLDIR)/redline/SKILL.md" "$(ROOT)/skills/redline/SKILL.md" >/dev/null 2>&1; then \
-	    rm -rf "$(SKILLDIR)/redline"; \
-	  else \
-	    mv "$(SKILLDIR)/redline" "$(SKILLDIR)/redline.backup.$$(date +%s)"; \
-	    echo "existing skill differed; moved it aside"; \
+	@for s in $(SKILLS); do \
+	  if [ -e "$(SKILLDIR)/$$s" ] && [ ! -L "$(SKILLDIR)/$$s" ]; then \
+	    if diff -q "$(SKILLDIR)/$$s/SKILL.md" "$(ROOT)/skills/$$s/SKILL.md" >/dev/null 2>&1; then \
+	      rm -rf "$(SKILLDIR)/$$s"; \
+	    else \
+	      mv "$(SKILLDIR)/$$s" "$(SKILLDIR)/$$s.backup.$$(date +%s)"; \
+	      echo "existing skill $$s differed; moved it aside"; \
+	    fi; \
 	  fi; \
-	fi
-	@ln -sfn $(ROOT)/skills/redline $(SKILLDIR)/redline
-	@echo "$(SKILLDIR)/redline -> $(ROOT)/skills/redline"
+	  ln -sfn "$(ROOT)/skills/$$s" "$(SKILLDIR)/$$s"; \
+	  echo "$(SKILLDIR)/$$s -> $(ROOT)/skills/$$s"; \
+	done
 
 # install-repo commits the skill into another repository, for teammates who
 # do not have this checkout. A project skill overrides the personal one, so
@@ -127,15 +132,19 @@ install-skill:
 install-repo:
 	@test -n "$(REPO)" || { echo "usage: make install-repo REPO=/path/to/repo"; exit 1; }
 	@test -d "$(REPO)" || { echo "no such directory: $(REPO)"; exit 1; }
-	@mkdir -p "$(REPO)/.claude/skills/redline"
-	@cp $(ROOT)/skills/redline/SKILL.md "$(REPO)/.claude/skills/redline/SKILL.md"
-	@echo "$(REPO)/.claude/skills/redline/SKILL.md (copy — commit it)"
+	@for s in $(SKILLS); do \
+	  mkdir -p "$(REPO)/.claude/skills/$$s"; \
+	  cp "$(ROOT)/skills/$$s/SKILL.md" "$(REPO)/.claude/skills/$$s/SKILL.md"; \
+	  echo "$(REPO)/.claude/skills/$$s/SKILL.md (copy: commit it)"; \
+	done
 	@echo "note: teammates still need the redline binary on PATH."
 
 uninstall:
 	@rm -f $(BINDIR)/$(BIN)
-	@if [ -L "$(SKILLDIR)/redline" ]; then rm -f "$(SKILLDIR)/redline"; fi
-	@echo "Removed $(BINDIR)/$(BIN) and $(SKILLDIR)/redline."
+	@for s in $(SKILLS); do \
+	  if [ -L "$(SKILLDIR)/$$s" ]; then rm -f "$(SKILLDIR)/$$s"; fi; \
+	done
+	@echo "Removed $(BINDIR)/$(BIN) and the skills under $(SKILLDIR)."
 
 clean:
 	rm -f $(BIN)
