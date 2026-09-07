@@ -60,10 +60,11 @@ was found — that is "nobody measured", not "nothing is tested".
 `coverage.generated` lists files excluded as machine output; if something
 there looks hand-written, say so.
 
-## Reviewer comments come back to you
+## Reviewer requests come back to you
 
-The report lets a human click any diff line, leave a comment, and press
-**Copy comments for the agent**. What they paste looks like this:
+The report lets a human act on any diff line or finding without writing code:
+comment on it, ask you to **Explain** it, or ask you to **Apply** a change. They
+collect these and press **Copy for the agent**. What they paste looks like this:
 
 ```json
 {"redlineReviewComments": {
@@ -71,21 +72,32 @@ The report lets a human click any diff line, leave a comment, and press
   "review": "abc12345:def67890",
   "target": "PR #123 · owner/repo",
   "comments": [
-    {"file": "internal/foo.go", "line": 42, "side": "new",
-     "code": "	return nil", "text": "this swallows the error"}
+    {"action": "comment", "file": "internal/foo.go", "line": 42, "side": "new",
+     "code": "\treturn nil", "text": "this swallows the error"},
+    {"action": "explain", "file": "internal/foo.go", "line": 51, "side": "new",
+     "code": "\tgo drain(ch)"},
+    {"action": "apply", "on": "finding", "file": "internal/foo.go", "line": 42,
+     "rule": "err-unchecked", "message": "error is discarded",
+     "fix": "wrap the call with %w and return it"}
   ]
 }}
 ```
 
 When you receive it:
 
-1. **Check `target` is the change you are working on.** These comments were
-   written against one tree. If the session has moved on — a different branch,
-   a rebase, new commits — say so and stop rather than applying them to code
-   the reviewer never saw.
-2. **Address every comment.** Make the change, or reply saying why you did not.
-   `code` is the line as the reviewer saw it; use it to find the right place
-   when line numbers have shifted.
+1. **Check `target` is the change you are working on.** These items were written
+   against one tree. If the session has moved on, a different branch, a rebase,
+   new commits, say so and stop rather than applying them to code the reviewer
+   never saw.
+2. **Do what each item's `action` says.**
+   - `comment`: address the feedback in `text`. Make the change, or reply saying
+     why you did not.
+   - `explain`: explain that line or finding and the code around it. Do not
+     change code.
+   - `apply`: make the change the item asks for. When it carries a `fix`, apply
+     that fix.
+   `code` is the line as the reviewer saw it; use it to find the right place when
+   line numbers have shifted.
 3. **Do not re-review the rest of the diff.** They asked about these lines.
 4. **Re-run `redline run`** when you are done, so the report reflects the new
    state. Use the same target flags.

@@ -316,7 +316,7 @@ func TestCommentPayloadNamesTheChangeItBelongsTo(t *testing.T) {
 			t.Errorf("payload missing %q", want)
 		}
 	}
-	if !strings.Contains(html, "Address every one") {
+	if !strings.Contains(html, "make the change") {
 		t.Error("the payload should tell the agent what to do with it")
 	}
 }

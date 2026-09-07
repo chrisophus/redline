@@ -178,6 +178,12 @@ label.vw{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:cent
 .bar .n{color:var(--muted)}
 textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6px;
   border:1px solid var(--line);background:var(--bg);color:var(--ink);resize:vertical}
+.line-tools{margin:6px 0}
+.line-tools .btns{display:flex;gap:8px;margin-top:6px}
+.line-tools button{font:inherit;font-size:12px;padding:3px 9px;border:1px solid var(--line);
+  border-radius:6px;background:var(--bg);color:var(--ink);cursor:pointer}
+.line-tools button:hover{background:var(--code)}
+.cmt .act{font-weight:600;color:var(--accent);text-transform:uppercase;font-size:10px;letter-spacing:.06em;margin-right:6px}
 </style>
 </head>
 <body data-review="{{.Identity}}" data-target="{{.Subtitle}}">
@@ -295,6 +301,8 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     {{if .File}}<button type="button" class="f-view" data-file="{{.File}}" data-line="{{.Line}}" title="Open this file's diff at the finding">View code</button>{{end}}
     <button type="button" class="f-copy" title="Copy this finding for the agent">Copy</button>
     <button type="button" class="f-comment" title="Comment on this finding for the agent">Comment</button>
+    <button type="button" class="f-explain" title="Ask the agent to explain this finding">Explain</button>
+    <button type="button" class="f-apply" title="Ask the agent to make this fix">Apply</button>
   </div>
 </div>
 {{end}}
@@ -360,9 +368,9 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 {{end}}
 
 <div class="bar">
-  <span class="n" id="cmt-count">No comments yet — click a diff line, or a finding's Comment, to leave one.</span>
+  <span class="n" id="cmt-count">Nothing queued yet. Comment on a line or finding, or ask the agent to explain or change it.</span>
   <span>
-    <button id="copy-cmts">Copy comments for the agent</button>
+    <button id="copy-cmts">Copy for the agent</button>
     <button id="clear-cmts">Clear</button>
   </span>
 </div>
@@ -413,8 +421,8 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   function render() {
     var n = state.comments.length;
     document.getElementById("cmt-count").textContent =
-      n ? n + " comment" + (n === 1 ? "" : "s") + " — hand them to the agent when you are done."
-        : "No comments yet — click a diff line, or a finding's Comment, to leave one.";
+      n ? n + " item" + (n === 1 ? "" : "s") + " queued. Hand them to the agent when you are done."
+        : "Nothing queued yet. Comment on a line or finding, or ask the agent to explain or change it.";
   }
   function copyText(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -464,7 +472,14 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
       ? (c.file || "(no file)") + (c.line ? " line " + c.line : "") + (c.rule ? " · " + c.rule : "")
       : c.file + " line " + c.line;
     var t = document.createElement("div");
-    t.textContent = c.text;
+    if (c.action && c.action !== "comment") {
+      var act = document.createElement("span");
+      act.className = "act";
+      act.textContent = c.action;
+      t.appendChild(act);
+    }
+    var bodyText = c.text || (c.action === "apply" && c.fix ? "fix: " + c.fix : "");
+    t.appendChild(document.createTextNode(bodyText));
     el.appendChild(b); el.appendChild(w); el.appendChild(t);
     return el;
   }
@@ -498,30 +513,57 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     if (line) line.after(bubble(c));
   });
 
+  function lineTools(line) {
+    var wrap = document.createElement("div");
+    wrap.className = "line-tools";
+    var meta = {file: line.dataset.file, line: +line.dataset.line,
+                side: line.dataset.side || "new", code: line.textContent};
+    function queue(action) {
+      var c = {action: action, file: meta.file, line: meta.line, side: meta.side, code: meta.code};
+      state.comments.push(c);
+      wrap.remove();
+      line.after(bubble(c));
+      save();
+    }
+    var ta = document.createElement("textarea");
+    ta.className = "new";
+    ta.rows = 3;
+    ta.placeholder = "Comment on this line. \u2318/Ctrl+Enter to save, Esc to cancel";
+    ta.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") { wrap.remove(); return; }
+      if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
+        var text = ta.value.trim();
+        wrap.remove();
+        if (!text) return;
+        var c = {action: "comment", file: meta.file, line: meta.line,
+                 side: meta.side, code: meta.code, text: text};
+        state.comments.push(c);
+        line.after(bubble(c));
+        save();
+      }
+    });
+    var btns = document.createElement("div");
+    btns.className = "btns";
+    [["Explain", "explain", "Ask the agent to explain this line"],
+     ["Ask to change", "apply", "Ask the agent to change this line"]].forEach(function (spec) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = spec[0];
+      btn.title = spec[2];
+      btn.addEventListener("click", function () { queue(spec[1]); });
+      btns.appendChild(btn);
+    });
+    wrap.appendChild(ta);
+    wrap.appendChild(btns);
+    setTimeout(function () { ta.focus(); }, 0);
+    return wrap;
+  }
   document.querySelectorAll("pre.diff").forEach(function (pre) {
     pre.addEventListener("click", function (e) {
+      if (e.target.closest(".line-tools")) return;
       var line = e.target.closest("span[data-line]");
-      if (!line || pre.querySelector("textarea.new")) return;
-      var ta = document.createElement("textarea");
-      ta.className = "new";
-      ta.rows = 3;
-      ta.placeholder = "Comment on this line — ⌘/Ctrl+Enter to save, Esc to cancel";
-      line.after(ta);
-      ta.focus();
-      ta.addEventListener("keydown", function (ev) {
-        if (ev.key === "Escape") { ta.remove(); return; }
-        if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
-          var text = ta.value.trim();
-          ta.remove();
-          if (!text) return;
-          var c = {file: line.dataset.file, line: +line.dataset.line,
-                   side: line.dataset.side || "new",
-                   code: line.textContent, text: text};
-          state.comments.push(c);
-          line.after(bubble(c));
-          save();
-        }
-      });
+      if (!line || pre.querySelector(".line-tools")) return;
+      line.after(lineTools(line));
     });
   });
 
@@ -583,6 +625,21 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
         }
       });
     });
+    var fixEl = card.querySelector(".verdict .fix");
+    var fix = fixEl ? fixEl.textContent.replace(/^fix:\s*/, "") : "";
+    function queueFinding(action, btn, label) {
+      var c = {on: "finding", action: action, file: meta.file, line: meta.line,
+               rule: meta.rule, message: msg, code: snippetText(), fix: fix};
+      state.comments.push(c);
+      card.appendChild(bubble(c));
+      save();
+      btn.textContent = "Queued";
+      setTimeout(function () { btn.textContent = label; }, 1500);
+    }
+    var explainBtn = card.querySelector(".f-explain");
+    if (explainBtn) explainBtn.addEventListener("click", function () { queueFinding("explain", explainBtn, "Explain"); });
+    var applyBtn = card.querySelector(".f-apply");
+    if (applyBtn) applyBtn.addEventListener("click", function () { queueFinding("apply", applyBtn, "Apply"); });
   });
 
   // 002-B drill-in. The file node is MOVED into the drawer rather than cloned:
@@ -747,9 +804,11 @@ document.getElementById("copy-cmts").addEventListener("click", function () {
     // comments pasted into a session that has since moved on would be applied
     // to the wrong tree, and the agent cannot tell without being told.
     var payload = JSON.stringify({redlineReviewComments: {
-      instruction: "A human reviewed this change and left the comments below, each on a specific diff line or a specific finding. " +
-        "Address every one: make the change, or reply saying why you did not. " +
-        "Do not re-review the rest of the diff. When you are done, re-run redline so the report reflects the new state.",
+      instruction: "A human reviewed this change. Each item below sits on a specific diff line or finding and carries an action. " +
+        "For \"comment\", address the feedback: make the change or reply why not. " +
+        "For \"explain\", explain that line or finding and the code around it, without changing code. " +
+        "For \"apply\", make the change it asks for, applying the named fix when there is one. " +
+        "Work only these items, do not re-review the rest of the diff, and re-run redline when you are done so the report reflects the new state.",
       review: document.body.dataset.review || "",
       target: document.body.dataset.target || "",
       comments: state.comments
@@ -757,7 +816,7 @@ document.getElementById("copy-cmts").addEventListener("click", function () {
     copyText(payload).then(function () {
       var b = document.getElementById("copy-cmts");
       b.textContent = "Copied — paste into your agent session";
-      setTimeout(function () { b.textContent = "Copy comments for the agent"; }, 2500);
+      setTimeout(function () { b.textContent = "Copy for the agent"; }, 2500);
     });
   });
   document.getElementById("clear-cmts").addEventListener("click", function () {

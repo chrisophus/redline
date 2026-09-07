@@ -10,7 +10,7 @@ The through line is one view of a changed line that shows everything known about
 it at once: is it changed, does a linter flag it, does a test run it, does the
 agent have something to say about it, and could a test have caught a bug on it.
 
-## Now: agent review comes into the report
+## Shipped: agent review comes into the report
 
 The agent already produces a review file shaped like a GitHub Copilot review: an
 overview of the change, a per-file summary, and comments on specific lines. Fold
@@ -28,21 +28,21 @@ already reads.
 Redline composes none of this. It renders what the agent wrote, attributed to the
 agent. No model call enters the tool.
 
-## Next: ask the agent from the report
+## Shipped: ask the agent from the report
 
-A button on a diff line, a file, or a finding that appends a structured request
-to the same payload the Copy button already builds:
-
-- Explain: "explain this diff" or "explain this finding".
-- Apply: "make this change", with the base and head the request was written
-  against so the agent can refuse if the tree moved.
+Each diff line and each finding has Explain and Apply. Clicking one queues a
+request that carries an action onto the same list the Copy button hands over,
+now labelled "Copy for the agent". The payload item gains an `action` field:
+`comment` is feedback to address, `explain` asks for an explanation without a
+code change, `apply` asks the agent to make the change and to apply the verdict's
+`fix` when there is one.
 
 Redline is a static file with no model behind it, so the loop is copy and paste,
-the same as the review comments today. `redline serve` is the upgrade path if a
-live loop is worth a running process later. This is the prequel affordance minus
-the server.
+the same as the review comments. `redline serve` is the upgrade path if a live
+loop is worth a running process later. This is the prequel affordance minus the
+server.
 
-## Next: see coverage and click through
+## Now: see coverage and click through
 
 The coverage overlay stripes each changed head line green (a test ran it), amber
 (none did), or nothing (not coverable). Two things are missing.
