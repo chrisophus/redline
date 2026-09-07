@@ -70,9 +70,9 @@ type view struct {
 	Unknowns []findings.Unknown
 	Failed   []findings.SubstrateStatus
 	Skipped  []findings.SubstrateStatus
-	// UITouched is whether the change moves the interface at all. It decides
-	// how loud the absence of captures should be: no captures on a change that
-	// touches no UI is unremarkable, and on one that does it is a gap.
+	// UITouched is whether the change moves the interface at all. A change
+	// that touches no UI gets no interface section; on one that does, the
+	// absence of captures is a gap and is said so.
 	UITouched bool
 	// Nav is the sidebar: one entry per section actually rendered, in the order
 	// they appear. Built here rather than scanned out of the DOM so the page
@@ -233,18 +233,21 @@ func buildView(in HTMLInput) view {
 // section gains or loses a heading without its entry moving too.
 func navFor(v view) []navLink {
 	// A UI that moved with nothing captured is a gap; a change with no UI files
-	// is not.
-	uiGap := v.UITouched
+	// has no interface section. Coverage is the same: a change with no
+	// coverable file has no coverage section, and one with a coverable file
+	// and no profile is a gap.
 	coverageGap := v.Coverage.Diff == nil || v.Coverage.Diff.Stale
 
 	nav := []navLink{}
 	if v.Overview != "" {
 		nav = append(nav, navLink{ID: "review", Label: "Review"})
 	}
-	nav = append(nav,
-		navLink{ID: "interface", Label: "What it looks like", Warn: uiGap},
-		navLink{ID: "coverage", Label: "Coverage", Warn: coverageGap},
-	)
+	if v.UITouched {
+		nav = append(nav, navLink{ID: "interface", Label: "What it looks like", Warn: true})
+	}
+	if v.Coverage.CoverageApplies() {
+		nav = append(nav, navLink{ID: "coverage", Label: "Coverage", Warn: coverageGap})
+	}
 	if len(v.Groups) > 0 {
 		nav = append(nav, navLink{ID: "drill", Label: "Drill in", Count: len(v.Groups)})
 	}

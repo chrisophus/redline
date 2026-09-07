@@ -268,6 +268,9 @@ func evidenceTable(rep *findings.Report) string {
 			result = fmt.Sprintf("ran — %d finding(s)", perSubstrate[s.Name])
 		case findings.SubstrateSkipped:
 			result = "did not apply"
+		case findings.SubstrateNotApplicable:
+			// The repository has no such files; the row would only say so.
+			continue
 		default:
 			result = fmt.Sprintf("**did not run** — %s", escapeCell(s.Detail))
 		}
@@ -282,7 +285,7 @@ func evidenceTable(rep *findings.Report) string {
 		default:
 			fmt.Fprintf(&b, "| diff coverage | %.0f%% of %d added line(s) (`%s`) |\n", c.Percent, c.Lines, c.Profile)
 		}
-	} else {
+	} else if rep.Coverage.CoverableFiles > 0 {
 		b.WriteString("| diff coverage | not measured — no profile found |\n")
 	}
 	fmt.Fprintf(&b, "| files examined | %d/%d |\n", rep.Coverage.ExaminedFiles, rep.Coverage.ChangedFiles)

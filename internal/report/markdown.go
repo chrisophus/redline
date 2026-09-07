@@ -97,7 +97,11 @@ func prLabel(n int) string {
 // coverageSection is the number that stands in for reading the tests. An
 // absent profile is stated as absent: "no test executes these lines" and
 // "nobody measured" are different claims and only one is the author's problem.
+// A change no profile could describe gets no section at all.
 func coverageSection(b *strings.Builder, rep *findings.Report) {
+	if !rep.Coverage.CoverageApplies() {
+		return
+	}
 	fmt.Fprintf(b, "## Coverage\n\n")
 	c := rep.Coverage.Diff
 	if c == nil {
