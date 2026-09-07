@@ -258,6 +258,9 @@ func Run(opts Options) (*Result, error) {
 	attachDiffCoverage(&res.Report, res.Change, tgt.Dir, covDir, cfg)
 	res.LineCoverage = lineCoverageOverlay(tgt.Dir, covDir, res.Change)
 	attachMutation(&res.Report, res.Change, roots, cfg)
+	if review != nil {
+		mergeMutationVerdicts(res.Report.Mutation, review.MutationVerdicts)
+	}
 	return res, nil
 }
 
@@ -333,6 +336,25 @@ func attachMutation(rep *findings.Report, ch *change.Set, roots harness.Roots, c
 		if res := mutation.Compute(root, changed); res != nil {
 			rep.Mutation = res
 			return
+		}
+	}
+}
+
+// mergeMutationVerdicts attaches an agent's judgments to surviving mutants by
+// key, after attachMutation has stamped each survivor's key. A verdict whose key
+// matches no survivor is dropped, the same way MergeVerdicts drops an unmatched
+// finding fingerprint. findings.Verdict is translated to mutation's own type so
+// the two packages stay decoupled.
+func mergeMutationVerdicts(res *mutation.Result, verdicts map[string]findings.Verdict) {
+	if res == nil || len(verdicts) == 0 {
+		return
+	}
+	for i := range res.Survived {
+		for j := range res.Survived[i].Mutants {
+			m := &res.Survived[i].Mutants[j]
+			if v, ok := verdicts[m.Key]; ok {
+				m.Verdict = &mutation.Verdict{Ruling: v.Ruling, Rationale: v.Rationale, Source: string(findings.SourceLLM)}
+			}
 		}
 	}
 }

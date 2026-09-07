@@ -269,7 +269,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <details>
   <summary>{{.Lived}} surviving mutant{{if ne .Lived 1}}s{{end}} no test caught</summary>
   <div class="body"><ul class="plain">
-  {{range .Survived}}{{$p := .Path}}{{range .Mutants}}<li><button type="button" class="mut-jump" data-jump="{{$p}}" data-line="{{.Line}}"><code>{{$p}}:{{.Line}}</code> · {{.Mutator}}{{if .Original}}: <code>{{.Original}}</code> → <code>{{.Replacement}}</code>{{end}}</button></li>{{end}}{{end}}
+  {{range .Survived}}{{$p := .Path}}{{range .Mutants}}<li><button type="button" class="mut-jump" data-jump="{{$p}}" data-line="{{.Line}}"><code>{{$p}}:{{.Line}}</code> · {{.Mutator}}{{if .Original}}: <code>{{.Original}}</code> → <code>{{.Replacement}}</code>{{end}}</button>{{with .Verdict}} <span class="tag vd">{{.Ruling}}</span>{{if .Rationale}} <span class="s">{{.Rationale}}</span>{{end}}{{end}}</li>{{end}}{{end}}
   </ul></div>
 </details>
 {{end}}

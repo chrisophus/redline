@@ -196,6 +196,32 @@ never overwrites it, so your judgments survive a re-run the way
 Judge only the suppressions here. This is triage of Redline's own evidence,
 not a second pass over the whole diff.
 
+## Judge the mutation survivors
+
+When a gomutants report is present, `mutation.survived[]` in `findings.json` lists
+the mutants a test ran but did not catch. Each carries a `key`
+(`<path>:<line>:<mutator>`). Rule on the ones worth judging and write them to the
+same `.redline/review.json`, under `mutationVerdicts`, keyed by that `key`:
+
+```json
+{"mutationVerdicts": {
+  "internal/foo.go:42:CONDITIONALS_BOUNDARY": {
+    "ruling": "needs-test",
+    "rationale": "the boundary is a real off-by-one; add a case at the edge"
+  }
+}}
+```
+
+- `ruling` is one of **needs-test** (a test should kill this mutant, write it),
+  **equivalent** (no test can, the mutant does not change behavior), or
+  **acceptable** (the survivor is fine as is, for example a performance heuristic).
+- `rationale` is one line: why.
+- Key on the exact `key` string from `mutation.survived[]`. A verdict matching no
+  survivor is dropped.
+
+Re-run `redline run` with the same target flags and the verdict renders beside
+the survivor in the Mutation section.
+
 ## Do not
 
 - Do not post anything to GitHub on your own. `redline post` is the only

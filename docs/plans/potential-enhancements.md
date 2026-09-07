@@ -63,7 +63,7 @@ Each item is a candidate, not a commitment. Effort is rough: **S** days,
 | Item | What | Effort |
 |------|------|--------|
 | Verdict vocabulary expansion | Today: suppressions (justified / should-fix / rule-noisy). Extend to coverage gaps, config drift, migration findings, lint delta. Same fingerprint machinery. Design doc "Decisions" section. | M |
-| Verdicts on mutation survivors | `mutants.json` overlays lines; reviewer should record "needs test" / "equivalent" / "acceptable" per survivor fingerprint. | S |
+| Verdicts on mutation survivors (shipped) | Agent records needs-test / equivalent / acceptable per survivor in `review.json` `mutationVerdicts`, keyed by `mutation.survived[].key`; source forced llm, rendered in the Mutation section. Coverage-gap and config-drift verdicts remain (row above). | done |
 | Post verdicts to PR | Whether human/agent decisions ride on `redline post` or stay local. Open question in design doc. | M |
 | Multi-reviewer `review.json` | Merge agent + Bugbot (or two agents) into one report without overwriting. MCT publishes per-reviewer; Redline could key by `reviewer` field. | M |
 | `redline serve` live loop | Replace copy-paste "Copy for the agent" with a websocket or stdin bridge. Upgrade path noted in report-roadmap. | L |

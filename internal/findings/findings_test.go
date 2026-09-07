@@ -266,3 +266,37 @@ func TestLoadReviewAcceptsAliases(t *testing.T) {
 		t.Fatalf("finding severity = %+v", fs[0])
 	}
 }
+
+// mutationVerdicts are keyed by the survivor key and read as source llm, the
+// same attribution rule the finding verdicts follow.
+func TestLoadReviewParsesMutationVerdicts(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "review.json")
+	data, err := json.Marshal(map[string]any{
+		"mutationVerdicts": map[string]any{
+			"internal/foo.go:42:CONDITIONALS_BOUNDARY": map[string]any{
+				"ruling": "needs-test", "rationale": "edge case", "source": "deterministic",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := findings.LoadReview(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, ok := r.MutationVerdicts["internal/foo.go:42:CONDITIONALS_BOUNDARY"]
+	if !ok {
+		t.Fatal("a mutation verdict must be keyed by the survivor key")
+	}
+	if v.Ruling != "needs-test" {
+		t.Errorf("ruling = %q, want needs-test", v.Ruling)
+	}
+	if v.Source != findings.SourceLLM {
+		t.Errorf("source = %q, want llm; redline attributes the reading, the file does not", v.Source)
+	}
+}

@@ -63,6 +63,12 @@ func mutationSection(b *strings.Builder, rep *findings.Report) {
 			if mt.Original != "" {
 				fmt.Fprintf(b, ": `%s` -> `%s`", mt.Original, mt.Replacement)
 			}
+			if mt.Verdict != nil {
+				fmt.Fprintf(b, " — agent: %s", mt.Verdict.Ruling)
+				if mt.Verdict.Rationale != "" {
+					fmt.Fprintf(b, " (%s)", mt.Verdict.Rationale)
+				}
+			}
 			fmt.Fprintln(b)
 		}
 	}

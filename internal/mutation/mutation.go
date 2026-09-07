@@ -12,6 +12,7 @@ package mutation
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,6 +72,23 @@ type Mutant struct {
 	Mutator     string `json:"mutator"`
 	Original    string `json:"original,omitempty"`
 	Replacement string `json:"replacement,omitempty"`
+	// Key identifies this survivor for an agent's verdict in review.json,
+	// "<path>:<line>:<mutator>". Stable across runs while the survivor is.
+	Key string `json:"key"`
+	// Verdict is the agent's judgment of this survivor, merged from
+	// review.json's mutationVerdicts by Key. Nil until an agent has ruled.
+	Verdict *Verdict `json:"verdict,omitempty"`
+}
+
+// Verdict is an agent's judgment of a surviving mutant, ingested from
+// review.json and joined by Key. Source is always "llm": redline states the
+// survivor, the agent supplies the reading. Ruling is one of needs-test (write
+// a test that kills it), equivalent (no test can, the mutant is semantically
+// identical), or acceptable (the survivor is fine as is).
+type Verdict struct {
+	Ruling    string `json:"ruling"`
+	Rationale string `json:"rationale,omitempty"`
+	Source    string `json:"source"`
 }
 
 // FileSurvivors is one file's surviving mutants on the lines a change added.
@@ -136,6 +154,7 @@ func Compute(root string, changed []Changed) *Result {
 				res.Lived++
 				survivors = append(survivors, Mutant{
 					Line: m.Line, Mutator: m.Type, Original: m.Original, Replacement: m.Replacement,
+					Key: fmt.Sprintf("%s:%d:%s", c.Path, m.Line, m.Type),
 				})
 			}
 			// not-covered, not-viable and timed-out are left out. Coverage already

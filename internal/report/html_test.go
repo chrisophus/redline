@@ -829,3 +829,29 @@ func TestReportRendersMutationSurvivors(t *testing.T) {
 		}
 	}
 }
+
+// An agent's verdict on a surviving mutant renders beside it in the Mutation
+// section.
+func TestReportRendersMutationVerdict(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Mutation: &mutation.Result{
+				Report: "mutants.json", Lived: 1,
+				Survived: []mutation.FileSurvivors{{Path: "a.go", Mutants: []mutation.Mutant{{
+					Line: 7, Mutator: "RETURN_TRUE", Key: "a.go:7:RETURN_TRUE",
+					Verdict: &mutation.Verdict{Ruling: "equivalent", Rationale: "no behavior change", Source: "llm"},
+				}}}},
+			},
+		},
+		Change: &change.Set{Files: []change.File{{Path: "a.go", Language: "go", Diff: "@@ -1 +1,7 @@\n+x\n"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"equivalent", "no behavior change"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("mutation verdict is missing %q", want)
+		}
+	}
+}

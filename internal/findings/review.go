@@ -20,6 +20,9 @@ type Review struct {
 	Files    map[string]string  `json:"files,omitempty"`
 	Comments []ReviewComment    `json:"comments,omitempty"`
 	Verdicts map[string]Verdict `json:"verdicts,omitempty"`
+	// MutationVerdicts are judgments of surviving mutants, keyed by the
+	// survivor's key (mutation.survived[].key in findings.json). Source llm.
+	MutationVerdicts map[string]Verdict `json:"mutationVerdicts,omitempty"`
 }
 
 // ReviewComment is one remark the agent left on a line, shaped like a GitHub
@@ -36,12 +39,13 @@ type ReviewComment struct {
 
 // reviewWire is the on-disk shape before aliases and flexible fields normalize.
 type reviewWire struct {
-	Overview   string             `json:"overview"`
-	WhatItDoes string             `json:"what_it_does"`
-	Files      json.RawMessage    `json:"files"`
-	Comments   json.RawMessage    `json:"comments"`
-	Findings   json.RawMessage    `json:"findings"`
-	Verdicts   map[string]Verdict `json:"verdicts"`
+	Overview         string             `json:"overview"`
+	WhatItDoes       string             `json:"what_it_does"`
+	Files            json.RawMessage    `json:"files"`
+	Comments         json.RawMessage    `json:"comments"`
+	Findings         json.RawMessage    `json:"findings"`
+	Verdicts         map[string]Verdict `json:"verdicts"`
+	MutationVerdicts map[string]Verdict `json:"mutationVerdicts"`
 }
 
 type reviewCommentWire struct {
@@ -78,6 +82,7 @@ func LoadReview(path string) (*Review, error) {
 		return nil, err
 	}
 	r := &Review{Verdicts: wire.Verdicts}
+	r.MutationVerdicts = wire.MutationVerdicts
 	r.Overview = strings.TrimSpace(wire.Overview)
 	if r.Overview == "" {
 		r.Overview = strings.TrimSpace(wire.WhatItDoes)
@@ -95,6 +100,10 @@ func LoadReview(path string) (*Review, error) {
 	for k, v := range r.Verdicts {
 		v.Source = SourceLLM
 		r.Verdicts[k] = v
+	}
+	for k, v := range r.MutationVerdicts {
+		v.Source = SourceLLM
+		r.MutationVerdicts[k] = v
 	}
 	return r, nil
 }
