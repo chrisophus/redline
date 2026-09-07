@@ -96,15 +96,15 @@ func TestFinalizeNilFindingsAndSubstratesMarshalAsEmptyArrays(t *testing.T) {
 	}
 }
 
-func TestDarkSubstratesSelectsFailedOnly(t *testing.T) {
+func TestFailedSubstratesSelectsFailedOnly(t *testing.T) {
 	rep := findings.Report{Substrates: []findings.SubstrateStatus{
 		{Name: "a", State: findings.SubstrateRan},
 		{Name: "b", State: findings.SubstrateSkipped},
 		{Name: "c", State: findings.SubstrateFailed, Detail: "panic"},
 	}}
-	dark := rep.DarkSubstrates()
-	if len(dark) != 1 || dark[0].Name != "c" {
-		t.Fatalf("DarkSubstrates should return only the failed pane, got %+v", dark)
+	failed := rep.FailedSubstrates()
+	if len(failed) != 1 || failed[0].Name != "c" {
+		t.Fatalf("FailedSubstrates should return only the failed pane, got %+v", failed)
 	}
 }
 

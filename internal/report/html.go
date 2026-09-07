@@ -68,7 +68,7 @@ type view struct {
 	Groups   []drillGroup
 	Confirms []findings.Confirmation
 	Unknowns []findings.Unknown
-	Dark     []findings.SubstrateStatus
+	Failed   []findings.SubstrateStatus
 	Skipped  []findings.SubstrateStatus
 	// UITouched is whether the change moves the interface at all. It decides
 	// how loud the absence of captures should be: no captures on a change that
@@ -149,7 +149,7 @@ func buildView(in HTMLInput) view {
 		Renders:  in.Renders,
 		Confirms: rep.Confirmations,
 		Unknowns: rep.Unknowns,
-		Dark:     rep.DarkSubstrates(),
+		Failed:   rep.FailedSubstrates(),
 		Counts:   map[string]int{},
 	}
 	for _, s := range rep.Substrates {
@@ -253,7 +253,7 @@ func navFor(v view) []navLink {
 	}
 	nav = append(nav, navLink{ID: "observed", Label: "What Redline observed", Count: len(v.Observed)})
 	nav = append(nav,
-		navLink{ID: "unknowns", Label: "Undetermined", Count: len(v.Unknowns) + len(v.Dark), Warn: len(v.Unknowns)+len(v.Dark) > 0},
+		navLink{ID: "unknowns", Label: "Undetermined", Count: len(v.Unknowns) + len(v.Failed), Warn: len(v.Unknowns)+len(v.Failed) > 0},
 		navLink{ID: "confirms", Label: "Checked and held", Count: len(v.Confirms)},
 	)
 	return nav
@@ -271,8 +271,8 @@ func bannerText(rep *findings.Report) string {
 			return "Redline's panes examined none of this change — no pane it currently ships covers these files. The findings below come from the agent's review."
 		}
 		return "Redline examined none of this change. No pane it currently ships covers these files, so an empty findings list says nothing about whether the change is correct."
-	case len(rep.DarkSubstrates()) > 0:
-		return fmt.Sprintf("%d pane(s) applied to this change and did not run. That part of the change is unreviewed.", len(rep.DarkSubstrates()))
+	case len(rep.FailedSubstrates()) > 0:
+		return fmt.Sprintf("%d pane(s) applied to this change and did not run. That part of the change is unreviewed.", len(rep.FailedSubstrates()))
 	}
 	return ""
 }

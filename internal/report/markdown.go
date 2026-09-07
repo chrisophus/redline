@@ -37,8 +37,8 @@ func Markdown(rep *findings.Report, renders []pane.Render, evidence map[string]p
 	return b.String()
 }
 
-// overviewSection renders the agent's summary of the change, when it wrote one.
-// Marked as the agent's: Redline composed none of it.
+// overviewSection renders the agent's summary of the change, when it wrote
+// one, marked as the agent's.
 func overviewSection(b *strings.Builder, rep *findings.Report) {
 	if rep.Agent == nil || rep.Agent.Overview == "" {
 		return
@@ -65,9 +65,9 @@ func banner(b *strings.Builder, rep *findings.Report) {
 				"covers these files, so the empty findings list below says nothing about whether "+
 				"the change is correct. Review it by hand.\n\n")
 		}
-	case len(rep.DarkSubstrates()) > 0:
+	case len(rep.FailedSubstrates()) > 0:
 		fmt.Fprintf(b, "> **%d pane(s) applied to this change and did not run.** "+
-			"See _What could not be determined_.\n\n", len(rep.DarkSubstrates()))
+			"See _What could not be determined_.\n\n", len(rep.FailedSubstrates()))
 	}
 }
 
@@ -206,8 +206,8 @@ func section2(b *strings.Builder, rep *findings.Report) {
 // worry about".
 func section3(b *strings.Builder, rep *findings.Report) {
 	fmt.Fprintf(b, "## What could not be determined\n\n")
-	dark := rep.DarkSubstrates()
-	if len(rep.Unknowns) == 0 && len(dark) == 0 {
+	failed := rep.FailedSubstrates()
+	if len(rep.Unknowns) == 0 && len(failed) == 0 {
 		if n := len(rep.Coverage.Unexamined); n > 0 {
 			fmt.Fprintf(b, "Every pane that applies ran, but %d changed file(s) were not in any pane's scope.\n\n", n)
 		} else {
@@ -215,7 +215,7 @@ func section3(b *strings.Builder, rep *findings.Report) {
 				rep.Coverage.ExaminedFiles)
 		}
 	}
-	for _, s := range dark {
+	for _, s := range failed {
 		fmt.Fprintf(b, "- **%s did not run.** %s\n", s.Name, s.Detail)
 	}
 	for _, u := range rep.Unknowns {
@@ -225,7 +225,7 @@ func section3(b *strings.Builder, rep *findings.Report) {
 		}
 		fmt.Fprintf(b, "%s\n", line)
 	}
-	if len(rep.Unknowns) > 0 || len(dark) > 0 {
+	if len(rep.Unknowns) > 0 || len(failed) > 0 {
 		fmt.Fprintln(b)
 	}
 	if n := len(rep.Coverage.Unexamined); n > 0 && rep.Coverage.ExaminedFiles > 0 {

@@ -331,8 +331,8 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 
 
 <h2 id="unknowns">What could not be determined</h2>
-{{if or .Unknowns .Dark}}
-{{range .Dark}}<div class="hl breaking"><div class="t">{{.Name}} did not run</div><div class="d">{{.Detail}}</div></div>{{end}}
+{{if or .Unknowns .Failed}}
+{{range .Failed}}<div class="hl breaking"><div class="t">{{.Name}} did not run</div><div class="d">{{.Detail}}</div></div>{{end}}
 <ul class="plain">
 {{range .Unknowns}}<li><b>{{.Substrate}}</b> — {{.Message}}{{if .Reason}} <span class="s">({{.Reason}})</span>{{end}}</li>{{end}}
 </ul>

@@ -270,9 +270,9 @@ func TestDeltaDegradesWhenBaseFails(t *testing.T) {
 	}
 }
 
-// A tool that fails at head darks the pane: no delta can be computed, and a
+// A tool that fails at head fails the pane: no delta can be computed, and a
 // missing check must never read as a clean one.
-func TestDeltaHeadFailureDarksThePane(t *testing.T) {
+func TestDeltaHeadFailureFailsThePane(t *testing.T) {
 	fakeGolangci(t)
 	r := newRepo(t)
 	r.write(".golangci.yml", "linters: {}\n")
@@ -286,9 +286,9 @@ func TestDeltaHeadFailureDarksThePane(t *testing.T) {
 	}
 }
 
-// A repository configured for a linter that is not installed is a dark
+// A repository configured for a linter that is not installed is a failed
 // sensor, not a clean pane.
-func TestDeltaMissingBinaryDarksThePane(t *testing.T) {
+func TestDeltaMissingBinaryFailsThePane(t *testing.T) {
 	r := newRepo(t)
 	r.write(".golangci.yml", "linters: {}\n")
 	r.write("a.go", "package a\n")
@@ -724,10 +724,10 @@ func TestConfigEnableListRemovalIsOneNote(t *testing.T) {
 	}
 }
 
-// A committed .redline.yml that fails to parse must dark the lint pane, not
+// A committed .redline.yml that fails to parse must fail the lint pane, not
 // remove it: built-in detection still scopes the changed files, and Observe
 // then reports the parse error.
-func TestDeltaBrokenRedlineConfigDarksNotVanishes(t *testing.T) {
+func TestDeltaBrokenRedlineConfigFailsNotVanishes(t *testing.T) {
 	r := newRepo(t)
 	r.write(".golangci.yml", "version: \"2\"\n")
 	r.write(".redline.yml", "tools: [\n")
@@ -741,13 +741,13 @@ func TestDeltaBrokenRedlineConfigDarksNotVanishes(t *testing.T) {
 		t.Fatal("a broken .redline.yml must not empty the scope: the pane would read as skipped")
 	}
 	if _, err := p.Observe(pane.Worktree); err == nil {
-		t.Fatal("observe must fail so the pane darks with the parse error")
+		t.Fatal("observe must fail so the pane reports the parse error")
 	}
 }
 
 // With no built-in tool detected either, an unreadable config leaves no way
 // to say which files its tools cover — so the whole change scopes under the
-// pane, which then darks, rather than the pane silently vanishing.
+// pane, which then fails visibly, rather than silently vanishing.
 func TestDeltaBrokenConfigWithNoBuiltinsScopesTheChange(t *testing.T) {
 	r := newRepo(t)
 	r.write(".redline.yml", "tools: [\n")
@@ -758,9 +758,9 @@ func TestDeltaBrokenConfigWithNoBuiltinsScopesTheChange(t *testing.T) {
 	p := &Delta{Repo: r.open()}
 	scope := p.Scope([]string{"data.txt"})
 	if len(scope) != 1 || scope[0] != "data.txt" {
-		t.Fatalf("with no readable config the whole change is under the dark pane, got %v", scope)
+		t.Fatalf("with no readable config the whole change is under the failed pane, got %v", scope)
 	}
 	if _, err := p.Observe(pane.Worktree); err == nil {
-		t.Fatal("observe must fail so the pane darks with the parse error")
+		t.Fatal("observe must fail so the pane reports the parse error")
 	}
 }

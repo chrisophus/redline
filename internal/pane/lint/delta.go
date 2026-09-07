@@ -53,9 +53,9 @@ func (p *Delta) detect() ([]tool, error) {
 // Scope is the changed files a configured tool covers, plus any changed lint
 // config. No configured tool means an empty scope: the pane then reads as
 // skipped, the honest state for a repository that has opted into no linter
-// Redline can run. A .redline.yml that fails to parse must dark the pane, not
-// remove it: detection still returns the built-in tools, whose coverage
-// scopes files so Observe runs and reports the parse error; and if nothing
+// Redline can run. A .redline.yml that fails to parse must fail the pane
+// visibly, not remove it: detection still returns the built-in tools, whose
+// coverage scopes files so Observe runs and reports the parse error; and if nothing
 // else lands in scope, the whole change does — an unreadable config means
 // nobody knows which files its tools cover.
 func (p *Delta) Scope(changed []string) []string {
@@ -103,7 +103,7 @@ func (s *snapshot) ID() string {
 }
 
 // Observe runs every detected tool at one revision. The head side is strict —
-// a tool that fails there darks the pane, because no delta can be computed.
+// a tool that fails there fails the pane, because no delta can be computed.
 // The base side records failures instead: an old revision that no longer
 // lints (a config newer than the code, missing dependencies in a bare
 // worktree) must degrade the answer, not erase it. Diff handles that case.
@@ -336,7 +336,7 @@ func (p *Delta) differFiles(t tool) []string {
 // file's base-revision content (materialized to a temp file) for {{base}} and
 // its path in the tree under review for {{head}}. A file with no base content
 // (added by this change) or no head file (deleted by it) has no pair to
-// compare: the tool would choke on the missing side and dark the whole pane,
+// compare: the tool would choke on the missing side and fail the whole pane,
 // so the file is skipped and the skip stated as an unknown instead.
 func (p *Delta) runDiffer(cfg ToolConfig, baseRev string, files []string) ([]Issue, []findings.Unknown, error) {
 	var all []Issue

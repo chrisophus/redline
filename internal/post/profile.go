@@ -114,7 +114,7 @@ func GateVerdict(rep *findings.Report, p *Profile) string {
 	if p == nil {
 		return ""
 	}
-	if p.FailClosedPane && rep != nil && len(rep.DarkSubstrates()) > 0 {
+	if p.FailClosedPane && rep != nil && len(rep.FailedSubstrates()) > 0 {
 		return "fail"
 	}
 	if rep != nil {

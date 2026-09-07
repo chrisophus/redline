@@ -210,9 +210,9 @@ type AgentReview struct {
 	Files    map[string]string `json:"files,omitempty"`
 }
 
-// DarkSubstrates returns panes that applied but did not run. Redline is
+// FailedSubstrates returns panes that applied but did not run. Redline is
 // non-gating, so this drives rendering, not exit status.
-func (r *Report) DarkSubstrates() []SubstrateStatus {
+func (r *Report) FailedSubstrates() []SubstrateStatus {
 	var out []SubstrateStatus
 	for _, s := range r.Substrates {
 		if s.State == SubstrateFailed {

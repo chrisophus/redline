@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// toolTimeout bounds one linter run. A linter that hangs must dark the pane
+// toolTimeout bounds one linter run. A linter that hangs must fail the pane
 // with a message, not hang the review.
 const toolTimeout = 5 * time.Minute
 
@@ -49,7 +49,7 @@ var gorefactorConfigs = []string{".gorefactor.yaml", ".gorefactor.yml"}
 // detect returns the tools the tree at root is configured for: the built-in
 // three by config-file presence, plus every tool declared in .redline.yml.
 // A .redline.yml that exists but does not parse is an error — a misconfigured
-// tool must dark the pane, not vanish from it.
+// tool must fail the pane visibly, not vanish from it.
 func detect(root string) ([]tool, error) {
 	var out []tool
 	for _, name := range golangciConfigs {
@@ -74,7 +74,7 @@ func detect(root string) ([]tool, error) {
 	if err != nil {
 		// The built-in detections above still stand: a broken .redline.yml
 		// must not silently disable golangci-lint or eslint. The caller gets
-		// both the partial tool list (to scope with) and the error (to dark
+		// both the partial tool list (to scope with) and the error (to fail
 		// the pane with).
 		return out, err
 	}
