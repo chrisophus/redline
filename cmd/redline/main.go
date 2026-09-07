@@ -85,7 +85,7 @@ func main() {
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
 	reportURL, profile, olderThan                                     string
-	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage          bool
+	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
 	port                                                              int
 }
 

@@ -105,13 +105,7 @@ func Run(opts Options) (*Result, error) {
 		return nil, err
 	}
 	configRoot := harnessConfigRoot(opts.Dir, tgt)
-	harness.Active = cfg
-	harness.ActiveRoot = configRoot
-	defer func() {
-		harness.Active = nil
-		harness.ActiveRoot = ""
-		harness.ResetWorktreePrepared()
-	}()
+	prepared := map[string]bool{}
 	roots := harness.Roots{Observe: tgt.Dir, Origin: originCoverageDir(opts.Dir, tgt), Caller: configRoot}
 	if err := harness.Require(roots, changed, cfg, harness.RequireOpts{
 		SkipCoverage: opts.AllowMissingCoverage,
@@ -119,7 +113,7 @@ func Run(opts Options) (*Result, error) {
 		return nil, err
 	}
 	if cfg != nil {
-		if _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg); err != nil {
+		if _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg, prepared); err != nil {
 			return nil, err
 		}
 	}
@@ -133,7 +127,7 @@ func Run(opts Options) (*Result, error) {
 	panes := []pane.Pane{
 		&migrations.Pane{Repo: repo, UpstreamRef: resolveRef(repo, opts.Upstream, baseRef), Dir: opts.MigDir},
 		&openapi.Pane{Repo: repo},
-		&lint.Delta{Repo: repo},
+		&lint.Delta{Repo: repo, Harness: cfg, HarnessRoot: configRoot, Prepared: prepared},
 		&lint.Suppressions{Repo: repo},
 		&lint.Config{Repo: repo},
 	}

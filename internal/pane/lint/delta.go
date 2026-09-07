@@ -38,6 +38,15 @@ type Delta struct {
 	// delta partly earned by editing the config has to say so: fewer findings
 	// because a rule was turned off is not the same fact as fixed code.
 	configChanged bool
+
+	// Harness carries the run's .redline.yml config so this pane can run
+	// harness.worktree steps (for example make stub-ui) in the base and head
+	// trees before the linters read them. Set by run.Run, nil when there is no
+	// config. Prepared is the run-scoped dedup set shared with the rest of the
+	// run so a produce root runs at most once.
+	Harness     *harness.Config
+	HarnessRoot string
+	Prepared    map[string]bool
 }
 
 // Name implements pane.Pane.
@@ -121,8 +130,8 @@ func (p *Delta) Observe(rev pane.Revision) (pane.Observation, error) {
 			return nil, fmt.Errorf("checking out the base revision to lint it: %w", werr)
 		}
 	}
-	if cfg := harness.Active; cfg != nil {
-		if _, err := harness.PrepareWorktree(dir, harness.ActiveRoot, p.scoped, cfg); err != nil {
+	if p.Harness != nil {
+		if _, err := harness.PrepareWorktree(dir, p.HarnessRoot, p.scoped, p.Harness, p.Prepared); err != nil {
 			return nil, err
 		}
 	}

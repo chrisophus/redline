@@ -6,16 +6,36 @@ package globmatch
 import (
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // MatchesAny reports whether path matches any of the patterns.
 func MatchesAny(patterns []string, path string) bool {
 	for _, p := range patterns {
-		if toRegexp(p).MatchString(path) {
+		if compiled(p).MatchString(path) {
 			return true
 		}
 	}
 	return false
+}
+
+// compiled memoizes the regexp for a pattern. MatchesAny runs once per changed
+// path against the same scope patterns, so compiling inside the loop rebuilt the
+// same handful of patterns across the whole diff.
+var (
+	cacheMu sync.Mutex
+	cache   = map[string]*regexp.Regexp{}
+)
+
+func compiled(pattern string) *regexp.Regexp {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	if re, ok := cache[pattern]; ok {
+		return re
+	}
+	re := toRegexp(pattern)
+	cache[pattern] = re
+	return re
 }
 
 func toRegexp(pattern string) *regexp.Regexp {

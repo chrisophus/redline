@@ -133,20 +133,23 @@ func Prepare(produceRoot, configRoot string, changed []string, cfg *Config) ([]s
 }
 
 // PrepareWorktree runs harness.worktree steps in the tree under review before
-// tool panes execute there (detached PR worktrees included). Each produce
-// root is prepared at most once per run.
-func PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config) ([]string, error) {
+// tool panes execute there (detached PR worktrees included). prepared records
+// the produce roots already run this run, so a root is prepared at most once;
+// the caller owns the map and shares it across the run's PrepareWorktree calls.
+func PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config, prepared map[string]bool) ([]string, error) {
 	if cfg == nil {
 		return nil, nil
 	}
-	if worktreePrepared[produceRoot] {
+	if prepared[produceRoot] {
 		return nil, nil
 	}
 	produced, err := runProfiles(produceRoot, configRoot, changed, cfg.Env.From, cfg.Worktree, "worktree")
 	if err != nil {
 		return produced, err
 	}
-	worktreePrepared[produceRoot] = true
+	if prepared != nil {
+		prepared[produceRoot] = true
+	}
 	return produced, nil
 }
 

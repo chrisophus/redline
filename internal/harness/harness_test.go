@@ -122,7 +122,7 @@ func TestPrepareWorktreeMissing(t *testing.T) {
 			Produce: ProduceConfig{Command: "mkdir", Args: []string{"-p", "ui/dist"}},
 		}},
 	}
-	produced, err := PrepareWorktree(dir, dir, nil, cfg)
+	produced, err := PrepareWorktree(dir, dir, nil, cfg, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
