@@ -63,7 +63,9 @@ func Record(dir string, r *Result, effort string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(dir, ledgerFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	// 0600: the ledger records what this developer's reviews cost, which is
+	// nobody else's business on a shared machine.
+	f, err := os.OpenFile(filepath.Join(dir, ledgerFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
