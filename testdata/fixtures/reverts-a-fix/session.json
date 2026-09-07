@@ -1,0 +1,124 @@
+{
+  "report": {
+    "schemaVersion": 1,
+    "baseRef": "9c659a0e81278745663821e7af95898d6b31044c",
+    "baseSHA": "9c659a0e81278745663821e7af95898d6b31044c",
+    "scope": [
+      "internal/queue/queue.go"
+    ],
+    "findings": [
+      {
+        "rule": "source-without-test",
+        "substrate": "redline/test-delta",
+        "category": "tests",
+        "severity": "info",
+        "message": "code in internal/queue changed but no test in that package did",
+        "new": true,
+        "fingerprint": "package:internal/queue\u0000source-without-test\u0000code in internal/queue changed but no test in that package did",
+        "id": "fe8af6654f9",
+        "context": "Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.",
+        "anchor": {
+          "kind": "package",
+          "id": "internal/queue"
+        },
+        "source": "deterministic"
+      }
+    ],
+    "substrates": [
+      {
+        "name": "redline/sql",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/api",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/suppressions",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/lint-config",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/test-delta",
+        "state": "ran",
+        "gating": false
+      }
+    ],
+    "newCount": {
+      "info": 1
+    },
+    "coverage": {
+      "changedFiles": 1,
+      "examinedFiles": 1,
+      "coverableFiles": 1
+    },
+    "confirmations": [
+      {
+        "substrate": "redline/suppressions",
+        "rule": "no-suppressions-added",
+        "message": "this change adds no lint-silencing directive"
+      }
+    ]
+  },
+  "change": {
+    "target": {
+      "kind": "commit",
+      "dir": "/root/.redline/worktrees/80a13a0d07c98ac6/ad06c64a744fbb96852027d01be7e6339e77ef7a",
+      "head": "ad06c64a744fbb96852027d01be7e6339e77ef7a",
+      "base": "9c659a0e81278745663821e7af95898d6b31044c",
+      "label": "HEAD"
+    },
+    "baseSHA": "9c659a0e81278745663821e7af95898d6b31044c",
+    "commits": [
+      {
+        "sha": "ad06c64a744fbb96852027d01be7e6339e77ef7a",
+        "author": "fixture",
+        "subject": "simplify Drain"
+      }
+    ],
+    "files": [
+      {
+        "path": "internal/queue/queue.go",
+        "status": "modified",
+        "added": 0,
+        "removed": 5,
+        "diff": "diff --git a/internal/queue/queue.go b/internal/queue/queue.go\nindex 185ba13..871b25e 100644\n--- a/internal/queue/queue.go\n+++ b/internal/queue/queue.go\n@@ -4,11 +4,6 @@ package queue\n func Drain(items []string) []string {\n \tvar out []string\n \tfor _, it := range items {\n-\t\t// A nil entry reaches this from the retry path and panicked in\n-\t\t// production on 2026-03-11. Do not remove this guard.\n-\t\tif it == \"\" {\n-\t\t\tcontinue\n-\t\t}\n \t\tout = append(out, it)\n \t}\n \treturn out\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      }
+    ],
+    "uiTouched": false
+  },
+  "renders": [
+    {
+      "Title": "Suppressions",
+      "Summary": "0 lint-silencing directive(s) added by this change",
+      "Lines": null
+    },
+    {
+      "Title": "Tests",
+      "Summary": "1 test-delta fact(s) from the diff",
+      "Lines": [
+        "~ internal/queue (no test changed)"
+      ]
+    }
+  ]
+}

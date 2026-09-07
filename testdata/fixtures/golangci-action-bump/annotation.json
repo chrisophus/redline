@@ -1,0 +1,15 @@
+{
+  "name": "golangci-action-bump",
+  "origin": "chrisophus/redline commit fe6ff27",
+  "summary": "One line in a CI workflow moves golangci-lint-action from v6 to v7. The pinned linter version beside it does not change.",
+  "clean": true,
+  "why_this_fixture_exists": "The 29 percent of changes that deserve no comment is the harder half of the quality bar and the one homegrown reviewers miss. A reviewer that always finds something is a generator, and the first invented problem on a clean change is the last time anyone reads its output.",
+  "expect": [],
+  "quiet": [
+    {
+      "about": "speculating about the major version bump",
+      "note": "There is nothing here to review. Asking whether v7 has breaking changes, or suggesting the version be pinned to a SHA, is padding.",
+      "matches_without_correlation": ["breaking", "pin", "sha", "consider", "may want"]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "test-delta-pane",
+  "origin": "chrisophus/redline commit fe2df58",
+  "summary": "Adds a pane that reports facts about tests from the diff alone: a package changed with no test in it, a skip or focus directive added, a net drop in assertion-like lines.",
+  "clean": false,
+  "why_this_fixture_exists": "The pane's own source contains the strings it detects, so wave one reports several test-skip-added findings against the detector itself. Those are already on the report. The reviewer must not restate them, which is the instruction this fixture exercises.",
+  "expect": [],
+  "quiet": [
+    {
+      "about": "restating the pane's findings against its own source",
+      "note": "The test-skip-added findings on testdelta.go are wave-one output and already on the report. Repeating them makes the reader read the same thing twice and trust the list less.",
+      "matches_without_correlation": ["skips a test", "test-skip-added", "focuses tests"]
+    }
+  ]
+}

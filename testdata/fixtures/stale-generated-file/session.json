@@ -1,0 +1,100 @@
+{
+  "report": {
+    "schemaVersion": 1,
+    "baseRef": "e4198aa387daeafc9011b0099c8ce9cd565b768c",
+    "baseSHA": "e4198aa387daeafc9011b0099c8ce9cd565b768c",
+    "scope": [
+      "api/schema.proto"
+    ],
+    "findings": [],
+    "substrates": [
+      {
+        "name": "redline/sql",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/api",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/suppressions",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint-config",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/test-delta",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      }
+    ],
+    "newCount": {},
+    "coverage": {
+      "changedFiles": 1,
+      "examinedFiles": 0,
+      "unexamined": [
+        "api/schema.proto"
+      ],
+      "coverableFiles": 0
+    },
+    "unknowns": [
+      {
+        "substrate": "redline/api",
+        "message": "1 file(s) in this change fall under the api pane, which examined none of them",
+        "reason": "vacuum spec linting, spec-vs-handler and observed-vs-declared response checks are not built"
+      },
+      {
+        "substrate": "redline",
+        "message": "none of the 1 changed file(s) fall under any pane Redline currently ships",
+        "reason": "this change is entirely unexamined; the empty findings list below is not evidence of correctness"
+      }
+    ]
+  },
+  "change": {
+    "target": {
+      "kind": "commit",
+      "dir": "/root/.redline/worktrees/e79d4b8d3d45b75a/518af0294419daaa1f647f4411341f8c2cd3a191",
+      "head": "518af0294419daaa1f647f4411341f8c2cd3a191",
+      "base": "e4198aa387daeafc9011b0099c8ce9cd565b768c",
+      "label": "HEAD"
+    },
+    "baseSHA": "e4198aa387daeafc9011b0099c8ce9cd565b768c",
+    "commits": [
+      {
+        "sha": "518af0294419daaa1f647f4411341f8c2cd3a191",
+        "author": "fixture",
+        "subject": "add tenant_id to the user message"
+      }
+    ],
+    "files": [
+      {
+        "path": "api/schema.proto",
+        "status": "modified",
+        "added": 1,
+        "removed": 0,
+        "diff": "diff --git a/api/schema.proto b/api/schema.proto\nindex f0751fe..b874e0d 100644\n--- a/api/schema.proto\n+++ b/api/schema.proto\n@@ -2,4 +2,5 @@ syntax = \"proto3\";\n message User {\n   string id = 1;\n   string email = 2;\n+  string tenant_id = 3;\n }\n",
+        "areas": [
+          "api"
+        ]
+      }
+    ],
+    "uiTouched": false
+  }
+}

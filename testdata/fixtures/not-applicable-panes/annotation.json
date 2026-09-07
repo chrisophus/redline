@@ -1,0 +1,15 @@
+{
+  "name": "not-applicable-panes",
+  "origin": "chrisophus/redline commit 825b052",
+  "summary": "A pane the repository has no files for is recorded as not-applicable and left off the report entirely, so a report on a repository with no migrations says nothing about migrations. Panes the repository has but the change did not touch are still listed.",
+  "clean": false,
+  "why_this_fixture_exists": "The change is about what a report must not say. It is a good test of whether the reviewer can tell a deliberate silence from a missing case.",
+  "expect": [],
+  "quiet": [
+    {
+      "about": "arguing the hidden panes should be shown",
+      "note": "Hiding a pane the repository has no files for is the point of the change, argued in the diff's own comments. A reviewer that relitigates it has not read them.",
+      "matches_without_correlation": ["should still be shown", "hiding this is", "reduces visibility"]
+    }
+  ]
+}

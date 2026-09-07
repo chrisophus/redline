@@ -1,0 +1,263 @@
+{
+  "report": {
+    "schemaVersion": 1,
+    "baseRef": "bda6ce457d144e8f8ee2b74433356bdfdec60b00",
+    "baseSHA": "bda6ce457d144e8f8ee2b74433356bdfdec60b00",
+    "scope": [
+      "cmd/redline/main.go",
+      "internal/globmatch/glob.go",
+      "internal/harness/active.go",
+      "internal/harness/harness.go",
+      "internal/harness/harness_test.go",
+      "internal/pane/lint/delta.go",
+      "internal/run/run.go"
+    ],
+    "findings": [
+      {
+        "rule": "source-without-test",
+        "substrate": "redline/test-delta",
+        "category": "tests",
+        "severity": "info",
+        "message": "code in cmd/redline changed but no test in that package did",
+        "new": true,
+        "fingerprint": "package:cmd/redline\u0000source-without-test\u0000code in cmd/redline changed but no test in that package did",
+        "id": "f7baf78232d",
+        "context": "Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.",
+        "anchor": {
+          "kind": "package",
+          "id": "cmd/redline"
+        },
+        "source": "deterministic"
+      },
+      {
+        "rule": "source-without-test",
+        "substrate": "redline/test-delta",
+        "category": "tests",
+        "severity": "info",
+        "message": "code in internal/globmatch changed but no test in that package did",
+        "new": true,
+        "fingerprint": "package:internal/globmatch\u0000source-without-test\u0000code in internal/globmatch changed but no test in that package did",
+        "id": "f9f4e56e66c",
+        "context": "Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.",
+        "anchor": {
+          "kind": "package",
+          "id": "internal/globmatch"
+        },
+        "source": "deterministic"
+      },
+      {
+        "rule": "source-without-test",
+        "substrate": "redline/test-delta",
+        "category": "tests",
+        "severity": "info",
+        "message": "code in internal/pane/lint changed but no test in that package did",
+        "new": true,
+        "fingerprint": "package:internal/pane/lint\u0000source-without-test\u0000code in internal/pane/lint changed but no test in that package did",
+        "id": "f8d0c40da2a",
+        "context": "Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.",
+        "anchor": {
+          "kind": "package",
+          "id": "internal/pane/lint"
+        },
+        "source": "deterministic"
+      },
+      {
+        "rule": "source-without-test",
+        "substrate": "redline/test-delta",
+        "category": "tests",
+        "severity": "info",
+        "message": "code in internal/run changed but no test in that package did",
+        "new": true,
+        "fingerprint": "package:internal/run\u0000source-without-test\u0000code in internal/run changed but no test in that package did",
+        "id": "f014de6093c",
+        "context": "Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.",
+        "anchor": {
+          "kind": "package",
+          "id": "internal/run"
+        },
+        "source": "deterministic"
+      }
+    ],
+    "substrates": [
+      {
+        "name": "redline/sql",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/api",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint",
+        "state": "failed",
+        "detail": "observe worktree: golangci-lint at head: golangci-lint exited 3: Error: can't load config: the Go language version (go1.25) used to build golangci-lint is lower than the targeted Go version (1.26)",
+        "gating": false
+      },
+      {
+        "name": "redline/suppressions",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/lint-config",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/test-delta",
+        "state": "ran",
+        "gating": false
+      }
+    ],
+    "newCount": {
+      "info": 4
+    },
+    "coverage": {
+      "changedFiles": 7,
+      "examinedFiles": 7,
+      "coverableFiles": 7
+    },
+    "confirmations": [
+      {
+        "substrate": "redline/suppressions",
+        "rule": "no-suppressions-added",
+        "message": "this change adds no lint-silencing directive"
+      }
+    ],
+    "unknowns": [
+      {
+        "substrate": "redline/lint",
+        "message": "pane applied to this change but did not run",
+        "reason": "observe worktree: golangci-lint at head: golangci-lint exited 3: Error: can't load config: the Go language version (go1.25) used to build golangci-lint is lower than the targeted Go version (1.26)"
+      },
+      {
+        "substrate": "redline/context",
+        "message": "context provider gorefactor claimed files in this change but did not run",
+        "reason": "gorefactor is configured for this repository but not on PATH"
+      }
+    ]
+  },
+  "change": {
+    "target": {
+      "kind": "commit",
+      "dir": "/root/.redline/worktrees/f8fa56f79f58c4c1/4cfafc4f0cb709d0313ef8a372ae49aff5bc168f",
+      "head": "4cfafc4f0cb709d0313ef8a372ae49aff5bc168f",
+      "base": "bda6ce457d144e8f8ee2b74433356bdfdec60b00",
+      "label": "4cfafc4"
+    },
+    "baseSHA": "bda6ce457d144e8f8ee2b74433356bdfdec60b00",
+    "commits": [
+      {
+        "sha": "4cfafc4f0cb709d0313ef8a372ae49aff5bc168f",
+        "author": "ccason",
+        "subject": "Replace harness globals with injected config; cache glob patterns",
+        "body": "The harness config reached the lint delta pane through package-level globals\n(harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\nit instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\nthat run.Run creates and shares with its own PrepareWorktree call, so a produce\nroot still runs at most once with no hidden state. PrepareWorktree takes the\ndedup set as a parameter; active.go is gone.\n\nglobmatch.MatchesAny compiled a regexp for every pattern on every call, and it\nruns once per changed path against the same scope patterns. Memoize the compiled\npatterns so the diff does not rebuild them per file.\n\nAlso gofmt the opts struct alignment left by the module rename."
+      }
+    ],
+    "files": [
+      {
+        "path": "cmd/redline/main.go",
+        "status": "modified",
+        "added": 1,
+        "removed": 1,
+        "diff": "diff --git a/cmd/redline/main.go b/cmd/redline/main.go\nindex a6c8ce1..e85818b 100644\n--- a/cmd/redline/main.go\n+++ b/cmd/redline/main.go\n@@ -85,7 +85,7 @@ func main() {\n type opts struct {\n \tbase, upstream, migDir, format, out, pr, branch, commit, revRange string\n \treportURL, profile, olderThan                                     string\n-\topen, noOpen, stop, dryRun, file, prepare, allowMissingCoverage          bool\n+\topen, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool\n \tport                                                              int\n }\n \n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "internal/globmatch/glob.go",
+        "status": "modified",
+        "added": 21,
+        "removed": 1,
+        "diff": "diff --git a/internal/globmatch/glob.go b/internal/globmatch/glob.go\nindex a8f3ced..b53bcec 100644\n--- a/internal/globmatch/glob.go\n+++ b/internal/globmatch/glob.go\n@@ -6,18 +6,38 @@ package globmatch\n import (\n \t\"regexp\"\n \t\"strings\"\n+\t\"sync\"\n )\n \n // MatchesAny reports whether path matches any of the patterns.\n func MatchesAny(patterns []string, path string) bool {\n \tfor _, p := range patterns {\n-\t\tif toRegexp(p).MatchString(path) {\n+\t\tif compiled(p).MatchString(path) {\n \t\t\treturn true\n \t\t}\n \t}\n \treturn false\n }\n \n+// compiled memoizes the regexp for a pattern. MatchesAny runs once per changed\n+// path against the same scope patterns, so compiling inside the loop rebuilt the\n+// same handful of patterns across the whole diff.\n+var (\n+\tcacheMu sync.Mutex\n+\tcache   = map[string]*regexp.Regexp{}\n+)\n+\n+func compiled(pattern string) *regexp.Regexp {\n+\tcacheMu.Lock()\n+\tdefer cacheMu.Unlock()\n+\tif re, ok := cache[pattern]; ok {\n+\t\treturn re\n+\t}\n+\tre := toRegexp(pattern)\n+\tcache[pattern] = re\n+\treturn re\n+}\n+\n func toRegexp(pattern string) *regexp.Regexp {\n \tvar b strings.Builder\n \tb.WriteString(\"^\")\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "internal/harness/active.go",
+        "status": "deleted",
+        "added": 0,
+        "removed": 19,
+        "diff": "diff --git a/internal/harness/active.go b/internal/harness/active.go\ndeleted file mode 100644\nindex feab39a..0000000\n--- a/internal/harness/active.go\n+++ /dev/null\n@@ -1,19 +0,0 @@\n-package harness\n-\n-// Active is the harness config for the current redline run, loaded from the\n-// caller's checkout so worktrees without a committed .redline.yml still get\n-// worktree prepare steps. Set by run.Run; read by panes.\n-var Active *Config\n-\n-// ActiveRoot is the repository root Active was loaded from. env.from paths\n-// are resolved here when they are absent from the tree under review.\n-var ActiveRoot string\n-\n-// worktreePrepared records produce roots that already ran harness.worktree\n-// this run, so lint delta does not repeat stub-ui for head.\n-var worktreePrepared = map[string]bool{}\n-\n-// ResetWorktreePrepared clears the worktree dedup map. Called at run end.\n-func ResetWorktreePrepared() {\n-\tworktreePrepared = map[string]bool{}\n-}\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "internal/harness/harness.go",
+        "status": "modified",
+        "added": 8,
+        "removed": 5,
+        "diff": "diff --git a/internal/harness/harness.go b/internal/harness/harness.go\nindex 877502a..cbdecea 100644\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -133,20 +133,23 @@ func Prepare(produceRoot, configRoot string, changed []string, cfg *Config) ([]s\n }\n \n // PrepareWorktree runs harness.worktree steps in the tree under review before\n-// tool panes execute there (detached PR worktrees included). Each produce\n-// root is prepared at most once per run.\n-func PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config) ([]string, error) {\n+// tool panes execute there (detached PR worktrees included). prepared records\n+// the produce roots already run this run, so a root is prepared at most once;\n+// the caller owns the map and shares it across the run's PrepareWorktree calls.\n+func PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config, prepared map[string]bool) ([]string, error) {\n \tif cfg == nil {\n \t\treturn nil, nil\n \t}\n-\tif worktreePrepared[produceRoot] {\n+\tif prepared[produceRoot] {\n \t\treturn nil, nil\n \t}\n \tproduced, err := runProfiles(produceRoot, configRoot, changed, cfg.Env.From, cfg.Worktree, \"worktree\")\n \tif err != nil {\n \t\treturn produced, err\n \t}\n-\tworktreePrepared[produceRoot] = true\n+\tif prepared != nil {\n+\t\tprepared[produceRoot] = true\n+\t}\n \treturn produced, nil\n }\n \n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "internal/harness/harness_test.go",
+        "status": "modified",
+        "added": 1,
+        "removed": 1,
+        "diff": "diff --git a/internal/harness/harness_test.go b/internal/harness/harness_test.go\nindex ccc1fb5..bd43457 100644\n--- a/internal/harness/harness_test.go\n+++ b/internal/harness/harness_test.go\n@@ -122,7 +122,7 @@ func TestPrepareWorktreeMissing(t *testing.T) {\n \t\t\tProduce: ProduceConfig{Command: \"mkdir\", Args: []string{\"-p\", \"ui/dist\"}},\n \t\t}},\n \t}\n-\tproduced, err := PrepareWorktree(dir, dir, nil, cfg)\n+\tproduced, err := PrepareWorktree(dir, dir, nil, cfg, nil)\n \tif err != nil {\n \t\tt.Fatal(err)\n \t}\n",
+        "language": "go",
+        "areas": [
+          "tests"
+        ]
+      },
+      {
+        "path": "internal/pane/lint/delta.go",
+        "status": "modified",
+        "added": 11,
+        "removed": 2,
+        "diff": "diff --git a/internal/pane/lint/delta.go b/internal/pane/lint/delta.go\nindex 35b933a..e050f74 100644\n--- a/internal/pane/lint/delta.go\n+++ b/internal/pane/lint/delta.go\n@@ -38,6 +38,15 @@ type Delta struct {\n \t// delta partly earned by editing the config has to say so: fewer findings\n \t// because a rule was turned off is not the same fact as fixed code.\n \tconfigChanged bool\n+\n+\t// Harness carries the run's .redline.yml config so this pane can run\n+\t// harness.worktree steps (for example make stub-ui) in the base and head\n+\t// trees before the linters read them. Set by run.Run, nil when there is no\n+\t// config. Prepared is the run-scoped dedup set shared with the rest of the\n+\t// run so a produce root runs at most once.\n+\tHarness     *harness.Config\n+\tHarnessRoot string\n+\tPrepared    map[string]bool\n }\n \n // Name implements pane.Pane.\n@@ -121,8 +130,8 @@ func (p *Delta) Observe(rev pane.Revision) (pane.Observation, error) {\n \t\t\treturn nil, fmt.Errorf(\"checking out the base revision to lint it: %w\", werr)\n \t\t}\n \t}\n-\tif cfg := harness.Active; cfg != nil {\n-\t\tif _, err := harness.PrepareWorktree(dir, harness.ActiveRoot, p.scoped, cfg); err != nil {\n+\tif p.Harness != nil {\n+\t\tif _, err := harness.PrepareWorktree(dir, p.HarnessRoot, p.scoped, p.Harness, p.Prepared); err != nil {\n \t\t\treturn nil, err\n \t\t}\n \t}\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "internal/run/run.go",
+        "status": "modified",
+        "added": 3,
+        "removed": 9,
+        "diff": "diff --git a/internal/run/run.go b/internal/run/run.go\nindex 9a384c3..e08c66e 100644\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -105,13 +105,7 @@ func Run(opts Options) (*Result, error) {\n \t\treturn nil, err\n \t}\n \tconfigRoot := harnessConfigRoot(opts.Dir, tgt)\n-\tharness.Active = cfg\n-\tharness.ActiveRoot = configRoot\n-\tdefer func() {\n-\t\tharness.Active = nil\n-\t\tharness.ActiveRoot = \"\"\n-\t\tharness.ResetWorktreePrepared()\n-\t}()\n+\tprepared := map[string]bool{}\n \troots := harness.Roots{Observe: tgt.Dir, Origin: originCoverageDir(opts.Dir, tgt), Caller: configRoot}\n \tif err := harness.Require(roots, changed, cfg, harness.RequireOpts{\n \t\tSkipCoverage: opts.AllowMissingCoverage,\n@@ -119,7 +113,7 @@ func Run(opts Options) (*Result, error) {\n \t\treturn nil, err\n \t}\n \tif cfg != nil {\n-\t\tif _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg); err != nil {\n+\t\tif _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg, prepared); err != nil {\n \t\t\treturn nil, err\n \t\t}\n \t}\n@@ -133,7 +127,7 @@ func Run(opts Options) (*Result, error) {\n \tpanes := []pane.Pane{\n \t\t\u0026migrations.Pane{Repo: repo, UpstreamRef: resolveRef(repo, opts.Upstream, baseRef), Dir: opts.MigDir},\n \t\t\u0026openapi.Pane{Repo: repo},\n-\t\t\u0026lint.Delta{Repo: repo},\n+\t\t\u0026lint.Delta{Repo: repo, Harness: cfg, HarnessRoot: configRoot, Prepared: prepared},\n \t\t\u0026lint.Suppressions{Repo: repo},\n \t\t\u0026lint.Config{Repo: repo},\n \t}\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      }
+    ],
+    "uiTouched": false
+  },
+  "renders": [
+    {
+      "Title": "Suppressions",
+      "Summary": "0 lint-silencing directive(s) added by this change",
+      "Lines": null
+    },
+    {
+      "Title": "Tests",
+      "Summary": "4 test-delta fact(s) from the diff",
+      "Lines": [
+        "~ cmd/redline (no test changed)",
+        "~ internal/globmatch (no test changed)",
+        "~ internal/pane/lint (no test changed)",
+        "~ internal/run (no test changed)"
+      ]
+    }
+  ],
+  "contextAbsent": [
+    "gorefactor (context): gorefactor is configured for this repository but not on PATH"
+  ]
+}
