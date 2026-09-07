@@ -51,6 +51,56 @@ func (x Expansion) header() string {
 	return fmt.Sprintf("── %s · %s · %s ──\n", x.Role, x.Symbol, loc)
 }
 
+// Seen is the lines the model is already being shown, per file, from the diff
+// itself. Redline knows this and a provider does not: the provider resolves
+// what surrounds a change without knowing how the change will be presented.
+//
+// Deduplicating against it is the difference between context and padding. An
+// expansion whose every line is already in the diff costs budget and tells the
+// model nothing, and on a change that adds new files most expansions are
+// exactly that: the enclosing declaration of a function in a brand new file is
+// the file, and the file is already there in full.
+type Seen map[string]map[int]bool
+
+// Add records a line as already shown.
+func (s Seen) Add(file string, line int) {
+	if s == nil || file == "" {
+		return
+	}
+	if s[file] == nil {
+		s[file] = map[int]bool{}
+	}
+	s[file][line] = true
+}
+
+// unseen counts how many of an expansion's lines the model has not been shown.
+//
+// History is exempt and always counts as unseen. It carries a line span like
+// everything else, but its content is commit messages and prior revisions
+// rather than the current source at those lines, so no diff of the working
+// tree can contain it. Treating the span at face value here deletes the one
+// expansion that catches a change undoing a deliberate fix, which is the
+// role's whole reason for existing.
+func (s Seen) unseen(x Expansion) int {
+	if x.Role == RoleHistory {
+		return 1
+	}
+	if x.File == "" || x.StartLine <= 0 || x.EndLine < x.StartLine {
+		return 1
+	}
+	shown := s[x.File]
+	if shown == nil {
+		return x.EndLine - x.StartLine + 1
+	}
+	var n int
+	for line := x.StartLine; line <= x.EndLine; line++ {
+		if !shown[line] {
+			n++
+		}
+	}
+	return n
+}
+
 // Budgeted is the result of fitting an envelope's expansions to a ceiling.
 type Budgeted struct {
 	Kept []Expansion
@@ -62,6 +112,13 @@ type Budgeted struct {
 	Tokens int
 	// Ceiling is what it was fitted to.
 	Ceiling int
+	// Redundant counts expansions dropped because every line of them was
+	// already in the diff. Counted rather than silently discarded: a
+	// provider whose output is mostly redundant is worth knowing about, and
+	// on a change that adds new files that is most of it.
+	Redundant int
+	// RedundantTokens is what keeping them would have cost.
+	RedundantTokens int
 }
 
 // DroppedTotal is how many expansions did not fit.
@@ -77,6 +134,10 @@ func (b Budgeted) DroppedTotal() int {
 // everything fit.
 func (b Budgeted) Summary() string {
 	if b.DroppedTotal() == 0 {
+		if b.Redundant > 0 {
+			return fmt.Sprintf("%d expansion(s) were already in the diff and were not repeated to the model, saving about %d tokens",
+				b.Redundant, b.RedundantTokens)
+		}
 		return ""
 	}
 	roles := make([]Role, 0, len(b.Dropped))
@@ -96,6 +157,10 @@ func (b Budgeted) Summary() string {
 	for _, r := range roles {
 		s += fmt.Sprintf(" %s=%d", r, b.Dropped[r])
 	}
+	if b.Redundant > 0 {
+		s += fmt.Sprintf(". A further %d were already in the diff and were not repeated, saving about %d tokens",
+			b.Redundant, b.RedundantTokens)
+	}
 	return s
 }
 
@@ -110,6 +175,13 @@ func (b Budgeted) Summary() string {
 // context block on every run. An eval that cannot reproduce its own input is
 // measuring noise.
 func Fit(e *Envelope, ceiling int) Budgeted {
+	return FitSeen(e, ceiling, nil)
+}
+
+// FitSeen is Fit against the lines the model is already being shown, so
+// context that only restates the diff is dropped before anything competes for
+// the budget.
+func FitSeen(e *Envelope, ceiling int, seen Seen) Budgeted {
 	out := Budgeted{Dropped: map[Role]int{}, Ceiling: ceiling}
 	if e == nil {
 		return out
@@ -140,6 +212,11 @@ func Fit(e *Envelope, ceiling int) Budgeted {
 	// starve every cheaper expansion behind it.
 	for _, x := range ranked {
 		cost := x.Tokens()
+		if seen != nil && seen.unseen(x) == 0 {
+			out.Redundant++
+			out.RedundantTokens += cost
+			continue
+		}
 		if out.Tokens+cost > ceiling {
 			out.Dropped[x.Role]++
 			continue
@@ -180,7 +257,7 @@ func (b Budgeted) Render() string {
 // block, not two competing ones, and the ranking is the same: role first,
 // then the provider's hint. Neither provider can spend more of the budget by
 // scoring its own expansions higher, because role rank is Redline's.
-func FitAll(envs []*Envelope, ceiling int) Budgeted {
+func FitAll(envs []*Envelope, ceiling int, seen Seen) Budgeted {
 	merged := &Envelope{}
 	for _, e := range envs {
 		if e == nil {
@@ -188,5 +265,5 @@ func FitAll(envs []*Envelope, ceiling int) Budgeted {
 		}
 		merged.Expansions = append(merged.Expansions, e.Expansions...)
 	}
-	return Fit(merged, ceiling)
+	return FitSeen(merged, ceiling, seen)
 }

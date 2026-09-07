@@ -345,3 +345,53 @@ func TestScoreboardShowsBothHalvesOfTheGoal(t *testing.T) {
 		}
 	}
 }
+
+// The provider layer's central claim is that context beyond the diff is worth
+// its cost. This keeps the measurable half of that claim in the suite: a
+// provider that regresses into echoing the diff back shows up as a number.
+func TestEnvelopeCarriesWhatTheDiffDoesNot(t *testing.T) {
+	fx := load(t)
+	cs := Contributions(fx)
+	t.Log("\n" + ContributionReport(cs))
+
+	var withContext, carrying int
+	for _, c := range cs {
+		if c.Produced == 0 {
+			continue // no provider claimed these files
+		}
+		withContext++
+		if c.Sent > 0 {
+			carrying++
+		}
+		if c.Sent == 0 {
+			t.Errorf("%s: the provider produced %d expansions and every one of them "+
+				"was already in the diff; that context costs budget and says nothing",
+				c.Fixture, c.Produced)
+		}
+	}
+	if withContext == 0 {
+		t.Skip("no fixture has a resolved envelope; run make-synthetic.sh with a provider on PATH")
+	}
+	t.Logf("%d/%d fixtures with an envelope send context the diff does not contain",
+		carrying, withContext)
+}
+
+// History is the one role a diff can never contain, and the one that catches a
+// change undoing a deliberate fix. Deduplication must not eat it.
+func TestHistorySurvivesDeduplicationOnTheRevertFixture(t *testing.T) {
+	f, err := LoadOne(fixtureDir + "/reverts-a-fix")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := review.Assemble(review.Input{
+		Report: &f.Session.Report, Change: f.Session.Change,
+		Envelopes: f.Session.Envelopes,
+	}, review.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Prompt, "panicked in production") {
+		t.Fatal("the commit explaining the deleted guard did not reach the prompt; " +
+			"without it this change reads as an ordinary simplification")
+	}
+}

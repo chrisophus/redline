@@ -3,6 +3,7 @@ package review
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/chrisophus/redline/internal/envelope"
@@ -78,6 +79,62 @@ one costs them the finding.
 
 Write plainly. One or two sentences per comment, naming the specific thing and
 what happens because of it.`
+
+// shownLines is every line of the change the diff section already puts in
+// front of the model, read from the unified-diff hunk headers.
+//
+// This is the language-agnostic half of a language-specific problem. A
+// provider resolves what surrounds a change without knowing how the change
+// will be presented, so it cannot tell that the enclosing declaration it
+// found is a function in a brand new file the diff already shows in full.
+// Redline can, from the hunk headers alone, for any language.
+func (in Input) shownLines() envelope.Seen {
+	seen := envelope.Seen{}
+	if in.Change == nil {
+		return seen
+	}
+	for _, f := range in.Change.Files {
+		for _, line := range strings.Split(f.Diff, "\n") {
+			if !strings.HasPrefix(line, "@@") {
+				continue
+			}
+			start, count, ok := parseHunkHeader(line)
+			if !ok {
+				continue
+			}
+			for i := 0; i < count; i++ {
+				seen.Add(f.Path, start+i)
+			}
+		}
+	}
+	return seen
+}
+
+// parseHunkHeader reads the "+start,count" half of a unified diff hunk
+// header. A hunk with no count covers one line.
+func parseHunkHeader(line string) (start, count int, ok bool) {
+	i := strings.Index(line, "+")
+	if i < 0 {
+		return 0, 0, false
+	}
+	rest := line[i+1:]
+	if j := strings.IndexAny(rest, " @"); j >= 0 {
+		rest = rest[:j]
+	}
+	startStr, countStr, hasCount := strings.Cut(rest, ",")
+	start, err := strconv.Atoi(startStr)
+	if err != nil || start < 1 {
+		return 0, 0, false
+	}
+	count = 1
+	if hasCount {
+		count, err = strconv.Atoi(countStr)
+		if err != nil || count < 0 {
+			return 0, 0, false
+		}
+	}
+	return start, count, true
+}
 
 // fixed is everything the prompt must carry whatever the budget says: what
 // changed, what the tools already found, what did not run, and the diff

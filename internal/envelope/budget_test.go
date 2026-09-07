@@ -104,3 +104,70 @@ func TestRenderLabelsEachExpansionWithItsRole(t *testing.T) {
 		t.Fatalf("render must name what each block is and where it came from, got %q", got)
 	}
 }
+
+// Context that only repeats the diff is padding: it costs budget and tells the
+// model nothing. On a change that adds new files it is most of the envelope,
+// because the enclosing declaration of a function in a new file is the file,
+// and the diff already shows the file in full.
+func TestFitDropsExpansionsAlreadyInTheDiff(t *testing.T) {
+	seen := Seen{}
+	for i := 1; i <= 10; i++ {
+		seen.Add("new.go", i)
+	}
+	e := &Envelope{Expansions: []Expansion{
+		{Role: RoleEnclosing, File: "new.go", StartLine: 2, EndLine: 8, Content: "func F() {}"},
+		{Role: RoleCaller, File: "old.go", StartLine: 40, EndLine: 42, Content: "F()"},
+	}}
+	got := FitSeen(e, DefaultCeiling, seen)
+	if got.Redundant != 1 {
+		t.Fatalf("redundant = %d, want 1", got.Redundant)
+	}
+	if got.RedundantTokens == 0 {
+		t.Fatal("the saving must be counted, or nobody can tell padding from context")
+	}
+	if len(got.Kept) != 1 || got.Kept[0].File != "old.go" {
+		t.Fatalf("kept = %+v, want only the caller outside the diff", got.Kept)
+	}
+}
+
+func TestFitKeepsAnExpansionThatOnlyPartlyOverlapsTheDiff(t *testing.T) {
+	seen := Seen{}
+	for i := 20; i <= 22; i++ {
+		seen.Add("f.go", i)
+	}
+	// A three-line hunk inside a forty-line function: the other thirty-seven
+	// lines are exactly what the enclosing role exists to supply.
+	e := &Envelope{Expansions: []Expansion{
+		{Role: RoleEnclosing, File: "f.go", StartLine: 1, EndLine: 40, Content: "big function"},
+	}}
+	got := FitSeen(e, DefaultCeiling, seen)
+	if got.Redundant != 0 || len(got.Kept) != 1 {
+		t.Fatal("partial overlap is not duplication")
+	}
+}
+
+func TestHistoryIsNeverRedundant(t *testing.T) {
+	seen := Seen{}
+	for i := 1; i <= 50; i++ {
+		seen.Add("q.go", i)
+	}
+	// History content is commit messages and prior revisions. Nothing in a
+	// diff of the current tree can contain it, whatever lines it names.
+	e := &Envelope{Expansions: []Expansion{
+		{Role: RoleHistory, File: "q.go", StartLine: 5, EndLine: 9,
+			Content: "commit abc\n\n    skip empty entries: a nil panicked in production"},
+	}}
+	got := FitSeen(e, DefaultCeiling, seen)
+	if got.Redundant != 0 || len(got.Kept) != 1 {
+		t.Fatal("history is the one expansion a diff can never contain; it must survive dedup")
+	}
+}
+
+func TestFitWithNoSeenSetKeepsEverything(t *testing.T) {
+	e := &Envelope{Expansions: []Expansion{
+		{Role: RoleEnclosing, File: "a.go", StartLine: 1, EndLine: 2, Content: "x"},
+	}}
+	if got := Fit(e, DefaultCeiling); got.Redundant != 0 || len(got.Kept) != 1 {
+		t.Fatal("without a diff to compare against, nothing is known to be redundant")
+	}
+}
