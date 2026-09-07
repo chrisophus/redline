@@ -371,10 +371,10 @@ func changeShape(diff string) (ranges []string, removed []string) {
 	for _, line := range strings.Split(diff, "\n") {
 		if strings.HasPrefix(line, "@@") {
 			if start, count, ok := parseHunkHeader(line); ok {
-				switch {
-				case count == 0:
+				switch count {
+				case 0:
 					ranges = append(ranges, fmt.Sprintf("at %d", start))
-				case count == 1:
+				case 1:
 					ranges = append(ranges, strconv.Itoa(start))
 				default:
 					ranges = append(ranges, fmt.Sprintf("%d-%d", start, start+count-1))
