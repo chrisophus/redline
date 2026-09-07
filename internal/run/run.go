@@ -122,8 +122,8 @@ func Run(opts Options) (*Result, error) {
 		}
 		out, err := runPane(p, baseSHA)
 		if err != nil {
-			// A pane that applied but did not run is a dark sensor. It is
-			// recorded as failed and as an unknown; it never reads as a pass.
+			// A pane that applied but did not run is recorded as failed and
+			// as an unknown; it never reads as a pass.
 			status.State = findings.SubstrateFailed
 			status.Detail = err.Error()
 			res.Report.Substrates = append(res.Report.Substrates, status)

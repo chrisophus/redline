@@ -253,7 +253,7 @@ func TestConfiguredDifferTool(t *testing.T) {
 
 // A differ tool has no pair to compare for a file this change adds or
 // deletes. Handing the tool an empty base or a missing head path would fail
-// it and dark the whole pane; instead the file is skipped, the skip stated,
+// it and fail the whole pane; instead the file is skipped, the skip stated,
 // and the clean confirmation withheld.
 func TestDifferSkipsAddedAndDeletedFiles(t *testing.T) {
 	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())

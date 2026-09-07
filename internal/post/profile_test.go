@@ -58,7 +58,7 @@ func TestGateVerdictInfoAloneIsPass(t *testing.T) {
 	}
 }
 
-func TestGateVerdictDarkPaneIsFail(t *testing.T) {
+func TestGateVerdictFailedPaneIsFail(t *testing.T) {
 	p := &Profile{FailClosedPane: true, Blocking: []findings.Severity{findings.SeverityError}}
 	rep := &findings.Report{Substrates: []findings.SubstrateStatus{{
 		Name: "migrations", State: findings.SubstrateFailed,

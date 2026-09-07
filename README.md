@@ -120,7 +120,7 @@ Three panes, scoped to the change, none of which re-reports what CI gates:
   change resolves are counted as a confirmation. Identity is file, rule, and
   digit-normalized message with no line number, so moved code does not
   read as new violations. A configured linter that is missing or fails at
-  head darks the pane; a base revision that cannot be linted degrades the
+  head fails the pane; a base revision that cannot be linted degrades the
   delta to added-line findings and says so.
 
   Other tools are added in `.redline.yml`, with no code change: a command,

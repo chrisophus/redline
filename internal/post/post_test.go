@@ -167,14 +167,14 @@ func TestBuildBodyLeadsWithVerdictAndEvidenceTable(t *testing.T) {
 
 // A pane that applied and did not run is named in the body, loudly. That row is
 // what makes the posted review's scope verifiable from the pull request alone.
-func TestBuildBodyNamesADarkPane(t *testing.T) {
+func TestBuildBodyNamesAFailedPane(t *testing.T) {
 	rep := sampleReport()
 	rep.Substrates = append(rep.Substrates, findings.SubstrateStatus{
 		Name: "openapi-diff", State: findings.SubstrateFailed, Detail: "spec parse error",
 	})
 	p := Build(rep, prTarget(), "", nil)
 	if !strings.Contains(p.Body, "| openapi-diff | **did not run** — spec parse error |") {
-		t.Fatalf("a dark pane must be named in the body:\n%s", p.Body)
+		t.Fatalf("a failed pane must be named in the body:\n%s", p.Body)
 	}
 }
 
