@@ -35,6 +35,7 @@ const (
 	CategoryUI       Category = "ui"       // rendered interface
 	CategoryLint     Category = "lint"     // lint delta, suppressions, lint config
 	CategoryReview   Category = "review"   // agent review comment
+	CategoryTests    Category = "tests"    // test-delta facts from the diff
 )
 
 // DefaultSeverity derives a finding's severity from its category. Redline's
@@ -45,6 +46,8 @@ func (c Category) DefaultSeverity() Severity {
 	case CategorySchema, CategoryContract:
 		return SeverityError
 	case CategoryReview:
+		return SeverityInfo
+	case CategoryTests:
 		return SeverityInfo
 	default:
 		return SeverityWarning

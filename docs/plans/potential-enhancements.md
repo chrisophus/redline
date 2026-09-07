@@ -17,7 +17,7 @@ Each item is a candidate, not a commitment. Effort is rough: **S** days,
 | Coverage delta | Per-package percentage at base and head on the two-worktree runner. A drop becomes a finding with the number in it. | M |
 | Error-path nuance | Call out uncovered added lines inside error-handling branches separately from other gaps. | S |
 | TypeScript / lcov profiles | Read lcov or istanbul output the same way as Go `coverage.out`, including measured mode when the UI test command produces one. | M |
-| Test-delta facts | Cheap diff observations: code changed where tests did not, new `t.Skip` / `.skip`, deleted assertions. Info findings for the reviewer to weigh. | S |
+| Test-delta facts (shipped) | Info findings from the diff: a Go package changed with no test in it, a `t.Skip`/`.skip`/`.only` added, or a net drop in assertion-like lines in a test. Pane `internal/pane/testdelta`. | done |
 | Per-test attribution | Map a line to the tests that execute it. Needs per-test profiles and real test runs; same data mutation wants. Opt-in command, not default `run`. See report-roadmap. | L |
 | CI profile ingest | Read `coverage.out` (or lcov) from a CI artifact URL or path when local produce is too heavy. Harness `from: ci` or env substitution. | M |
 

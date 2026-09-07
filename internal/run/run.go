@@ -17,6 +17,7 @@ import (
 	"github.com/chrisophus/redline/internal/pane/lint"
 	"github.com/chrisophus/redline/internal/pane/migrations"
 	"github.com/chrisophus/redline/internal/pane/openapi"
+	"github.com/chrisophus/redline/internal/pane/testdelta"
 	"github.com/chrisophus/redline/internal/target"
 )
 
@@ -130,6 +131,7 @@ func Run(opts Options) (*Result, error) {
 		&lint.Delta{Repo: repo, Harness: cfg, HarnessRoot: configRoot, Prepared: prepared},
 		&lint.Suppressions{Repo: repo},
 		&lint.Config{Repo: repo},
+		&testdelta.Pane{Repo: repo},
 	}
 
 	// Every path in the tree under review, listed once and only if a pane
