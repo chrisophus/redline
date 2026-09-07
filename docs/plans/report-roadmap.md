@@ -75,6 +75,14 @@ is changed. Coverage says a test ran the line; mutation says whether a test woul
 catch it breaking. `make mutants` produces the report. The survivors are in
 findings.json under `mutation`, so the agent can act on them.
 
+**gomutants v0.6.0+ (see [potential-enhancements.md](potential-enhancements.md)):**
+reports now carry stable mutant `id` fields and an **`INFRA_ERROR`** status for
+environmental test failures (OOM, disk, etc.). Redline today only ingests
+**KILLED** and **LIVED**; infra failures are dropped. Next step: count
+**INFRA_ERROR** on changed lines as an unknown (unreliable efficacy), surface
+mutant `id` on survivors for verdicts and `gomutants --run-mutant-id` repro,
+and recommend v0.6.0+ in setup when a mutation harness profile is enabled.
+
 This is most of the unified line: changed, linted, covered, asserted. What is
 still missing is naming the exact tests behind a line, which neither the coverage
 profile nor the gomutants report exposes (see the section above).

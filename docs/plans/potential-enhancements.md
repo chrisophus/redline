@@ -8,6 +8,64 @@ workflow. Report layout and drill-in UX live in
 Each item is a candidate, not a commitment. Effort is rough: **S** days,
 **M** weeks, **L** multi-week.
 
+## Mutation (gomutants v0.6.0+)
+
+gomutants **v0.6.0** (latest stable; MCT pins it in `GOMUTANTS_VERSION`) adds
+several features aimed at CI and review workflows. Redline already ingests
+`mutants.json` and overlays **LIVED** survivors on changed lines. It does not
+yet use the v0.6.0 report fields or statuses below.
+
+### Shipped in gomutants v0.6.0
+
+| Upstream change | Why it matters | Redline today |
+|-----------------|----------------|---------------|
+| **`INFRA_ERROR` status** ([PR #83](https://github.com/szhekpisov/gomutants/pull/83)) | Per-mutant classification when `go test` fails for environmental reasons (OOM, disk full, too many open files), not because the mutant was caught. Stops silent **KILLED** inflation on flaky CI runners. | **Dropped.** `internal/mutation` only counts `killed` and `lived`; other statuses are ignored. |
+| **Stable mutant `id` in JSON** (#86) | Fingerprint like `internal/foo/foo.go:Double:RETURN_ZERO#1` survives rebases better than file+line+type. Enables `gomutants --run-mutant-id` for repro. | **Not read.** `Mutant` struct has no `id` field. |
+| **`--changed-since` merge-base scope** (#85) | Mutants limited to lines changed vs the merge base, not an arbitrary ref tip. Matches PR review scope. | N/A (gomutants CLI). MCT `make mutate` already passes `--changed-since origin/main`. |
+| **Return-value mutators** (#80) | `RETURN_ERROR_NIL`, wrong-return variants; catches error-swallowing gaps. | Surfaces as ordinary **LIVED** when on added lines (no special labeling). |
+| **`--run-mutant-id`** (#87) | Re-run one mutant for debugging after reading the report. | Not wired into "Copy for the agent" or report UI. |
+| **`--detect-equivalent`** (existing; MCT uses on `make mutate`) | Marks provably unkillable survivors **EQUIVALENT** after assembly compare. | **Dropped** if status is not `lived`/`killed`. |
+
+### Redline enhancements (gomutants-aware)
+
+| Item | What | Effort |
+|------|------|--------|
+| **Surface `INFRA_ERROR`** | Count infra failures separately from killed/lived. On changed lines, add `findings.Unknown` (substrate `mutation`) naming file, line, mutant `id`, and that efficacy for that line is unreliable. Mutation section summary: "N infra errors on changed lines; do not treat as killed." Never fold into **KILLED**. | S |
+| **Carry mutant `id` in `findings.json`** | Parse `id` from report; expose on each survivor; use as verdict fingerprint key (see verdicts row below). Link text in HTML: "repro: `gomutants --run-mutant-id '…'`". | S |
+| **Label mutator types on survivors** | Show `RETURN_ERROR_NIL`, `CONDITIONALS_BOUNDARY`, etc. in the drawer (type is already in JSON as `type`; ensure it renders in markdown/HTML). | S |
+| **Report-level efficacy context** | Optional one-liner from top-level `test_efficacy`, `mutants_total`, `mutants_killed`, `mutants_lived` when present, with caveat when `infra_errors > 0`. | S |
+| **`EQUIVALENT` / `NOT COVERED` nuance** | **NOT COVERED**: leave to coverage pane (today). **EQUIVALENT**: info finding or muted marker, not a red survivor stripe. | S |
+| **Harness: minimum gomutants version** | Setup skill and docs: recommend **v0.6.0+** when mutation profile is enabled; note that pre-0.6.0 reports lack `INFRA_ERROR` and stable ids. | S |
+| **CI ingest without local mutate** | MCT `mutation-quality-check` filters daily CI artifacts to changed files (~seconds). Redline could read the same JSON shape from a downloaded artifact path (harness profile `path` only, no produce). Complements local `make mutate`. | M |
+| **Verdicts keyed by mutant `id`** | "needs test" / "equivalent" / "acceptable" per survivor; stable across line shifts when id is present. Depends on id field above. | S |
+
+### MCT CI context (dogfood)
+
+Marketplace Core moved to gomutants **v0.6.0** for the daily mutation workflow.
+Before **INFRA_ERROR**, that repo used a log-grep script
+(`mutation_infra_signal_check.sh`) to flag OOM/disk-full signatures and warn
+that efficacy might be inflated. The script remains a whole-run backstop;
+per-mutant **INFRA_ERROR** is the authoritative signal in `mutants.json`.
+
+Redline should treat a mutation report from v0.6.0+ CI the same way a human
+would: **LIVED** on changed lines is actionable; **INFRA_ERROR** on changed
+lines is "re-run or distrust this shard", not "tests are fine."
+
+Recommended `.redline.yml` pattern for MCT-style repos:
+
+```yaml
+harness:
+  profiles:
+    - id: mutation
+      path: mutants.json
+      when: stale
+      scope: ["**/*.go"]
+      # no produce: make mutate is hand-run or from CI artifact download
+```
+
+Document that `make mutate` / `make mutation-quality-check` should run on
+gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
+
 ## Coverage
 
 | Item | What | Effort |
@@ -39,7 +97,7 @@ Each item is a candidate, not a commitment. Effort is rough: **S** days,
 | Item | What | Effort |
 |------|------|--------|
 | Dependency install steps | Worktree `produce` for `node_modules`, `go generate` stubs, or other gitignored dirs linters need. MCT needs `ui/dist` (shipped) and `ui/node_modules` (not yet). | S |
-| Mutation produce (opt-in) | Harness profile with `produce: make mutate` scoped to changed packages. Slow and DB-dependent; must stay off default `--prepare`, documented as explicit opt-in. | S |
+| Mutation produce (opt-in) | Harness profile with `produce: make mutate` scoped to changed packages. Slow and DB-dependent; must stay off default `--prepare`, documented as explicit opt-in. Require gomutants **v0.6.0+** in docs. | S |
 | Generated-code drift pane | `verify-generated` style: run codegen and diff. Not a linter delta; needs a pane that reports "these generated paths drifted" with file list. | M |
 | Staleness hints for slow profiles | When `coverage.out` or `mutants.json` is present but older than the diff, say how stale (mtime vs HEAD) in the report and `findings.json`. Partial today; make it consistent. | S |
 | Multi-profile merge | Some repos have Go coverage and UI lcov. Apply scope per profile and merge `examinedFiles` / unknowns without double-counting. | M |
@@ -63,7 +121,7 @@ Each item is a candidate, not a commitment. Effort is rough: **S** days,
 | Item | What | Effort |
 |------|------|--------|
 | Verdict vocabulary expansion | Today: suppressions (justified / should-fix / rule-noisy). Extend to coverage gaps, config drift, migration findings, lint delta. Same fingerprint machinery. Design doc "Decisions" section. | M |
-| Verdicts on mutation survivors (shipped) | Agent records needs-test / equivalent / acceptable per survivor in `review.json` `mutationVerdicts`, keyed by `mutation.survived[].key`; source forced llm, rendered in the Mutation section. Coverage-gap and config-drift verdicts remain (row above). | done |
+| Verdicts on mutation survivors | `mutants.json` overlays lines; reviewer records "needs test" / "equivalent" / "acceptable" per survivor. Key verdicts on gomutants v0.6.0+ stable `id` when present. | S |
 | Post verdicts to PR | Whether human/agent decisions ride on `redline post` or stay local. Open question in design doc. | M |
 | Multi-reviewer `review.json` | Merge agent + Bugbot (or two agents) into one report without overwriting. MCT publishes per-reviewer; Redline could key by `reviewer` field. | M |
 | `redline serve` live loop | Replace copy-paste "Copy for the agent" with a websocket or stdin bridge. Upgrade path noted in report-roadmap. | L |
@@ -102,7 +160,7 @@ Items surfaced while wiring `.redline.yml` on a large Go + React + OpenAPI repo:
 
 - ESLint and tsc need `ui/node_modules` in detached PR worktrees; only `stub-ui` is wired today.
 - Gorefactor runs in Redline lint delta but not in the repo's fast `verify-lint` path, so Redline is stricter than the agent default. Document that intentional gap for adopters.
-- `mutation-quality-check` (CI baseline compare) is faster than local `make mutate` but is outside Redline; could be a documented companion or a harness `from: script` ingest later.
+- `mutation-quality-check` (CI baseline compare) is faster than local `make mutate` but is outside Redline; could be a harness `path` to a downloaded CI artifact. MCT pins gomutants v0.6.0 for **INFRA_ERROR** and stable mutant ids; Redline should surface those when ingesting `mutants.json` (see Mutation section above).
 - oasdiff + built-in OpenAPI pane overlap slightly; report should dedupe or label "structural diff" vs "oasdiff breaking" so reviewers do not read the same break twice.
 - Shellcheck scope is often narrower than `make lint-deploy-scripts` (severity, path filters). Setup skill should copy the repo's real shell gate, not `**/*.sh`.
 
@@ -110,8 +168,9 @@ Items surfaced while wiring `.redline.yml` on a large Go + React + OpenAPI repo:
 
 If picking a small set that improves most adopter repos without runtime infrastructure:
 
-1. Built-in or shared `tsc` JSON wrapper.
-2. Setup skill proposals for worktree install steps and harness profiles.
-3. Verdict vocabulary for coverage and lint findings (not only suppressions).
-4. Generated / verify-generated drift pane (even if Go-only first).
-5. Document CI artifact + `--report-url` posting pattern.
+1. **gomutants v0.6.0 report ingest:** `INFRA_ERROR` → unknowns, mutant `id` on survivors, repro hint for `--run-mutant-id`.
+2. Built-in or shared `tsc` JSON wrapper.
+3. Setup skill proposals for worktree install steps and harness profiles (mutation profile + v0.6.0 pin).
+4. Verdict vocabulary for coverage and lint findings (not only suppressions); mutation verdicts keyed by `id`.
+5. Generated / verify-generated drift pane (even if Go-only first).
+6. Document CI artifact + `--report-url` posting pattern.
