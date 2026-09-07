@@ -523,6 +523,10 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
                 side: line.dataset.side || "new", code: line.textContent};
     function queue(action) {
       var c = {action: action, file: meta.file, line: meta.line, side: meta.side, code: meta.code};
+      /* Anything already typed rides along: reaching for the button instead
+         of Cmd+Enter must not discard the reviewer's words. */
+      var text = ta.value.trim();
+      if (text) c.text = text;
       state.comments.push(c);
       wrap.remove();
       line.after(bubble(c));
@@ -573,7 +577,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   // Findings: copy one for the agent, or comment on it. Finding comments join
   // the same set the bottom bar hands over, so the agent gets line comments
   // and finding comments in one payload.
-  document.querySelectorAll(".f").forEach(function (card) {
+  function bindFindingCard(card) {
     var meta = {file: card.dataset.file || "", line: +card.dataset.line || 0,
                 rule: card.dataset.rule || "", sev: card.dataset.sev || ""};
     var msg = (card.querySelector("h3") || {}).textContent || "";
@@ -643,7 +647,8 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     if (explainBtn) explainBtn.addEventListener("click", function () { queueFinding("explain", explainBtn, "Explain"); });
     var applyBtn = card.querySelector(".f-apply");
     if (applyBtn) applyBtn.addEventListener("click", function () { queueFinding("apply", applyBtn, "Apply"); });
-  });
+  }
+  document.querySelectorAll(".f").forEach(bindFindingCard);
 
   // 002-B drill-in. The file node is MOVED into the drawer rather than cloned:
 // its diff carries per-line comment listeners bound at load, and a clone would
@@ -679,12 +684,15 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
     body.appendChild(target);
     title.textContent = path;
 
-    // A file's findings belong with its diff. These are copies: findings carry
-    // no listeners, and leaving the originals in place keeps the findings list
-    // whole while the drawer is open.
+    // A file's findings belong with its diff. These are copies, so the
+    // originals keep the findings list whole while the drawer is open —
+    // but cloneNode drops listeners, so each copy is re-bound or its
+    // buttons sit dead in the one place they are most reachable.
     document.querySelectorAll('.f[data-file]').forEach(function (f) {
       if (f.getAttribute("data-file") !== path) { return; }
-      fbox.appendChild(f.cloneNode(true));
+      var copy = f.cloneNode(true);
+      fbox.appendChild(copy);
+      bindFindingCard(copy);
       // Mark every finding's line in the diff, so opening a file shows where its
       // findings sit — not only the one line a View code click scrolled to.
       var fl = f.getAttribute("data-line");
@@ -819,7 +827,12 @@ document.getElementById("copy-cmts").addEventListener("click", function () {
         "Work only these items, do not re-review the rest of the diff, and re-run redline when you are done so the report reflects the new state.",
       review: document.body.dataset.review || "",
       target: document.body.dataset.target || "",
-      comments: state.comments
+      /* Items saved by a report generated before actions existed have no
+         action field; they were plain comments, so say so rather than hand
+         the agent an item its instructions do not cover. */
+      comments: state.comments.map(function (c) {
+        return c.action ? c : Object.assign({}, c, {action: "comment"});
+      })
     }}, null, 2);
     copyText(payload).then(function () {
       var b = document.getElementById("copy-cmts");
