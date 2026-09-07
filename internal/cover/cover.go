@@ -174,15 +174,18 @@ func AddedLines(diff string) []int {
 			continue
 		}
 		switch {
-		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
-			// File headers inside a multi-file diff.
+		case strings.HasPrefix(line, "diff "):
+			// The next file's headers follow, outside any hunk.
+			inHunk = false
 		case strings.HasPrefix(line, "+"):
+			// "+++" is deliberately not special-cased here: file headers
+			// live outside hunks (the "diff " reset above ends one), so
+			// inside a hunk "+++i;" is added code, and skipping it would
+			// shift every added-line number after it.
 			out = append(out, newLine)
 			newLine++
 		case strings.HasPrefix(line, "-"), strings.HasPrefix(line, `\`):
 			// Deleted content and the no-newline marker occupy no new line.
-		case strings.HasPrefix(line, "diff "):
-			inHunk = false
 		default:
 			newLine++
 		}

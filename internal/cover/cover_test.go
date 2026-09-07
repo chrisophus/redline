@@ -303,3 +303,16 @@ func TestAddedLinesAcrossMultipleHunks(t *testing.T) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 }
+
+// An added line whose content itself begins with "++" renders as "+++…" in
+// the diff. Inside a hunk that is code (routine in JS: "++i;"), not a file
+// header; headers live between "diff " and "@@". Skipping it would shift
+// every added-line number after it in the hunk.
+func TestAddedLinesCountsPlusPlusContent(t *testing.T) {
+	diff := "--- a/a.js\n+++ b/a.js\n@@ -1,2 +1,4 @@\n line1\n+++i;\n+--j;\n line2\n"
+	got := AddedLines(diff)
+	want := []int{2, 3}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}

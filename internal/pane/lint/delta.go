@@ -53,9 +53,11 @@ func (p *Delta) detect() ([]tool, error) {
 // Scope is the changed files a configured tool covers, plus any changed lint
 // config. No configured tool means an empty scope: the pane then reads as
 // skipped, the honest state for a repository that has opted into no linter
-// Redline can run. A .redline.yml that fails to parse keeps only the config
-// files in scope, so the pane runs and darks with the parse error when the
-// config itself is part of the change, without inflating the examined set.
+// Redline can run. A .redline.yml that fails to parse must dark the pane, not
+// remove it: detection still returns the built-in tools, whose coverage
+// scopes files so Observe runs and reports the parse error; and if nothing
+// else lands in scope, the whole change does — an unreadable config means
+// nobody knows which files its tools cover.
 func (p *Delta) Scope(changed []string) []string {
 	tools, err := p.detect()
 	var out []string
@@ -65,15 +67,15 @@ func (p *Delta) Scope(changed []string) []string {
 			p.configChanged = true
 			continue
 		}
-		if err != nil {
-			continue
-		}
 		for _, t := range tools {
 			if t.covers(path) {
 				out = append(out, path)
 				break
 			}
 		}
+	}
+	if err != nil && len(out) == 0 && len(changed) > 0 {
+		out = append(out, changed...)
 	}
 	p.scoped = out
 	return out
@@ -172,6 +174,7 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 
 	var introduced []Issue
 	resolved := 0
+	anyDegraded := false
 	var toolNames []string
 	for _, hr := range head.Runs {
 		toolNames = append(toolNames, hr.Tool)
@@ -204,6 +207,7 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 			// No comparable base, so there is no delta for this tool. Degrade
 			// to head issues on lines this change added: still precise, still
 			// only about the change, and the degradation is stated.
+			anyDegraded = true
 			onAdded := p.issuesOnAddedLines(base.Rev, hr.Issues)
 			introduced = append(introduced, onAdded...)
 			res.Unknowns = append(res.Unknowns, findings.Unknown{
@@ -226,9 +230,13 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 		}
 		toolNames = append(toolNames, t.name)
 		files := p.differFiles(t)
-		issues, err := p.runDiffer(*t.custom, base.Rev, files)
+		issues, unknowns, err := p.runDiffer(*t.custom, base.Rev, files)
 		if err != nil {
 			return pane.Result{}, fmt.Errorf("%s: %w", t.name, err)
+		}
+		if len(unknowns) > 0 {
+			anyDegraded = true
+			res.Unknowns = append(res.Unknowns, unknowns...)
 		}
 		introduced = append(introduced, issues...)
 	}
@@ -263,7 +271,11 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 			Message:   fmt.Sprintf("this change resolves %d linter finding(s) present at the base revision", resolved),
 		})
 	}
-	if len(introduced) == 0 && allBaseRan(base) {
+	// The clean confirmation asserts a comparison happened for every tool.
+	// A degraded tool — base run failed, baseline unreadable, a differ file
+	// it could not compare — already stated an unknown, and a confirmation
+	// beside it would claim the comparison that never ran.
+	if len(introduced) == 0 && !anyDegraded && allBaseRan(base) {
 		res.Confirmations = append(res.Confirmations, findings.Confirmation{
 			Substrate: DeltaSubstrate,
 			Rule:      "lint-clean-delta",
@@ -322,38 +334,60 @@ func (p *Delta) differFiles(t tool) []string {
 
 // runDiffer invokes a differ tool once per file it covers, substituting the
 // file's base-revision content (materialized to a temp file) for {{base}} and
-// its path in the tree under review for {{head}}.
-func (p *Delta) runDiffer(cfg ToolConfig, baseRev string, files []string) ([]Issue, error) {
+// its path in the tree under review for {{head}}. A file with no base content
+// (added by this change) or no head file (deleted by it) has no pair to
+// compare: the tool would choke on the missing side and dark the whole pane,
+// so the file is skipped and the skip stated as an unknown instead.
+func (p *Delta) runDiffer(cfg ToolConfig, baseRev string, files []string) ([]Issue, []findings.Unknown, error) {
 	var all []Issue
+	var unknowns []findings.Unknown
 	for _, path := range files {
+		baseContent := p.Repo.File(baseRev, path)
+		headPath := filepath.Join(p.Repo.Root, path)
+		if _, err := os.Stat(headPath); err != nil {
+			unknowns = append(unknowns, findings.Unknown{
+				Substrate: DeltaSubstrate,
+				Message:   fmt.Sprintf("%s could not compare %s: the file no longer exists at head", cfg.Name, path),
+				Reason:    "deleted files have no head side to diff",
+			})
+			continue
+		}
+		if baseContent == "" {
+			unknowns = append(unknowns, findings.Unknown{
+				Substrate: DeltaSubstrate,
+				Message:   fmt.Sprintf("%s could not compare %s: the file has no content at the base revision", cfg.Name, path),
+				Reason:    "a file added by this change has no base side to diff",
+			})
+			continue
+		}
 		tmp, err := os.CreateTemp("", "redline-base-*"+filepath.Ext(path))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		tmpPath := tmp.Name()
 		defer func() { _ = os.Remove(tmpPath) }()
-		if _, err := tmp.WriteString(p.Repo.File(baseRev, path)); err != nil {
+		if _, err := tmp.WriteString(baseContent); err != nil {
 			_ = tmp.Close()
-			return nil, err
+			return nil, nil, err
 		}
 		if err := tmp.Close(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		args := substituteArgs(cfg.Args, tmpPath, filepath.Join(p.Repo.Root, path))
+		args := substituteArgs(cfg.Args, tmpPath, headPath)
 		stdout, stderr, exit, err := runTool(p.Repo.Root, cfg.Command, args...)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if !exitOK(exit, cfg.OKExitCodes) {
-			return nil, fmt.Errorf("exited %d: %s", exit, firstLine(stderr))
+			return nil, nil, fmt.Errorf("exited %d: %s", exit, firstLine(stderr))
 		}
 		issues, err := parseToolOutput(stdout, cfg)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		all = append(all, issues...)
 	}
-	return all, nil
+	return all, unknowns, nil
 }
 
 // substituteArgs replaces the {{base}} and {{head}} placeholders in a differ

@@ -72,7 +72,11 @@ func detect(root string) ([]tool, error) {
 	}
 	cfg, err := loadConfig(root)
 	if err != nil {
-		return nil, err
+		// The built-in detections above still stand: a broken .redline.yml
+		// must not silently disable golangci-lint or eslint. The caller gets
+		// both the partial tool list (to scope with) and the error (to dark
+		// the pane with).
+		return out, err
 	}
 	if cfg != nil {
 		for i := range cfg.Tools {
