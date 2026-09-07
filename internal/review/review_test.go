@@ -2,6 +2,8 @@ package review
 
 import (
 	"context"
+
+	"github.com/anthropics/anthropic-sdk-go"
 	"os"
 	"path/filepath"
 	"strings"
@@ -406,5 +408,87 @@ func TestASmallChangeCostsFarLessThanTheCeiling(t *testing.T) {
 	cost, ok := EstimateCost(got.Model, got.InputEstimate, 4000)
 	if !ok || cost > 0.10 {
 		t.Fatalf("a two-line change should cost cents, got %s", FormatCost(cost, ok))
+	}
+}
+
+func TestExploreCatalogueCostsNothingUntilAsked(t *testing.T) {
+	kept := []envelope.Expansion{
+		{Role: envelope.RoleHistory, Symbol: "Drain", File: "q.go", StartLine: 6, EndLine: 6,
+			Content: strings.Repeat("commit log line\n", 400)},
+		{Role: envelope.RoleCaller, Symbol: "Drain", File: "c.go", StartLine: 10, EndLine: 12,
+			Content: strings.Repeat("callIt()\n", 400)},
+	}
+	cat := catalogue(kept)
+	if strings.Contains(cat, "commit log line") || strings.Contains(cat, "callIt()") {
+		t.Fatal("the catalogue must list what is available without sending it")
+	}
+	for _, want := range []string{"e0", "e1", "history", "caller", "q.go:6-6"} {
+		if !strings.Contains(cat, want) {
+			t.Errorf("catalogue is missing %q", want)
+		}
+	}
+	if got := envelope.EstimateTokens(cat); got > 200 {
+		t.Fatalf("a two-entry catalogue cost %d tokens; it must stay cheap enough to always send", got)
+	}
+}
+
+func TestFetchReturnsOnlyWhatWasAskedFor(t *testing.T) {
+	kept := []envelope.Expansion{
+		{Role: envelope.RoleHistory, Symbol: "A", File: "a.go", Content: "history body"},
+		{Role: envelope.RoleCaller, Symbol: "B", File: "b.go", Content: "caller body"},
+	}
+	got := fetch(kept, []string{"e1"})
+	if !strings.Contains(got, "caller body") {
+		t.Fatal("the requested entry must come back in full")
+	}
+	if strings.Contains(got, "history body") {
+		t.Fatal("fetching one entry must not send the others")
+	}
+}
+
+func TestFetchIsHonestAboutBadIds(t *testing.T) {
+	kept := []envelope.Expansion{{Role: envelope.RoleCaller, Content: "x"}}
+	got := fetch(kept, []string{"e9", "nonsense"})
+	if !strings.Contains(got, "no such id") {
+		t.Fatalf("an id that does not exist must say so rather than return nothing: %q", got)
+	}
+}
+
+func TestFetchDeduplicatesRepeatedIds(t *testing.T) {
+	kept := []envelope.Expansion{{Role: envelope.RoleCaller, Symbol: "A", Content: "body"}}
+	got := fetch(kept, []string{"e0", "e0", "e0"})
+	if strings.Count(got, "body") != 1 {
+		t.Fatal("asking twice must not be charged twice")
+	}
+}
+
+// The cap is a governor in explore mode, not a tripwire: the point of the mode
+// is to spend more, so what stops it has to be the limit itself.
+func TestExploreCapCountsTheResendThatHasNotHappenedYet(t *testing.T) {
+	res := &Result{CostUSD: 0.30, CostKnown: true}
+	msg := &anthropic.BetaMessage{}
+	msg.Usage.InputTokens = 100_000
+	msg.Usage.OutputTokens = 1_000
+	// Another turn resends 101k tokens, about 20 cents on Sonnet, which would
+	// take 0.30 past a 0.50 cap.
+	if !capReached(res, Options{Model: "claude-sonnet-5", MaxCostUSD: 0.50}, msg) {
+		t.Fatal("the cap must account for the resend the next turn would pay for")
+	}
+	if capReached(res, Options{Model: "claude-sonnet-5", MaxCostUSD: 2.00}, msg) {
+		t.Fatal("a cap with room left must not stop the loop")
+	}
+}
+
+func TestExploreCapDoesNotFireOnAnUnpricedModel(t *testing.T) {
+	res := &Result{CostUSD: 0, CostKnown: false}
+	msg := &anthropic.BetaMessage{}
+	if capReached(res, Options{Model: "mystery", MaxCostUSD: 0.01}, msg) {
+		t.Fatal("a model with no rate cannot be governed by a dollar cap; do not pretend otherwise")
+	}
+}
+
+func TestModeDefaultsToOneShot(t *testing.T) {
+	if got := (Options{}).withDefaults(); got.Mode != ModeOneShot {
+		t.Fatalf("mode = %q; explore costs more and must be asked for", got.Mode)
 	}
 }

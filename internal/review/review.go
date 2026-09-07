@@ -48,6 +48,18 @@ const DefaultMaxTokens int64 = 16000
 // this tool is meant for.
 const DefaultMaxCostUSD = 2.00
 
+// Modes. One shot sends the context it decided on; explore sends a catalogue
+// and lets the reviewer ask.
+const (
+	ModeOneShot = "oneshot"
+	ModeExplore = "explore"
+)
+
+// DefaultMaxTurns bounds the explore loop. Five is enough for read the diff,
+// fetch, read, fetch again, write; more than that and the reviewer is
+// browsing rather than reviewing.
+const DefaultMaxTurns = 5
+
 // Input is everything the producer sees. Nothing here is fetched by this
 // package.
 type Input struct {
@@ -75,6 +87,15 @@ type Options struct {
 	// about to be sent, which is the only enforcement point a single-turn
 	// producer has.
 	MaxCostUSD float64
+	// Mode is "oneshot" (default) or "explore". Explore hands the reviewer a
+	// catalogue of available context and a tool to fetch from it, and costs
+	// more by design: every turn resends the conversation. MaxCostUSD stops
+	// being a tripwire in that mode and becomes the governor.
+	Mode string
+	// MaxTurns bounds the explore loop regardless of spend.
+	MaxTurns int
+	// TaskBudget paces the model within a turn. Not a dollar cap.
+	TaskBudget int64
 	// ExpectedOutput prices the estimate. Zero uses the documented default;
 	// the command fills it from the ledger's measured median once there is
 	// one, so the number converges on this installation's own reviews.
@@ -96,6 +117,15 @@ func (o Options) withDefaults() Options {
 	}
 	if o.MaxCostUSD <= 0 {
 		o.MaxCostUSD = DefaultMaxCostUSD
+	}
+	if o.Mode == "" {
+		o.Mode = ModeOneShot
+	}
+	if o.MaxTurns <= 0 {
+		o.MaxTurns = DefaultMaxTurns
+	}
+	if o.TaskBudget <= 0 {
+		o.TaskBudget = DefaultTaskBudget
 	}
 	return o
 }
@@ -131,6 +161,13 @@ type Result struct {
 	OverCeiling bool `json:"overCeiling,omitempty"`
 	// Ceiling is what it was fitted to.
 	Ceiling int `json:"ceiling"`
+	// Turns is how many model calls the review took. One, in oneshot mode.
+	Turns int `json:"turns,omitempty"`
+	// Fetched is how many context entries the reviewer asked for.
+	Fetched int `json:"fetched,omitempty"`
+	// CapHit records that the loop was stopped by the dollar cap rather than
+	// by the reviewer deciding it had enough.
+	CapHit bool `json:"capHit,omitempty"`
 	// StopReason is what ended the turn. Checked rather than assumed: a
 	// refusal returns HTTP 200 and an empty-looking result.
 	StopReason string `json:"stopReason,omitempty"`
@@ -140,8 +177,8 @@ type Result struct {
 // the numbers this whole design is accountable to, so they are printed
 // rather than left to a dashboard.
 func (r *Result) Summary() string {
-	return fmt.Sprintf("model=%s in=%d out=%d cost=%s wall=%s findings=%d",
-		r.Model, r.Usage.InputTokens, r.Usage.OutputTokens,
+	return fmt.Sprintf("model=%s turns=%d in=%d out=%d cost=%s wall=%s findings=%d",
+		r.Model, r.Turns, r.Usage.InputTokens, r.Usage.OutputTokens,
 		FormatCost(r.CostUSD, r.CostKnown),
 		r.Duration.Round(time.Millisecond), len(r.Review.Comments))
 }
@@ -209,6 +246,10 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	if opts.DryRun {
 		return res, nil
 	}
+	if opts.Mode == ModeExplore {
+		res.Turns = 0
+		return runExplore(ctx, in, opts, res)
+	}
 
 	var clientOpts []option.RequestOption
 	if opts.APIKey != "" {
@@ -245,6 +286,7 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 		}
 	}
 	res.Duration = time.Since(start)
+	res.Turns = 1
 	if err := stream.Err(); err != nil {
 		return res, fmt.Errorf("review call: %w", err)
 	}

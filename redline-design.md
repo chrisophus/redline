@@ -227,6 +227,56 @@ blends two linters. Wave one here runs the repository's own configured tools,
 scopes them to the delta, and hands the results to the review as priors it is
 told not to restate. That is the same architecture, further along.
 
+### Two ways to spend more, and the index question
+
+The cost target being an average leaves headroom, and there are two ways to
+spend it. Both are now built or scoped, and neither is the default until
+something measures whether it reviews better.
+
+`--mode explore` sends a catalogue of the resolved context instead of the
+context: every expansion listed by role, symbol and location, with a tool that
+returns the ones the reviewer asks for. It reads the diff, forms a question,
+and fetches what answers it, paying for what it asked for rather than for what
+was guessed in advance. This costs more, measurably: modelled against these
+fixtures it runs about forty per cent above one shot at two turns and double
+at three, because every turn resends the conversation. That is the point of
+the mode, so the cost cap stops being a tripwire there and becomes the
+governor, enforced after each turn against what another resend would cost.
+The API's own task budget paces the model within a turn but does not cap the
+resend, which is where the money goes, so it cannot be the only control.
+
+The tool's whole corpus is the frozen envelope. No filesystem, no network, so
+an explored review is still a pure function of a saved session and the eval
+can still replay it.
+
+The deeper question is the one the Copilot research raised: their index is
+built once over the repository and queried, while this envelope is derived per
+change and travels in the request. That is why the agentic shape loses here
+and wins there. An index that persisted would remove the per-change payload
+entirely, and it is the single largest structural improvement available.
+
+Whether that index should be a graph like Graphify was settled too early, and
+on one axis only. Tree-sitter resolves call edges by name and not by type, and
+that is a real weakness for the claim "you changed this signature and here is
+who calls it", which is why the Go provider resolves through go/types object
+identity instead. But precision and persistence are different properties, and
+rejecting the graph on precision decided nothing about persistence. A graph
+that is a file on disk, updated incrementally and queried, has exactly the
+property the measurements above say is missing.
+
+They are not competitors. The exact resolver answers "who really calls this
+symbol I changed", which needs types and only needs the changed symbols. A
+standing graph answers "what is near this change" across languages and across
+kinds, including SQL schemas and infrastructure files that no Go toolchain
+will ever see. The correlation case this whole second wave exists for, a
+migration read against the struct that writes the row, is exactly a
+cross-kind question, and a Go type checker cannot answer half of it.
+
+Nothing in the contract has to change to try it. Providers are found by
+config, several merge into one budget, and the roles are language-agnostic. A
+graph provider would sit beside the Go one and Redline would not know the
+difference.
+
 ### What is still open
 
 The producer ships with eight fixtures. The plan calls for twenty drawn from

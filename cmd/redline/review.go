@@ -49,6 +49,8 @@ func cmdReview(o opts) error {
 		Ceiling:        o.ceiling,
 		MaxTokens:      int64(o.maxTokens),
 		MaxCostUSD:     o.maxCost,
+		Mode:           o.mode,
+		MaxTurns:       o.maxTurns,
 		ExpectedOutput: expected,
 		DryRun:         o.dryRun,
 	}
@@ -83,6 +85,13 @@ func cmdReview(o opts) error {
 		return nil
 	}
 	fmt.Fprintln(os.Stderr, "redline: review", out.Summary())
+	if out.Turns > 1 {
+		fmt.Fprintf(os.Stderr, "redline: %d turns, %d context entries fetched", out.Turns, out.Fetched)
+		if out.CapHit {
+			fmt.Fprint(os.Stderr, ", stopped by the cost cap")
+		}
+		fmt.Fprintln(os.Stderr)
+	}
 	if err := review.Record(o.out, out, o.effort); err != nil {
 		// Not fatal. A review that produced findings has done its job, and
 		// losing a cost line is not worth failing the command over.
