@@ -94,6 +94,13 @@ func (in Input) shownLines() envelope.Seen {
 		return seen
 	}
 	for _, f := range in.Change.Files {
+		if f.Head != "" {
+			// The whole file reaches the model, so every expansion inside it
+			// is already shown and must not be sent twice.
+			for i := 1; i <= strings.Count(f.Head, "\n")+1; i++ {
+				seen.Add(f.Path, i)
+			}
+		}
 		for _, line := range strings.Split(f.Diff, "\n") {
 			if !strings.HasPrefix(line, "@@") {
 				continue
@@ -315,11 +322,21 @@ func (in Input) diffSection() string {
 	}
 	var b strings.Builder
 	b.WriteString("## The diff\n\n")
+	b.WriteString("Each file shows what changed. Where the file is small enough it is also " +
+		"given whole, at its state after the change, because the invariant a hunk breaks " +
+		"usually lives in the part of the file the hunk does not touch.\n\n")
 	for _, f := range in.Change.Files {
-		if f.Diff == "" {
+		if f.Diff == "" && f.Head == "" {
 			continue
 		}
-		fmt.Fprintf(&b, "### %s\n```diff\n%s\n```\n\n", f.Path, strings.TrimRight(f.Diff, "\n"))
+		fmt.Fprintf(&b, "### %s\n\n", f.Path)
+		if f.Diff != "" {
+			fmt.Fprintf(&b, "```diff\n%s\n```\n\n", strings.TrimRight(f.Diff, "\n"))
+		}
+		if f.Head != "" {
+			fmt.Fprintf(&b, "The whole file after the change:\n\n```%s\n%s\n```\n\n",
+				f.Language, strings.TrimRight(f.Head, "\n"))
+		}
 	}
 	return b.String()
 }

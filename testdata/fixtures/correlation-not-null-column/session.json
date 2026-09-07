@@ -1,8 +1,8 @@
 {
   "report": {
     "schemaVersion": 1,
-    "baseRef": "24601f3034b7e0a43362f2d69971d4e706d6b5d4",
-    "baseSHA": "24601f3034b7e0a43362f2d69971d4e706d6b5d4",
+    "baseRef": "38810b869dfca819a264aba3b36cfd19467a34a0",
+    "baseSHA": "38810b869dfca819a264aba3b36cfd19467a34a0",
     "scope": [
       "internal/store/user.go",
       "migrations/0002_add_tenant.up.sql"
@@ -25,7 +25,7 @@
           "id": "users.tenant_id"
         },
         "evidence": [
-          "migrations@24601f3034b7e0a43362f2d69971d4e706d6b5d4",
+          "migrations@38810b869dfca819a264aba3b36cfd19467a34a0",
           "migrations@worktree"
         ],
         "expected": "a default, or a backfill before the constraint",
@@ -96,7 +96,7 @@
       {
         "substrate": "redline/sql",
         "rule": "migration-version-unique",
-        "message": "version 0002 is not present on 24601f3034b7e0a43362f2d69971d4e706d6b5d4",
+        "message": "version 0002 is not present on 38810b869dfca819a264aba3b36cfd19467a34a0",
         "anchor": {
           "kind": "migration",
           "id": "0002"
@@ -128,15 +128,15 @@
   "change": {
     "target": {
       "kind": "commit",
-      "dir": "/root/.redline/worktrees/a4f5906e7c30e29f/1d5b6e7cbdca5e78d03e36e1cbd964c3f5816d45",
-      "head": "1d5b6e7cbdca5e78d03e36e1cbd964c3f5816d45",
-      "base": "24601f3034b7e0a43362f2d69971d4e706d6b5d4",
+      "dir": "/root/.redline/worktrees/9044ca979c078bb4/776bd2f36b727893b6b94178e10e032a6437c07e",
+      "head": "776bd2f36b727893b6b94178e10e032a6437c07e",
+      "base": "38810b869dfca819a264aba3b36cfd19467a34a0",
       "label": "HEAD"
     },
-    "baseSHA": "24601f3034b7e0a43362f2d69971d4e706d6b5d4",
+    "baseSHA": "38810b869dfca819a264aba3b36cfd19467a34a0",
     "commits": [
       {
-        "sha": "1d5b6e7cbdca5e78d03e36e1cbd964c3f5816d45",
+        "sha": "776bd2f36b727893b6b94178e10e032a6437c07e",
         "author": "fixture",
         "subject": "add tenant scoping to users"
       }
@@ -148,6 +148,7 @@
         "added": 3,
         "removed": 2,
         "diff": "diff --git a/internal/store/user.go b/internal/store/user.go\nindex 696c8de..851dfbb 100644\n--- a/internal/store/user.go\n+++ b/internal/store/user.go\n@@ -2,8 +2,9 @@ package store\n \n // User is one row of the users table.\n type User struct {\n-\tID    string\n-\tEmail string\n+\tID       string\n+\tEmail    string\n+\tTenantID string\n }\n \n // Insert writes a user. Every column the table requires must be set here.\n",
+        "head": "package store\n\n// User is one row of the users table.\ntype User struct {\n\tID       string\n\tEmail    string\n\tTenantID string\n}\n\n// Insert writes a user. Every column the table requires must be set here.\nfunc Insert(u User) error {\n\t_ = u\n\treturn nil\n}\n",
         "language": "go",
         "areas": [
           "code"
@@ -159,6 +160,7 @@
         "added": 1,
         "removed": 0,
         "diff": "diff --git a/migrations/0002_add_tenant.up.sql b/migrations/0002_add_tenant.up.sql\nnew file mode 100644\nindex 0000000..edba266\n--- /dev/null\n+++ b/migrations/0002_add_tenant.up.sql\n@@ -0,0 +1 @@\n+ALTER TABLE users ADD COLUMN tenant_id uuid NOT NULL;\n",
+        "head": "ALTER TABLE users ADD COLUMN tenant_id uuid NOT NULL;\n",
         "language": "sql",
         "areas": [
           "sql"
@@ -198,10 +200,10 @@
       "schemaVersion": 1,
       "provider": {
         "name": "gorefactor",
-        "version": "v0.0.0-20260906204439-a2ac4a145c9c+dirty",
+        "version": "v0.0.0-20260907222515-4833e7e8a214+dirty",
         "language": "go"
       },
-      "baseSHA": "24601f3034b7e0a43362f2d69971d4e706d6b5d4",
+      "baseSHA": "38810b869dfca819a264aba3b36cfd19467a34a0",
       "files": [
         {
           "path": "internal/store/user.go",
@@ -256,7 +258,7 @@
           "file": "internal/store/user.go",
           "startLine": 5,
           "endLine": 7,
-          "content": "commit 1d5b6e7cbdca5e78d03e36e1cbd964c3f5816d45\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T21:25:50+00:00\n\n    add tenant scoping to users\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- a/internal/store/user.go\n+++ b/internal/store/user.go\n@@ -5,2 +5,3 @@\n-\tID    string\n-\tEmail string\n+\tID       string\n+\tEmail    string\n+\tTenantID string\n\ncommit 24601f3034b7e0a43362f2d69971d4e706d6b5d4\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T21:25:50+00:00\n\n    initial schema and store\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +5,2 @@\n+\tID    string\n+\tEmail string\n",
+          "content": "commit 776bd2f36b727893b6b94178e10e032a6437c07e\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:43:45+00:00\n\n    add tenant scoping to users\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- a/internal/store/user.go\n+++ b/internal/store/user.go\n@@ -5,2 +5,3 @@\n-\tID    string\n-\tEmail string\n+\tID       string\n+\tEmail    string\n+\tTenantID string\n\ncommit 38810b869dfca819a264aba3b36cfd19467a34a0\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:43:44+00:00\n\n    initial schema and store\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +5,2 @@\n+\tID    string\n+\tEmail string\n",
           "details": {
             "kind": "line-history",
             "lines": "5-7",
@@ -269,7 +271,7 @@
           "file": "internal/store/user.go",
           "startLine": 5,
           "endLine": 6,
-          "content": "commit 24601f3034b7e0a43362f2d69971d4e706d6b5d4\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T21:25:50+00:00\n\n    initial schema and store\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +5,2 @@\n+\tID    string\n+\tEmail string\n",
+          "content": "commit 38810b869dfca819a264aba3b36cfd19467a34a0\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:43:44+00:00\n\n    initial schema and store\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +5,2 @@\n+\tID    string\n+\tEmail string\n",
           "details": {
             "kind": "removed-line-history",
             "lines": "5-6 at the base revision",

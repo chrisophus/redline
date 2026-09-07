@@ -1,8 +1,8 @@
 {
   "report": {
     "schemaVersion": 1,
-    "baseRef": "6580127d12d93d9eb1840eb11fef53cde31599b5",
-    "baseSHA": "6580127d12d93d9eb1840eb11fef53cde31599b5",
+    "baseRef": "f2bb82e9a7b3cd29f9bfacdddd74f9ab53e4dde4",
+    "baseSHA": "f2bb82e9a7b3cd29f9bfacdddd74f9ab53e4dde4",
     "scope": [
       "internal/queue/queue.go"
     ],
@@ -89,15 +89,15 @@
   "change": {
     "target": {
       "kind": "commit",
-      "dir": "/root/.redline/worktrees/97ea9d2a7e80457e/32aa7cdc4f0f92bcd0f64dad67d7f4e8518ef659",
-      "head": "32aa7cdc4f0f92bcd0f64dad67d7f4e8518ef659",
-      "base": "6580127d12d93d9eb1840eb11fef53cde31599b5",
+      "dir": "/root/.redline/worktrees/590bbc223e2b7dee/0ac1bb3d67b93bd85e4758ad9e117fac38f38780",
+      "head": "0ac1bb3d67b93bd85e4758ad9e117fac38f38780",
+      "base": "f2bb82e9a7b3cd29f9bfacdddd74f9ab53e4dde4",
       "label": "HEAD"
     },
-    "baseSHA": "6580127d12d93d9eb1840eb11fef53cde31599b5",
+    "baseSHA": "f2bb82e9a7b3cd29f9bfacdddd74f9ab53e4dde4",
     "commits": [
       {
-        "sha": "32aa7cdc4f0f92bcd0f64dad67d7f4e8518ef659",
+        "sha": "0ac1bb3d67b93bd85e4758ad9e117fac38f38780",
         "author": "fixture",
         "subject": "simplify Drain"
       }
@@ -109,6 +109,7 @@
         "added": 0,
         "removed": 5,
         "diff": "diff --git a/internal/queue/queue.go b/internal/queue/queue.go\nindex 185ba13..871b25e 100644\n--- a/internal/queue/queue.go\n+++ b/internal/queue/queue.go\n@@ -4,11 +4,6 @@ package queue\n func Drain(items []string) []string {\n \tvar out []string\n \tfor _, it := range items {\n-\t\t// A nil entry reaches this from the retry path and panicked in\n-\t\t// production on 2026-03-11. Do not remove this guard.\n-\t\tif it == \"\" {\n-\t\t\tcontinue\n-\t\t}\n \t\tout = append(out, it)\n \t}\n \treturn out\n",
+        "head": "package queue\n\n// Drain empties the queue.\nfunc Drain(items []string) []string {\n\tvar out []string\n\tfor _, it := range items {\n\t\tout = append(out, it)\n\t}\n\treturn out\n}\n",
         "language": "go",
         "areas": [
           "code"
@@ -141,10 +142,10 @@
       "schemaVersion": 1,
       "provider": {
         "name": "gorefactor",
-        "version": "v0.0.0-20260906204439-a2ac4a145c9c+dirty",
+        "version": "v0.0.0-20260907222515-4833e7e8a214+dirty",
         "language": "go"
       },
-      "baseSHA": "6580127d12d93d9eb1840eb11fef53cde31599b5",
+      "baseSHA": "f2bb82e9a7b3cd29f9bfacdddd74f9ab53e4dde4",
       "files": [
         {
           "path": "internal/queue/queue.go",
@@ -179,7 +180,7 @@
           "file": "internal/queue/queue.go",
           "startLine": 6,
           "endLine": 6,
-          "content": "commit 7a2f2853ace8e97adf1cee20a7ed5801551ba8f8\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T21:25:51+00:00\n\n    add the queue\n\ndiff --git a/internal/queue/queue.go b/internal/queue/queue.go\n--- /dev/null\n+++ b/internal/queue/queue.go\n@@ -0,0 +6,1 @@\n+\tfor _, it := range items {\n",
+          "content": "commit dcbbeab010fddaa01588d81a6e2e6ce9f66ad0d5\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:43:45+00:00\n\n    add the queue\n\ndiff --git a/internal/queue/queue.go b/internal/queue/queue.go\n--- /dev/null\n+++ b/internal/queue/queue.go\n@@ -0,0 +6,1 @@\n+\tfor _, it := range items {\n",
           "details": {
             "kind": "line-history",
             "lines": "6-6",
@@ -192,7 +193,7 @@
           "file": "internal/queue/queue.go",
           "startLine": 7,
           "endLine": 11,
-          "content": "commit 6580127d12d93d9eb1840eb11fef53cde31599b5\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T21:25:51+00:00\n\n    skip empty entries: nil from the retry path panicked in production\n\ndiff --git a/internal/queue/queue.go b/internal/queue/queue.go\n--- a/internal/queue/queue.go\n+++ b/internal/queue/queue.go\n@@ -7,0 +7,5 @@\n+\t\t// A nil entry reaches this from the retry path and panicked in\n+\t\t// production on 2026-03-11. Do not remove this guard.\n+\t\tif it == \"\" {\n+\t\t\tcontinue\n+\t\t}\n",
+          "content": "commit f2bb82e9a7b3cd29f9bfacdddd74f9ab53e4dde4\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T22:43:45+00:00\n\n    skip empty entries: nil from the retry path panicked in production\n\ndiff --git a/internal/queue/queue.go b/internal/queue/queue.go\n--- a/internal/queue/queue.go\n+++ b/internal/queue/queue.go\n@@ -7,0 +7,5 @@\n+\t\t// A nil entry reaches this from the retry path and panicked in\n+\t\t// production on 2026-03-11. Do not remove this guard.\n+\t\tif it == \"\" {\n+\t\t\tcontinue\n+\t\t}\n",
           "details": {
             "kind": "removed-line-history",
             "lines": "7-11 at the base revision",

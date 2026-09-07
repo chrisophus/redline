@@ -14,6 +14,25 @@
     ],
     "findings": [
       {
+        "file": "internal/globmatch/glob.go",
+        "line": 22,
+        "rule": "gorefactor/stranded-comment",
+        "substrate": "redline/lint",
+        "category": "lint",
+        "severity": "warning",
+        "message": "this change introduces a stranded-comment violation: doc comment at line 22 opens with \"compiled\" but documents var cacheMu, cache — the comment appears stranded from the declaration it describes",
+        "new": true,
+        "fingerprint": "internal/globmatch/glob.go\u0000gorefactor/stranded-comment\u0000this change introduces a stranded-comment violation: doc comment at line # opens with \"compiled\" but documents var cacheMu, cache — the comment appears stranded from the declaration it describes",
+        "id": "f56b3e5a3fb",
+        "evidence": [
+          "lint@bda6ce457d144e8f8ee2b74433356bdfdec60b00",
+          "lint@worktree"
+        ],
+        "expected": "no new linter findings against the base revision",
+        "observed": "gorefactor reports stranded-comment at head and not at base",
+        "source": "deterministic"
+      },
+      {
         "rule": "source-without-test",
         "substrate": "redline/test-delta",
         "category": "tests",
@@ -93,8 +112,7 @@
       },
       {
         "name": "redline/lint",
-        "state": "failed",
-        "detail": "observe worktree: golangci-lint at head: golangci-lint exited 3: Error: can't load config: the Go language version (go1.25) used to build golangci-lint is lower than the targeted Go version (1.26)",
+        "state": "ran",
         "gating": false
       },
       {
@@ -115,7 +133,8 @@
       }
     ],
     "newCount": {
-      "info": 4
+      "info": 4,
+      "warning": 1
     },
     "coverage": {
       "changedFiles": 7,
@@ -124,16 +143,24 @@
     },
     "confirmations": [
       {
+        "substrate": "redline/lint",
+        "rule": "lint-resolved",
+        "message": "this change resolves 2 linter finding(s) present at the base revision"
+      },
+      {
         "substrate": "redline/suppressions",
         "rule": "no-suppressions-added",
         "message": "this change adds no lint-silencing directive"
       }
     ],
-    "unknowns": [
+    "tools": [
       {
-        "substrate": "redline/lint",
-        "message": "pane applied to this change but did not run",
-        "reason": "observe worktree: golangci-lint at head: golangci-lint exited 3: Error: can't load config: the Go language version (go1.25) used to build golangci-lint is lower than the targeted Go version (1.26)"
+        "name": "golangci-lint",
+        "status": "ran"
+      },
+      {
+        "name": "gorefactor",
+        "status": "ran"
       }
     ]
   },
@@ -161,6 +188,7 @@
         "added": 1,
         "removed": 1,
         "diff": "diff --git a/cmd/redline/main.go b/cmd/redline/main.go\nindex a6c8ce1..e85818b 100644\n--- a/cmd/redline/main.go\n+++ b/cmd/redline/main.go\n@@ -85,7 +85,7 @@ func main() {\n type opts struct {\n \tbase, upstream, migDir, format, out, pr, branch, commit, revRange string\n \treportURL, profile, olderThan                                     string\n-\topen, noOpen, stop, dryRun, file, prepare, allowMissingCoverage          bool\n+\topen, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool\n \tport                                                              int\n }\n \n",
+        "head": "// Command redline reviews a change: the working tree, a commit, a commit\n// range, a branch, or a GitHub pull request.\n//\n// `redline run` observes the change and reports what it can establish\n// deterministically: findings.json, report.md, and report.html. The\n// reviewer's own comments and verdicts — human or agent, via review.json —\n// merge into the same report, each finding marked with its source. Redline\n// itself invokes no model.\n//\n// `redline post` is the one command that writes to GitHub: it submits the\n// session's observed findings as one pull request review. It is always\n// explicit — `run` stays read-only.\npackage main\n\nimport (\n\t\"encoding/json\"\n\t\"errors\"\n\t\"flag\"\n\t\"fmt\"\n\t\"os\"\n\t\"path/filepath\"\n\n\t\"github.com/chrisophus/redline/internal/pane\"\n\t\"github.com/chrisophus/redline/internal/report\"\n\t\"github.com/chrisophus/redline/internal/run\"\n\t\"github.com/chrisophus/redline/internal/target\"\n)\n\nconst usage = `redline — observe a change and report the evidence\n\nusage:\n  redline run     [flags]   observe the change and report (the entry point)\n  redline post    [flags]   post the session's findings as one PR review (--pr)\n  redline open    [flags]   serve and open the last report (--file opens it from disk, no server)\n  redline serve   [flags]   serve .redline over http (blocks; --stop ends it)\n  redline gc      [flags]   remove this repo's cached review worktrees (~/.redline/worktrees)\n  redline version           print the version and build info\n\ntarget (all subcommands; pass only one):\n  (default)         working tree, uncommitted work included\n  --commit REF      that commit against its parent (HEAD for the latest)\n  --range A..B      commits reachable from B but not A (B defaults to HEAD)\n  --branch REF      a branch's tip against --base\n  --pr N|URL        a GitHub pull request (uses gh; read-only except post)\n\nflags:\n  --base REF        base revision (default: commit parent, range start, PR base, else origin/main)\n  --upstream REF    branch new migrations must not collide with\n  --migrations DIR  restrict migration checks to one directory\n  --format FMT      report|json  (default report)\n  --out DIR         evidence directory (default .redline)\n  --prepare         run harness produce steps from .redline.yml before observe\n  --allow-missing-coverage  do not fail when a configured coverage profile is absent\n  --open            open the HTML report when done\n  --no-open         never open a browser\n  --file            open (or print) the report as a file:// path, no server\n  --port N          loopback port for open/serve (default 8765; the next\n                    free port is used if it is taken)\n  --report-url URL  with post: link to the full report in the review body\n  --profile PATH    with post: YAML that stamps pass/fail markers a merge\n                    gate can read (error and warning fail unless the file\n                    says otherwise). Without it, post still comments and\n                    never approves.\n  --dry-run         with post: print the review payload instead of posting\n  --stop            with serve: stop the server for --out\n  --older-than D    with gc: only remove cached worktrees older than D (e.g. 168h)\n`\n\n// Build information, injected by the linker at release time (see\n// .goreleaser.yaml). A plain `go build` leaves these at their defaults, so\n// `redline version` reads \"dev\" off a local build and the tag off a release.\nvar (\n\tversion = \"dev\"\n\tcommit  = \"none\"\n\tdate    = \"unknown\"\n)\n\nfunc main() {\n\tif err := runMain(os.Args[1:]); err != nil {\n\t\tfmt.Fprintln(os.Stderr, \"redline:\", err)\n\t\tos.Exit(1)\n\t}\n}\n\ntype opts struct {\n\tbase, upstream, migDir, format, out, pr, branch, commit, revRange string\n\treportURL, profile, olderThan                                     string\n\topen, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool\n\tport                                                              int\n}\n\nfunc runMain(args []string) error {\n\tif len(args) == 0 || args[0] == \"-h\" || args[0] == \"--help\" || args[0] == \"help\" {\n\t\tfmt.Print(usage)\n\t\treturn nil\n\t}\n\tif args[0] == \"version\" || args[0] == \"--version\" || args[0] == \"-v\" {\n\t\tfmt.Printf(\"redline %s (commit %s, built %s)\\n\", version, commit, date)\n\t\treturn nil\n\t}\n\tcmd := args[0]\n\tfs := flag.NewFlagSet(\"redline \"+cmd, flag.ContinueOnError)\n\tvar o opts\n\tfs.StringVar(\u0026o.base, \"base\", \"\", \"base revision\")\n\tfs.StringVar(\u0026o.upstream, \"upstream\", \"\", \"upstream branch for version-collision checks\")\n\tfs.StringVar(\u0026o.migDir, \"migrations\", \"\", \"migrations directory\")\n\tfs.StringVar(\u0026o.format, \"format\", \"report\", \"report|json\")\n\tfs.StringVar(\u0026o.out, \"out\", \".redline\", \"evidence directory\")\n\tfs.StringVar(\u0026o.pr, \"pr\", \"\", \"GitHub pull request number or URL\")\n\tfs.StringVar(\u0026o.branch, \"branch\", \"\", \"branch to review\")\n\tfs.StringVar(\u0026o.commit, \"commit\", \"\", \"commit to review against its parent\")\n\tfs.StringVar(\u0026o.revRange, \"range\", \"\", \"commit range A..B\")\n\tfs.BoolVar(\u0026o.prepare, \"prepare\", false, \"run harness produce steps from .redline.yml before observe\")\n\tfs.BoolVar(\u0026o.allowMissingCoverage, \"allow-missing-coverage\", false, \"do not fail when a configured coverage profile is missing or stale\")\n\tfs.BoolVar(\u0026o.open, \"open\", false, \"open the HTML report when done\")\n\tfs.BoolVar(\u0026o.noOpen, \"no-open\", false, \"never open a browser\")\n\tfs.BoolVar(\u0026o.stop, \"stop\", false, \"stop the report server for --out\")\n\tfs.BoolVar(\u0026o.file, \"file\", false, \"open or print the report as a file:// path, no server\")\n\tfs.StringVar(\u0026o.reportURL, \"report-url\", \"\", \"with post: link to the full report in the review body (e.g. a CI artifact URL)\")\n\tfs.StringVar(\u0026o.profile, \"profile\", \"\", \"with post: YAML profile for merge-gate pass/fail markers\")\n\tfs.BoolVar(\u0026o.dryRun, \"dry-run\", false, \"with post: print the review payload as JSON instead of posting\")\n\tfs.IntVar(\u0026o.port, \"port\", report.DefaultPort, \"loopback port for the report server\")\n\tfs.StringVar(\u0026o.olderThan, \"older-than\", \"\", \"with gc: only remove cached worktrees older than this duration (e.g. 168h)\")\n\tif err := fs.Parse(args[1:]); err != nil {\n\t\treturn err\n\t}\n\n\tswitch cmd {\n\tcase \"run\":\n\t\treturn cmdRun(o)\n\tcase \"post\":\n\t\treturn cmdPost(o)\n\tcase \"open\":\n\t\tif o.file {\n\t\t\treturn openFile(o.out, true)\n\t\t}\n\t\treturn announce(o.out, o.port, true)\n\tcase \"serve\":\n\t\tif o.stop {\n\t\t\treturn report.Stop(o.out)\n\t\t}\n\t\treturn report.Serve(o.out, o.port)\n\tcase \"gc\":\n\t\treturn cmdGC(o)\n\tdefault:\n\t\treturn fmt.Errorf(\"unknown subcommand %q\\n\\n%s\", cmd, usage)\n\t}\n}\n\n// target is the subject the flags name, independent of any repository.\nfunc (o opts) target() target.Options {\n\treturn target.Options{PR: o.pr, Branch: o.branch, Commit: o.commit,\n\t\tRange: o.revRange, Base: o.base}\n}\n\nfunc (o opts) toRun(dir string) run.Options {\n\treturn run.Options{Dir: dir, Base: o.base, Upstream: o.upstream,\n\t\tMigDir: o.migDir, PR: o.pr, Branch: o.branch, Commit: o.commit,\n\t\tRange: o.revRange, Out: o.out, AllowMissingCoverage: o.allowMissingCoverage}\n}\n\nfunc cmdRun(o opts) error {\n\tres, runErr := execute(o)\n\tif res == nil {\n\t\treturn runErr\n\t}\n\tif err := write(o, res); err != nil {\n\t\treturn err\n\t}\n\tif o.format == \"json\" {\n\t\tif err := emitJSON(res.Report); err != nil {\n\t\t\treturn err\n\t\t}\n\t\treturn runErr\n\t}\n\tfmt.Print(report.Markdown(\u0026res.Report, res.Renders, res.Evidence, res.Change))\n\tif o.file {\n\t\tif err := openFile(o.out, o.open \u0026\u0026 !o.noOpen); err != nil {\n\t\t\treturn err\n\t\t}\n\t\treturn runErr\n\t}\n\tif err := announce(o.out, o.port, o.open \u0026\u0026 !o.noOpen); err != nil {\n\t\treturn err\n\t}\n\treturn runErr\n}\n\n// openFile points at report.html on disk, no server. The page is\n// self-contained, so a browser renders it straight from a file:// path; only\n// the click-to-comment feature, which needs a stable origin for\n// localStorage, wants the server. This is the answer to a report that lands\n// in .redline, a directory the file picker hides: the path is handed to the\n// opener directly, so no picker is involved. With browse, it opens; without,\n// it prints the file:// URL to click.\nfunc openFile(out string, browse bool) error {\n\tabs, err := filepath.Abs(filepath.Join(out, \"report.html\"))\n\tif err != nil {\n\t\treturn err\n\t}\n\tif _, err := os.Stat(abs); err != nil {\n\t\treturn fmt.Errorf(\"no report at %s (run `redline run` first)\", abs)\n\t}\n\tfmt.Fprintf(os.Stderr, \"Report: file://%s\\n\", abs)\n\tif browse {\n\t\treturn report.Open(abs)\n\t}\n\treturn nil\n}\n\n// announce prints where the report is and, when asked, opens it. Serving and\n// browsing are best effort: the report is already on disk by the time this\n// runs, and exiting non-zero because a port was taken would tell the agent\n// driving the session that a completed review failed.\n//\n// Only report.ErrNoReport is fatal, and it is matched explicitly. Inferring\n// it from an empty URL is what broke this once: failing to start a server\n// also yields no URL, so a run that had written its report exited 1 and\n// printed no path to it at all.\nfunc announce(out string, port int, browse bool) error {\n\turl, err := report.OpenOn(out, browse, port)\n\tif errors.Is(err, report.ErrNoReport) {\n\t\treturn err\n\t}\n\tif url == \"\" {\n\t\t// Nothing is serving it, but it is on disk. Say where.\n\t\turl = filepath.Join(out, \"report.html\")\n\t}\n\tfmt.Fprintf(os.Stderr, \"Report: %s\\n\", url)\n\tif err != nil {\n\t\tfmt.Fprintf(os.Stderr, \"redline: %v\\n\", err)\n\t}\n\treturn nil\n}\n\nfunc execute(o opts) (*run.Result, error) {\n\tcwd, err := os.Getwd()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif o.prepare {\n\t\tif _, err := run.Prepare(o.toRun(cwd)); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n\treturn run.Run(o.toRun(cwd))\n}\n\nfunc emitJSON(v any) error {\n\tenc := json.NewEncoder(os.Stdout)\n\tenc.SetIndent(\"\", \"  \")\n\treturn enc.Encode(v)\n}\n\n// write persists the run: findings.json, report.md, report.html, and any\n// captured artifacts. comments.json is never written here — it is the\n// reviewer's own state, and merging the two would clobber their decisions on\n// every re-run.\nfunc write(o opts, res *run.Result) error {\n\tdir := o.out\n\tif err := os.MkdirAll(dir, 0o755); err != nil {\n\t\treturn err\n\t}\n\tif err := writeJSON(filepath.Join(dir, \"findings.json\"), res.Report); err != nil {\n\t\treturn err\n\t}\n\tif err := run.SaveSession(dir, res); err != nil {\n\t\treturn err\n\t}\n\tmd := report.Markdown(\u0026res.Report, res.Renders, res.Evidence, res.Change)\n\tif err := os.WriteFile(filepath.Join(dir, \"report.md\"), []byte(md), 0o644); err != nil {\n\t\treturn err\n\t}\n\thtml, err := report.HTML(report.HTMLInput{\n\t\tReport: \u0026res.Report, Change: res.Change,\n\t\tRenders: res.Renders, Evidence: res.Evidence, LineCoverage: res.LineCoverage,\n\t})\n\tif err != nil {\n\t\treturn err\n\t}\n\tif err := os.WriteFile(filepath.Join(dir, \"report.html\"), []byte(html), 0o644); err != nil {\n\t\treturn err\n\t}\n\treturn writeArtifacts(dir, res.Evidence)\n}\n\nfunc writeArtifacts(dir string, evidence map[string]pane.Artifact) error {\n\tif len(evidence) == 0 {\n\t\treturn nil\n\t}\n\tevDir := filepath.Join(dir, \"evidence\")\n\tif err := os.MkdirAll(evDir, 0o755); err != nil {\n\t\treturn err\n\t}\n\tfor id, a := range evidence {\n\t\tif err := os.WriteFile(filepath.Join(evDir, report.EvidenceFile(id)), []byte(a.Content), 0o644); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\treturn nil\n}\n\nfunc writeJSON(path string, v any) error {\n\tbuf, err := json.MarshalIndent(v, \"\", \"  \")\n\tif err != nil {\n\t\treturn err\n\t}\n\treturn os.WriteFile(path, append(buf, '\\n'), 0o644)\n}\n",
         "language": "go",
         "areas": [
           "code"
@@ -172,6 +200,7 @@
         "added": 21,
         "removed": 1,
         "diff": "diff --git a/internal/globmatch/glob.go b/internal/globmatch/glob.go\nindex a8f3ced..b53bcec 100644\n--- a/internal/globmatch/glob.go\n+++ b/internal/globmatch/glob.go\n@@ -6,18 +6,38 @@ package globmatch\n import (\n \t\"regexp\"\n \t\"strings\"\n+\t\"sync\"\n )\n \n // MatchesAny reports whether path matches any of the patterns.\n func MatchesAny(patterns []string, path string) bool {\n \tfor _, p := range patterns {\n-\t\tif toRegexp(p).MatchString(path) {\n+\t\tif compiled(p).MatchString(path) {\n \t\t\treturn true\n \t\t}\n \t}\n \treturn false\n }\n \n+// compiled memoizes the regexp for a pattern. MatchesAny runs once per changed\n+// path against the same scope patterns, so compiling inside the loop rebuilt the\n+// same handful of patterns across the whole diff.\n+var (\n+\tcacheMu sync.Mutex\n+\tcache   = map[string]*regexp.Regexp{}\n+)\n+\n+func compiled(pattern string) *regexp.Regexp {\n+\tcacheMu.Lock()\n+\tdefer cacheMu.Unlock()\n+\tif re, ok := cache[pattern]; ok {\n+\t\treturn re\n+\t}\n+\tre := toRegexp(pattern)\n+\tcache[pattern] = re\n+\treturn re\n+}\n+\n func toRegexp(pattern string) *regexp.Regexp {\n \tvar b strings.Builder\n \tb.WriteString(\"^\")\n",
+        "head": "// Package globmatch matches repository paths against scope globs. Patterns use\n// \"/\" as the separator, \"*\" for one segment, \"**\" across segments, and \"?\" for\n// one character.\npackage globmatch\n\nimport (\n\t\"regexp\"\n\t\"strings\"\n\t\"sync\"\n)\n\n// MatchesAny reports whether path matches any of the patterns.\nfunc MatchesAny(patterns []string, path string) bool {\n\tfor _, p := range patterns {\n\t\tif compiled(p).MatchString(path) {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}\n\n// compiled memoizes the regexp for a pattern. MatchesAny runs once per changed\n// path against the same scope patterns, so compiling inside the loop rebuilt the\n// same handful of patterns across the whole diff.\nvar (\n\tcacheMu sync.Mutex\n\tcache   = map[string]*regexp.Regexp{}\n)\n\nfunc compiled(pattern string) *regexp.Regexp {\n\tcacheMu.Lock()\n\tdefer cacheMu.Unlock()\n\tif re, ok := cache[pattern]; ok {\n\t\treturn re\n\t}\n\tre := toRegexp(pattern)\n\tcache[pattern] = re\n\treturn re\n}\n\nfunc toRegexp(pattern string) *regexp.Regexp {\n\tvar b strings.Builder\n\tb.WriteString(\"^\")\n\tfor i := 0; i \u003c len(pattern); {\n\t\tswitch {\n\t\tcase strings.HasPrefix(pattern[i:], \"**/\"):\n\t\t\tb.WriteString(\"(?:.*/)?\")\n\t\t\ti += 3\n\t\tcase strings.HasPrefix(pattern[i:], \"**\"):\n\t\t\tb.WriteString(\".*\")\n\t\t\ti += 2\n\t\tcase pattern[i] == '*':\n\t\t\tb.WriteString(\"[^/]*\")\n\t\t\ti++\n\t\tcase pattern[i] == '?':\n\t\t\tb.WriteString(\"[^/]\")\n\t\t\ti++\n\t\tdefault:\n\t\t\tb.WriteString(regexp.QuoteMeta(pattern[i : i+1]))\n\t\t\ti++\n\t\t}\n\t}\n\tb.WriteString(\"$\")\n\treturn regexp.MustCompile(b.String())\n}\n",
         "language": "go",
         "areas": [
           "code"
@@ -194,6 +223,7 @@
         "added": 8,
         "removed": 5,
         "diff": "diff --git a/internal/harness/harness.go b/internal/harness/harness.go\nindex 877502a..cbdecea 100644\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -133,20 +133,23 @@ func Prepare(produceRoot, configRoot string, changed []string, cfg *Config) ([]s\n }\n \n // PrepareWorktree runs harness.worktree steps in the tree under review before\n-// tool panes execute there (detached PR worktrees included). Each produce\n-// root is prepared at most once per run.\n-func PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config) ([]string, error) {\n+// tool panes execute there (detached PR worktrees included). prepared records\n+// the produce roots already run this run, so a root is prepared at most once;\n+// the caller owns the map and shares it across the run's PrepareWorktree calls.\n+func PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config, prepared map[string]bool) ([]string, error) {\n \tif cfg == nil {\n \t\treturn nil, nil\n \t}\n-\tif worktreePrepared[produceRoot] {\n+\tif prepared[produceRoot] {\n \t\treturn nil, nil\n \t}\n \tproduced, err := runProfiles(produceRoot, configRoot, changed, cfg.Env.From, cfg.Worktree, \"worktree\")\n \tif err != nil {\n \t\treturn produced, err\n \t}\n-\tworktreePrepared[produceRoot] = true\n+\tif prepared != nil {\n+\t\tprepared[produceRoot] = true\n+\t}\n \treturn produced, nil\n }\n \n",
+        "head": "// Package harness runs produce steps declared in .redline.yml so artifacts\n// Redline reads (coverage profiles, and similar) exist before observe.\npackage harness\n\nimport (\n\t\"context\"\n\t\"fmt\"\n\t\"os\"\n\t\"os/exec\"\n\t\"path/filepath\"\n\t\"strings\"\n\t\"time\"\n\n\t\"github.com/chrisophus/redline/internal/cover\"\n\t\"gopkg.in/yaml.v3\"\n)\n\nconst produceTimeout = 30 * time.Minute\n\nvar configNames = []string{\".redline.yml\", \".redline.yaml\"}\n\n// Config is the harness section of .redline.yml.\ntype Config struct {\n\tEnv      EnvConfig `yaml:\"env\"`\n\tProfiles []Profile `yaml:\"profiles\"`\n\t// Worktree steps run in the tree under review (including detached PR\n\t// worktrees) before panes that execute tools there, for example make\n\t// stub-ui so go:embed dist exists for golangci-lint typecheck.\n\tWorktree []Profile `yaml:\"worktree\"`\n}\n\n// EnvConfig is optional environment setup before each produce step.\ntype EnvConfig struct {\n\t// From is a shell script sourced before each produce command (set -a for\n\t// export). Relative paths resolve in the checkout that owns .redline.yml,\n\t// then in the tree under review.\n\tFrom string `yaml:\"from\"`\n}\n\n// Profile is one artifact the harness can produce before observe.\ntype Profile struct {\n\tID      string        `yaml:\"id\"`\n\tPath    string        `yaml:\"path\"`\n\tProduce ProduceConfig `yaml:\"produce\"`\n\t// When is missing, stale, or always. Default stale: run when the artifact\n\t// is absent or older than a file this change touches.\n\tWhen  string   `yaml:\"when\"`\n\tScope []string `yaml:\"scope\"`\n}\n\n// ProduceConfig is the command that writes Path.\ntype ProduceConfig struct {\n\tCommand string   `yaml:\"command\"`\n\tArgs    []string `yaml:\"args\"`\n}\n\ntype fileConfig struct {\n\tHarness Config `yaml:\"harness\"`\n}\n\n// Load reads harness.profiles from .redline.yml. A missing file or empty\n// harness section returns (nil, nil).\nfunc Load(root string) (*Config, error) {\n\tfor _, name := range configNames {\n\t\tdata, err := os.ReadFile(filepath.Join(root, name))\n\t\tif err != nil {\n\t\t\tcontinue\n\t\t}\n\t\tvar cfg fileConfig\n\t\tif err := yaml.Unmarshal(data, \u0026cfg); err != nil {\n\t\t\treturn nil, fmt.Errorf(\"%s: %w\", name, err)\n\t\t}\n\t\tif len(cfg.Harness.Profiles) == 0 \u0026\u0026 len(cfg.Harness.Worktree) == 0 {\n\t\t\treturn nil, nil\n\t\t}\n\t\tif err := validate(\u0026cfg.Harness, name); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\treturn \u0026cfg.Harness, nil\n\t}\n\treturn nil, nil\n}\n\nfunc validate(cfg *Config, file string) error {\n\tseen := map[string]bool{}\n\tif err := validateProfiles(\u0026cfg.Profiles, file, \"profiles\", \"stale\", seen); err != nil {\n\t\treturn err\n\t}\n\treturn validateProfiles(\u0026cfg.Worktree, file, \"worktree\", \"missing\", seen)\n}\n\nfunc validateProfiles(profiles *[]Profile, file, section, defaultWhen string, seen map[string]bool) error {\n\tfor i, p := range *profiles {\n\t\tif p.Path == \"\" {\n\t\t\treturn fmt.Errorf(\"%s: harness.%s[%d] has no path\", file, section, i)\n\t\t}\n\t\tif p.Produce.Command == \"\" \u0026\u0026 section == \"worktree\" {\n\t\t\tid := p.ID\n\t\t\tif id == \"\" {\n\t\t\t\tid = p.Path\n\t\t\t}\n\t\t\treturn fmt.Errorf(\"%s: harness %s profile %q has no produce.command\", file, section, id)\n\t\t}\n\t\twhen := strings.TrimSpace(p.When)\n\t\tif when == \"\" {\n\t\t\t(*profiles)[i].When = defaultWhen\n\t\t} else if when != \"missing\" \u0026\u0026 when != \"stale\" \u0026\u0026 when != \"always\" {\n\t\t\tid := p.ID\n\t\t\tif id == \"\" {\n\t\t\t\tid = p.Path\n\t\t\t}\n\t\t\treturn fmt.Errorf(\"%s: harness %s profile %q: when must be missing, stale, or always\", file, section, id)\n\t\t}\n\t\tif (*profiles)[i].ID == \"\" {\n\t\t\t(*profiles)[i].ID = p.Path\n\t\t}\n\t\tif seen[(*profiles)[i].ID] {\n\t\t\treturn fmt.Errorf(\"%s: duplicate harness profile id %q\", file, (*profiles)[i].ID)\n\t\t}\n\t\tseen[(*profiles)[i].ID] = true\n\t}\n\treturn nil\n}\n\n// Prepare runs produce for profiles that need fresh artifacts. changed is the\n// paths in the diff under review. configRoot is where .redline.yml was read;\n// env.from is resolved there when missing from produceRoot.\nfunc Prepare(produceRoot, configRoot string, changed []string, cfg *Config) ([]string, error) {\n\tif cfg == nil {\n\t\treturn nil, nil\n\t}\n\treturn runProfiles(produceRoot, configRoot, changed, cfg.Env.From, cfg.Profiles, \"preparing\")\n}\n\n// PrepareWorktree runs harness.worktree steps in the tree under review before\n// tool panes execute there (detached PR worktrees included). prepared records\n// the produce roots already run this run, so a root is prepared at most once;\n// the caller owns the map and shares it across the run's PrepareWorktree calls.\nfunc PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config, prepared map[string]bool) ([]string, error) {\n\tif cfg == nil {\n\t\treturn nil, nil\n\t}\n\tif prepared[produceRoot] {\n\t\treturn nil, nil\n\t}\n\tproduced, err := runProfiles(produceRoot, configRoot, changed, cfg.Env.From, cfg.Worktree, \"worktree\")\n\tif err != nil {\n\t\treturn produced, err\n\t}\n\tif prepared != nil {\n\t\tprepared[produceRoot] = true\n\t}\n\treturn produced, nil\n}\n\nfunc runProfiles(produceRoot, configRoot string, changed []string, envFrom string, profiles []Profile, label string) ([]string, error) {\n\tif len(profiles) == 0 {\n\t\treturn nil, nil\n\t}\n\tvar produced []string\n\tfor _, p := range profiles {\n\t\tif p.Produce.Command == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tif !needsProduce(produceRoot, p, changed) {\n\t\t\tcontinue\n\t\t}\n\t\tfmt.Fprintf(os.Stderr, \"redline: %s %s: %s %s\\n\", label, p.ID, p.Produce.Command, strings.Join(p.Produce.Args, \" \"))\n\t\tif err := runProduce(produceRoot, configRoot, envFrom, p.Produce); err != nil {\n\t\t\treturn produced, fmt.Errorf(\"harness %s %s: %w\", label, p.ID, err)\n\t\t}\n\t\tproduced = append(produced, p.ID)\n\t}\n\treturn produced, nil\n}\n\nfunc needsProduce(root string, p Profile, changed []string) bool {\n\tif !appliesToProduce(p, changed) {\n\t\treturn false\n\t}\n\texists := artifactExists(root, p.Path)\n\tswitch p.When {\n\tcase \"always\":\n\t\treturn true\n\tcase \"missing\":\n\t\treturn !exists\n\tdefault: // stale\n\t\tif !exists {\n\t\t\treturn true\n\t\t}\n\t\treturn cover.ArtifactStale(root, p.Path, changed)\n\t}\n}\n\nfunc artifactExists(root, rel string) bool {\n\tfull := filepath.Join(root, rel)\n\tst, err := os.Stat(full)\n\treturn err == nil \u0026\u0026 !st.IsDir() \u0026\u0026 st.Size() \u003e 0\n}\n\nfunc runProduce(produceRoot, configRoot, envFrom string, prod ProduceConfig) error {\n\tctx, cancel := context.WithTimeout(context.Background(), produceTimeout)\n\tdefer cancel()\n\n\tvar script strings.Builder\n\tscript.WriteString(\"set -euo pipefail\")\n\tif envFrom != \"\" {\n\t\tscript.WriteString(\"; set -a; source \")\n\t\tscript.WriteString(shellQuote(resolveEnvFrom(produceRoot, configRoot, envFrom)))\n\t\tscript.WriteString(\"; set +a\")\n\t}\n\tscript.WriteString(\"; \")\n\tscript.WriteString(shellQuote(prod.Command))\n\tfor _, a := range prod.Args {\n\t\tscript.WriteString(\" \")\n\t\tscript.WriteString(shellQuote(a))\n\t}\n\n\tcmd := exec.CommandContext(ctx, \"bash\", \"-lc\", script.String())\n\tcmd.Dir = produceRoot\n\tcmd.Stdout = os.Stdout\n\tcmd.Stderr = os.Stderr\n\tif err := cmd.Run(); err != nil {\n\t\treturn fmt.Errorf(\"%s %s: %w\", prod.Command, strings.Join(prod.Args, \" \"), err)\n\t}\n\treturn nil\n}\n\n// resolveEnvFrom finds env.from when the produce tree is a detached worktree\n// that does not yet carry harness helper scripts from the caller's checkout.\nfunc resolveEnvFrom(produceRoot, configRoot, envFrom string) string {\n\tif envFrom == \"\" {\n\t\treturn \"\"\n\t}\n\tif filepath.IsAbs(envFrom) {\n\t\treturn envFrom\n\t}\n\tif configRoot != \"\" {\n\t\tp := filepath.Join(configRoot, envFrom)\n\t\tif _, err := os.Stat(p); err == nil {\n\t\t\treturn p\n\t\t}\n\t}\n\tif produceRoot != \"\" {\n\t\tp := filepath.Join(produceRoot, envFrom)\n\t\tif _, err := os.Stat(p); err == nil {\n\t\t\treturn p\n\t\t}\n\t\treturn filepath.Join(produceRoot, envFrom)\n\t}\n\treturn envFrom\n}\n\nfunc shellQuote(s string) string {\n\tif s == \"\" {\n\t\treturn \"''\"\n\t}\n\treturn \"'\" + strings.ReplaceAll(s, \"'\", \"'\\\\''\") + \"'\"\n}\n",
         "language": "go",
         "areas": [
           "code"
@@ -205,6 +235,7 @@
         "added": 1,
         "removed": 1,
         "diff": "diff --git a/internal/harness/harness_test.go b/internal/harness/harness_test.go\nindex ccc1fb5..bd43457 100644\n--- a/internal/harness/harness_test.go\n+++ b/internal/harness/harness_test.go\n@@ -122,7 +122,7 @@ func TestPrepareWorktreeMissing(t *testing.T) {\n \t\t\tProduce: ProduceConfig{Command: \"mkdir\", Args: []string{\"-p\", \"ui/dist\"}},\n \t\t}},\n \t}\n-\tproduced, err := PrepareWorktree(dir, dir, nil, cfg)\n+\tproduced, err := PrepareWorktree(dir, dir, nil, cfg, nil)\n \tif err != nil {\n \t\tt.Fatal(err)\n \t}\n",
+        "head": "package harness\n\nimport (\n\t\"os\"\n\t\"path/filepath\"\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestNeedsProduce(t *testing.T) {\n\tdir := t.TempDir()\n\twrite := func(path, content string) {\n\t\tfull := filepath.Join(dir, path)\n\t\tif err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t\tif err := os.WriteFile(full, []byte(content), 0o644); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t}\n\n\tprofile := Profile{\n\t\tID:      \"go\",\n\t\tPath:    \"coverage.out\",\n\t\tWhen:    \"stale\",\n\t\tProduce: ProduceConfig{Command: \"true\"},\n\t}\n\n\tif !needsProduce(dir, profile, []string{\"a.go\"}) {\n\t\tt.Fatal(\"missing artifact should need produce\")\n\t}\n\n\twrite(\"coverage.out\", \"mode: set\\n\")\n\twrite(\"a.go\", \"package a\\n\")\n\told := time.Now().Add(-2 * time.Minute)\n\tif err := os.Chtimes(filepath.Join(dir, \"coverage.out\"), old, old); err != nil {\n\t\tt.Fatal(err)\n\t}\n\n\tif !needsProduce(dir, profile, []string{\"a.go\"}) {\n\t\tt.Fatal(\"artifact older than changed file should need produce\")\n\t}\n\n\tprofile.When = \"missing\"\n\tif needsProduce(dir, profile, []string{\"a.go\"}) {\n\t\tt.Fatal(\"when missing should skip existing artifact\")\n\t}\n\n\tprofile.Scope = []string{\"ui/**\"}\n\tif needsProduce(dir, Profile{ID: \"ui\", Path: \"ui/cov.json\", When: \"always\", Produce: profile.Produce, Scope: profile.Scope}, []string{\"internal/a.go\"}) {\n\t\tt.Fatal(\"scope mismatch should skip produce\")\n\t}\n}\n\nfunc TestPrepareRunsProduce(t *testing.T) {\n\tdir := t.TempDir()\n\tscript := filepath.Join(dir, \"write.sh\")\n\tif err := os.WriteFile(script, []byte(\"#!/bin/sh\\necho ok \u003e out.txt\\n\"), 0o755); err != nil {\n\t\tt.Fatal(err)\n\t}\n\n\tcfg := \u0026Config{\n\t\tProfiles: []Profile{{\n\t\t\tID:      \"out\",\n\t\t\tPath:    \"out.txt\",\n\t\t\tWhen:    \"missing\",\n\t\t\tProduce: ProduceConfig{Command: \"sh\", Args: []string{\"write.sh\"}},\n\t\t}},\n\t}\n\tproduced, err := Prepare(dir, dir, []string{\"a.go\"}, cfg)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif len(produced) != 1 || produced[0] != \"out\" {\n\t\tt.Fatalf(\"produced: %v\", produced)\n\t}\n\tif _, err := os.Stat(filepath.Join(dir, \"out.txt\")); err != nil {\n\t\tt.Fatal(\"artifact not written\")\n\t}\n}\n\nfunc TestLoadValidates(t *testing.T) {\n\tdir := t.TempDir()\n\tif err := os.WriteFile(filepath.Join(dir, \".redline.yml\"), []byte(`harness:\n  profiles:\n    - path: out.txt\n      produce: {command: true}\n      when: bogus\n`), 0o644); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif _, err := Load(dir); err == nil {\n\t\tt.Fatal(\"expected validation error for when\")\n\t}\n}\n\nfunc TestLoadWorktreeOnly(t *testing.T) {\n\tdir := t.TempDir()\n\tif err := os.WriteFile(filepath.Join(dir, \".redline.yml\"), []byte(`harness:\n  worktree:\n    - path: ui/dist/index.html\n      produce: {command: make, args: [stub-ui]}\n`), 0o644); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tcfg, err := Load(dir)\n\tif err != nil || cfg == nil || len(cfg.Worktree) != 1 {\n\t\tt.Fatalf(\"cfg=%v err=%v\", cfg, err)\n\t}\n\tif cfg.Worktree[0].When != \"missing\" {\n\t\tt.Fatalf(\"default when: %q\", cfg.Worktree[0].When)\n\t}\n}\n\nfunc TestPrepareWorktreeMissing(t *testing.T) {\n\tdir := t.TempDir()\n\tcfg := \u0026Config{\n\t\tWorktree: []Profile{{\n\t\t\tID:      \"ui\",\n\t\t\tPath:    \"ui/dist/index.html\",\n\t\t\tWhen:    \"missing\",\n\t\t\tProduce: ProduceConfig{Command: \"mkdir\", Args: []string{\"-p\", \"ui/dist\"}},\n\t\t}},\n\t}\n\tproduced, err := PrepareWorktree(dir, dir, nil, cfg, nil)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif len(produced) != 1 {\n\t\tt.Fatalf(\"produced: %v\", produced)\n\t}\n}\n\nfunc TestEnvFromConfigRoot(t *testing.T) {\n\tconfig := t.TempDir()\n\tworktree := t.TempDir()\n\tif err := os.WriteFile(filepath.Join(config, \"env.sh\"), []byte(\"export MARKER=ok\\n\"), 0o644); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := os.WriteFile(filepath.Join(worktree, \"write.sh\"), []byte(\"#!/bin/sh\\necho \\\"$MARKER\\\" \u003e out.txt\\n\"), 0o755); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tcfg := \u0026Config{\n\t\tEnv: EnvConfig{From: \"env.sh\"},\n\t\tProfiles: []Profile{{\n\t\t\tID:      \"out\",\n\t\t\tPath:    \"out.txt\",\n\t\t\tWhen:    \"missing\",\n\t\t\tProduce: ProduceConfig{Command: \"sh\", Args: []string{\"write.sh\"}},\n\t\t}},\n\t}\n\tproduced, err := Prepare(worktree, config, []string{\"a.go\"}, cfg)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif len(produced) != 1 {\n\t\tt.Fatalf(\"produced: %v\", produced)\n\t}\n\tdata, err := os.ReadFile(filepath.Join(worktree, \"out.txt\"))\n\tif err != nil || string(data) != \"ok\\n\" {\n\t\tt.Fatalf(\"out.txt: %q err=%v\", data, err)\n\t}\n}\n\nfunc TestLoadMissingFile(t *testing.T) {\n\tcfg, err := Load(t.TempDir())\n\tif err != nil || cfg != nil {\n\t\tt.Fatalf(\"missing config: cfg=%v err=%v\", cfg, err)\n\t}\n}\n",
         "language": "go",
         "areas": [
           "tests"
@@ -237,6 +268,13 @@
   },
   "renders": [
     {
+      "Title": "Lint delta",
+      "Summary": "1 finding(s) introduced, 2 resolved (golangci-lint, gorefactor)",
+      "Lines": [
+        "+ internal/globmatch/glob.go:22 stranded-comment (gorefactor)"
+      ]
+    },
+    {
       "Title": "Suppressions",
       "Summary": "0 lint-silencing directive(s) added by this change",
       "Lines": null
@@ -257,7 +295,7 @@
       "schemaVersion": 1,
       "provider": {
         "name": "gorefactor",
-        "version": "v0.0.0-20260906204439-a2ac4a145c9c+dirty",
+        "version": "v0.0.0-20260907222515-4833e7e8a214+dirty",
         "language": "go"
       },
       "baseSHA": "bda6ce457d144e8f8ee2b74433356bdfdec60b00",
@@ -713,6 +751,214 @@
             "callerSymbol": "internal/pane/lint.matchesAnyGlob",
             "kind": "call-site",
             "line": "117"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 60,
+          "symbol": "compiled",
+          "scope": "internal/globmatch.compiled",
+          "file": "internal/globmatch/glob.go",
+          "startLine": 13,
+          "endLine": 17,
+          "content": "func MatchesAny(patterns []string, path string) bool {\n\tfor _, p := range patterns {\n\t\tif compiled(p).MatchString(path) {\n\t\t\treturn true\n\t\t}\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/globmatch.MatchesAny",
+            "kind": "call-site",
+            "line": "15"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "opts",
+          "scope": "cmd/redline.opts",
+          "file": "cmd/redline/gc.go",
+          "startLine": 15,
+          "endLine": 19,
+          "content": "// is why nothing prunes it automatically. gc is the manual reclaim, scoped to\n// this repository. Removed worktrees are recreated on demand by the next run.\nfunc cmdGC(o opts) error {\n\tcwd, err := os.Getwd()\n\tif err != nil {\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "cmd/redline.cmdGC",
+            "kind": "call-site",
+            "line": "17"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "opts",
+          "scope": "cmd/redline.opts",
+          "file": "cmd/redline/main.go",
+          "startLine": 101,
+          "endLine": 105,
+          "content": "\tcmd := args[0]\n\tfs := flag.NewFlagSet(\"redline \"+cmd, flag.ContinueOnError)\n\tvar o opts\n\tfs.StringVar(\u0026o.base, \"base\", \"\", \"base revision\")\n\tfs.StringVar(\u0026o.upstream, \"upstream\", \"\", \"upstream branch for version-collision checks\")\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "cmd/redline.runMain",
+            "kind": "call-site",
+            "line": "103"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "opts",
+          "scope": "cmd/redline.opts",
+          "file": "cmd/redline/main.go",
+          "startLine": 149,
+          "endLine": 153,
+          "content": "\n// target is the subject the flags name, independent of any repository.\nfunc (o opts) target() target.Options {\n\treturn target.Options{PR: o.pr, Branch: o.branch, Commit: o.commit,\n\t\tRange: o.revRange, Base: o.base}\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "cmd/redline.opts.target",
+            "kind": "call-site",
+            "line": "151"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "opts",
+          "scope": "cmd/redline.opts",
+          "file": "cmd/redline/main.go",
+          "startLine": 154,
+          "endLine": 158,
+          "content": "}\n\nfunc (o opts) toRun(dir string) run.Options {\n\treturn run.Options{Dir: dir, Base: o.base, Upstream: o.upstream,\n\t\tMigDir: o.migDir, PR: o.pr, Branch: o.branch, Commit: o.commit,\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "cmd/redline.opts.toRun",
+            "kind": "call-site",
+            "line": "156"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "opts",
+          "scope": "cmd/redline.opts",
+          "file": "cmd/redline/main.go",
+          "startLine": 160,
+          "endLine": 164,
+          "content": "}\n\nfunc cmdRun(o opts) error {\n\tres, runErr := execute(o)\n\tif res == nil {\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "cmd/redline.cmdRun",
+            "kind": "call-site",
+            "line": "162"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "opts",
+          "scope": "cmd/redline.opts",
+          "file": "cmd/redline/main.go",
+          "startLine": 234,
+          "endLine": 238,
+          "content": "}\n\nfunc execute(o opts) (*run.Result, error) {\n\tcwd, err := os.Getwd()\n\tif err != nil {\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "cmd/redline.execute",
+            "kind": "call-site",
+            "line": "236"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "opts",
+          "scope": "cmd/redline.opts",
+          "file": "cmd/redline/main.go",
+          "startLine": 257,
+          "endLine": 261,
+          "content": "// reviewer's own state, and merging the two would clobber their decisions on\n// every re-run.\nfunc write(o opts, res *run.Result) error {\n\tdir := o.out\n\tif err := os.MkdirAll(dir, 0o755); err != nil {\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "cmd/redline.write",
+            "kind": "call-site",
+            "line": "259"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "opts",
+          "scope": "cmd/redline.opts",
+          "file": "cmd/redline/post.go",
+          "startLine": 23,
+          "endLine": 27,
+          "content": "// — posting a review of one change onto another PR is exactly the mistake\n// worth a hard error.\nfunc cmdPost(o opts) error {\n\tres, err := run.LoadSession(o.out)\n\tif err != nil {\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "cmd/redline.cmdPost",
+            "kind": "call-site",
+            "line": "25"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "cacheMu",
+          "scope": "internal/globmatch.cacheMu",
+          "file": "internal/globmatch/glob.go",
+          "startLine": 29,
+          "endLine": 33,
+          "content": "\nfunc compiled(pattern string) *regexp.Regexp {\n\tcacheMu.Lock()\n\tdefer cacheMu.Unlock()\n\tif re, ok := cache[pattern]; ok {\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/globmatch.compiled",
+            "kind": "call-site",
+            "line": "31"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "cacheMu",
+          "scope": "internal/globmatch.cacheMu",
+          "file": "internal/globmatch/glob.go",
+          "startLine": 30,
+          "endLine": 34,
+          "content": "func compiled(pattern string) *regexp.Regexp {\n\tcacheMu.Lock()\n\tdefer cacheMu.Unlock()\n\tif re, ok := cache[pattern]; ok {\n\t\treturn re\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/globmatch.compiled",
+            "kind": "call-site",
+            "line": "32"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "cache",
+          "scope": "internal/globmatch.cache",
+          "file": "internal/globmatch/glob.go",
+          "startLine": 31,
+          "endLine": 35,
+          "content": "\tcacheMu.Lock()\n\tdefer cacheMu.Unlock()\n\tif re, ok := cache[pattern]; ok {\n\t\treturn re\n\t}\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/globmatch.compiled",
+            "kind": "call-site",
+            "line": "33"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 51,
+          "symbol": "cache",
+          "scope": "internal/globmatch.cache",
+          "file": "internal/globmatch/glob.go",
+          "startLine": 35,
+          "endLine": 39,
+          "content": "\t}\n\tre := toRegexp(pattern)\n\tcache[pattern] = re\n\treturn re\n}\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/globmatch.compiled",
+            "kind": "call-site",
+            "line": "37"
           }
         },
         {
@@ -1502,6 +1748,149 @@
           "details": {
             "kind": "line-history",
             "lines": "22-40",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "cmd/redline/main.go",
+          "startLine": 88,
+          "endLine": 88,
+          "content": "commit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/cmd/redline/main.go b/cmd/redline/main.go\n--- a/cmd/redline/main.go\n+++ b/cmd/redline/main.go\n@@ -87,1 +88,1 @@\n-\topen, noOpen, stop, dryRun, file, prepare                          bool\n+\topen, noOpen, stop, dryRun, file, prepare, allowMissingCoverage          bool\n\ncommit c4af73a1453ba062261a268ac9ec534501affb41\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T10:56:36-06:00\n\n    Add harness prepare, flexible review.json, and v0.1.1.\n    \n    Declare harness profiles in .redline.yml and run them with redline run\n    --prepare before observe. LoadReview accepts publisher aliases and file\n    list shapes. Extract globmatch for scope matching; golangci-lint defers\n    path exclusions to the repository's own .golangci.yml.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/cmd/redline/main.go b/cmd/redline/main.go\n--- a/cmd/redline/main.go\n+++ b/cmd/redline/main.go\n@@ -86,1 +87,1 @@\n-\topen, noOpen, stop, dryRun, file                                  bool\n+\topen, noOpen, stop, dryRun, file, prepare                          bool\n\ncommit 7904b552ef53cf85da9af4d5d4e944e5db6cd665\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-06T10:00:57-06:00\n\n    feat: run and configure external lint tools, and act on findings in the report\n    \n    Dogfood tooling: tests, benchmarks, and fuzz targets across every package,\n    plus first tests for the findings, migrations, and change packages. Total\n    statement coverage 61% to ~71%. Adds .golangci.yml, .gorefactor.yaml, a\n    GitHub Actions workflow, and Makefile targets for lint, coverage, bench, and\n    diff-scoped mutation testing (gremlins).\n    \n    gorefactor lint-delta pane, detected by .gorefactor.yaml, run through the\n    same base-vs-head machinery as golangci-lint and eslint.\n    \n    .redline.yml declares any external tool with no code change: a command, the\n    globs it covers, and how to read its output (sarif, spectral, or a json\n    field mapping). A tool runs as a linter (base vs head) or a differ\n    (oasdiff-style, comparing one file at both revisions), with an optional\n    committed-baseline mode.\n    \n    Report: repository-wide coverage beside diff coverage; a lines-by-language-\n    and-type table; a \"What changed\" section in HTML to match the markdown;\n    per-finding offending-code snippets; per-finding Copy and Comment actions\n    that feed the agent payload; a --file mode that opens the report from disk\n    with no server; summaries now lead the page.\n    \n    Fixes the new tooling surfaced: cover.AddedLines and the post diff mapping\n    no longer invent line 0 from a malformed hunk header; the golangci-lint\n    parser reads one JSON value so v2's trailing summary line no longer breaks\n    it; gorefactor's module-qualified paths are made repo-relative; the diff and\n    snippet renderers no longer double-space every line; the report server sets\n    ReadHeaderTimeout; and the unchecked errors and staticcheck/gocritic\n    findings the new linters caught are cleared.\n\ndiff --git a/cmd/redline/main.go b/cmd/redline/main.go\n--- a/cmd/redline/main.go\n+++ b/cmd/redline/main.go\n@@ -72,1 +73,1 @@\n-\topen, noOpen, stop, dryRun                                        bool\n+\topen, noOpen, stop, dryRun, file                                  bool\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "88-88 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/globmatch/glob.go",
+          "startLine": 14,
+          "endLine": 14,
+          "content": "commit c4af73a1453ba062261a268ac9ec534501affb41\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T10:56:36-06:00\n\n    Add harness prepare, flexible review.json, and v0.1.1.\n    \n    Declare harness profiles in .redline.yml and run them with redline run\n    --prepare before observe. LoadReview accepts publisher aliases and file\n    list shapes. Extract globmatch for scope matching; golangci-lint defers\n    path exclusions to the repository's own .golangci.yml.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/globmatch/glob.go b/internal/globmatch/glob.go\n--- /dev/null\n+++ b/internal/globmatch/glob.go\n@@ -0,0 +14,1 @@\n+\t\tif toRegexp(p).MatchString(path) {\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "14-14 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/harness/active.go",
+          "startLine": 1,
+          "endLine": 19,
+          "content": "commit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/active.go b/internal/harness/active.go\n--- a/internal/harness/active.go\n+++ b/internal/harness/active.go\n@@ -1,6 +1,19 @@\n package harness\n \n // Active is the harness config for the current redline run, loaded from the\n // caller's checkout so worktrees without a committed .redline.yml still get\n // worktree prepare steps. Set by run.Run; read by panes.\n var Active *Config\n+\n+// ActiveRoot is the repository root Active was loaded from. env.from paths\n+// are resolved here when they are absent from the tree under review.\n+var ActiveRoot string\n+\n+// worktreePrepared records produce roots that already ran harness.worktree\n+// this run, so lint delta does not repeat stub-ui for head.\n+var worktreePrepared = map[string]bool{}\n+\n+// ResetWorktreePrepared clears the worktree dedup map. Called at run end.\n+func ResetWorktreePrepared() {\n+\tworktreePrepared = map[string]bool{}\n+}\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/active.go b/internal/harness/active.go\n--- /dev/null\n+++ b/internal/harness/active.go\n@@ -0,0 +1,6 @@\n+package harness\n+\n+// Active is the harness config for the current redline run, loaded from the\n+// caller's checkout so worktrees without a committed .redline.yml still get\n+// worktree prepare steps. Set by run.Run; read by panes.\n+var Active *Config\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "1-19 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/harness/harness.go",
+          "startLine": 136,
+          "endLine": 138,
+          "content": "commit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -136,2 +137,3 @@\n-// tool panes execute there (detached PR worktrees included).\n-func PrepareWorktree(root string, changed []string, cfg *Config) ([]string, error) {\n+// tool panes execute there (detached PR worktrees included). Each produce\n+// root is prepared at most once per run.\n+func PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config) ([]string, error) {\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -110,1 +136,2 @@\n-\tif cfg == nil || len(cfg.Profiles) == 0 {\n+// tool panes execute there (detached PR worktrees included).\n+func PrepareWorktree(root string, changed []string, cfg *Config) ([]string, error) {\n\ncommit c4af73a1453ba062261a268ac9ec534501affb41\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T10:56:36-06:00\n\n    Add harness prepare, flexible review.json, and v0.1.1.\n    \n    Declare harness profiles in .redline.yml and run them with redline run\n    --prepare before observe. LoadReview accepts publisher aliases and file\n    list shapes. Extract globmatch for scope matching; golangci-lint defers\n    path exclusions to the repository's own .golangci.yml.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- /dev/null\n+++ b/internal/harness/harness.go\n@@ -0,0 +110,1 @@\n+\tif cfg == nil || len(cfg.Profiles) == 0 {\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "136-138 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/harness/harness.go",
+          "startLine": 142,
+          "endLine": 142,
+          "content": "commit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -141,1 +143,1 @@\n-\treturn runProfiles(root, changed, cfg.Env.From, cfg.Worktree, \"worktree\")\n+\tif worktreePrepared[produceRoot] {\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -110,1 +141,1 @@\n-\tif cfg == nil || len(cfg.Profiles) == 0 {\n+\treturn runProfiles(root, changed, cfg.Env.From, cfg.Worktree, \"worktree\")\n\ncommit c4af73a1453ba062261a268ac9ec534501affb41\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T10:56:36-06:00\n\n    Add harness prepare, flexible review.json, and v0.1.1.\n    \n    Declare harness profiles in .redline.yml and run them with redline run\n    --prepare before observe. LoadReview accepts publisher aliases and file\n    list shapes. Extract globmatch for scope matching; golangci-lint defers\n    path exclusions to the repository's own .golangci.yml.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- /dev/null\n+++ b/internal/harness/harness.go\n@@ -0,0 +110,1 @@\n+\tif cfg == nil || len(cfg.Profiles) == 0 {\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "142-142 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/harness/harness.go",
+          "startLine": 149,
+          "endLine": 149,
+          "content": "commit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -141,1 +150,1 @@\n-\treturn runProfiles(root, changed, cfg.Env.From, cfg.Worktree, \"worktree\")\n+\tworktreePrepared[produceRoot] = true\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -110,1 +141,1 @@\n-\tif cfg == nil || len(cfg.Profiles) == 0 {\n+\treturn runProfiles(root, changed, cfg.Env.From, cfg.Worktree, \"worktree\")\n\ncommit c4af73a1453ba062261a268ac9ec534501affb41\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T10:56:36-06:00\n\n    Add harness prepare, flexible review.json, and v0.1.1.\n    \n    Declare harness profiles in .redline.yml and run them with redline run\n    --prepare before observe. LoadReview accepts publisher aliases and file\n    list shapes. Extract globmatch for scope matching; golangci-lint defers\n    path exclusions to the repository's own .golangci.yml.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- /dev/null\n+++ b/internal/harness/harness.go\n@@ -0,0 +110,1 @@\n+\tif cfg == nil || len(cfg.Profiles) == 0 {\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "149-149 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/harness/harness_test.go",
+          "startLine": 125,
+          "endLine": 125,
+          "content": "commit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness_test.go b/internal/harness/harness_test.go\n--- a/internal/harness/harness_test.go\n+++ b/internal/harness/harness_test.go\n@@ -125,1 +125,1 @@\n-\tproduced, err := PrepareWorktree(dir, nil, cfg)\n+\tproduced, err := PrepareWorktree(dir, dir, nil, cfg)\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness_test.go b/internal/harness/harness_test.go\n--- a/internal/harness/harness_test.go\n+++ b/internal/harness/harness_test.go\n@@ -97,0 +125,1 @@\n+\tproduced, err := PrepareWorktree(dir, nil, cfg)\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "125-125 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 124,
+          "endLine": 125,
+          "content": "commit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/pane/lint/delta.go b/internal/pane/lint/delta.go\n--- a/internal/pane/lint/delta.go\n+++ b/internal/pane/lint/delta.go\n@@ -124,2 +124,2 @@\n \tif cfg := harness.Active; cfg != nil {\n-\t\tif _, err := harness.PrepareWorktree(dir, p.scoped, cfg); err != nil {\n+\t\tif _, err := harness.PrepareWorktree(dir, harness.ActiveRoot, p.scoped, cfg); err != nil {\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/pane/lint/delta.go b/internal/pane/lint/delta.go\n--- a/internal/pane/lint/delta.go\n+++ b/internal/pane/lint/delta.go\n@@ -123,0 +124,2 @@\n+\tif cfg := harness.Active; cfg != nil {\n+\t\tif _, err := harness.PrepareWorktree(dir, p.scoped, cfg); err != nil {\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "124-125 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/run/run.go",
+          "startLine": 108,
+          "endLine": 114,
+          "content": "commit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -108,2 +109,7 @@\n \tharness.Active = cfg\n-\tdefer func() { harness.Active = nil }()\n+\tharness.ActiveRoot = configRoot\n+\tdefer func() {\n+\t\tharness.Active = nil\n+\t\tharness.ActiveRoot = \"\"\n+\t\tharness.ResetWorktreePrepared()\n+\t}()\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -98,0 +108,2 @@\n+\tharness.Active = cfg\n+\tdefer func() { harness.Active = nil }()\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "108-114 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/run/run.go",
+          "startLine": 122,
+          "endLine": 122,
+          "content": "commit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -111,1 +122,1 @@\n-\t\tif _, err := harness.PrepareWorktree(tgt.Dir, changed, cfg); err != nil {\n+\t\tif _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg); err != nil {\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -98,0 +111,1 @@\n+\t\tif _, err := harness.PrepareWorktree(tgt.Dir, changed, cfg); err != nil {\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "122-122 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/run/run.go",
+          "startLine": 136,
+          "endLine": 136,
+          "content": "commit 3ecc6f135a1409b6e89d2793826082b90ecf8e6b\nAuthor: Claude \u003cnoreply@anthropic.com\u003e\nDate:   2026-09-01T14:57:08+00:00\n\n    feat: lint delta, suppression triage, and config drift panes\n    \n    Phase 2 of the replanned design. Three panes in internal/pane/lint, all\n    deterministic and scoped to the change. Delta runs golangci-lint and\n    eslint at the base revision (in the cached detached worktree gitx keeps\n    per commit) and at head, and reports only what the change introduces,\n    counting what it resolves as a confirmation; identity is file, rule and\n    digit-normalized message with no line, so moved code keeps its findings.\n    A tool that fails at head darks the pane; a base that cannot be linted\n    degrades to added-line findings and says so. Suppressions reports every\n    silencing directive the diff adds, naming the rule it silences.\n    Config reads both sides of a changed lint config and names each rule\n    disabled, downgraded or newly excluded; unparseable formats still report\n    with the diff as evidence, and the delta's summary notes when part of it\n    may be configuration rather than code.\n    \n    Detection is by the tools' own config files rather than the Makefile\n    lint target the plan first preferred: a make target's output has no\n    structure to fingerprint, and the design doc records the reversal.\n    \n    Co-Authored-By: Claude Fable 5 \u003cnoreply@anthropic.com\u003e\n    Claude-Session: https://claude.ai/code/session_016EHcqCaYxXU4qc1Dz8egCt\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -101,0 +102,1 @@\n+\t\t\u0026lint.Delta{Repo: repo},\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "136-136 at the base revision",
             "revisions": "3"
           }
         },
