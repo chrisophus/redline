@@ -66,10 +66,14 @@ flags:
                     free port is used if it is taken)
   --model NAME      with review: model to review with (default claude-sonnet-5)
   --effort LEVEL    with review: low|medium|high|xhigh|max (default: the model's)
-  --ceiling N       with review: token ceiling for the context block (default 120000)
+  --ceiling N       with review: token ceiling for the whole request
+                    (default 250000). A tail bound, not a per-review budget.
   --max-tokens N    with review: cap on the response (default 16000)
   --max-cost USD    with review: refuse to send a request estimated above this
                     (default 2.00). A tripwire, not a governor.
+  --stats           with review: print the cost distribution of the reviews
+                    recorded in --out and exit. The target is an average, so
+                    this is the number to read, not any single run.
   --report-url URL  with post: link to the full report in the review body
   --profile PATH    with post: YAML that stamps pass/fail markers a merge
                     gate can read (error and warning fail unless the file
@@ -103,6 +107,7 @@ type opts struct {
 	reportURL, profile, olderThan                                     string
 	model, effort                                                     string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
+	stats                                                             bool
 	port, ceiling, maxTokens                                          int
 	maxCost                                                           float64
 }
@@ -133,6 +138,7 @@ func runMain(args []string) error {
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
 	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")
+	fs.BoolVar(&o.stats, "stats", false, "with review: print the recorded cost distribution and exit")
 	fs.BoolVar(&o.file, "file", false, "open or print the report as a file:// path, no server")
 	fs.StringVar(&o.reportURL, "report-url", "", "with post: link to the full report in the review body (e.g. a CI artifact URL)")
 	fs.StringVar(&o.profile, "profile", "", "with post: YAML profile for merge-gate pass/fail markers")

@@ -19,6 +19,14 @@ import (
 // is a fixture the eval can replay. It also means `run` stays model-free, and
 // a repository with no API key still gets the whole report.
 func cmdReview(o opts) error {
+	if o.stats {
+		entries, err := review.ReadLedger(o.out)
+		if err != nil {
+			return err
+		}
+		fmt.Println(review.Summarize(entries).String())
+		return nil
+	}
 	res, err := run.LoadSession(o.out)
 	if err != nil {
 		return err
@@ -43,6 +51,15 @@ func cmdReview(o opts) error {
 		if s := out.Budget.Summary(); s != "" {
 			fmt.Fprintln(os.Stderr, "redline:", s)
 		}
+		if out.OverCeiling {
+			// Said rather than silently absorbed. The context is what pays
+			// for correlation findings, and a review that got none of it is
+			// a different review from one that did.
+			fmt.Fprintf(os.Stderr,
+				"redline: the diff and findings alone are %d tokens against a %d ceiling, "+
+					"so no context beyond the diff was sent. Review a smaller range, or raise --ceiling.\n",
+				out.FixedEstimate, out.Ceiling)
+		}
 	}
 	if err != nil {
 		return err
@@ -57,6 +74,16 @@ func cmdReview(o opts) error {
 		return nil
 	}
 	fmt.Fprintln(os.Stderr, "redline: review", out.Summary())
+	if err := review.Record(o.out, out, o.effort); err != nil {
+		// Not fatal. A review that produced findings has done its job, and
+		// losing a cost line is not worth failing the command over.
+		fmt.Fprintf(os.Stderr, "redline: could not record the run's cost: %v\n", err)
+	}
+	if entries, rerr := review.ReadLedger(o.out); rerr == nil && len(entries) > 1 {
+		// The target is an average, so print the average. One review's cost
+		// says nothing about whether the tool is affordable to keep running.
+		fmt.Fprintln(os.Stderr, "redline: to date,", review.Summarize(entries).String())
+	}
 
 	path := filepath.Join(o.out, "review.json")
 	if err := review.Merge(path, out.Review); err != nil {

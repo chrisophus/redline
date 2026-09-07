@@ -134,11 +134,6 @@
         "substrate": "redline/lint",
         "message": "pane applied to this change but did not run",
         "reason": "observe worktree: golangci-lint at head: golangci-lint exited 3: Error: can't load config: the Go language version (go1.25) used to build golangci-lint is lower than the targeted Go version (1.26)"
-      },
-      {
-        "substrate": "redline/context",
-        "message": "context provider gorefactor claimed files in this change but did not run",
-        "reason": "gorefactor is configured for this repository but not on PATH"
       }
     ]
   },
@@ -257,7 +252,1273 @@
       ]
     }
   ],
-  "contextAbsent": [
-    "gorefactor (context): gorefactor is configured for this repository but not on PATH"
+  "envelopes": [
+    {
+      "schemaVersion": 1,
+      "provider": {
+        "name": "gorefactor",
+        "version": "v0.0.0-20260906204439-a2ac4a145c9c+dirty",
+        "language": "go"
+      },
+      "baseSHA": "bda6ce457d144e8f8ee2b74433356bdfdec60b00",
+      "files": [
+        {
+          "path": "cmd/redline/main.go",
+          "class": "source",
+          "symbols": [
+            "opts"
+          ]
+        },
+        {
+          "path": "internal/globmatch/glob.go",
+          "class": "source",
+          "symbols": [
+            "MatchesAny",
+            "cache",
+            "cacheMu",
+            "compiled"
+          ]
+        },
+        {
+          "path": "internal/harness/active.go",
+          "class": "source"
+        },
+        {
+          "path": "internal/harness/harness.go",
+          "class": "source",
+          "symbols": [
+            "PrepareWorktree"
+          ]
+        },
+        {
+          "path": "internal/harness/harness_test.go",
+          "class": "test",
+          "symbols": [
+            "TestPrepareWorktreeMissing"
+          ]
+        },
+        {
+          "path": "internal/pane/lint/delta.go",
+          "class": "source",
+          "symbols": [
+            "Delta",
+            "Delta.Observe"
+          ]
+        },
+        {
+          "path": "internal/run/run.go",
+          "class": "source",
+          "symbols": [
+            "Run"
+          ]
+        }
+      ],
+      "expansions": [
+        {
+          "role": "enclosing",
+          "priority": 89,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 20,
+          "endLine": 50,
+          "content": "// Delta runs the repository's configured linters at the base revision and at\n// head, and reports the difference. This is the first pane that executes\n// tools rather than reading git: the base side runs in a detached worktree at\n// the base commit, the head side in the tree under review.\ntype Delta struct {\n\tRepo *gitx.Repo\n\n\t// tools caches detection, which reads the head tree. Detection is by the\n\t// head's config: the head defines what this repository lints with.\n\ttools     []tool\n\tdetected  bool\n\tdetectErr error\n\n\t// scoped is the changed files this pane examines, kept so Diff can run a\n\t// differ-kind tool (oasdiff) once per scoped file it covers.\n\tscoped []string\n\n\t// configChanged is set by Scope when the change touches a lint config. A\n\t// delta partly earned by editing the config has to say so: fewer findings\n\t// because a rule was turned off is not the same fact as fixed code.\n\tconfigChanged bool\n\n\t// Harness carries the run's .redline.yml config so this pane can run\n\t// harness.worktree steps (for example make stub-ui) in the base and head\n\t// trees before the linters read them. Set by run.Run, nil when there is no\n\t// config. Prepared is the run-scoped dedup set shared with the rest of the\n\t// run so a produce root runs at most once.\n\tHarness     *harness.Config\n\tHarnessRoot string\n\tPrepared    map[string]bool\n}\n",
+          "details": {
+            "changedLines": "9",
+            "exported": "true",
+            "kind": "type",
+            "package": "github.com/chrisophus/redline/internal/pane/lint"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 88,
+          "symbol": "PrepareWorktree",
+          "scope": "internal/harness.PrepareWorktree",
+          "file": "internal/harness/harness.go",
+          "startLine": 135,
+          "endLine": 154,
+          "content": "// PrepareWorktree runs harness.worktree steps in the tree under review before\n// tool panes execute there (detached PR worktrees included). prepared records\n// the produce roots already run this run, so a root is prepared at most once;\n// the caller owns the map and shares it across the run's PrepareWorktree calls.\nfunc PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config, prepared map[string]bool) ([]string, error) {\n\tif cfg == nil {\n\t\treturn nil, nil\n\t}\n\tif prepared[produceRoot] {\n\t\treturn nil, nil\n\t}\n\tproduced, err := runProfiles(produceRoot, configRoot, changed, cfg.Env.From, cfg.Worktree, \"worktree\")\n\tif err != nil {\n\t\treturn produced, err\n\t}\n\tif prepared != nil {\n\t\tprepared[produceRoot] = true\n\t}\n\treturn produced, nil\n}\n",
+          "details": {
+            "changedLines": "8",
+            "exported": "true",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/harness"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 83,
+          "symbol": "Run",
+          "scope": "internal/run.Run",
+          "file": "internal/run/run.go",
+          "startLine": 59,
+          "endLine": 259,
+          "content": "// Run executes every applicable pane. Applicability is computed from the diff,\n// never chosen by a caller: if the caller decides which checks to run, coverage\n// becomes a sample from a distribution and a check can be silently skipped.\nfunc Run(opts Options) (*Result, error) {\n\ttgt, err := target.Resolve(target.Options{\n\t\tDir: opts.Dir, PR: opts.PR, Branch: opts.Branch,\n\t\tCommit: opts.Commit, Range: opts.Range, Base: opts.Base,\n\t})\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\t// Panes observe the target's directory. For a PR or a branch that is a\n\t// detached worktree at the head commit, so \"the working tree\" and \"the\n\t// revision under review\" are the same thing and no pane needs to know\n\t// which kind of target it is looking at.\n\trepo, err := gitx.Open(tgt.Dir)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif tgt.Base != \"\" {\n\t\topts.Base = tgt.Base\n\t}\n\tbaseRef := resolveRef(repo, opts.Base)\n\tif baseRef == \"\" {\n\t\treturn nil, fmt.Errorf(\"cannot determine a base revision: tried %s. \"+\n\t\t\t\"Pass --base REF, or make a first commit if this repository has none\",\n\t\t\tstrings.Join(defaultRefs, \", \"))\n\t}\n\tbaseSHA, err := repo.MergeBase(baseRef)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"base %q: %w\", baseRef, err)\n\t}\n\tchanged, err := repo.ChangedPaths(baseSHA)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tchanged = excludeOwnOutput(changed, opts.Out, repo.Root)\n\n\t// Generated output leaves the change here, before any pane or the report\n\t// sees it, so the coverage denominator counts files a reviewer would\n\t// actually read. What was dropped is recorded and shown: an exclusion the\n\t// reader cannot see is indistinguishable from a file that never changed.\n\tchanged, generated := change.Generated(tgt.Dir, changed, repo.AttrSet(\"linguist-generated\", changed))\n\n\tcfg, err := harness.Load(harnessConfigRoot(opts.Dir, tgt))\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tconfigRoot := harnessConfigRoot(opts.Dir, tgt)\n\tprepared := map[string]bool{}\n\troots := harness.Roots{Observe: tgt.Dir, Origin: originCoverageDir(opts.Dir, tgt), Caller: configRoot}\n\tif err := harness.Require(roots, changed, cfg, harness.RequireOpts{\n\t\tSkipCoverage: opts.AllowMissingCoverage,\n\t}); err != nil {\n\t\treturn nil, err\n\t}\n\tif cfg != nil {\n\t\tif _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg, prepared); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n\n\tres := \u0026Result{Evidence: map[string]pane.Artifact{}, Target: tgt, Report: findings.Report{\n\t\tBaseRef: baseRef,\n\t\tBaseSHA: baseSHA,\n\t\tScope:   changed,\n\t}}\n\n\tpanes := []pane.Pane{\n\t\t\u0026migrations.Pane{Repo: repo, UpstreamRef: resolveRef(repo, opts.Upstream, baseRef), Dir: opts.MigDir},\n\t\t\u0026openapi.Pane{Repo: repo},\n\t\t\u0026lint.Delta{Repo: repo, Harness: cfg, HarnessRoot: configRoot, Prepared: prepared},\n\t\t\u0026lint.Suppressions{Repo: repo},\n\t\t\u0026lint.Config{Repo: repo},\n\t}\n\n\t// Every path in the tree under review, listed once and only if a pane\n\t// turns out to have nothing in the change to look at. It answers a\n\t// different question from scope: not \"does this pane apply to the change\"\n\t// but \"does this pane apply to the repository\". A repository with no\n\t// migrations gets no mention of migrations; one whose migrations this\n\t// change did not touch is told so, quietly.\n\tvar allPaths []string\n\tlistAll := func() []string {\n\t\tif allPaths != nil {\n\t\t\treturn allPaths\n\t\t}\n\t\tvar blobs map[string]string\n\t\tvar lerr error\n\t\tif tgt.Head == \"\" {\n\t\t\tblobs, lerr = repo.WorktreeBlobs()\n\t\t} else {\n\t\t\tblobs, lerr = repo.Blobs(tgt.Head)\n\t\t}\n\t\tif lerr != nil {\n\t\t\t// Unknown whether the pane applies: fall back to saying it was\n\t\t\t// skipped, the state that still gets a line on the report.\n\t\t\tallPaths = []string{}\n\t\t\treturn allPaths\n\t\t}\n\t\tallPaths = make([]string, 0, len(blobs))\n\t\tfor path := range blobs {\n\t\t\tallPaths = append(allPaths, path)\n\t\t}\n\t\tsort.Strings(allPaths)\n\t\treturn allPaths\n\t}\n\n\texamined := map[string]bool{}\n\tfor _, p := range panes {\n\t\tstatus := findings.SubstrateStatus{Name: p.Name()}\n\t\tscope := p.Scope(changed)\n\t\tfor _, path := range scope {\n\t\t\texamined[path] = true\n\t\t}\n\t\tif len(scope) == 0 {\n\t\t\t// Scope over the whole tree is only consulted for a pane that will\n\t\t\t// not run, so the state it leaves behind in the pane is unused.\n\t\t\tif all := listAll(); len(all) \u003e 0 \u0026\u0026 len(p.Scope(all)) == 0 {\n\t\t\t\tstatus.State = findings.SubstrateNotApplicable\n\t\t\t\tstatus.Detail = \"the repository has no files this pane reads\"\n\t\t\t} else {\n\t\t\t\tstatus.State = findings.SubstrateSkipped\n\t\t\t\tstatus.Detail = \"this change touches none of the files this pane reads\"\n\t\t\t}\n\t\t\tres.Report.Substrates = append(res.Report.Substrates, status)\n\t\t\tcontinue\n\t\t}\n\t\tout, err := runPane(p, baseSHA)\n\t\tif err != nil {\n\t\t\t// A pane that applied but did not run is recorded as failed and\n\t\t\t// as an unknown; it never reads as a pass.\n\t\t\tstatus.State = findings.SubstrateFailed\n\t\t\tstatus.Detail = err.Error()\n\t\t\tres.Report.Substrates = append(res.Report.Substrates, status)\n\t\t\tres.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{\n\t\t\t\tSubstrate: p.Name(),\n\t\t\t\tMessage:   \"pane applied to this change but did not run\",\n\t\t\t\tReason:    err.Error(),\n\t\t\t})\n\t\t\tcontinue\n\t\t}\n\t\tstatus.State = findings.SubstrateRan\n\t\tres.Report.Substrates = append(res.Report.Substrates, status)\n\t\tres.Report.Findings = append(res.Report.Findings, out.Findings...)\n\t\tres.Report.Confirmations = append(res.Report.Confirmations, out.Confirmations...)\n\t\tres.Report.Unknowns = append(res.Report.Unknowns, out.Unknowns...)\n\t\tres.Renders = append(res.Renders, out.Render)\n\t\tfor id, a := range out.Evidence {\n\t\t\tres.Evidence[id] = a\n\t\t}\n\t}\n\n\tres.Report.Coverage = coverage(changed, examined)\n\tres.Report.Coverage.Generated = generated\n\tres.Report.Unknowns = append(res.Report.Unknowns, unbuiltPanes(changed, examined)...)\n\t// The agent's review, if it has written one. Loaded before Finalize so its\n\t// line comments become findings that get fingerprints stamped with the rest;\n\t// verdicts merge after, joining on those fingerprints. Never fatal: a run\n\t// reports facts with or without a reading, and a broken file is stated.\n\treview, verr := findings.LoadReview(filepath.Join(opts.Out, \"review.json\"))\n\tif verr != nil {\n\t\tres.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{\n\t\t\tSubstrate: \"redline/review\",\n\t\t\tMessage:   \"review.json was present but could not be read, so no agent review was merged\",\n\t\t\tReason:    verr.Error(),\n\t\t})\n\t}\n\tif review != nil {\n\t\tres.Report.Findings = append(res.Report.Findings, review.CommentFindings()...)\n\t\tif review.Overview != \"\" || len(review.Files) \u003e 0 {\n\t\t\tres.Report.Agent = \u0026findings.AgentReview{Overview: review.Overview, Files: review.Files}\n\t\t}\n\t}\n\tif res.Report.Coverage.ExaminedFiles == 0 \u0026\u0026 len(changed) \u003e 0 {\n\t\t// No pane looked at any of it. This is not a clean review and must\n\t\t// never render as one. Stated after the agent's comments merge, so\n\t\t// the reason can be honest about whether the findings list is empty.\n\t\treason := \"this change is entirely unexamined; the empty findings list below is not evidence of correctness\"\n\t\tif len(res.Report.Findings) \u003e 0 {\n\t\t\treason = \"no pane covers these files; the findings below come from the agent's review\"\n\t\t}\n\t\tres.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{\n\t\t\tSubstrate: \"redline\",\n\t\t\tMessage:   fmt.Sprintf(\"none of the %d changed file(s) fall under any pane Redline currently ships\", len(changed)),\n\t\t\tReason:    reason,\n\t\t})\n\t}\n\tres.Report.Finalize()\n\tif review != nil {\n\t\tres.Report.MergeVerdicts(review.Verdicts)\n\t}\n\tfindings.Sort(res.Report.Findings)\n\n\tres.Change = change.Build(repo, tgt, baseSHA, changed)\n\tcovDir := originCoverageDir(opts.Dir, tgt)\n\tattachDiffCoverage(\u0026res.Report, res.Change, tgt.Dir, covDir, cfg)\n\tres.LineCoverage = lineCoverageOverlay(tgt.Dir, covDir, res.Change)\n\tattachMutation(\u0026res.Report, res.Change, roots, cfg)\n\treturn res, nil\n}\n",
+          "details": {
+            "changedLines": "3",
+            "exported": "true",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/run"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 82,
+          "symbol": "Delta.Observe",
+          "scope": "internal/pane/lint.Delta.Observe",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 115,
+          "endLine": 160,
+          "content": "// Observe runs every detected tool at one revision. The head side is strict —\n// a tool that fails there fails the pane, because no delta can be computed.\n// The base side records failures instead: an old revision that no longer\n// lints (a config newer than the code, missing dependencies in a bare\n// worktree) must degrade the answer, not erase it. Diff handles that case.\nfunc (p *Delta) Observe(rev pane.Revision) (pane.Observation, error) {\n\ttools, err := p.detect()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tdir := p.Repo.Root\n\tif rev.Name == \"base\" {\n\t\tvar werr error\n\t\tdir, werr = p.Repo.AddWorktree(rev.Rev)\n\t\tif werr != nil {\n\t\t\treturn nil, fmt.Errorf(\"checking out the base revision to lint it: %w\", werr)\n\t\t}\n\t}\n\tif p.Harness != nil {\n\t\tif _, err := harness.PrepareWorktree(dir, p.HarnessRoot, p.scoped, p.Harness, p.Prepared); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n\tsnap := \u0026snapshot{Rev: rev.Rev}\n\tfor _, t := range tools {\n\t\t// A differ tool computes its own delta and runs once, in Diff.\n\t\tif t.isDiffer() {\n\t\t\tcontinue\n\t\t}\n\t\t// A baseline-file tool takes its \"already existed\" set from a\n\t\t// committed artifact, not a run at the base revision.\n\t\tif rev.Name == \"base\" \u0026\u0026 t.custom != nil \u0026\u0026 t.custom.Baseline.Mode == \"file\" {\n\t\t\tcontinue\n\t\t}\n\t\tissues, rerr := t.run(dir)\n\t\tif rerr != nil {\n\t\t\tif rev.Name != \"base\" {\n\t\t\t\treturn nil, fmt.Errorf(\"%s at head: %v\", t.name, rerr)\n\t\t\t}\n\t\t\tsnap.Runs = append(snap.Runs, toolRun{Tool: t.name, Err: rerr.Error()})\n\t\t\tcontinue\n\t\t}\n\t\tsnap.Runs = append(snap.Runs, toolRun{Tool: t.name, Issues: issues})\n\t}\n\treturn snap, nil\n}\n",
+          "details": {
+            "changedLines": "2",
+            "exported": "true",
+            "kind": "method",
+            "package": "github.com/chrisophus/redline/internal/pane/lint",
+            "receiver": "Delta"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 81,
+          "symbol": "MatchesAny",
+          "scope": "internal/globmatch.MatchesAny",
+          "file": "internal/globmatch/glob.go",
+          "startLine": 12,
+          "endLine": 20,
+          "content": "// MatchesAny reports whether path matches any of the patterns.\nfunc MatchesAny(patterns []string, path string) bool {\n\tfor _, p := range patterns {\n\t\tif compiled(p).MatchString(path) {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}\n",
+          "details": {
+            "changedLines": "1",
+            "exported": "true",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/globmatch"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 81,
+          "symbol": "TestPrepareWorktreeMissing",
+          "scope": "internal/harness.TestPrepareWorktreeMissing",
+          "file": "internal/harness/harness_test.go",
+          "startLine": 115,
+          "endLine": 132,
+          "content": "func TestPrepareWorktreeMissing(t *testing.T) {\n\tdir := t.TempDir()\n\tcfg := \u0026Config{\n\t\tWorktree: []Profile{{\n\t\t\tID:      \"ui\",\n\t\t\tPath:    \"ui/dist/index.html\",\n\t\t\tWhen:    \"missing\",\n\t\t\tProduce: ProduceConfig{Command: \"mkdir\", Args: []string{\"-p\", \"ui/dist\"}},\n\t\t}},\n\t}\n\tproduced, err := PrepareWorktree(dir, dir, nil, cfg, nil)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif len(produced) != 1 {\n\t\tt.Fatalf(\"produced: %v\", produced)\n\t}\n}\n",
+          "details": {
+            "changedLines": "1",
+            "exported": "true",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/harness"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 60,
+          "symbol": "compiled",
+          "scope": "internal/globmatch.compiled",
+          "file": "internal/globmatch/glob.go",
+          "startLine": 30,
+          "endLine": 39,
+          "content": "func compiled(pattern string) *regexp.Regexp {\n\tcacheMu.Lock()\n\tdefer cacheMu.Unlock()\n\tif re, ok := cache[pattern]; ok {\n\t\treturn re\n\t}\n\tre := toRegexp(pattern)\n\tcache[pattern] = re\n\treturn re\n}\n",
+          "details": {
+            "changedLines": "10",
+            "exported": "false",
+            "kind": "func",
+            "package": "github.com/chrisophus/redline/internal/globmatch"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 51,
+          "symbol": "opts",
+          "scope": "cmd/redline.opts",
+          "file": "cmd/redline/main.go",
+          "startLine": 85,
+          "endLine": 90,
+          "content": "type opts struct {\n\tbase, upstream, migDir, format, out, pr, branch, commit, revRange string\n\treportURL, profile, olderThan                                     string\n\topen, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool\n\tport                                                              int\n}\n",
+          "details": {
+            "changedLines": "1",
+            "exported": "false",
+            "kind": "type",
+            "package": "github.com/chrisophus/redline/cmd/redline"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 51,
+          "symbol": "cacheMu",
+          "scope": "internal/globmatch.cacheMu",
+          "file": "internal/globmatch/glob.go",
+          "startLine": 26,
+          "endLine": 26,
+          "content": "\tcacheMu sync.Mutex\n",
+          "details": {
+            "changedLines": "1",
+            "exported": "false",
+            "kind": "var",
+            "package": "github.com/chrisophus/redline/internal/globmatch"
+          }
+        },
+        {
+          "role": "enclosing",
+          "priority": 51,
+          "symbol": "cache",
+          "scope": "internal/globmatch.cache",
+          "file": "internal/globmatch/glob.go",
+          "startLine": 27,
+          "endLine": 27,
+          "content": "\tcache   = map[string]*regexp.Regexp{}\n",
+          "details": {
+            "changedLines": "1",
+            "exported": "false",
+            "kind": "var",
+            "package": "github.com/chrisophus/redline/internal/globmatch"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 89,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 51,
+          "endLine": 55,
+          "content": "\n// Name implements pane.Pane.\nfunc (p *Delta) Name() string { return DeltaSubstrate }\n\nfunc (p *Delta) detect() ([]tool, error) {\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/lint.Delta.Name",
+            "kind": "call-site",
+            "line": "53"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 89,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 53,
+          "endLine": 57,
+          "content": "func (p *Delta) Name() string { return DeltaSubstrate }\n\nfunc (p *Delta) detect() ([]tool, error) {\n\tif !p.detected {\n\t\tp.tools, p.detectErr = detect(p.Repo.Root)\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/lint.Delta.detect",
+            "kind": "call-site",
+            "line": "55"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 89,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 69,
+          "endLine": 73,
+          "content": "// else lands in scope, the whole change does — an unreadable config means\n// nobody knows which files its tools cover.\nfunc (p *Delta) Scope(changed []string) []string {\n\ttools, err := p.detect()\n\tvar out []string\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/lint.Delta.Scope",
+            "kind": "call-site",
+            "line": "71"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 89,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 118,
+          "endLine": 122,
+          "content": "// lints (a config newer than the code, missing dependencies in a bare\n// worktree) must degrade the answer, not erase it. Diff handles that case.\nfunc (p *Delta) Observe(rev pane.Revision) (pane.Observation, error) {\n\ttools, err := p.detect()\n\tif err != nil {\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/lint.Delta.Observe",
+            "kind": "call-site",
+            "line": "120"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 89,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 163,
+          "endLine": 167,
+          "content": "// base had that head resolved. Identity is the line-free fingerprint, matched\n// by count, so code that moved does not read as new violations.\nfunc (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {\n\tbase, ok := before.(*snapshot)\n\tif !ok {\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/lint.Delta.Diff",
+            "kind": "call-site",
+            "line": "165"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 89,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 307,
+          "endLine": 311,
+          "content": "// issuesOnAddedLines keeps the issues sitting on a line this change added, for\n// the degraded head-only path when the base could not be linted.\nfunc (p *Delta) issuesOnAddedLines(baseRev string, issues []Issue) []Issue {\n\tadded := map[string]map[int]bool{}\n\tvar out []Issue\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/lint.Delta.issuesOnAddedLines",
+            "kind": "call-site",
+            "line": "309"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 89,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 329,
+          "endLine": 333,
+          "content": "// output shape the tool always produces — into the issue set treated as\n// already present.\nfunc (p *Delta) baselineIssues(cfg ToolConfig) ([]Issue, error) {\n\traw := p.Repo.File(\"\", cfg.Baseline.File)\n\tif raw == \"\" {\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/lint.Delta.baselineIssues",
+            "kind": "call-site",
+            "line": "331"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 89,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 338,
+          "endLine": 342,
+          "content": "\n// differFiles is the scoped changed files a differ tool covers.\nfunc (p *Delta) differFiles(t tool) []string {\n\tvar out []string\n\tfor _, path := range p.scoped {\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/lint.Delta.differFiles",
+            "kind": "call-site",
+            "line": "340"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 89,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 354,
+          "endLine": 358,
+          "content": "// compare: the tool would choke on the missing side and fail the whole pane,\n// so the file is skipped and the skip stated as an unknown instead.\nfunc (p *Delta) runDiffer(cfg ToolConfig, baseRev string, files []string) ([]Issue, []findings.Unknown, error) {\n\tvar all []Issue\n\tvar unknowns []findings.Unknown\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/lint.Delta.runDiffer",
+            "kind": "call-site",
+            "line": "356"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 89,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/run/run.go",
+          "startLine": 128,
+          "endLine": 132,
+          "content": "\t\t\u0026migrations.Pane{Repo: repo, UpstreamRef: resolveRef(repo, opts.Upstream, baseRef), Dir: opts.MigDir},\n\t\t\u0026openapi.Pane{Repo: repo},\n\t\t\u0026lint.Delta{Repo: repo, Harness: cfg, HarnessRoot: configRoot, Prepared: prepared},\n\t\t\u0026lint.Suppressions{Repo: repo},\n\t\t\u0026lint.Config{Repo: repo},\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/run.Run",
+            "kind": "call-site",
+            "line": "130"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 88,
+          "symbol": "PrepareWorktree",
+          "scope": "internal/harness.PrepareWorktree",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 132,
+          "endLine": 136,
+          "content": "\t}\n\tif p.Harness != nil {\n\t\tif _, err := harness.PrepareWorktree(dir, p.HarnessRoot, p.scoped, p.Harness, p.Prepared); err != nil {\n\t\t\treturn nil, err\n\t\t}\n",
+          "details": {
+            "callerKind": "method",
+            "callerSymbol": "internal/pane/lint.Delta.Observe",
+            "kind": "call-site",
+            "line": "134"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 88,
+          "symbol": "PrepareWorktree",
+          "scope": "internal/harness.PrepareWorktree",
+          "file": "internal/run/run.go",
+          "startLine": 114,
+          "endLine": 118,
+          "content": "\t}\n\tif cfg != nil {\n\t\tif _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg, prepared); err != nil {\n\t\t\treturn nil, err\n\t\t}\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/run.Run",
+            "kind": "call-site",
+            "line": "116"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 83,
+          "symbol": "Run",
+          "scope": "internal/run.Run",
+          "file": "cmd/redline/main.go",
+          "startLine": 244,
+          "endLine": 248,
+          "content": "\t\t}\n\t}\n\treturn run.Run(o.toRun(cwd))\n}\n\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "cmd/redline.execute",
+            "kind": "call-site",
+            "line": "246"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 81,
+          "symbol": "MatchesAny",
+          "scope": "internal/globmatch.MatchesAny",
+          "file": "internal/harness/require.go",
+          "startLine": 119,
+          "endLine": 123,
+          "content": "\t}\n\tfor _, path := range changed {\n\t\tif globmatch.MatchesAny(p.Scope, filepath.ToSlash(path)) {\n\t\t\treturn true\n\t\t}\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/harness.profileApplies",
+            "kind": "call-site",
+            "line": "121"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 81,
+          "symbol": "MatchesAny",
+          "scope": "internal/globmatch.MatchesAny",
+          "file": "internal/pane/lint/jsonpath.go",
+          "startLine": 115,
+          "endLine": 119,
+          "content": "// single character.\nfunc matchesAnyGlob(patterns []string, path string) bool {\n\treturn globmatch.MatchesAny(patterns, path)\n}\n\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/pane/lint.matchesAnyGlob",
+            "kind": "call-site",
+            "line": "117"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 88,
+          "symbol": "Config",
+          "scope": "internal/harness.Config",
+          "file": "internal/harness/harness.go",
+          "startLine": 22,
+          "endLine": 30,
+          "content": "// Config is the harness section of .redline.yml.\ntype Config struct {\n\tEnv      EnvConfig `yaml:\"env\"`\n\tProfiles []Profile `yaml:\"profiles\"`\n\t// Worktree steps run in the tree under review (including detached PR\n\t// worktrees) before panes that execute tools there, for example make\n\t// stub-ui so go:embed dist exists for golangci-lint typecheck.\n\tWorktree []Profile `yaml:\"worktree\"`\n}\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/harness.PrepareWorktree"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 83,
+          "symbol": "Options",
+          "scope": "internal/run.Options",
+          "file": "internal/run/run.go",
+          "startLine": 23,
+          "endLine": 42,
+          "content": "// Options configures one run.\ntype Options struct {\n\tDir      string // any directory inside the repository\n\tBase     string // base ref; merge-base with HEAD is used\n\tUpstream string // branch new migrations must not collide with\n\tMigDir   string // optional migrations directory filter\n\n\t// These point Redline at something other than the working tree.\n\t// Each is materialized as a detached worktree, so the user's own\n\t// checkout is never moved.\n\tPR     string\n\tBranch string\n\tCommit string\n\tRange  string\n\tOut    string // evidence directory; excluded from the change like .redline/\n\n\t// AllowMissingCoverage skips the fail-fast check for configured coverage\n\t// harness profiles. Other configured profiles (mutation, etc.) still apply.\n\tAllowMissingCoverage bool\n}\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/run.Run"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 83,
+          "symbol": "Result",
+          "scope": "internal/run.Result",
+          "file": "internal/run/run.go",
+          "startLine": 44,
+          "endLine": 57,
+          "content": "// Result is a report plus the per-pane renders backing section 1 and the\n// evidence artifacts findings point at.\ntype Result struct {\n\tReport   findings.Report\n\tRenders  []pane.Render\n\tEvidence map[string]pane.Artifact\n\tTarget   *target.Target\n\t// Change is the file-by-file account of the diff the report renders its\n\t// walkthrough and drill-in sections from.\n\tChange *change.Set\n\t// LineCoverage overlays the profile onto the diff: per changed .go file,\n\t// each coverable line mapped to whether a test ran it. Nil when no profile.\n\tLineCoverage map[string]map[int]bool\n}\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/run.Run"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 82,
+          "symbol": "Revision",
+          "scope": "internal/pane.Revision",
+          "file": "internal/pane/pane.go",
+          "startLine": 7,
+          "endLine": 11,
+          "content": "// Revision names a side of the comparison. The working tree is a revision.\ntype Revision struct {\n\tName string // \"base\" | \"worktree\"\n\tRev  string // commit SHA, empty for the working tree\n}\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/pane/lint.Delta.Observe"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 82,
+          "symbol": "Observation",
+          "scope": "internal/pane.Observation",
+          "file": "internal/pane/pane.go",
+          "startLine": 16,
+          "endLine": 22,
+          "content": "// Observation is one pane's view of the system at one revision. Panes that\n// need a running system produce theirs by standing it up; panes that do not\n// produce theirs by static extraction. The interface does not change.\ntype Observation interface {\n\t// ID identifies this observation for the Evidence field of a finding.\n\tID() string\n}\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/pane/lint.Delta.Observe"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 89,
+          "symbol": "Config",
+          "scope": "internal/pane/lint.Config",
+          "file": "internal/pane/lint/config.go",
+          "startLine": 20,
+          "endLine": 34,
+          "content": "// Config reports lint-configuration drift: a rule this change disables,\n// downgrades, or newly excludes. A lint delta earned by turning a rule off\n// looks identical to one earned by fixing code unless something names the\n// rule, and this pane is that something.\n//\n// Enumeration is per format. golangci YAML and eslintrc JSON are parsed and\n// their rule changes named; formats Redline cannot parse (a JS eslint config,\n// a TOML golangci config) still produce a finding that the config changed,\n// with the diff as evidence, so drift is never silent just because it is\n// unparseable.\ntype Config struct {\n\tRepo *gitx.Repo\n\n\tscoped []string\n}\n",
+          "details": {
+            "interface": "internal/pane.Pane",
+            "kind": "implementation",
+            "peerOf": "internal/pane/lint.Delta"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 89,
+          "symbol": "Suppressions",
+          "scope": "internal/pane/lint.Suppressions",
+          "file": "internal/pane/lint/suppress.go",
+          "startLine": 18,
+          "endLine": 32,
+          "content": "// Suppressions collects every lint-silencing directive this change adds. It is\n// the highest-signal lint fact a diff carries: the author explicitly told a\n// linter to be quiet, and the reviewer should see where and about what.\n//\n// Only directives on lines the diff adds are reported. A directive that\n// merely moved keeps its old justification; one the change introduces is the\n// one that needs a fresh look. Findings are info severity: many silencings\n// are legitimate, and the point is visibility, not a gate — a repository that\n// wants them to block can list info in its profile.\ntype Suppressions struct {\n\tRepo *gitx.Repo\n\n\t// scoped is what Scope selected; Diff walks it.\n\tscoped []string\n}\n",
+          "details": {
+            "interface": "internal/pane.Pane",
+            "kind": "implementation",
+            "peerOf": "internal/pane/lint.Delta"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 89,
+          "symbol": "Pane",
+          "scope": "internal/pane/migrations.Pane",
+          "file": "internal/pane/migrations/migrations.go",
+          "startLine": 77,
+          "endLine": 86,
+          "content": "// Pane observes migration files at two revisions.\ntype Pane struct {\n\tRepo *gitx.Repo\n\t// UpstreamRef is the branch new migrations must not collide with,\n\t// typically origin/main.\n\tUpstreamRef string\n\t// Dir optionally restricts the pane to one migrations directory. Empty\n\t// means every path matching the golang-migrate naming convention.\n\tDir string\n}\n",
+          "details": {
+            "interface": "internal/pane.Pane",
+            "kind": "implementation",
+            "peerOf": "internal/pane/lint.Delta"
+          }
+        },
+        {
+          "role": "sibling",
+          "priority": 89,
+          "symbol": "Pane",
+          "scope": "internal/pane/openapi.Pane",
+          "file": "internal/pane/openapi/openapi.go",
+          "startLine": 30,
+          "endLine": 35,
+          "content": "// Pane diffs OpenAPI specs between two revisions.\ntype Pane struct {\n\tRepo *gitx.Repo\n\t// Paths is the set of spec files in the change, set by Scope.\n\tPaths []string\n}\n",
+          "details": {
+            "interface": "internal/pane.Pane",
+            "kind": "implementation",
+            "peerOf": "internal/pane/lint.Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestConfiguredLinterProducesDelta",
+          "scope": "internal/pane/lint.TestConfiguredLinterProducesDelta",
+          "file": "internal/pane/lint/customtool_test.go",
+          "startLine": 129,
+          "endLine": 160,
+          "content": "// A configured linter runs at base and head and its new issues become\n// findings, exactly like the built-in tools, driven only by .redline.yml.\nfunc TestConfiguredLinterProducesDelta(t *testing.T) {\n\tfakeToolFromFixture(t, \"mylint\", \"mylint-fixture.json\")\n\tr := newRepo(t)\n\tr.write(\".redline.yml\", `tools:\n  - name: mylint\n    command: mylint\n    scope: [\"**/*.go\"]\n    format: json\n    resultsPath: issues\n    fields: {file: file, line: line, rule: rule, message: msg, severity: sev}\n`)\n\tr.write(\"a.go\", \"package a\\n\")\n\tr.write(\"mylint-fixture.json\", `{\"issues\":[{\"file\":\"a.go\",\"line\":1,\"rule\":\"old\",\"msg\":\"x\",\"sev\":\"warning\"}]}`)\n\tbase := r.commit(\"base\")\n\t// Head resolves \"old\" and introduces \"new\".\n\tr.write(\"a.go\", \"package a\\n\\nfunc A() {}\\n\")\n\tr.write(\"mylint-fixture.json\", `{\"issues\":[{\"file\":\"a.go\",\"line\":3,\"rule\":\"new\",\"msg\":\"y\",\"sev\":\"error\"}]}`)\n\n\tp := \u0026Delta{Repo: r.open()}\n\tif got := p.Scope([]string{\"a.go\", \".redline.yml\", \"mylint-fixture.json\"}); len(got) \u003c 1 {\n\t\tt.Fatalf(\"the go file and config are in scope, got %v\", got)\n\t}\n\tres := runPane(t, p, base)\n\tif len(res.Findings) != 1 || res.Findings[0].Rule != \"mylint/new\" {\n\t\tt.Fatalf(\"the introduced finding must come through: %+v\", res.Findings)\n\t}\n\tif res.Findings[0].Severity != findings.SeverityError {\n\t\tt.Errorf(\"configured severity must survive: %+v\", res.Findings[0])\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestConfiguredLinterBaselineFileMode",
+          "scope": "internal/pane/lint.TestConfiguredLinterBaselineFileMode",
+          "file": "internal/pane/lint/customtool_test.go",
+          "startLine": 162,
+          "endLine": 189,
+          "content": "// baselineIssues mode reads a committed artifact as the \"already existed\"\n// set instead of running the tool at the base revision.\nfunc TestConfiguredLinterBaselineFileMode(t *testing.T) {\n\tfakeToolFromFixture(t, \"mylint\", \"mylint-fixture.json\")\n\tr := newRepo(t)\n\tr.write(\".redline.yml\", `tools:\n  - name: mylint\n    command: mylint\n    scope: [\"**/*.go\"]\n    format: json\n    resultsPath: issues\n    fields: {file: file, line: line, rule: rule, message: msg, severity: sev}\n    baseline: {mode: file, file: mylint-baseline.json}\n`)\n\tr.write(\"a.go\", \"package a\\n\")\n\t// The baseline already accepts \"known\"; head adds \"fresh\".\n\tr.write(\"mylint-baseline.json\", `{\"issues\":[{\"file\":\"a.go\",\"line\":1,\"rule\":\"known\",\"msg\":\"x\",\"sev\":\"warning\"}]}`)\n\tbase := r.commit(\"base\")\n\tr.write(\"a.go\", \"package a\\n\\nfunc A() {}\\n\")\n\tr.write(\"mylint-fixture.json\", `{\"issues\":[{\"file\":\"a.go\",\"line\":1,\"rule\":\"known\",\"msg\":\"x\",\"sev\":\"warning\"},{\"file\":\"a.go\",\"line\":3,\"rule\":\"fresh\",\"msg\":\"y\",\"sev\":\"warning\"}]}`)\n\n\tp := \u0026Delta{Repo: r.open()}\n\tp.Scope([]string{\"a.go\"})\n\tres := runPane(t, p, base)\n\tif len(res.Findings) != 1 || res.Findings[0].Rule != \"mylint/fresh\" {\n\t\tt.Fatalf(\"only the issue absent from the baseline is introduced: %+v\", res.Findings)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestConfiguredDifferTool",
+          "scope": "internal/pane/lint.TestConfiguredDifferTool",
+          "file": "internal/pane/lint/customtool_test.go",
+          "startLine": 208,
+          "endLine": 252,
+          "content": "// A differ tool (oasdiff shape) runs once, comparing the file at base and at\n// head directly; every change it reports is introduced. The fake stands in\n// for oasdiff: it emits a breaking-change record only when the two files it\n// is handed actually differ.\nfunc TestConfiguredDifferTool(t *testing.T) {\n\tbin := t.TempDir()\n\tscript := \"#!/bin/sh\\n\" +\n\t\t\"if diff -q \\\"$1\\\" \\\"$2\\\" \u003e/dev/null 2\u003e\u00261; then echo '[]'; else \" +\n\t\t\"echo '[{\\\"id\\\":\\\"response-removed\\\",\\\"text\\\":\\\"200 removed\\\",\\\"level\\\":\\\"ERR\\\",\\\"source\\\":\\\"openapi.yaml\\\",\\\"line\\\":5}]'; fi\\n\" +\n\t\t\"exit 0\\n\"\n\tif err := os.WriteFile(filepath.Join(bin, \"fakeoasdiff\"), []byte(script), 0o755); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tt.Setenv(\"PATH\", bin+string(os.PathListSeparator)+os.Getenv(\"PATH\"))\n\tt.Setenv(\"REDLINE_WORKTREE_ROOT\", t.TempDir())\n\n\tr := newRepo(t)\n\tr.write(\".redline.yml\", `tools:\n  - name: oasdiff\n    kind: differ\n    command: fakeoasdiff\n    args: [\"{{base}}\", \"{{head}}\"]\n    scope: [\"openapi.yaml\"]\n    format: json\n    fields: {file: source, line: line, rule: id, message: text, severity: level}\n    severityMap: {ERR: error}\n`)\n\tr.write(\"openapi.yaml\", \"openapi: 3.0.0\\npaths:\\n  /a: {get: {responses: {200: {}}}}\\n\")\n\tbase := r.commit(\"base\")\n\t// Head drops the 200 response — the files now differ.\n\tr.write(\"openapi.yaml\", \"openapi: 3.0.0\\npaths:\\n  /a: {get: {responses: {404: {}}}}\\n\")\n\n\tp := \u0026Delta{Repo: r.open()}\n\tif got := p.Scope([]string{\"openapi.yaml\", \".redline.yml\"}); len(got) \u003c 1 {\n\t\tt.Fatalf(\"the spec is in scope, got %v\", got)\n\t}\n\tres := runPane(t, p, base)\n\tif len(res.Findings) != 1 || res.Findings[0].Rule != \"oasdiff/response-removed\" {\n\t\tt.Fatalf(\"the differ's breaking change must be a finding: %+v\", res.Findings)\n\t}\n\tif res.Findings[0].File != \"openapi.yaml\" || res.Findings[0].Line != 5 ||\n\t\tres.Findings[0].Severity != findings.SeverityError {\n\t\tt.Errorf(\"differ finding misdescribed: %+v\", res.Findings[0])\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestDifferSkipsAddedAndDeletedFiles",
+          "scope": "internal/pane/lint.TestDifferSkipsAddedAndDeletedFiles",
+          "file": "internal/pane/lint/customtool_test.go",
+          "startLine": 254,
+          "endLine": 293,
+          "content": "// A differ tool has no pair to compare for a file this change adds or\n// deletes. Handing the tool an empty base or a missing head path would fail\n// it and fail the whole pane; instead the file is skipped, the skip stated,\n// and the clean confirmation withheld.\nfunc TestDifferSkipsAddedAndDeletedFiles(t *testing.T) {\n\tt.Setenv(\"REDLINE_WORKTREE_ROOT\", t.TempDir())\n\tr := newRepo(t)\n\tr.write(\".redline.yml\", `tools:\n  - name: oasdiff\n    kind: differ\n    command: fakeoasdiff-never-runs\n    args: [\"{{base}}\", \"{{head}}\"]\n    scope: [\"*.yaml\"]\n    format: json\n    fields: {file: source, line: line, rule: id, message: text, severity: level}\n`)\n\tr.write(\"deleted.yaml\", \"openapi: 3.0.0\\n\")\n\tbase := r.commit(\"base\")\n\tr.write(\"added.yaml\", \"openapi: 3.0.0\\n\")\n\tif err := os.Remove(filepath.Join(r.dir, \"deleted.yaml\")); err != nil {\n\t\tt.Fatal(err)\n\t}\n\n\tp := \u0026Delta{Repo: r.open()}\n\tif got := p.Scope([]string{\"added.yaml\", \"deleted.yaml\"}); len(got) != 2 {\n\t\tt.Fatalf(\"both specs are in scope, got %v\", got)\n\t}\n\tres := runPane(t, p, base)\n\tif len(res.Findings) != 0 {\n\t\tt.Fatalf(\"nothing was compared, so nothing is introduced: %+v\", res.Findings)\n\t}\n\tif len(res.Unknowns) != 2 {\n\t\tt.Fatalf(\"each skipped file must be stated, got %+v\", res.Unknowns)\n\t}\n\tfor _, c := range res.Confirmations {\n\t\tif c.Rule == \"lint-clean-delta\" {\n\t\t\tt.Fatal(\"a comparison that never ran must not confirm a clean delta\")\n\t\t}\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestBaselineUnreadableForfeitsCleanConfirmation",
+          "scope": "internal/pane/lint.TestBaselineUnreadableForfeitsCleanConfirmation",
+          "file": "internal/pane/lint/customtool_test.go",
+          "startLine": 295,
+          "endLine": 331,
+          "content": "// An unreadable baseline degrades the delta and says so; the lint-clean-delta\n// confirmation would assert a comparison that never happened, so it is\n// withheld even when no head issue lands on an added line.\nfunc TestBaselineUnreadableForfeitsCleanConfirmation(t *testing.T) {\n\tfakeToolFromFixture(t, \"mylint\", \"mylint-fixture.json\")\n\tr := newRepo(t)\n\tr.write(\".redline.yml\", `tools:\n  - name: mylint\n    command: mylint\n    scope: [\"**/*.go\"]\n    format: json\n    resultsPath: issues\n    fields: {file: file, line: line, rule: rule, message: msg, severity: sev}\n    baseline: {mode: file, file: missing-baseline.json}\n`)\n\tr.write(\"a.go\", \"package a\\n\")\n\tbase := r.commit(\"base\")\n\tr.write(\"a.go\", \"package a\\n\\nfunc A() {}\\n\")\n\n\tp := \u0026Delta{Repo: r.open()}\n\tp.Scope([]string{\"a.go\"})\n\tres := runPane(t, p, base)\n\tfound := false\n\tfor _, u := range res.Unknowns {\n\t\tif strings.Contains(u.Message, \"baseline\") {\n\t\t\tfound = true\n\t\t}\n\t}\n\tif !found {\n\t\tt.Fatalf(\"the unreadable baseline must be stated, got %+v\", res.Unknowns)\n\t}\n\tfor _, c := range res.Confirmations {\n\t\tif c.Rule == \"lint-clean-delta\" {\n\t\t\tt.Fatal(\"an unreadable baseline must withhold the clean confirmation\")\n\t\t}\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestDeltaReportsIntroducedAndResolved",
+          "scope": "internal/pane/lint.TestDeltaReportsIntroducedAndResolved",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 174,
+          "endLine": 216,
+          "content": "func TestDeltaReportsIntroducedAndResolved(t *testing.T) {\n\tfakeGolangci(t)\n\tr := newRepo(t)\n\tr.write(\".golangci.yml\", \"linters: {}\\n\")\n\tr.write(\"a.go\", \"package a\\n\")\n\tr.write(\"lint-fixture.json\", golangciJSON(\n\t\tissueJSON(\"a.go\", 1, \"errcheck\", \"unchecked error\"),\n\t\tissueJSON(\"a.go\", 2, \"lll\", \"line too long\"),\n\t))\n\tbase := r.commit(\"base\")\n\t// Head: the errcheck finding moved, lll is fixed, govet is new.\n\tr.write(\"a.go\", \"package a\\n\\nfunc A() {}\\n\")\n\tr.write(\"lint-fixture.json\", golangciJSON(\n\t\tissueJSON(\"a.go\", 3, \"errcheck\", \"unchecked error\"),\n\t\tissueJSON(\"a.go\", 3, \"govet\", \"shadowed variable\"),\n\t))\n\n\tp := \u0026Delta{Repo: r.open()}\n\tif got := p.Scope([]string{\"a.go\", \"lint-fixture.json\"}); len(got) != 1 || got[0] != \"a.go\" {\n\t\tt.Fatalf(\"scope should be the go file, got %v\", got)\n\t}\n\tres := runPane(t, p, base)\n\n\tif len(res.Findings) != 1 {\n\t\tt.Fatalf(\"expected one introduced finding, got %v\", rules(res.Findings))\n\t}\n\tf := res.Findings[0]\n\tif f.Rule != \"golangci-lint/govet\" || f.File != \"a.go\" || f.Line != 3 {\n\t\tt.Fatalf(\"introduced finding misdescribed: %+v\", f)\n\t}\n\tif f.Severity != findings.SeverityWarning || f.Category != findings.CategoryLint {\n\t\tt.Fatalf(\"severity/category: %+v\", f)\n\t}\n\tvar sawResolved bool\n\tfor _, c := range res.Confirmations {\n\t\tif c.Rule == \"lint-resolved\" \u0026\u0026 strings.Contains(c.Message, \"1 linter finding(s)\") {\n\t\t\tsawResolved = true\n\t\t}\n\t}\n\tif !sawResolved {\n\t\tt.Fatalf(\"the fixed lll finding must be confirmed as resolved: %+v\", res.Confirmations)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestDeltaCleanRunIsConfirmed",
+          "scope": "internal/pane/lint.TestDeltaCleanRunIsConfirmed",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 218,
+          "endLine": 239,
+          "content": "func TestDeltaCleanRunIsConfirmed(t *testing.T) {\n\tfakeGolangci(t)\n\tr := newRepo(t)\n\tr.write(\".golangci.yml\", \"linters: {}\\n\")\n\tr.write(\"a.go\", \"package a\\n\")\n\tbase := r.commit(\"base\")\n\tr.write(\"a.go\", \"package a\\n\\nfunc A() {}\\n\")\n\n\tres := runPane(t, \u0026Delta{Repo: r.open()}, base)\n\tif len(res.Findings) != 0 {\n\t\tt.Fatalf(\"expected no findings, got %v\", rules(res.Findings))\n\t}\n\tvar confirmed bool\n\tfor _, c := range res.Confirmations {\n\t\tif c.Rule == \"lint-clean-delta\" {\n\t\t\tconfirmed = true\n\t\t}\n\t}\n\tif !confirmed {\n\t\tt.Fatalf(\"a clean delta is a confirmation, not silence: %+v\", res.Confirmations)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestDeltaDegradesWhenBaseFails",
+          "scope": "internal/pane/lint.TestDeltaDegradesWhenBaseFails",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 241,
+          "endLine": 271,
+          "content": "// A base revision that cannot be linted degrades the delta rather than\n// erasing it: introduced findings are limited to lines this change added, and\n// the degradation is stated.\nfunc TestDeltaDegradesWhenBaseFails(t *testing.T) {\n\tfakeGolangci(t)\n\tr := newRepo(t)\n\tr.write(\".golangci.yml\", \"linters: {}\\n\")\n\tr.write(\"a.go\", \"package a\\nvar one = 1\\nvar two = 2\\n\")\n\tr.write(\"lint-fixture.json\", \"FAIL\\n\")\n\tbase := r.commit(\"base\")\n\t// Head adds line 4; head lint reports line 4 (added) and line 1 (not).\n\tr.write(\"a.go\", \"package a\\nvar one = 1\\nvar two = 2\\nvar three = 3\\n\")\n\tr.write(\"lint-fixture.json\", golangciJSON(\n\t\tissueJSON(\"a.go\", 4, \"govet\", \"on the added line\"),\n\t\tissueJSON(\"a.go\", 1, \"govet\", \"on an old line\"),\n\t))\n\n\tres := runPane(t, \u0026Delta{Repo: r.open()}, base)\n\tif len(res.Findings) != 1 || res.Findings[0].Line != 4 {\n\t\tt.Fatalf(\"degraded mode keeps only added-line findings: %+v\", res.Findings)\n\t}\n\tvar stated bool\n\tfor _, u := range res.Unknowns {\n\t\tif strings.Contains(u.Message, \"could not run at the base revision\") {\n\t\t\tstated = true\n\t\t}\n\t}\n\tif !stated {\n\t\tt.Fatalf(\"the degradation must be stated: %+v\", res.Unknowns)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestDeltaHeadFailureFailsThePane",
+          "scope": "internal/pane/lint.TestDeltaHeadFailureFailsThePane",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 273,
+          "endLine": 287,
+          "content": "// A tool that fails at head fails the pane: no delta can be computed, and a\n// missing check must never read as a clean one.\nfunc TestDeltaHeadFailureFailsThePane(t *testing.T) {\n\tfakeGolangci(t)\n\tr := newRepo(t)\n\tr.write(\".golangci.yml\", \"linters: {}\\n\")\n\tr.write(\"a.go\", \"package a\\n\")\n\tr.commit(\"base\")\n\tr.write(\"lint-fixture.json\", \"FAIL\\n\")\n\n\tp := \u0026Delta{Repo: r.open()}\n\tif _, err := p.Observe(pane.Worktree); err == nil {\n\t\tt.Fatal(\"a head lint failure must be an error, not an empty result\")\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestDeltaMissingBinaryFailsThePane",
+          "scope": "internal/pane/lint.TestDeltaMissingBinaryFailsThePane",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 289,
+          "endLine": 313,
+          "content": "// A repository configured for a linter that is not installed is a failed\n// sensor, not a clean pane.\nfunc TestDeltaMissingBinaryFailsThePane(t *testing.T) {\n\tr := newRepo(t)\n\tr.write(\".golangci.yml\", \"linters: {}\\n\")\n\tr.write(\"a.go\", \"package a\\n\")\n\tr.commit(\"base\")\n\n\t// A PATH with git only: the configured tool is absent.\n\tbin := t.TempDir()\n\tgitPath, err := exec.LookPath(\"git\")\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := os.Symlink(gitPath, filepath.Join(bin, \"git\")); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tt.Setenv(\"PATH\", bin)\n\n\tp := \u0026Delta{Repo: r.open()}\n\t_, obsErr := p.Observe(pane.Worktree)\n\tif obsErr == nil || !strings.Contains(obsErr.Error(), \"not on PATH\") {\n\t\tt.Fatalf(\"expected a missing-binary error, got: %v\", obsErr)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestDeltaSkipsWithoutAnyLintConfig",
+          "scope": "internal/pane/lint.TestDeltaSkipsWithoutAnyLintConfig",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 315,
+          "endLine": 323,
+          "content": "func TestDeltaSkipsWithoutAnyLintConfig(t *testing.T) {\n\tr := newRepo(t)\n\tr.write(\"a.go\", \"package a\\n\")\n\tr.commit(\"base\")\n\tp := \u0026Delta{Repo: r.open()}\n\tif got := p.Scope([]string{\"a.go\"}); got != nil {\n\t\tt.Fatalf(\"no config means empty scope, got %v\", got)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestDeltaNotesAConfigDrivenDelta",
+          "scope": "internal/pane/lint.TestDeltaNotesAConfigDrivenDelta",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 325,
+          "endLine": 341,
+          "content": "func TestDeltaNotesAConfigDrivenDelta(t *testing.T) {\n\tfakeGolangci(t)\n\tr := newRepo(t)\n\tr.write(\".golangci.yml\", \"linters: {}\\n\")\n\tr.write(\"a.go\", \"package a\\n\")\n\tbase := r.commit(\"base\")\n\tr.write(\".golangci.yml\", \"linters:\\n  disable:\\n    - errcheck\\n\")\n\n\tp := \u0026Delta{Repo: r.open()}\n\tif got := p.Scope([]string{\".golangci.yml\"}); len(got) != 1 {\n\t\tt.Fatalf(\"the config itself is in scope, got %v\", got)\n\t}\n\tres := runPane(t, p, base)\n\tif !strings.Contains(res.Render.Summary, \"edits a lint config\") {\n\t\tt.Fatalf(\"a config-driven delta must say so: %q\", res.Render.Summary)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestDeltaIncludesGorefactorFindings",
+          "scope": "internal/pane/lint.TestDeltaIncludesGorefactorFindings",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 368,
+          "endLine": 412,
+          "content": "// gorefactor's own findings (structural: file size, duplication, dead code)\n// flow through the same delta and identity machinery as golangci-lint's,\n// keyed on its config file rather than golangci's.\nfunc TestDeltaIncludesGorefactorFindings(t *testing.T) {\n\tfakeGorefactor(t)\n\tr := newRepo(t)\n\tr.write(\".gorefactor.yaml\", \"walk: {}\\n\")\n\tr.write(\"a.go\", \"package a\\n\")\n\tr.write(\"gorefactor-fixture.json\", gorefactorJSON(\n\t\tgorefactorIssueJSON(\"a.go:3:1\", \"funcorder-function\", \"warning\", \"exported before unexported\"),\n\t))\n\tbase := r.commit(\"base\")\n\t// Head: the funcorder finding is fixed, a new error-tier file-size finding\n\t// appears, with no line (a whole-file finding).\n\tr.write(\"a.go\", \"package a\\n\\nfunc A() {}\\n\")\n\tr.write(\"gorefactor-fixture.json\", gorefactorJSON(\n\t\tgorefactorIssueJSON(\"a.go\", \"file-size\", \"error\", \"531 lines (limit 500, over by 31)\"),\n\t))\n\n\tp := \u0026Delta{Repo: r.open()}\n\tif got := p.Scope([]string{\"a.go\", \"gorefactor-fixture.json\"}); len(got) != 1 || got[0] != \"a.go\" {\n\t\tt.Fatalf(\"scope should be the go file, got %v\", got)\n\t}\n\tres := runPane(t, p, base)\n\n\tif len(res.Findings) != 1 {\n\t\tt.Fatalf(\"expected one introduced finding, got %+v\", res.Findings)\n\t}\n\tf := res.Findings[0]\n\tif f.Rule != \"gorefactor/file-size\" || f.File != \"a.go\" || f.Line != 0 {\n\t\tt.Fatalf(\"introduced finding misdescribed: %+v\", f)\n\t}\n\tif f.Severity != findings.SeverityError {\n\t\tt.Fatalf(\"gorefactor's error tier must survive as SeverityError, got %q\", f.Severity)\n\t}\n\tvar sawResolved bool\n\tfor _, c := range res.Confirmations {\n\t\tif c.Rule == \"lint-resolved\" {\n\t\t\tsawResolved = true\n\t\t}\n\t}\n\tif !sawResolved {\n\t\tt.Fatalf(\"the fixed funcorder finding must be confirmed as resolved: %+v\", res.Confirmations)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestDeltaBrokenRedlineConfigFailsNotVanishes",
+          "scope": "internal/pane/lint.TestDeltaBrokenRedlineConfigFailsNotVanishes",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 727,
+          "endLine": 746,
+          "content": "// A committed .redline.yml that fails to parse must fail the lint pane, not\n// remove it: built-in detection still scopes the changed files, and Observe\n// then reports the parse error.\nfunc TestDeltaBrokenRedlineConfigFailsNotVanishes(t *testing.T) {\n\tr := newRepo(t)\n\tr.write(\".golangci.yml\", \"version: \\\"2\\\"\\n\")\n\tr.write(\".redline.yml\", \"tools: [\\n\")\n\tr.write(\"a.go\", \"package a\\n\")\n\tr.commit(\"base\")\n\tr.write(\"a.go\", \"package a\\n\\nvar X = 1\\n\")\n\n\tp := \u0026Delta{Repo: r.open()}\n\tscope := p.Scope([]string{\"a.go\"})\n\tif len(scope) == 0 {\n\t\tt.Fatal(\"a broken .redline.yml must not empty the scope: the pane would read as skipped\")\n\t}\n\tif _, err := p.Observe(pane.Worktree); err == nil {\n\t\tt.Fatal(\"observe must fail so the pane reports the parse error\")\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 89,
+          "symbol": "TestDeltaBrokenConfigWithNoBuiltinsScopesTheChange",
+          "scope": "internal/pane/lint.TestDeltaBrokenConfigWithNoBuiltinsScopesTheChange",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 748,
+          "endLine": 766,
+          "content": "// With no built-in tool detected either, an unreadable config leaves no way\n// to say which files its tools cover — so the whole change scopes under the\n// pane, which then fails visibly, rather than silently vanishing.\nfunc TestDeltaBrokenConfigWithNoBuiltinsScopesTheChange(t *testing.T) {\n\tr := newRepo(t)\n\tr.write(\".redline.yml\", \"tools: [\\n\")\n\tr.write(\"data.txt\", \"x\\n\")\n\tr.commit(\"base\")\n\tr.write(\"data.txt\", \"y\\n\")\n\n\tp := \u0026Delta{Repo: r.open()}\n\tscope := p.Scope([]string{\"data.txt\"})\n\tif len(scope) != 1 || scope[0] != \"data.txt\" {\n\t\tt.Fatalf(\"with no readable config the whole change is under the failed pane, got %v\", scope)\n\t}\n\tif _, err := p.Observe(pane.Worktree); err == nil {\n\t\tt.Fatal(\"observe must fail so the pane reports the parse error\")\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta",
+            "kind": "test",
+            "testFor": "Delta"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 88,
+          "symbol": "TestPrepareWorktreeMissing",
+          "scope": "internal/harness.TestPrepareWorktreeMissing",
+          "file": "internal/harness/harness_test.go",
+          "startLine": 115,
+          "endLine": 132,
+          "content": "func TestPrepareWorktreeMissing(t *testing.T) {\n\tdir := t.TempDir()\n\tcfg := \u0026Config{\n\t\tWorktree: []Profile{{\n\t\t\tID:      \"ui\",\n\t\t\tPath:    \"ui/dist/index.html\",\n\t\t\tWhen:    \"missing\",\n\t\t\tProduce: ProduceConfig{Command: \"mkdir\", Args: []string{\"-p\", \"ui/dist\"}},\n\t\t}},\n\t}\n\tproduced, err := PrepareWorktree(dir, dir, nil, cfg, nil)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif len(produced) != 1 {\n\t\tt.Fatalf(\"produced: %v\", produced)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/harness.PrepareWorktree",
+            "kind": "test",
+            "testFor": "PrepareWorktree"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 83,
+          "symbol": "repo.run",
+          "scope": "internal/run.repo.run",
+          "file": "internal/run/run_test.go",
+          "startLine": 60,
+          "endLine": 68,
+          "content": "func (r *repo) run(opts run.Options) *run.Result {\n\tr.t.Helper()\n\topts.Dir = r.dir\n\tres, err := run.Run(opts)\n\tif err != nil {\n\t\tr.t.Fatalf(\"run: %v\", err)\n\t}\n\treturn res\n}\n",
+          "details": {
+            "covers": "internal/run.Run",
+            "kind": "test",
+            "testFor": "Run"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 83,
+          "symbol": "TestAllowMissingCoverageContinuesWithHarness",
+          "scope": "internal/run.TestAllowMissingCoverageContinuesWithHarness",
+          "file": "internal/run/run_test.go",
+          "startLine": 424,
+          "endLine": 449,
+          "content": "func TestAllowMissingCoverageContinuesWithHarness(t *testing.T) {\n\tr := baseline(t)\n\tr.write(\".redline.yml\", `harness:\n  profiles:\n    - id: go\n      path: coverage.out\n      produce: {command: true}\n      when: stale\n      scope: [\"**/*.go\"]\n`)\n\tr.write(\"internal/x/x.go\", \"package x\\n\\nfunc A() int {\\n\\treturn 1\\n}\\n\")\n\n\tres, err := run.Run(run.Options{Dir: r.dir, Base: \"main\", Upstream: \"upstream\", AllowMissingCoverage: true})\n\tif err != nil {\n\t\tt.Fatalf(\"allow-missing-coverage should continue: %v\", err)\n\t}\n\tvar found bool\n\tfor _, u := range res.Report.Unknowns {\n\t\tif u.Substrate == \"redline/tests\" {\n\t\t\tfound = true\n\t\t}\n\t}\n\tif !found {\n\t\tt.Fatal(\"expected coverage unknown on the report when allowed to continue\")\n\t}\n}\n",
+          "details": {
+            "covers": "internal/run.Run",
+            "kind": "test",
+            "testFor": "Run"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 83,
+          "symbol": "TestMissingHarnessProfileBalks",
+          "scope": "internal/run.TestMissingHarnessProfileBalks",
+          "file": "internal/run/run_test.go",
+          "startLine": 451,
+          "endLine": 470,
+          "content": "func TestMissingHarnessProfileBalks(t *testing.T) {\n\tr := baseline(t)\n\tr.write(\".redline.yml\", `harness:\n  profiles:\n    - id: go\n      path: coverage.out\n      produce: {command: true}\n      when: stale\n      scope: [\"**/*.go\"]\n`)\n\tr.write(\"internal/x/x.go\", \"package x\\n\\nfunc A() int {\\n\\treturn 1\\n}\\n\")\n\n\t_, err := run.Run(run.Options{Dir: r.dir, Base: \"main\", Upstream: \"upstream\"})\n\tif err == nil {\n\t\tt.Fatal(\"expected an error when a configured profile is missing\")\n\t}\n\tif !strings.Contains(err.Error(), `harness profile \"go\"`) {\n\t\tt.Fatalf(\"unexpected error: %v\", err)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/run.Run",
+            "kind": "test",
+            "testFor": "Run"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 82,
+          "symbol": "TestDeltaHeadFailureFailsThePane",
+          "scope": "internal/pane/lint.TestDeltaHeadFailureFailsThePane",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 273,
+          "endLine": 287,
+          "content": "// A tool that fails at head fails the pane: no delta can be computed, and a\n// missing check must never read as a clean one.\nfunc TestDeltaHeadFailureFailsThePane(t *testing.T) {\n\tfakeGolangci(t)\n\tr := newRepo(t)\n\tr.write(\".golangci.yml\", \"linters: {}\\n\")\n\tr.write(\"a.go\", \"package a\\n\")\n\tr.commit(\"base\")\n\tr.write(\"lint-fixture.json\", \"FAIL\\n\")\n\n\tp := \u0026Delta{Repo: r.open()}\n\tif _, err := p.Observe(pane.Worktree); err == nil {\n\t\tt.Fatal(\"a head lint failure must be an error, not an empty result\")\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta.Observe",
+            "kind": "test",
+            "testFor": "Delta.Observe"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 82,
+          "symbol": "TestDeltaMissingBinaryFailsThePane",
+          "scope": "internal/pane/lint.TestDeltaMissingBinaryFailsThePane",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 289,
+          "endLine": 313,
+          "content": "// A repository configured for a linter that is not installed is a failed\n// sensor, not a clean pane.\nfunc TestDeltaMissingBinaryFailsThePane(t *testing.T) {\n\tr := newRepo(t)\n\tr.write(\".golangci.yml\", \"linters: {}\\n\")\n\tr.write(\"a.go\", \"package a\\n\")\n\tr.commit(\"base\")\n\n\t// A PATH with git only: the configured tool is absent.\n\tbin := t.TempDir()\n\tgitPath, err := exec.LookPath(\"git\")\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif err := os.Symlink(gitPath, filepath.Join(bin, \"git\")); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tt.Setenv(\"PATH\", bin)\n\n\tp := \u0026Delta{Repo: r.open()}\n\t_, obsErr := p.Observe(pane.Worktree)\n\tif obsErr == nil || !strings.Contains(obsErr.Error(), \"not on PATH\") {\n\t\tt.Fatalf(\"expected a missing-binary error, got: %v\", obsErr)\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta.Observe",
+            "kind": "test",
+            "testFor": "Delta.Observe"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 82,
+          "symbol": "TestDeltaBrokenRedlineConfigFailsNotVanishes",
+          "scope": "internal/pane/lint.TestDeltaBrokenRedlineConfigFailsNotVanishes",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 727,
+          "endLine": 746,
+          "content": "// A committed .redline.yml that fails to parse must fail the lint pane, not\n// remove it: built-in detection still scopes the changed files, and Observe\n// then reports the parse error.\nfunc TestDeltaBrokenRedlineConfigFailsNotVanishes(t *testing.T) {\n\tr := newRepo(t)\n\tr.write(\".golangci.yml\", \"version: \\\"2\\\"\\n\")\n\tr.write(\".redline.yml\", \"tools: [\\n\")\n\tr.write(\"a.go\", \"package a\\n\")\n\tr.commit(\"base\")\n\tr.write(\"a.go\", \"package a\\n\\nvar X = 1\\n\")\n\n\tp := \u0026Delta{Repo: r.open()}\n\tscope := p.Scope([]string{\"a.go\"})\n\tif len(scope) == 0 {\n\t\tt.Fatal(\"a broken .redline.yml must not empty the scope: the pane would read as skipped\")\n\t}\n\tif _, err := p.Observe(pane.Worktree); err == nil {\n\t\tt.Fatal(\"observe must fail so the pane reports the parse error\")\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta.Observe",
+            "kind": "test",
+            "testFor": "Delta.Observe"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 82,
+          "symbol": "TestDeltaBrokenConfigWithNoBuiltinsScopesTheChange",
+          "scope": "internal/pane/lint.TestDeltaBrokenConfigWithNoBuiltinsScopesTheChange",
+          "file": "internal/pane/lint/lint_test.go",
+          "startLine": 748,
+          "endLine": 766,
+          "content": "// With no built-in tool detected either, an unreadable config leaves no way\n// to say which files its tools cover — so the whole change scopes under the\n// pane, which then fails visibly, rather than silently vanishing.\nfunc TestDeltaBrokenConfigWithNoBuiltinsScopesTheChange(t *testing.T) {\n\tr := newRepo(t)\n\tr.write(\".redline.yml\", \"tools: [\\n\")\n\tr.write(\"data.txt\", \"x\\n\")\n\tr.commit(\"base\")\n\tr.write(\"data.txt\", \"y\\n\")\n\n\tp := \u0026Delta{Repo: r.open()}\n\tscope := p.Scope([]string{\"data.txt\"})\n\tif len(scope) != 1 || scope[0] != \"data.txt\" {\n\t\tt.Fatalf(\"with no readable config the whole change is under the failed pane, got %v\", scope)\n\t}\n\tif _, err := p.Observe(pane.Worktree); err == nil {\n\t\tt.Fatal(\"observe must fail so the pane reports the parse error\")\n\t}\n}\n",
+          "details": {
+            "covers": "internal/pane/lint.Delta.Observe",
+            "kind": "test",
+            "testFor": "Delta.Observe"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 81,
+          "symbol": "TestMatchesAny",
+          "scope": "internal/globmatch.TestMatchesAny",
+          "file": "internal/globmatch/glob_test.go",
+          "startLine": 5,
+          "endLine": 20,
+          "content": "func TestMatchesAny(t *testing.T) {\n\tpatterns := []string{\"**/*.go\", \"ui/**\"}\n\tcases := []struct {\n\t\tpath string\n\t\twant bool\n\t}{\n\t\t{\"internal/foo.go\", true},\n\t\t{\"ui/src/App.tsx\", true},\n\t\t{\"README.md\", false},\n\t}\n\tfor _, tc := range cases {\n\t\tif got := MatchesAny(patterns, tc.path); got != tc.want {\n\t\t\tt.Errorf(\"MatchesAny(%q, %q) = %v, want %v\", patterns, tc.path, got, tc.want)\n\t\t}\n\t}\n}\n",
+          "details": {
+            "covers": "internal/globmatch.MatchesAny",
+            "kind": "test",
+            "testFor": "MatchesAny"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 51,
+          "symbol": "TestPostDryRunEmitsThePayloadWithoutPosting",
+          "scope": "cmd/redline.TestPostDryRunEmitsThePayloadWithoutPosting",
+          "file": "cmd/redline/main_test.go",
+          "startLine": 154,
+          "endLine": 186,
+          "content": "// post is a write. Every one of these tests must reach the point of deciding\n// what to send without sending it, so none of them may find gh on PATH: an\n// empty PATH makes --dry-run take its documented offline path and makes a real\n// post fail before it opens a connection.\nfunc TestPostDryRunEmitsThePayloadWithoutPosting(t *testing.T) {\n\tt.Setenv(\"PATH\", \"\")\n\tdir := prSession(t)\n\n\tvar err error\n\tout := captureStdout(t, func() {\n\t\terr = cmdPost(opts{out: dir, pr: \"7\", dryRun: true, port: 40500, noOpen: true})\n\t})\n\tif err != nil {\n\t\tt.Fatalf(\"dry run should succeed offline: %v\", err)\n\t}\n\n\tvar req ghReviewRequest\n\tif jsonErr := json.Unmarshal([]byte(out), \u0026req); jsonErr != nil {\n\t\tt.Fatalf(\"dry run should print the review request as JSON: %v\\n%s\", jsonErr, out)\n\t}\n\tif req.Event != post.Event {\n\t\tt.Fatalf(\"a posted review reports and does not gate, got event %q\", req.Event)\n\t}\n\tif req.CommitID != \"deadbeef\" {\n\t\tt.Fatalf(\"the review anchors to the session head, got %q\", req.CommitID)\n\t}\n\tif len(req.Comments) != 1 || req.Comments[0].Path != \"a.go\" {\n\t\tt.Fatalf(\"the located finding should be a line comment: %+v\", req.Comments)\n\t}\n\tif !strings.Contains(req.Body, \"| migrations | ran — 1 finding(s) |\") {\n\t\tt.Fatalf(\"the body should carry the evidence table:\\n%s\", req.Body)\n\t}\n}\n",
+          "details": {
+            "covers": "cmd/redline.opts",
+            "kind": "test",
+            "testFor": "opts"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 51,
+          "symbol": "TestPostDryRunProfileEmitsFailMarker",
+          "scope": "cmd/redline.TestPostDryRunProfileEmitsFailMarker",
+          "file": "cmd/redline/main_test.go",
+          "startLine": 213,
+          "endLine": 229,
+          "content": "func TestPostDryRunProfileEmitsFailMarker(t *testing.T) {\n\tt.Setenv(\"PATH\", \"\")\n\tdir := prSession(t)\n\tvar err error\n\tout := captureStdout(t, func() {\n\t\terr = cmdPost(opts{out: dir, pr: \"7\", profile: writeCmdProfile(t), dryRun: true, port: 41200, noOpen: true})\n\t})\n\tif err != nil {\n\t\tt.Fatalf(\"dry run with profile should succeed offline: %v\", err)\n\t}\n\tif !strings.Contains(out, \"mct-agent-review:v1 verdict=fail head=deadbeef\") {\n\t\tt.Fatalf(\"profiled fail should stamp the gate marker:\\n%s\", out)\n\t}\n\tif !strings.Contains(out, \"mct-agent-finding:v1 severity=high\") {\n\t\tt.Fatalf(\"blocking finding should stamp the finding marker:\\n%s\", out)\n\t}\n}\n",
+          "details": {
+            "covers": "cmd/redline.opts",
+            "kind": "test",
+            "testFor": "opts"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 51,
+          "symbol": "TestPostDryRunProfilePassWithNoFindings",
+          "scope": "cmd/redline.TestPostDryRunProfilePassWithNoFindings",
+          "file": "cmd/redline/main_test.go",
+          "startLine": 231,
+          "endLine": 251,
+          "content": "func TestPostDryRunProfilePassWithNoFindings(t *testing.T) {\n\tt.Setenv(\"PATH\", \"\")\n\tdir := passSession(t)\n\tvar err error\n\tout := captureStdout(t, func() {\n\t\terr = cmdPost(opts{out: dir, pr: \"7\", profile: writeCmdProfile(t), dryRun: true, port: 41300, noOpen: true})\n\t})\n\tif err != nil {\n\t\tt.Fatalf(\"a profiled pass still posts: %v\", err)\n\t}\n\tvar req ghReviewRequest\n\tif jsonErr := json.Unmarshal([]byte(out), \u0026req); jsonErr != nil {\n\t\tt.Fatalf(\"dry run JSON: %v\\n%s\", jsonErr, out)\n\t}\n\tif len(req.Comments) != 0 {\n\t\tt.Fatalf(\"pass has no inline findings: %+v\", req.Comments)\n\t}\n\tif !strings.Contains(req.Body, \"verdict=pass head=deadbeef\") {\n\t\tt.Fatalf(\"pass marker missing:\\n%s\", req.Body)\n\t}\n}\n",
+          "details": {
+            "covers": "cmd/redline.opts",
+            "kind": "test",
+            "testFor": "opts"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 51,
+          "symbol": "TestPostRejectsAMismatchedTarget",
+          "scope": "cmd/redline.TestPostRejectsAMismatchedTarget",
+          "file": "cmd/redline/main_test.go",
+          "startLine": 253,
+          "endLine": 266,
+          "content": "// Posting a review of one change onto another pull request puts words in the\n// reviewer's mouth. It is a hard error, not a warning.\nfunc TestPostRejectsAMismatchedTarget(t *testing.T) {\n\tt.Setenv(\"PATH\", \"\")\n\tdir := prSession(t)\n\n\terr := cmdPost(opts{out: dir, pr: \"456\", dryRun: true, port: 40600, noOpen: true})\n\tif err == nil {\n\t\tt.Fatal(\"posting a PR 7 session to PR 456 should fail\")\n\t}\n\tif !strings.Contains(err.Error(), \"not pr 456\") {\n\t\tt.Fatalf(\"error should name the mismatch, got: %v\", err)\n\t}\n}\n",
+          "details": {
+            "covers": "cmd/redline.opts",
+            "kind": "test",
+            "testFor": "opts"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 51,
+          "symbol": "TestPostRejectsANonPRSession",
+          "scope": "cmd/redline.TestPostRejectsANonPRSession",
+          "file": "cmd/redline/main_test.go",
+          "startLine": 268,
+          "endLine": 280,
+          "content": "// A worktree session has no pull request to post to.\nfunc TestPostRejectsANonPRSession(t *testing.T) {\n\tt.Setenv(\"PATH\", \"\")\n\tdir := worktreeSession(t)\n\n\terr := cmdPost(opts{out: dir, dryRun: true, port: 40700, noOpen: true})\n\tif err == nil {\n\t\tt.Fatal(\"posting a worktree session should fail\")\n\t}\n\tif !strings.Contains(err.Error(), \"needs a PR session\") {\n\t\tt.Fatalf(\"error should say what post needs, got: %v\", err)\n\t}\n}\n",
+          "details": {
+            "covers": "cmd/redline.opts",
+            "kind": "test",
+            "testFor": "opts"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 51,
+          "symbol": "TestPostRejectsANonPRTargetFlag",
+          "scope": "cmd/redline.TestPostRejectsANonPRTargetFlag",
+          "file": "cmd/redline/main_test.go",
+          "startLine": 282,
+          "endLine": 295,
+          "content": "// post follows the session's own target. Naming a different kind of target is a\n// category error rather than something to resolve.\nfunc TestPostRejectsANonPRTargetFlag(t *testing.T) {\n\tt.Setenv(\"PATH\", \"\")\n\tdir := prSession(t)\n\n\terr := cmdPost(opts{out: dir, branch: \"feature\", dryRun: true, port: 40800, noOpen: true})\n\tif err == nil {\n\t\tt.Fatal(\"post --branch should fail\")\n\t}\n\tif !strings.Contains(err.Error(), \"drop --branch\") {\n\t\tt.Fatalf(\"error should say which flags to drop, got: %v\", err)\n\t}\n}\n",
+          "details": {
+            "covers": "cmd/redline.opts",
+            "kind": "test",
+            "testFor": "opts"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 51,
+          "symbol": "TestPostRequiresGhForARealPost",
+          "scope": "cmd/redline.TestPostRequiresGhForARealPost",
+          "file": "cmd/redline/main_test.go",
+          "startLine": 297,
+          "endLine": 310,
+          "content": "// A real post needs gh for the credentials and for the PR's changed lines. It\n// must fail before opening a connection rather than part way through.\nfunc TestPostRequiresGhForARealPost(t *testing.T) {\n\tt.Setenv(\"PATH\", \"\")\n\tdir := prSession(t)\n\n\terr := cmdPost(opts{out: dir, pr: \"7\", port: 41000, noOpen: true})\n\tif err == nil {\n\t\tt.Fatal(\"a real post without gh should fail\")\n\t}\n\tif !strings.Contains(err.Error(), \"gh CLI\") {\n\t\tt.Fatalf(\"error should name the missing dependency, got: %v\", err)\n\t}\n}\n",
+          "details": {
+            "covers": "cmd/redline.opts",
+            "kind": "test",
+            "testFor": "opts"
+          }
+        },
+        {
+          "role": "test",
+          "priority": 51,
+          "symbol": "TestPostSkipsWhenAlreadyReviewedWithNoNewFindings",
+          "scope": "cmd/redline.TestPostSkipsWhenAlreadyReviewedWithNoNewFindings",
+          "file": "cmd/redline/main_test.go",
+          "startLine": 354,
+          "endLine": 381,
+          "content": "// A re-post against a commit Redline has already reviewed, with every finding\n// already marked in those bodies, must exit cleanly and must not call\n// submitReview.\nfunc TestPostSkipsWhenAlreadyReviewedWithNoNewFindings(t *testing.T) {\n\tdir := prSession(t)\n\n\t// Build the same payload post would, then feed its markers back through the\n\t// stand-in so the gate sees exactly what a prior successful post left.\n\tres, err := run.LoadSession(dir)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tpayload := post.Build(\u0026res.Report, res.Target, \"\", nil)\n\tif len(payload.Comments) != 1 {\n\t\tt.Fatalf(\"precondition: one line comment, got %d\", len(payload.Comments))\n\t}\n\tfakeGh(t, []string{payload.Comments[0].Body}, []string{payload.Body})\n\n\tstderr := captureStderr(t, func() {\n\t\terr = cmdPost(opts{out: dir, pr: \"7\", port: 41100, noOpen: true})\n\t})\n\tif err != nil {\n\t\tt.Fatalf(\"already-posted should succeed with nothing to do: %v\", err)\n\t}\n\tif !strings.Contains(stderr, \"nothing to post\") {\n\t\tt.Fatalf(\"stderr should say nothing to post, got: %q\", stderr)\n\t}\n}\n",
+          "details": {
+            "covers": "cmd/redline.opts",
+            "kind": "test",
+            "testFor": "opts"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 89,
+          "symbol": "Delta",
+          "scope": "internal/pane/lint.Delta",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 41,
+          "endLine": 49,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/internal/pane/lint/delta.go b/internal/pane/lint/delta.go\n--- a/internal/pane/lint/delta.go\n+++ b/internal/pane/lint/delta.go\n@@ -41,0 +41,9 @@\n+\n+\t// Harness carries the run's .redline.yml config so this pane can run\n+\t// harness.worktree steps (for example make stub-ui) in the base and head\n+\t// trees before the linters read them. Set by run.Run, nil when there is no\n+\t// config. Prepared is the run-scoped dedup set shared with the rest of the\n+\t// run so a produce root runs at most once.\n+\tHarness     *harness.Config\n+\tHarnessRoot string\n+\tPrepared    map[string]bool\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "41-49",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 88,
+          "symbol": "PrepareWorktree",
+          "scope": "internal/harness.PrepareWorktree",
+          "file": "internal/harness/harness.go",
+          "startLine": 136,
+          "endLine": 139,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -136,3 +136,4 @@\n-// tool panes execute there (detached PR worktrees included). Each produce\n-// root is prepared at most once per run.\n-func PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config) ([]string, error) {\n+// tool panes execute there (detached PR worktrees included). prepared records\n+// the produce roots already run this run, so a root is prepared at most once;\n+// the caller owns the map and shares it across the run's PrepareWorktree calls.\n+func PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config, prepared map[string]bool) ([]string, error) {\n\ncommit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -136,2 +137,3 @@\n-// tool panes execute there (detached PR worktrees included).\n-func PrepareWorktree(root string, changed []string, cfg *Config) ([]string, error) {\n+// tool panes execute there (detached PR worktrees included). Each produce\n+// root is prepared at most once per run.\n+func PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config) ([]string, error) {\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -110,1 +136,2 @@\n-\tif cfg == nil || len(cfg.Profiles) == 0 {\n+// tool panes execute there (detached PR worktrees included).\n+func PrepareWorktree(root string, changed []string, cfg *Config) ([]string, error) {\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "136-139",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 88,
+          "symbol": "PrepareWorktree",
+          "scope": "internal/harness.PrepareWorktree",
+          "file": "internal/harness/harness.go",
+          "startLine": 143,
+          "endLine": 143,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -142,1 +143,1 @@\n-\tif worktreePrepared[produceRoot] {\n+\tif prepared[produceRoot] {\n\ncommit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -141,1 +143,1 @@\n-\treturn runProfiles(root, changed, cfg.Env.From, cfg.Worktree, \"worktree\")\n+\tif worktreePrepared[produceRoot] {\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -110,1 +141,1 @@\n-\tif cfg == nil || len(cfg.Profiles) == 0 {\n+\treturn runProfiles(root, changed, cfg.Env.From, cfg.Worktree, \"worktree\")\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "143-143",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 88,
+          "symbol": "PrepareWorktree",
+          "scope": "internal/harness.PrepareWorktree",
+          "file": "internal/harness/harness.go",
+          "startLine": 150,
+          "endLine": 152,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -149,1 +150,3 @@\n-\tworktreePrepared[produceRoot] = true\n+\tif prepared != nil {\n+\t\tprepared[produceRoot] = true\n+\t}\n\ncommit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -141,1 +150,1 @@\n-\treturn runProfiles(root, changed, cfg.Env.From, cfg.Worktree, \"worktree\")\n+\tworktreePrepared[produceRoot] = true\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness.go b/internal/harness/harness.go\n--- a/internal/harness/harness.go\n+++ b/internal/harness/harness.go\n@@ -110,1 +141,1 @@\n-\tif cfg == nil || len(cfg.Profiles) == 0 {\n+\treturn runProfiles(root, changed, cfg.Env.From, cfg.Worktree, \"worktree\")\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "150-152",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 83,
+          "symbol": "Run",
+          "scope": "internal/run.Run",
+          "file": "internal/run/run.go",
+          "startLine": 108,
+          "endLine": 108,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -108,7 +108,1 @@\n-\tharness.Active = cfg\n-\tharness.ActiveRoot = configRoot\n-\tdefer func() {\n-\t\tharness.Active = nil\n-\t\tharness.ActiveRoot = \"\"\n-\t\tharness.ResetWorktreePrepared()\n-\t}()\n+\tprepared := map[string]bool{}\n\ncommit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -108,2 +109,7 @@\n \tharness.Active = cfg\n-\tdefer func() { harness.Active = nil }()\n+\tharness.ActiveRoot = configRoot\n+\tdefer func() {\n+\t\tharness.Active = nil\n+\t\tharness.ActiveRoot = \"\"\n+\t\tharness.ResetWorktreePrepared()\n+\t}()\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -98,0 +108,2 @@\n+\tharness.Active = cfg\n+\tdefer func() { harness.Active = nil }()\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "108-108",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 83,
+          "symbol": "Run",
+          "scope": "internal/run.Run",
+          "file": "internal/run/run.go",
+          "startLine": 116,
+          "endLine": 116,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -122,1 +116,1 @@\n-\t\tif _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg); err != nil {\n+\t\tif _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg, prepared); err != nil {\n\ncommit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -111,1 +122,1 @@\n-\t\tif _, err := harness.PrepareWorktree(tgt.Dir, changed, cfg); err != nil {\n+\t\tif _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg); err != nil {\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -98,0 +111,1 @@\n+\t\tif _, err := harness.PrepareWorktree(tgt.Dir, changed, cfg); err != nil {\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "116-116",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 83,
+          "symbol": "Run",
+          "scope": "internal/run.Run",
+          "file": "internal/run/run.go",
+          "startLine": 130,
+          "endLine": 130,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -136,1 +130,1 @@\n-\t\t\u0026lint.Delta{Repo: repo},\n+\t\t\u0026lint.Delta{Repo: repo, Harness: cfg, HarnessRoot: configRoot, Prepared: prepared},\n\ncommit 3ecc6f135a1409b6e89d2793826082b90ecf8e6b\nAuthor: Claude \u003cnoreply@anthropic.com\u003e\nDate:   2026-09-01T14:57:08+00:00\n\n    feat: lint delta, suppression triage, and config drift panes\n    \n    Phase 2 of the replanned design. Three panes in internal/pane/lint, all\n    deterministic and scoped to the change. Delta runs golangci-lint and\n    eslint at the base revision (in the cached detached worktree gitx keeps\n    per commit) and at head, and reports only what the change introduces,\n    counting what it resolves as a confirmation; identity is file, rule and\n    digit-normalized message with no line, so moved code keeps its findings.\n    A tool that fails at head darks the pane; a base that cannot be linted\n    degrades to added-line findings and says so. Suppressions reports every\n    silencing directive the diff adds, naming the rule it silences.\n    Config reads both sides of a changed lint config and names each rule\n    disabled, downgraded or newly excluded; unparseable formats still report\n    with the diff as evidence, and the delta's summary notes when part of it\n    may be configuration rather than code.\n    \n    Detection is by the tools' own config files rather than the Makefile\n    lint target the plan first preferred: a make target's output has no\n    structure to fingerprint, and the design doc records the reversal.\n    \n    Co-Authored-By: Claude Fable 5 \u003cnoreply@anthropic.com\u003e\n    Claude-Session: https://claude.ai/code/session_016EHcqCaYxXU4qc1Dz8egCt\n\ndiff --git a/internal/run/run.go b/internal/run/run.go\n--- a/internal/run/run.go\n+++ b/internal/run/run.go\n@@ -101,0 +102,1 @@\n+\t\t\u0026lint.Delta{Repo: repo},\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "130-130",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 82,
+          "symbol": "Delta.Observe",
+          "scope": "internal/pane/lint.Delta.Observe",
+          "file": "internal/pane/lint/delta.go",
+          "startLine": 133,
+          "endLine": 134,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/internal/pane/lint/delta.go b/internal/pane/lint/delta.go\n--- a/internal/pane/lint/delta.go\n+++ b/internal/pane/lint/delta.go\n@@ -124,2 +133,2 @@\n-\tif cfg := harness.Active; cfg != nil {\n-\t\tif _, err := harness.PrepareWorktree(dir, harness.ActiveRoot, p.scoped, cfg); err != nil {\n+\tif p.Harness != nil {\n+\t\tif _, err := harness.PrepareWorktree(dir, p.HarnessRoot, p.scoped, p.Harness, p.Prepared); err != nil {\n\ncommit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/pane/lint/delta.go b/internal/pane/lint/delta.go\n--- a/internal/pane/lint/delta.go\n+++ b/internal/pane/lint/delta.go\n@@ -124,2 +124,2 @@\n \tif cfg := harness.Active; cfg != nil {\n-\t\tif _, err := harness.PrepareWorktree(dir, p.scoped, cfg); err != nil {\n+\t\tif _, err := harness.PrepareWorktree(dir, harness.ActiveRoot, p.scoped, cfg); err != nil {\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/pane/lint/delta.go b/internal/pane/lint/delta.go\n--- a/internal/pane/lint/delta.go\n+++ b/internal/pane/lint/delta.go\n@@ -123,0 +124,2 @@\n+\tif cfg := harness.Active; cfg != nil {\n+\t\tif _, err := harness.PrepareWorktree(dir, p.scoped, cfg); err != nil {\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "133-134",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 81,
+          "symbol": "MatchesAny",
+          "scope": "internal/globmatch.MatchesAny",
+          "file": "internal/globmatch/glob.go",
+          "startLine": 15,
+          "endLine": 15,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/internal/globmatch/glob.go b/internal/globmatch/glob.go\n--- a/internal/globmatch/glob.go\n+++ b/internal/globmatch/glob.go\n@@ -14,1 +15,1 @@\n-\t\tif toRegexp(p).MatchString(path) {\n+\t\tif compiled(p).MatchString(path) {\n\ncommit c4af73a1453ba062261a268ac9ec534501affb41\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T10:56:36-06:00\n\n    Add harness prepare, flexible review.json, and v0.1.1.\n    \n    Declare harness profiles in .redline.yml and run them with redline run\n    --prepare before observe. LoadReview accepts publisher aliases and file\n    list shapes. Extract globmatch for scope matching; golangci-lint defers\n    path exclusions to the repository's own .golangci.yml.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/globmatch/glob.go b/internal/globmatch/glob.go\n--- /dev/null\n+++ b/internal/globmatch/glob.go\n@@ -0,0 +14,1 @@\n+\t\tif toRegexp(p).MatchString(path) {\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "15-15",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 81,
+          "symbol": "TestPrepareWorktreeMissing",
+          "scope": "internal/harness.TestPrepareWorktreeMissing",
+          "file": "internal/harness/harness_test.go",
+          "startLine": 125,
+          "endLine": 125,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/internal/harness/harness_test.go b/internal/harness/harness_test.go\n--- a/internal/harness/harness_test.go\n+++ b/internal/harness/harness_test.go\n@@ -125,1 +125,1 @@\n-\tproduced, err := PrepareWorktree(dir, dir, nil, cfg)\n+\tproduced, err := PrepareWorktree(dir, dir, nil, cfg, nil)\n\ncommit a755c24e900881e0b09579ca2fd1e91c7bd7107a\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T12:03:05-06:00\n\n    Fix module path, fail fast without coverage, and dedupe worktree harness.\n    \n    Rename module to github.com/chrisophus/redline so go run @version works.\n    Resolve harness env.from from the config checkout. Require a coverage\n    profile before panes unless --allow-missing-coverage. Prepare each\n    worktree once per run.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness_test.go b/internal/harness/harness_test.go\n--- a/internal/harness/harness_test.go\n+++ b/internal/harness/harness_test.go\n@@ -125,1 +125,1 @@\n-\tproduced, err := PrepareWorktree(dir, nil, cfg)\n+\tproduced, err := PrepareWorktree(dir, dir, nil, cfg)\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/internal/harness/harness_test.go b/internal/harness/harness_test.go\n--- a/internal/harness/harness_test.go\n+++ b/internal/harness/harness_test.go\n@@ -97,0 +125,1 @@\n+\tproduced, err := PrepareWorktree(dir, nil, cfg)\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "125-125",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 51,
+          "symbol": "opts",
+          "scope": "cmd/redline.opts",
+          "file": "cmd/redline/main.go",
+          "startLine": 88,
+          "endLine": 88,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/cmd/redline/main.go b/cmd/redline/main.go\n--- a/cmd/redline/main.go\n+++ b/cmd/redline/main.go\n@@ -88,1 +88,1 @@\n-\topen, noOpen, stop, dryRun, file, prepare, allowMissingCoverage          bool\n+\topen, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool\n\ncommit 3fe8462783e6aecb49814eab5c1813af01580b12\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T11:54:07-06:00\n\n    Add worktree harness, PR coverage prepare, and require coverage profile.\n    \n    Harness worktree steps run in detached PR/branch trees before linters.\n    Prepare writes coverage in the tree under review. Missing or stale\n    coverage exits non-zero unless --allow-missing-coverage is passed.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/cmd/redline/main.go b/cmd/redline/main.go\n--- a/cmd/redline/main.go\n+++ b/cmd/redline/main.go\n@@ -87,1 +88,1 @@\n-\topen, noOpen, stop, dryRun, file, prepare                          bool\n+\topen, noOpen, stop, dryRun, file, prepare, allowMissingCoverage          bool\n\ncommit c4af73a1453ba062261a268ac9ec534501affb41\nAuthor: Chris Cason \u003cccason@netapp.com\u003e\nDate:   2026-09-07T10:56:36-06:00\n\n    Add harness prepare, flexible review.json, and v0.1.1.\n    \n    Declare harness profiles in .redline.yml and run them with redline run\n    --prepare before observe. LoadReview accepts publisher aliases and file\n    list shapes. Extract globmatch for scope matching; golangci-lint defers\n    path exclusions to the repository's own .golangci.yml.\n    \n    Co-authored-by: Cursor \u003ccursoragent@cursor.com\u003e\n\ndiff --git a/cmd/redline/main.go b/cmd/redline/main.go\n--- a/cmd/redline/main.go\n+++ b/cmd/redline/main.go\n@@ -86,1 +87,1 @@\n-\topen, noOpen, stop, dryRun, file                                  bool\n+\topen, noOpen, stop, dryRun, file, prepare                          bool\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "88-88",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 51,
+          "symbol": "cacheMu",
+          "scope": "internal/globmatch.cacheMu",
+          "file": "internal/globmatch/glob.go",
+          "startLine": 22,
+          "endLine": 40,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/internal/globmatch/glob.go b/internal/globmatch/glob.go\n--- a/internal/globmatch/glob.go\n+++ b/internal/globmatch/glob.go\n@@ -21,0 +22,19 @@\n+// compiled memoizes the regexp for a pattern. MatchesAny runs once per changed\n+// path against the same scope patterns, so compiling inside the loop rebuilt the\n+// same handful of patterns across the whole diff.\n+var (\n+\tcacheMu sync.Mutex\n+\tcache   = map[string]*regexp.Regexp{}\n+)\n+\n+func compiled(pattern string) *regexp.Regexp {\n+\tcacheMu.Lock()\n+\tdefer cacheMu.Unlock()\n+\tif re, ok := cache[pattern]; ok {\n+\t\treturn re\n+\t}\n+\tre := toRegexp(pattern)\n+\tcache[pattern] = re\n+\treturn re\n+}\n+\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "22-40",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "file": "internal/globmatch/glob.go",
+          "startLine": 9,
+          "endLine": 9,
+          "content": "commit 4cfafc4f0cb709d0313ef8a372ae49aff5bc168f\nAuthor: ccason \u003cccason@example.com\u003e\nDate:   2026-09-07T13:55:31-06:00\n\n    Replace harness globals with injected config; cache glob patterns\n    \n    The harness config reached the lint delta pane through package-level globals\n    (harness.Active, ActiveRoot, and a worktreePrepared map reset by defer). Inject\n    it instead: Delta carries Harness, HarnessRoot, and a run-scoped Prepared set\n    that run.Run creates and shares with its own PrepareWorktree call, so a produce\n    root still runs at most once with no hidden state. PrepareWorktree takes the\n    dedup set as a parameter; active.go is gone.\n    \n    globmatch.MatchesAny compiled a regexp for every pattern on every call, and it\n    runs once per changed path against the same scope patterns. Memoize the compiled\n    patterns so the diff does not rebuild them per file.\n    \n    Also gofmt the opts struct alignment left by the module rename.\n\ndiff --git a/internal/globmatch/glob.go b/internal/globmatch/glob.go\n--- a/internal/globmatch/glob.go\n+++ b/internal/globmatch/glob.go\n@@ -9,0 +9,1 @@\n+\t\"sync\"\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "9-9",
+            "revisions": "3"
+          }
+        }
+      ],
+      "promptFragment": "Reviewing Go.\n\nErrors are values and the wrapping chain is the contract. A function that adds\ncontext to an error wraps it with %w when a caller may need errors.Is or\nerrors.As to match it, and formats with %v when the chain should stop there.\nAn error is handled once: code that logs it and returns it has handled it\ntwice, and the caller reports it again. A dropped error is a finding unless the\ncode says why.\n\ncontext.Context is the first parameter, named ctx, and travels down every call\nthat can block. Look for a function that takes one and ignores it, for\ncontext.Background() created deep inside a request path, and for a context\nkept in a struct field. Cancellation only works when the value carrying it\nreaches the blocking call.\n\nEvery goroutine needs a defined end. Ask what stops it and what happens when\nthe caller returns first. A goroutine started per request with no cancellation\nis a leak. A WaitGroup whose Add runs inside the goroutine is a race. Anything\na closure captures and two goroutines write needs a mutex or a channel.\n\nNil is legal for slices, maps, channels, function values, pointers, and\ninterfaces, and it behaves differently for each. Reading a nil map works and\nwriting one panics. A nil pointer inside a non-nil interface compares unequal\nto nil, which is how a returned error becomes non-nil by accident.\n\nInterfaces belong to the consumer. A new interface declared beside its only\nimplementation usually belongs in the package that calls it. Satisfaction is\nchecked at compile time, so a method added only to satisfy an interface is\neither used or dead.\n\nTests are table-driven by convention: a slice of named cases with a subtest per\ncase under t.Run. Look for state shared between cases, for t.Parallel over a\ncaptured loop variable, and for assertions on error strings where errors.Is\nsays what was meant.\n\nLoad-bearing idioms: defer for cleanup that must run on every path, a zero\nvalue that is usable without construction, and early returns over nesting.\n"
+    }
   ]
 }

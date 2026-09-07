@@ -80,7 +80,21 @@ one costs them the finding.
 Write plainly. One or two sentences per comment, naming the specific thing and
 what happens because of it.`
 
-// Build assembles the whole user-side prompt for one review.
+// fixed is everything the prompt must carry whatever the budget says: what
+// changed, what the tools already found, what did not run, and the diff
+// itself. A review without the diff is not a review, so these are priced
+// first and the context gets what is left.
+func (in Input) fixed() string {
+	var b strings.Builder
+	b.WriteString(in.changeSection())
+	b.WriteString(in.priorsSection())
+	b.WriteString(in.absentSection())
+	b.WriteString(in.diffSection())
+	return b.String()
+}
+
+// build assembles the whole user-side prompt. The context block sits before
+// the diff so the model reads what surrounds the change before the change.
 func (in Input) build(budget envelope.Budgeted) string {
 	var b strings.Builder
 	b.WriteString(in.changeSection())

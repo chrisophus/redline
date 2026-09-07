@@ -48,10 +48,39 @@ This writes `findings.json`, `report.md`, and `report.html` under
 `.redline/`, prints the markdown report, and prints `Report: <url>` on
 stderr.
 
+**1b. Optionally, let Redline review it.**
+
+```
+redline review              # one model call over the run you just did
+redline review --dry-run    # print the prompt and its estimated price, call nothing
+redline review --stats      # the cost distribution of the reviews recorded so far
+```
+
+This is the one Redline command that calls a model. It reads the session
+`run` wrote, sends one request with no tools, writes `.redline/review.json`,
+and re-renders the report. It observes nothing itself, so it sees exactly
+what you can see in `findings.json`.
+
+Use it when you want a second reading beside your own, or when you are
+driving Redline unattended. Skip it when you are reviewing the change
+yourself anyway: it costs money, and the loop below is your own review.
+It needs `ANTHROPIC_API_KEY` or an `ant auth login` profile; without one,
+every other command still works.
+
+Its findings are advisory, marked `source: llm`, and never reach the merge
+gate whatever severity they carry. Verdicts already in `review.json` are
+preserved, so running it does not discard judgments you recorded.
+
 **2. Read `findings.json`, then review the change yourself.**
 
 - Do not re-report anything in `findings[]`. Those are observed facts and
-  are already on the report.
+  are already on the report. Reference one by its `id` if you want to build
+  on it.
+- Connecting two findings is a finding in its own right, and the most
+  valuable kind: a migration that adds a non-nullable column and a struct
+  field that cannot express absence are unremarkable alone and a bug
+  together. Write it as a comment with `"category": "correlation"` and the
+  ids of both in `"relatedFindings"`.
 - Check `coverage`: `examinedFiles` versus `changedFiles`, `diffCoverage`,
   and `unknowns[]`. These tell you what nobody has measured, which is where
   your own reading matters most.
@@ -144,7 +173,11 @@ below live in. Redline renders what you wrote, marked as yours.
   ],
   "comments": [
     {"file": "internal/foo.go", "line": 42, "severity": "warning",
-     "body": "This can loop forever if the server keeps returning 503."}
+     "confidence": "high",
+     "body": "This can loop forever if the server keeps returning 503."},
+    {"file": "internal/store/user.go", "line": 8, "severity": "warning",
+     "category": "correlation", "relatedFindings": ["f2076e74fbd"],
+     "body": "TenantID is a plain string and the migration makes tenant_id NOT NULL with no default, so any insert that omits it writes an empty string."}
   ]
 }
 ```
@@ -157,6 +190,15 @@ below live in. Redline renders what you wrote, marked as yours.
 - `comments` become findings on their line, marked `source: llm`. `findings` is
   accepted as an alias; `path` aliases `file`. `severity` is `error`, `warning`,
   or `info` (aliases `high`, `medium`, `low` accepted on ingest).
+- `confidence` is `high`, `medium`, or `low`, and the report folds the low ones
+  away. Report a finding you are unsure of with low confidence rather than
+  withholding it: an uncertain finding costs the reader nothing, a withheld one
+  costs them the finding.
+- `category` accepts `correlation` for a finding that connects two others.
+  `relatedFindings` holds the `id` of each prior it builds on, and the report
+  renders the connection against both rather than duplicating the text.
+- Zero comments is a valid and expected result. Roughly three in ten changes
+  deserve none. Do not pad.
 
 ## Judge the suppressions
 

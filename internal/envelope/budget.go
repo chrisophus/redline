@@ -5,11 +5,20 @@ import (
 	"sort"
 )
 
-// DefaultCeiling is the token budget one review's context block may occupy.
-// It is a fixed number on purpose: cost per review is then a constant that
-// can be quoted to anyone who asks, rather than a function of how large the
-// change happened to be.
-const DefaultCeiling = 120_000
+// DefaultCeiling bounds one review's whole request.
+//
+// It is a tail bound, not a per-review budget. The cost target is an average
+// across reviews: most changes are small and cost cents, a few are large and
+// cost more, and holding every review to the average would trim context from
+// exactly the large changes that most need it. So the ceiling is set where a
+// review stops being worth doing in one turn rather than where the average
+// sits, and the average is measured instead of assumed. See internal/review's
+// ledger.
+//
+// At Sonnet rates 250k input tokens is about fifty cents, so a review that
+// actually reaches this cap is an outlier by construction, and the ledger
+// will show it as one.
+const DefaultCeiling = 250_000
 
 // charsPerToken is the estimate used to price an expansion. Redline cannot
 // tokenize without linking a tokenizer for a specific model, and the budget

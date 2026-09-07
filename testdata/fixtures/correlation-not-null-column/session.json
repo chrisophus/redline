@@ -1,8 +1,8 @@
 {
   "report": {
     "schemaVersion": 1,
-    "baseRef": "4ada52ba5c2a8bc780f9f1647d89c031fc90756e",
-    "baseSHA": "4ada52ba5c2a8bc780f9f1647d89c031fc90756e",
+    "baseRef": "24601f3034b7e0a43362f2d69971d4e706d6b5d4",
+    "baseSHA": "24601f3034b7e0a43362f2d69971d4e706d6b5d4",
     "scope": [
       "internal/store/user.go",
       "migrations/0002_add_tenant.up.sql"
@@ -25,7 +25,7 @@
           "id": "users.tenant_id"
         },
         "evidence": [
-          "migrations@4ada52ba5c2a8bc780f9f1647d89c031fc90756e",
+          "migrations@24601f3034b7e0a43362f2d69971d4e706d6b5d4",
           "migrations@worktree"
         ],
         "expected": "a default, or a backfill before the constraint",
@@ -63,8 +63,7 @@
       },
       {
         "name": "redline/lint",
-        "state": "not-applicable",
-        "detail": "the repository has no files this pane reads",
+        "state": "ran",
         "gating": false
       },
       {
@@ -74,8 +73,8 @@
       },
       {
         "name": "redline/lint-config",
-        "state": "not-applicable",
-        "detail": "the repository has no files this pane reads",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
         "gating": false
       },
       {
@@ -97,7 +96,7 @@
       {
         "substrate": "redline/sql",
         "rule": "migration-version-unique",
-        "message": "version 0002 is not present on 4ada52ba5c2a8bc780f9f1647d89c031fc90756e",
+        "message": "version 0002 is not present on 24601f3034b7e0a43362f2d69971d4e706d6b5d4",
         "anchor": {
           "kind": "migration",
           "id": "0002"
@@ -109,24 +108,35 @@
         "message": "all 1 migration file(s) already merged at the base are byte-identical in this change"
       },
       {
+        "substrate": "redline/lint",
+        "rule": "lint-clean-delta",
+        "message": "no new linter finding against the base revision (gorefactor)"
+      },
+      {
         "substrate": "redline/suppressions",
         "rule": "no-suppressions-added",
         "message": "this change adds no lint-silencing directive"
+      }
+    ],
+    "tools": [
+      {
+        "name": "gorefactor",
+        "status": "ran"
       }
     ]
   },
   "change": {
     "target": {
       "kind": "commit",
-      "dir": "/root/.redline/worktrees/cb7c0ef7ade824f6/a981837e9f8e0bec616e65f0f08a7b72024f4a61",
-      "head": "a981837e9f8e0bec616e65f0f08a7b72024f4a61",
-      "base": "4ada52ba5c2a8bc780f9f1647d89c031fc90756e",
+      "dir": "/root/.redline/worktrees/a4f5906e7c30e29f/1d5b6e7cbdca5e78d03e36e1cbd964c3f5816d45",
+      "head": "1d5b6e7cbdca5e78d03e36e1cbd964c3f5816d45",
+      "base": "24601f3034b7e0a43362f2d69971d4e706d6b5d4",
       "label": "HEAD"
     },
-    "baseSHA": "4ada52ba5c2a8bc780f9f1647d89c031fc90756e",
+    "baseSHA": "24601f3034b7e0a43362f2d69971d4e706d6b5d4",
     "commits": [
       {
-        "sha": "a981837e9f8e0bec616e65f0f08a7b72024f4a61",
+        "sha": "1d5b6e7cbdca5e78d03e36e1cbd964c3f5816d45",
         "author": "fixture",
         "subject": "add tenant scoping to users"
       }
@@ -166,6 +176,11 @@
       ]
     },
     {
+      "Title": "Lint delta",
+      "Summary": "0 finding(s) introduced, 0 resolved (gorefactor)",
+      "Lines": []
+    },
+    {
       "Title": "Suppressions",
       "Summary": "0 lint-silencing directive(s) added by this change",
       "Lines": null
@@ -176,6 +191,93 @@
       "Lines": [
         "~ internal/store (no test changed)"
       ]
+    }
+  ],
+  "envelopes": [
+    {
+      "schemaVersion": 1,
+      "provider": {
+        "name": "gorefactor",
+        "version": "v0.0.0-20260906204439-a2ac4a145c9c+dirty",
+        "language": "go"
+      },
+      "baseSHA": "24601f3034b7e0a43362f2d69971d4e706d6b5d4",
+      "files": [
+        {
+          "path": "internal/store/user.go",
+          "class": "source",
+          "symbols": [
+            "User"
+          ]
+        },
+        {
+          "path": "migrations/0002_add_tenant.up.sql",
+          "class": "migration"
+        }
+      ],
+      "expansions": [
+        {
+          "role": "enclosing",
+          "priority": 83,
+          "symbol": "User",
+          "scope": "internal/store.User",
+          "file": "internal/store/user.go",
+          "startLine": 3,
+          "endLine": 8,
+          "content": "// User is one row of the users table.\ntype User struct {\n\tID       string\n\tEmail    string\n\tTenantID string\n}\n",
+          "details": {
+            "changedLines": "3",
+            "exported": "true",
+            "kind": "type",
+            "package": "example.com/correlation/internal/store"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 83,
+          "symbol": "User",
+          "scope": "internal/store.User",
+          "file": "internal/store/user.go",
+          "startLine": 9,
+          "endLine": 13,
+          "content": "\n// Insert writes a user. Every column the table requires must be set here.\nfunc Insert(u User) error {\n\t_ = u\n\treturn nil\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/store.Insert",
+            "kind": "call-site",
+            "line": "11"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 83,
+          "symbol": "User",
+          "scope": "internal/store.User",
+          "file": "internal/store/user.go",
+          "startLine": 5,
+          "endLine": 7,
+          "content": "commit 1d5b6e7cbdca5e78d03e36e1cbd964c3f5816d45\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T21:25:50+00:00\n\n    add tenant scoping to users\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- a/internal/store/user.go\n+++ b/internal/store/user.go\n@@ -5,2 +5,3 @@\n-\tID    string\n-\tEmail string\n+\tID       string\n+\tEmail    string\n+\tTenantID string\n\ncommit 24601f3034b7e0a43362f2d69971d4e706d6b5d4\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T21:25:50+00:00\n\n    initial schema and store\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +5,2 @@\n+\tID    string\n+\tEmail string\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "5-7",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/store/user.go",
+          "startLine": 5,
+          "endLine": 6,
+          "content": "commit 24601f3034b7e0a43362f2d69971d4e706d6b5d4\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T21:25:50+00:00\n\n    initial schema and store\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +5,2 @@\n+\tID    string\n+\tEmail string\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "5-6 at the base revision",
+            "revisions": "3"
+          }
+        }
+      ],
+      "promptFragment": "Reviewing Go.\n\nErrors are values and the wrapping chain is the contract. A function that adds\ncontext to an error wraps it with %w when a caller may need errors.Is or\nerrors.As to match it, and formats with %v when the chain should stop there.\nAn error is handled once: code that logs it and returns it has handled it\ntwice, and the caller reports it again. A dropped error is a finding unless the\ncode says why.\n\ncontext.Context is the first parameter, named ctx, and travels down every call\nthat can block. Look for a function that takes one and ignores it, for\ncontext.Background() created deep inside a request path, and for a context\nkept in a struct field. Cancellation only works when the value carrying it\nreaches the blocking call.\n\nEvery goroutine needs a defined end. Ask what stops it and what happens when\nthe caller returns first. A goroutine started per request with no cancellation\nis a leak. A WaitGroup whose Add runs inside the goroutine is a race. Anything\na closure captures and two goroutines write needs a mutex or a channel.\n\nNil is legal for slices, maps, channels, function values, pointers, and\ninterfaces, and it behaves differently for each. Reading a nil map works and\nwriting one panics. A nil pointer inside a non-nil interface compares unequal\nto nil, which is how a returned error becomes non-nil by accident.\n\nInterfaces belong to the consumer. A new interface declared beside its only\nimplementation usually belongs in the package that calls it. Satisfaction is\nchecked at compile time, so a method added only to satisfy an interface is\neither used or dead.\n\nTests are table-driven by convention: a slice of named cases with a subtest per\ncase under t.Run. Look for state shared between cases, for t.Parallel over a\ncaptured loop variable, and for assertions on error strings where errors.Is\nsays what was meant.\n\nLoad-bearing idioms: defer for cleanup that must run on every path, a zero\nvalue that is usable without construction, and early returns over nesting.\n"
     }
   ]
 }

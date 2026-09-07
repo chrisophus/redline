@@ -109,8 +109,20 @@ type Result struct {
 	// Prompt is the assembled user-side prompt, kept for --dry-run and for
 	// the eval, which replays a frozen prompt rather than re-deriving one.
 	Prompt string `json:"-"`
-	// InputEstimate is the pre-call token estimate.
+	// InputEstimate is the pre-call token estimate for the whole request.
 	InputEstimate int `json:"inputEstimate"`
+	// FixedEstimate is what the parts a review cannot do without cost: the
+	// harness prompt, the change, the priors, and the diff.
+	FixedEstimate int `json:"fixedEstimate"`
+	// ContextRoom is what was left for the context block after those.
+	ContextRoom int `json:"contextRoom"`
+	// OverCeiling is set when the fixed parts alone exceed the ceiling, so
+	// no context fit and the request is larger than one review is budgeted
+	// for. The change is too big to review in one turn; split it, or raise
+	// the ceiling knowing what it costs.
+	OverCeiling bool `json:"overCeiling,omitempty"`
+	// Ceiling is what it was fitted to.
+	Ceiling int `json:"ceiling"`
 	// StopReason is what ended the turn. Checked rather than assumed: a
 	// refusal returns HTTP 200 and an empty-looking result.
 	StopReason string `json:"stopReason,omitempty"`
@@ -128,9 +140,25 @@ func (r *Result) Summary() string {
 
 // Assemble builds the prompt and prices it without calling anything. It is
 // the whole of --dry-run, and it is what the eval freezes.
+//
+// The ceiling bounds the whole request, not just the context block. That is
+// the only reading under which cost per review is a constant you can quote:
+// a ceiling that governed the context alone would let a large diff carry the
+// total anywhere, which is exactly what happened the first time this was
+// wired to a real provider.
+//
+// So the parts a review cannot do without are priced first, and the context
+// competes for what is left. A change whose own diff exceeds the ceiling is
+// reported as such rather than silently trimmed, because a review of a diff
+// with the middle cut out is worse than an honest refusal.
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
-	budget := envelope.FitAll(in.Envelopes, opts.Ceiling)
+	fixed := envelope.EstimateTokens(systemPrompt) + envelope.EstimateTokens(in.fixed())
+	room := opts.Ceiling - fixed
+	if room < 0 {
+		room = 0
+	}
+	budget := envelope.FitAll(in.Envelopes, room)
 	prompt := in.build(budget)
 	est := envelope.EstimateTokens(systemPrompt) + envelope.EstimateTokens(prompt)
 	cost, known := EstimateCost(opts.Model, est, opts.MaxTokens)
@@ -139,6 +167,10 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		Budget:        budget,
 		Prompt:        prompt,
 		InputEstimate: est,
+		FixedEstimate: fixed,
+		ContextRoom:   room,
+		OverCeiling:   fixed > opts.Ceiling,
+		Ceiling:       opts.Ceiling,
 		CostUSD:       cost,
 		CostKnown:     known,
 	}, nil

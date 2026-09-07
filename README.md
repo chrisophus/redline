@@ -13,11 +13,12 @@ beside the facts no gate computes at all: the migrations, the `openapi.yaml`
 diff, and a plain account of what was examined and what was not. It hides
 what reviewers skip: generated code, test bodies, findings CI already gates.
 
-Redline itself runs no model. Judging the facts is the reviewer's job, and
-the reviewer is whoever is reading: a person in the browser, or an agent
-reading `findings.json`. They see the same facts and write their decisions
-onto the same report, and every finding and every ruling says which of the
-two produced it. See `redline-design.md` for the design and the plan.
+`redline run` runs no model. Judging the facts is the reviewer's job, and
+the reviewer is whoever is reading: a person in the browser, an agent
+reading `findings.json`, or `redline review`, the one command that calls a
+model. All three see the same facts and write their decisions onto the same
+report, and every finding and every ruling says which of them produced it.
+See `redline-design.md` for the design and the plan.
 
 Reviewing is read-only; posting is not, and never happens on its own.
 `redline post` is the one command that writes to GitHub: it submits the
@@ -55,6 +56,10 @@ uncommitted work, and on an open pull request. `--pr` fetches via `gh`
 | Migration execution against a real Postgres | not started |
 | sqlc staleness, spec-vs-handler agreement, vacuum linting | not started |
 | Deterministic UI capture | not started |
+| Context envelope and provider registry | shipped |
+| `redline review`: one model call over the run's own output | shipped |
+| Migration adds a NOT NULL column with no default | shipped |
+| Regeneration verification (run the generator, diff) | not started |
 
 ## Install
 
@@ -89,6 +94,8 @@ A project skill overrides the personal one. Teammates still need the binary.
 ```
 go build ./cmd/redline
 ./redline run                     # observe; markdown report on stdout
+./redline review                  # review the last run with a model
+./redline review --dry-run        # print the prompt and its price; call nothing
 ./redline run --prepare           # run harness produce steps from .redline.yml first
 ./redline run --format json       # findings schema on stdout
 ./redline run --pr 123            # observe an open pull request
@@ -153,6 +160,84 @@ Three panes, scoped to the change, none of which re-reports what CI gates:
   cannot parse still produce a finding with the config diff as evidence.
   The lint delta's summary also notes when part of the delta may be
   configuration rather than code.
+
+## Review
+
+`run` measures. `review` judges, in one model call over what `run` already
+wrote, and it is the only command that spends money.
+
+```
+redline run
+redline review
+```
+
+It reads `.redline/session.json` and observes nothing itself, which is what
+makes it reproducible: the same session reviewed twice sees the same
+material, and a frozen session is a fixture the eval replays. The result is
+written to `.redline/review.json`, the same file a human or another agent
+writes by hand, and the report is re-rendered from the session with no
+second observation. Verdicts already in that file are kept.
+
+One turn, no tools. Context is cheap and turns are expensive: ten tool-use
+turns over a growing context cost several dollars, because every turn
+re-sends the whole conversation. So the context is generous and the loop is
+one call.
+
+The cost target is an average across reviews, not a cap on each one. Most
+changes are small and cost cents; a few are large and cost more. Holding
+every review to the average would trim context from exactly the large changes
+that most need it, so `--ceiling` is a tail bound rather than a budget, and
+the average is measured instead of asserted. Every review appends a line to
+`.redline/reviews.jsonl`, and `redline review --stats` prints the
+distribution:
+
+```
+12 review(s): mean $0.1840, median $0.0910, p90 $0.4400,
+range $0.0120 to $0.5100, mean wall 14.2s
+```
+
+The bar is GitHub Copilot's code review, in cost and in effectiveness. Cost:
+Copilot's code-review model carried a published multiplier of 13 premium
+requests, roughly 52 cents at the legacy overage rate; it has since moved to
+AI Credits billed on token consumption at list rates, so there is no pricing
+structure left to arbitrage and matching its cost means matching its token
+spend. Effectiveness, from GitHub's figures over 60M reviews: 71 percent of
+reviews produce actionable feedback averaging 5.1 comments, and 29 percent
+return clean. The clean rate is the harder target. `go test ./internal/eval`
+holds the fixture set to both halves, and the paid sweep prints them beside
+Copilot's.
+
+Findings from `review` are advisory and marked `source: llm`. They never
+reach the merge gate, whatever severity they carry. A gate that blocks on
+something the author cannot reproduce gets bypassed inside a month.
+
+Flags: `--model` (default `claude-sonnet-5`), `--effort`, `--ceiling`
+(default 250000 tokens, bounding the whole request), `--max-tokens`,
+`--max-cost` (a tripwire checked against the estimated cost before anything
+is sent), `--stats`, `--dry-run`.
+
+Credentials come from `ANTHROPIC_API_KEY` or an `ant auth login` profile.
+Without one, every other command still works.
+
+### Context providers
+
+A review is better when it can see past the diff: the whole enclosing
+function, the callers of a changed signature, the type behind it, and the
+history of the changed lines. Resolving that needs a language toolchain, so
+it happens in a separate program.
+
+Redline links none. A provider is found the way a linter is, by the config
+file that says the repository opted in, and it is run as a subprocess that
+prints a context envelope as JSON. Redline ranks and truncates that envelope
+by role and priority against a fixed token ceiling, without reading the code
+inside, so one budgeting implementation serves every language. A repository
+with `.gorefactor.yaml` gets the Go provider with no configuration; anything
+else is a `context:` entry in `.redline.yml`. The format is in
+`docs/context-envelope.md`.
+
+A provider that is missing or fails degrades to a gap: the review runs
+without it, and the report says which context was absent, because a check
+that did not run and one that came back clean look identical otherwise.
 
 ## Posting
 
@@ -253,6 +338,9 @@ cmd/redline           CLI
 internal/change       the change under review: files, diffs, classification;
                       generated-file detection
 internal/cover        diff coverage from an existing profile
+internal/boundary     the check that keeps a language toolchain out of here
+internal/envelope     the context contract, and budgeting it to a ceiling
+internal/eval         scoring a review against annotated fixtures, offline
 internal/findings     wire format: doctor's schema, reimplemented and extended
 internal/gitx         git layer (observe; fetch/worktrees for PR/branch)
 internal/pane         the observe/diff pane interface
@@ -260,6 +348,8 @@ internal/pane/lint         lint delta, suppression triage, config drift
 internal/pane/migrations   migration hygiene
 internal/pane/openapi      contract breaking-change diff
 internal/post         the PR review payload and merge-gate profile
+internal/provider     finding and running language context providers
+internal/review       the one model call: prompt, schema, cost
 internal/report       markdown and self-contained HTML
 internal/run          dispatcher
 internal/target       working tree, branch, or PR

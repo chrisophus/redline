@@ -1,0 +1,163 @@
+package review
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"time"
+)
+
+// The cost target is an average, not a cap on every review.
+//
+// This matters for what the ceiling is for. If every review had to come in
+// under the target, the ceiling would be a governor and it would trim context
+// from exactly the large changes that most need it. Because the target is an
+// average, a large change is allowed to cost more than a small one, and the
+// ceiling's job is only to stop the pathological tail.
+//
+// An average is a claim about a distribution, and a distribution has to be
+// measured. So every review appends one line here, and the numbers are read
+// back rather than asserted.
+
+// ledgerFile is where per-review cost lands, beside the report it produced.
+const ledgerFile = "reviews.jsonl"
+
+// Entry is one review's cost record.
+type Entry struct {
+	At       time.Time `json:"at"`
+	Model    string    `json:"model"`
+	Effort   string    `json:"effort,omitempty"`
+	Usage    Usage     `json:"usage"`
+	CostUSD  float64   `json:"costUSD"`
+	Known    bool      `json:"costKnown"`
+	Seconds  float64   `json:"seconds"`
+	Findings int       `json:"findings"`
+	// Ceiling and InputEstimate record what the request was allowed and what
+	// it used, so a run that was trimmed can be told from one that fit.
+	Ceiling       int  `json:"ceiling"`
+	InputEstimate int  `json:"inputEstimate"`
+	OverCeiling   bool `json:"overCeiling,omitempty"`
+}
+
+// Record appends one review to the ledger in dir. Failing to write it is not
+// fatal: a review that produced findings has done its job, and losing a cost
+// line is not worth failing the command over. The error is returned so the
+// caller can say so.
+func Record(dir string, r *Result, effort string) error {
+	if r == nil {
+		return nil
+	}
+	e := Entry{
+		At: time.Now().UTC(), Model: r.Model, Effort: effort,
+		Usage: r.Usage, CostUSD: r.CostUSD, Known: r.CostKnown,
+		Seconds: r.Duration.Seconds(), Findings: len(r.Review.Comments),
+		Ceiling: r.Ceiling, InputEstimate: r.InputEstimate, OverCeiling: r.OverCeiling,
+	}
+	buf, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(dir, ledgerFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	_, err = f.Write(append(buf, '\n'))
+	return err
+}
+
+// ReadLedger loads every recorded review from dir. A missing file is not an
+// error: no reviews have run yet.
+func ReadLedger(dir string) ([]Entry, error) {
+	buf, err := os.ReadFile(filepath.Join(dir, ledgerFile))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []Entry
+	dec := json.NewDecoder(bytes.NewReader(buf))
+	for dec.More() {
+		var e Entry
+		if err := dec.Decode(&e); err != nil {
+			return out, fmt.Errorf("%s: %w", ledgerFile, err)
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}
+
+// Stats is the distribution the target is a claim about.
+type Stats struct {
+	Count  int
+	Mean   float64
+	Median float64
+	P90    float64
+	Max    float64
+	Min    float64
+	// Unknown counts reviews whose model had no rate. They are excluded from
+	// every number above, and named, because folding them in as zero would
+	// drag the average down with reviews nobody priced.
+	Unknown int
+	// MeanSeconds is wall time, the other number a pre-push tool is judged on.
+	MeanSeconds float64
+}
+
+// Summarize computes the distribution.
+func Summarize(entries []Entry) Stats {
+	var s Stats
+	var costs []float64
+	var secs float64
+	for _, e := range entries {
+		if !e.Known {
+			s.Unknown++
+			continue
+		}
+		costs = append(costs, e.CostUSD)
+		secs += e.Seconds
+	}
+	s.Count = len(costs)
+	if s.Count == 0 {
+		return s
+	}
+	sort.Float64s(costs)
+	var sum float64
+	for _, c := range costs {
+		sum += c
+	}
+	s.Mean = sum / float64(s.Count)
+	s.Median = costs[s.Count/2]
+	s.P90 = costs[(s.Count*9)/10]
+	if idx := (s.Count * 9) / 10; idx >= s.Count {
+		s.P90 = costs[s.Count-1]
+	}
+	s.Min = costs[0]
+	s.Max = costs[s.Count-1]
+	s.MeanSeconds = secs / float64(s.Count)
+	return s
+}
+
+// String renders the distribution for a terminal. The average leads because
+// that is the number the target is about; the tail is beside it because an
+// average alone hides a review that cost ten times the rest.
+func (s Stats) String() string {
+	if s.Count == 0 {
+		if s.Unknown > 0 {
+			return fmt.Sprintf("%d review(s) recorded, none with a known rate", s.Unknown)
+		}
+		return "no reviews recorded yet"
+	}
+	out := fmt.Sprintf("%d review(s): mean $%.4f, median $%.4f, p90 $%.4f, range $%.4f to $%.4f, mean wall %.1fs",
+		s.Count, s.Mean, s.Median, s.P90, s.Min, s.Max, s.MeanSeconds)
+	if s.Unknown > 0 {
+		out += fmt.Sprintf(" (%d more had no rate and are excluded)", s.Unknown)
+	}
+	return out
+}

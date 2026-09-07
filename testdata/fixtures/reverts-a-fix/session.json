@@ -1,8 +1,8 @@
 {
   "report": {
     "schemaVersion": 1,
-    "baseRef": "9c659a0e81278745663821e7af95898d6b31044c",
-    "baseSHA": "9c659a0e81278745663821e7af95898d6b31044c",
+    "baseRef": "6580127d12d93d9eb1840eb11fef53cde31599b5",
+    "baseSHA": "6580127d12d93d9eb1840eb11fef53cde31599b5",
     "scope": [
       "internal/queue/queue.go"
     ],
@@ -39,8 +39,7 @@
       },
       {
         "name": "redline/lint",
-        "state": "not-applicable",
-        "detail": "the repository has no files this pane reads",
+        "state": "ran",
         "gating": false
       },
       {
@@ -50,8 +49,8 @@
       },
       {
         "name": "redline/lint-config",
-        "state": "not-applicable",
-        "detail": "the repository has no files this pane reads",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
         "gating": false
       },
       {
@@ -70,24 +69,35 @@
     },
     "confirmations": [
       {
+        "substrate": "redline/lint",
+        "rule": "lint-clean-delta",
+        "message": "no new linter finding against the base revision (gorefactor)"
+      },
+      {
         "substrate": "redline/suppressions",
         "rule": "no-suppressions-added",
         "message": "this change adds no lint-silencing directive"
+      }
+    ],
+    "tools": [
+      {
+        "name": "gorefactor",
+        "status": "ran"
       }
     ]
   },
   "change": {
     "target": {
       "kind": "commit",
-      "dir": "/root/.redline/worktrees/80a13a0d07c98ac6/ad06c64a744fbb96852027d01be7e6339e77ef7a",
-      "head": "ad06c64a744fbb96852027d01be7e6339e77ef7a",
-      "base": "9c659a0e81278745663821e7af95898d6b31044c",
+      "dir": "/root/.redline/worktrees/97ea9d2a7e80457e/32aa7cdc4f0f92bcd0f64dad67d7f4e8518ef659",
+      "head": "32aa7cdc4f0f92bcd0f64dad67d7f4e8518ef659",
+      "base": "6580127d12d93d9eb1840eb11fef53cde31599b5",
       "label": "HEAD"
     },
-    "baseSHA": "9c659a0e81278745663821e7af95898d6b31044c",
+    "baseSHA": "6580127d12d93d9eb1840eb11fef53cde31599b5",
     "commits": [
       {
-        "sha": "ad06c64a744fbb96852027d01be7e6339e77ef7a",
+        "sha": "32aa7cdc4f0f92bcd0f64dad67d7f4e8518ef659",
         "author": "fixture",
         "subject": "simplify Drain"
       }
@@ -109,6 +119,11 @@
   },
   "renders": [
     {
+      "Title": "Lint delta",
+      "Summary": "0 finding(s) introduced, 0 resolved (gorefactor)",
+      "Lines": []
+    },
+    {
       "Title": "Suppressions",
       "Summary": "0 lint-silencing directive(s) added by this change",
       "Lines": null
@@ -119,6 +134,73 @@
       "Lines": [
         "~ internal/queue (no test changed)"
       ]
+    }
+  ],
+  "envelopes": [
+    {
+      "schemaVersion": 1,
+      "provider": {
+        "name": "gorefactor",
+        "version": "v0.0.0-20260906204439-a2ac4a145c9c+dirty",
+        "language": "go"
+      },
+      "baseSHA": "6580127d12d93d9eb1840eb11fef53cde31599b5",
+      "files": [
+        {
+          "path": "internal/queue/queue.go",
+          "class": "source",
+          "symbols": [
+            "Drain"
+          ]
+        }
+      ],
+      "expansions": [
+        {
+          "role": "enclosing",
+          "priority": 81,
+          "symbol": "Drain",
+          "scope": "internal/queue.Drain",
+          "file": "internal/queue/queue.go",
+          "startLine": 3,
+          "endLine": 10,
+          "content": "// Drain empties the queue.\nfunc Drain(items []string) []string {\n\tvar out []string\n\tfor _, it := range items {\n\t\tout = append(out, it)\n\t}\n\treturn out\n}\n",
+          "details": {
+            "changedLines": "1",
+            "exported": "true",
+            "kind": "func",
+            "package": "example.com/revert/internal/queue"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 81,
+          "symbol": "Drain",
+          "scope": "internal/queue.Drain",
+          "file": "internal/queue/queue.go",
+          "startLine": 6,
+          "endLine": 6,
+          "content": "commit 7a2f2853ace8e97adf1cee20a7ed5801551ba8f8\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T21:25:51+00:00\n\n    add the queue\n\ndiff --git a/internal/queue/queue.go b/internal/queue/queue.go\n--- /dev/null\n+++ b/internal/queue/queue.go\n@@ -0,0 +6,1 @@\n+\tfor _, it := range items {\n",
+          "details": {
+            "kind": "line-history",
+            "lines": "6-6",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 1,
+          "file": "internal/queue/queue.go",
+          "startLine": 7,
+          "endLine": 11,
+          "content": "commit 6580127d12d93d9eb1840eb11fef53cde31599b5\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-07T21:25:51+00:00\n\n    skip empty entries: nil from the retry path panicked in production\n\ndiff --git a/internal/queue/queue.go b/internal/queue/queue.go\n--- a/internal/queue/queue.go\n+++ b/internal/queue/queue.go\n@@ -7,0 +7,5 @@\n+\t\t// A nil entry reaches this from the retry path and panicked in\n+\t\t// production on 2026-03-11. Do not remove this guard.\n+\t\tif it == \"\" {\n+\t\t\tcontinue\n+\t\t}\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "7-11 at the base revision",
+            "revisions": "3"
+          }
+        }
+      ],
+      "promptFragment": "Reviewing Go.\n\nErrors are values and the wrapping chain is the contract. A function that adds\ncontext to an error wraps it with %w when a caller may need errors.Is or\nerrors.As to match it, and formats with %v when the chain should stop there.\nAn error is handled once: code that logs it and returns it has handled it\ntwice, and the caller reports it again. A dropped error is a finding unless the\ncode says why.\n\ncontext.Context is the first parameter, named ctx, and travels down every call\nthat can block. Look for a function that takes one and ignores it, for\ncontext.Background() created deep inside a request path, and for a context\nkept in a struct field. Cancellation only works when the value carrying it\nreaches the blocking call.\n\nEvery goroutine needs a defined end. Ask what stops it and what happens when\nthe caller returns first. A goroutine started per request with no cancellation\nis a leak. A WaitGroup whose Add runs inside the goroutine is a race. Anything\na closure captures and two goroutines write needs a mutex or a channel.\n\nNil is legal for slices, maps, channels, function values, pointers, and\ninterfaces, and it behaves differently for each. Reading a nil map works and\nwriting one panics. A nil pointer inside a non-nil interface compares unequal\nto nil, which is how a returned error becomes non-nil by accident.\n\nInterfaces belong to the consumer. A new interface declared beside its only\nimplementation usually belongs in the package that calls it. Satisfaction is\nchecked at compile time, so a method added only to satisfy an interface is\neither used or dead.\n\nTests are table-driven by convention: a slice of named cases with a subtest per\ncase under t.Run. Look for state shared between cases, for t.Parallel over a\ncaptured loop variable, and for assertions on error strings where errors.Is\nsays what was meant.\n\nLoad-bearing idioms: defer for cleanup that must run on every path, a zero\nvalue that is usable without construction, and early returns over nesting.\n"
     }
   ]
 }

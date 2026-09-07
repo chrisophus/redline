@@ -120,3 +120,28 @@ tools:
 #       produce: {command: make, args: [stub-ui]}
 #       when: missing
 #
+
+# context — the language providers that resolve a change beyond the diff, for
+# `redline review`. Redline links no language toolchain: a provider is a
+# separate program, run as a subprocess, that prints a context envelope as
+# JSON. See docs/context-envelope.md for the format.
+#
+# A repository with .gorefactor.yaml gets the Go provider with no entry here.
+# Declare one to override that invocation, or to add another language.
+#
+# context:
+#   - name: gorefactor
+#     command: gorefactor
+#     args: ["context", "--changed", "{{base}}", "--json"]
+#     scope: ["**/*.go"]
+#   - name: tsctx
+#     command: tsctx
+#     args: ["--base", "{{base}}", "--json"]
+#     scope: ["**/*.ts", "**/*.tsx"]
+#
+#   name         identifier; shows up on the report and in error messages
+#   command/args the executable and its arguments; "{{base}}" becomes the
+#                merge-base SHA
+#   scope        globs this provider speaks for; a changed file outside every
+#                provider's scope is reported as uncovered by the context layer
+#   okExitCodes  exit codes that mean the provider ran (default [0])
