@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ccason/redline/internal/mutation"
+	"github.com/chrisophus/redline/internal/mutation"
 )
 
 const sample = `{

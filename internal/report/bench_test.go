@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ccason/redline/internal/change"
-	"github.com/ccason/redline/internal/cover"
-	"github.com/ccason/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/cover"
+	"github.com/chrisophus/redline/internal/findings"
 )
 
 // realisticFiles builds changed files with real unified diffs across the

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ccason/redline/internal/change"
-	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/report"
-	"github.com/ccason/redline/internal/run"
+	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/report"
+	"github.com/chrisophus/redline/internal/run"
 )
 
 // repo is a throwaway git repository built one commit at a time.
@@ -340,8 +340,8 @@ func TestDiffCoverageReadsAProfileFromTheTree(t *testing.T) {
 	r.write("internal/x/x.go", "package x\n\nfunc A() int {\n\treturn 1\n}\n\nfunc B() int {\n\treturn 2\n}\n")
 	// A() ran, B() did not.
 	r.write("coverage.out", "mode: set\n"+
-		"github.com/ccason/redline/internal/x/x.go:3.14,5.2 1 1\n"+
-		"github.com/ccason/redline/internal/x/x.go:7.14,9.2 1 0\n")
+		"github.com/chrisophus/redline/internal/x/x.go:3.14,5.2 1 1\n"+
+		"github.com/chrisophus/redline/internal/x/x.go:7.14,9.2 1 0\n")
 
 	rep := r.run(run.Options{Base: "main", Upstream: "upstream"}).Report
 	c := rep.Coverage.Diff
@@ -371,7 +371,7 @@ func TestDiffCoverageFallsBackToOriginCheckoutForCommitHead(t *testing.T) {
 	r.commit("two")
 	// The profile lives in the developer's checkout, never in the worktree.
 	r.write("coverage.out", "mode: set\n"+
-		"github.com/ccason/redline/internal/x/x.go:7.14,9.2 1 1\n")
+		"github.com/chrisophus/redline/internal/x/x.go:7.14,9.2 1 1\n")
 
 	res := r.run(run.Options{Commit: "HEAD"})
 	if res.Target.Kind != "commit" {
@@ -398,7 +398,7 @@ func TestDiffCoverageNoFallbackForARevisionThatIsNotHead(t *testing.T) {
 	r.write("more.go", "package x\n")
 	r.commit("three")
 	r.write("coverage.out", "mode: set\n"+
-		"github.com/ccason/redline/internal/x/x.go:7.14,9.2 1 1\n")
+		"github.com/chrisophus/redline/internal/x/x.go:7.14,9.2 1 1\n")
 
 	rep := r.run(run.Options{Commit: "HEAD~1"}).Report
 	if rep.Coverage.Diff != nil {
@@ -435,7 +435,7 @@ func TestMissingCoverageProfileBalksByDefault(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error when coverage is missing")
 	}
-	if !strings.Contains(err.Error(), "coverage profile missing or stale") {
+	if !strings.Contains(err.Error(), "no coverage profile for") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

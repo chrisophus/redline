@@ -3,7 +3,7 @@ package findings_test
 import (
 	"testing"
 
-	"github.com/ccason/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/findings"
 )
 
 // FuzzFingerprint asserts Fingerprint's two load-bearing properties: it is

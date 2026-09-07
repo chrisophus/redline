@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/target"
+	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/target"
 )
 
 func sampleReport() *findings.Report {

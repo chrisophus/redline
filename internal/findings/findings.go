@@ -6,8 +6,8 @@ package findings
 import (
 	"sort"
 
-	"github.com/ccason/redline/internal/cover"
-	"github.com/ccason/redline/internal/mutation"
+	"github.com/chrisophus/redline/internal/cover"
+	"github.com/chrisophus/redline/internal/mutation"
 )
 
 // SchemaVersion guards the JSON encoding of Report. Kept in lockstep with

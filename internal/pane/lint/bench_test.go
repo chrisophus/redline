@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ccason/redline/internal/gitx"
-	"github.com/ccason/redline/internal/pane"
+	"github.com/chrisophus/redline/internal/gitx"
+	"github.com/chrisophus/redline/internal/pane"
 )
 
 // genIssues builds n realistic lint issues: paths that vary, messages that

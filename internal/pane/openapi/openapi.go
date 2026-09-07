@@ -18,9 +18,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/gitx"
-	"github.com/ccason/redline/internal/pane"
+	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/gitx"
+	"github.com/chrisophus/redline/internal/pane"
 	"gopkg.in/yaml.v3"
 )
 

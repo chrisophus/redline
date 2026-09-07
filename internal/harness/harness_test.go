@@ -67,7 +67,7 @@ func TestPrepareRunsProduce(t *testing.T) {
 			Produce: ProduceConfig{Command: "sh", Args: []string{"write.sh"}},
 		}},
 	}
-	produced, err := Prepare(dir, []string{"a.go"}, cfg)
+	produced, err := Prepare(dir, dir, []string{"a.go"}, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,12 +122,43 @@ func TestPrepareWorktreeMissing(t *testing.T) {
 			Produce: ProduceConfig{Command: "mkdir", Args: []string{"-p", "ui/dist"}},
 		}},
 	}
-	produced, err := PrepareWorktree(dir, nil, cfg)
+	produced, err := PrepareWorktree(dir, dir, nil, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(produced) != 1 {
 		t.Fatalf("produced: %v", produced)
+	}
+}
+
+func TestEnvFromConfigRoot(t *testing.T) {
+	config := t.TempDir()
+	worktree := t.TempDir()
+	if err := os.WriteFile(filepath.Join(config, "env.sh"), []byte("export MARKER=ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(worktree, "write.sh"), []byte("#!/bin/sh\necho \"$MARKER\" > out.txt\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &Config{
+		Env: EnvConfig{From: "env.sh"},
+		Profiles: []Profile{{
+			ID:      "out",
+			Path:    "out.txt",
+			When:    "missing",
+			Produce: ProduceConfig{Command: "sh", Args: []string{"write.sh"}},
+		}},
+	}
+	produced, err := Prepare(worktree, config, []string{"a.go"}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(produced) != 1 {
+		t.Fatalf("produced: %v", produced)
+	}
+	data, err := os.ReadFile(filepath.Join(worktree, "out.txt"))
+	if err != nil || string(data) != "ok\n" {
+		t.Fatalf("out.txt: %q err=%v", data, err)
 	}
 }
 

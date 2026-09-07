@@ -6,10 +6,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ccason/redline/internal/cover"
-	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/gitx"
-	"github.com/ccason/redline/internal/pane"
+	"github.com/chrisophus/redline/internal/cover"
+	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/gitx"
+	"github.com/chrisophus/redline/internal/pane"
 )
 
 // SuppressSubstrate is the suppression pane's name in the findings schema.

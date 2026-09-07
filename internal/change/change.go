@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ccason/redline/internal/gitx"
-	"github.com/ccason/redline/internal/target"
+	"github.com/chrisophus/redline/internal/gitx"
+	"github.com/chrisophus/redline/internal/target"
 )
 
 // maxDiffBytes caps a single file's diff. A file with a 40,000-line diff would

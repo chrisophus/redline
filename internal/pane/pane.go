@@ -2,7 +2,7 @@
 // the system at two revisions, diff the observations, emit findings.
 package pane
 
-import "github.com/ccason/redline/internal/findings"
+import "github.com/chrisophus/redline/internal/findings"
 
 // Revision names a side of the comparison. The working tree is a revision.
 type Revision struct {

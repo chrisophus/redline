@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ccason/redline/internal/change"
-	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/pane"
+	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/pane"
 )
 
 // Markdown renders the report.

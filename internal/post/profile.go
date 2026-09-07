@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ccason/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/findings"
 	"gopkg.in/yaml.v3"
 )
 

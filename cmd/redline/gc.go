@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ccason/redline/internal/gitx"
+	"github.com/chrisophus/redline/internal/gitx"
 )
 
 // cmdGC removes the detached worktrees Redline caches under

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ccason/redline/internal/cover"
-	"github.com/ccason/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/cover"
+	"github.com/chrisophus/redline/internal/findings"
 )
 
 func TestFinalizeDefaultsSeverityFromCategory(t *testing.T) {

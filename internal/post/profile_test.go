@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ccason/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/findings"
 )
 
 func TestLoadProfileDefaultsBlockErrorAndWarning(t *testing.T) {

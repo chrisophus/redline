@@ -3,7 +3,7 @@ package change_test
 import (
 	"testing"
 
-	"github.com/ccason/redline/internal/change"
+	"github.com/chrisophus/redline/internal/change"
 )
 
 func TestAreasClassifyFiles(t *testing.T) {

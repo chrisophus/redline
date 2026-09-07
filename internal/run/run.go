@@ -8,17 +8,17 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ccason/redline/internal/change"
-	"github.com/ccason/redline/internal/cover"
-	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/gitx"
-	"github.com/ccason/redline/internal/harness"
-	"github.com/ccason/redline/internal/mutation"
-	"github.com/ccason/redline/internal/pane"
-	"github.com/ccason/redline/internal/pane/lint"
-	"github.com/ccason/redline/internal/pane/migrations"
-	"github.com/ccason/redline/internal/pane/openapi"
-	"github.com/ccason/redline/internal/target"
+	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/cover"
+	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/gitx"
+	"github.com/chrisophus/redline/internal/harness"
+	"github.com/chrisophus/redline/internal/mutation"
+	"github.com/chrisophus/redline/internal/pane"
+	"github.com/chrisophus/redline/internal/pane/lint"
+	"github.com/chrisophus/redline/internal/pane/migrations"
+	"github.com/chrisophus/redline/internal/pane/openapi"
+	"github.com/chrisophus/redline/internal/target"
 )
 
 // Options configures one run.
@@ -105,10 +105,21 @@ func Run(opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	configRoot := harnessConfigRoot(opts.Dir, tgt)
 	harness.Active = cfg
-	defer func() { harness.Active = nil }()
+	harness.ActiveRoot = configRoot
+	defer func() {
+		harness.Active = nil
+		harness.ActiveRoot = ""
+		harness.ResetWorktreePrepared()
+	}()
+	if !opts.AllowMissingCoverage {
+		if err := requireCoverageProfile(opts, tgt, changed); err != nil {
+			return nil, err
+		}
+	}
 	if cfg != nil {
-		if _, err := harness.PrepareWorktree(tgt.Dir, changed, cfg); err != nil {
+		if _, err := harness.PrepareWorktree(tgt.Dir, configRoot, changed, cfg); err != nil {
 			return nil, err
 		}
 	}
@@ -250,34 +261,39 @@ func Run(opts Options) (*Result, error) {
 	attachDiffCoverage(&res.Report, res.Change, tgt.Dir, covDir)
 	res.LineCoverage = lineCoverageOverlay(tgt.Dir, covDir, res.Change)
 	attachMutation(&res.Report, res.Change, opts.Dir)
-	if err := coverageGate(&res.Report, opts.AllowMissingCoverage); err != nil {
-		return res, err
-	}
 	return res, nil
 }
 
 // ErrMissingCoverage is returned when changed Go files have no usable profile.
-var ErrMissingCoverage = errors.New("coverage profile missing or stale")
+var ErrMissingCoverage = errors.New("missing coverage profile")
 
-func coverageGate(rep *findings.Report, allowMissing bool) error {
-	if allowMissing || !coverageProfileRequired(rep) {
+func requireCoverageProfile(opts Options, tgt *target.Target, changed []string) error {
+	goFiles := 0
+	for _, path := range changed {
+		if filepath.Ext(path) == ".go" {
+			goFiles++
+		}
+	}
+	if goFiles == 0 {
 		return nil
 	}
-	msg := fmt.Sprintf("coverage profile missing or stale for %d changed Go file(s)", rep.Coverage.CoverableFiles)
-	if harness.Active != nil && len(harness.Active.Profiles) > 0 {
-		msg += "; run with --prepare"
+	covDir := originCoverageDir(opts.Dir, tgt)
+	profile, stale := cover.UsableProfile(tgt.Dir, covDir, changed)
+	if profile == "" {
+		msg := fmt.Sprintf("no coverage profile for %d changed Go file(s)", goFiles)
+		if harness.Active != nil && len(harness.Active.Profiles) > 0 {
+			msg += "; run with --prepare"
+		}
+		return fmt.Errorf("%s: %w", msg, ErrMissingCoverage)
 	}
-	return fmt.Errorf("%s: %w", msg, ErrMissingCoverage)
-}
-
-func coverageProfileRequired(rep *findings.Report) bool {
-	if rep.Coverage.CoverableFiles == 0 {
-		return false
+	if stale {
+		msg := fmt.Sprintf("coverage profile %s is stale for this change (%d changed Go file(s))", profile, goFiles)
+		if harness.Active != nil && len(harness.Active.Profiles) > 0 {
+			msg += "; run with --prepare"
+		}
+		return fmt.Errorf("%s: %w", msg, ErrMissingCoverage)
 	}
-	if rep.Coverage.Diff == nil {
-		return true
-	}
-	return rep.Coverage.Diff.Stale
+	return nil
 }
 
 // attachDiffCoverage computes the number that stands in for reading the tests.

@@ -20,10 +20,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ccason/redline/internal/pane"
-	"github.com/ccason/redline/internal/report"
-	"github.com/ccason/redline/internal/run"
-	"github.com/ccason/redline/internal/target"
+	"github.com/chrisophus/redline/internal/pane"
+	"github.com/chrisophus/redline/internal/report"
+	"github.com/chrisophus/redline/internal/run"
+	"github.com/chrisophus/redline/internal/target"
 )
 
 const usage = `redline — observe a change and report the evidence

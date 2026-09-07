@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ccason/redline/internal/change"
+	"github.com/chrisophus/redline/internal/change"
 )
 
 // realisticChangedPaths builds a slice of plausible repo paths mixing

@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ccason/redline/internal/change"
-	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/pane"
+	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/pane"
 )
 
 // sessionFile is the snapshot post reads, so posting describes the run that

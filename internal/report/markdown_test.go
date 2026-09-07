@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ccason/redline/internal/change"
-	"github.com/ccason/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/findings"
 )
 
 func TestMarkdownRendersCompositionTable(t *testing.T) {

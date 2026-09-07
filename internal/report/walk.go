@@ -1,8 +1,8 @@
 package report
 
 import (
-	"github.com/ccason/redline/internal/change"
-	"github.com/ccason/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/findings"
 )
 
 // fileWalkRow is one line of the change walkthrough.

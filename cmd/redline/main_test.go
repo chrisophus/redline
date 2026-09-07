@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ccason/redline/internal/change"
-	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/post"
-	"github.com/ccason/redline/internal/report"
-	"github.com/ccason/redline/internal/run"
-	"github.com/ccason/redline/internal/target"
+	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/post"
+	"github.com/chrisophus/redline/internal/report"
+	"github.com/chrisophus/redline/internal/run"
+	"github.com/chrisophus/redline/internal/target"
 )
 
 // hold binds every port announce would try, so serving cannot succeed. Each

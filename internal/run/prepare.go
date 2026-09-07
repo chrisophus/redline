@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ccason/redline/internal/gitx"
-	"github.com/ccason/redline/internal/harness"
-	"github.com/ccason/redline/internal/target"
+	"github.com/chrisophus/redline/internal/gitx"
+	"github.com/chrisophus/redline/internal/harness"
+	"github.com/chrisophus/redline/internal/target"
 )
 
 // Prepare runs harness produce steps declared in .redline.yml before observe.
@@ -50,7 +50,7 @@ func Prepare(opts Options) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return harness.Prepare(harnessProduceRoot(origin.Root, tgt.Dir), changed, cfg)
+	return harness.Prepare(harnessProduceRoot(origin.Root, tgt.Dir), harnessConfigRoot(opts.Dir, tgt), changed, cfg)
 }
 
 // harnessProduceRoot is where harness profiles write artifacts. A detached PR

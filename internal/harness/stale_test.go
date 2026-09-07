@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ccason/redline/internal/cover"
+	"github.com/chrisophus/redline/internal/cover"
 )
 
 func TestArtifactStaleIntegration(t *testing.T) {

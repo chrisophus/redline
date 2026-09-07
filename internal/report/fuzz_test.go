@@ -3,8 +3,8 @@ package report
 import (
 	"testing"
 
-	"github.com/ccason/redline/internal/change"
-	"github.com/ccason/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/findings"
 )
 
 // FuzzFileWalkPathsStayOpaque fuzzes fileWalk with adversarial paths:

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ccason/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/findings"
 )
 
 // severityCycle is the mix of severities a real review sees: mostly warnings

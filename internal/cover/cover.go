@@ -69,6 +69,29 @@ var profileNames = []string{
 	"coverage/coverage.out", ".coverage/coverage.out",
 }
 
+// UsableProfile returns a non-stale coverage profile for this change, if any.
+// observeDir is the tree under review; originDir is the caller checkout when
+// it describes the same revision (see run.originCoverageDir).
+func UsableProfile(observeDir, originDir string, changedPaths []string) (profile string, stale bool) {
+	if name := Locate(observeDir); name != "" {
+		if !ArtifactStale(observeDir, name, changedPaths) {
+			return name, false
+		}
+		if originDir != "" && originDir != observeDir {
+			if alt := Locate(originDir); alt != "" && !ArtifactStale(originDir, alt, changedPaths) {
+				return alt, false
+			}
+		}
+		return name, true
+	}
+	if originDir != "" && originDir != observeDir {
+		if alt := Locate(originDir); alt != "" {
+			return alt, ArtifactStale(originDir, alt, changedPaths)
+		}
+	}
+	return "", false
+}
+
 // Locate finds a coverage profile in the repository, or returns empty. Absence
 // is a normal answer and the caller must report it as absence, never as zero.
 func Locate(root string) string {

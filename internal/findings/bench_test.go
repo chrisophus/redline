@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ccason/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/findings"
 )
 
 // realisticFindings builds findings across every severity/category the

@@ -17,10 +17,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ccason/redline/internal/change"
-	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/mutation"
-	"github.com/ccason/redline/internal/pane"
+	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/mutation"
+	"github.com/chrisophus/redline/internal/pane"
 )
 
 //go:embed assets/report.html.tmpl

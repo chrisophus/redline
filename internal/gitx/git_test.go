@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ccason/redline/internal/gitx"
+	"github.com/chrisophus/redline/internal/gitx"
 )
 
 type repo struct {

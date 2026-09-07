@@ -13,7 +13,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/ccason/redline/internal/gitx"
+	"github.com/chrisophus/redline/internal/gitx"
 )
 
 // Kind is what the user pointed Redline at.

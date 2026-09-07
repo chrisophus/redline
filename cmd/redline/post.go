@@ -10,9 +10,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/ccason/redline/internal/post"
-	"github.com/ccason/redline/internal/run"
-	"github.com/ccason/redline/internal/target"
+	"github.com/chrisophus/redline/internal/post"
+	"github.com/chrisophus/redline/internal/run"
+	"github.com/chrisophus/redline/internal/target"
 )
 
 // cmdPost submits the session's findings as one GitHub pull request review.

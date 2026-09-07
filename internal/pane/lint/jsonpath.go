@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ccason/redline/internal/globmatch"
+	"github.com/chrisophus/redline/internal/globmatch"
 )
 
 // jsonPathGet walks a dotted, optionally array-indexed path

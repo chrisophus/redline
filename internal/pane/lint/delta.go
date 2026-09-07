@@ -7,11 +7,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ccason/redline/internal/cover"
-	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/gitx"
-	"github.com/ccason/redline/internal/harness"
-	"github.com/ccason/redline/internal/pane"
+	"github.com/chrisophus/redline/internal/cover"
+	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/gitx"
+	"github.com/chrisophus/redline/internal/harness"
+	"github.com/chrisophus/redline/internal/pane"
 )
 
 // DeltaSubstrate is the lint-delta pane's name in the findings schema.
@@ -122,7 +122,7 @@ func (p *Delta) Observe(rev pane.Revision) (pane.Observation, error) {
 		}
 	}
 	if cfg := harness.Active; cfg != nil {
-		if _, err := harness.PrepareWorktree(dir, p.scoped, cfg); err != nil {
+		if _, err := harness.PrepareWorktree(dir, harness.ActiveRoot, p.scoped, cfg); err != nil {
 			return nil, err
 		}
 	}

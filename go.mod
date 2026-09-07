@@ -1,4 +1,4 @@
-module github.com/ccason/redline
+module github.com/chrisophus/redline
 
 go 1.26
 

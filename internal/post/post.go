@@ -20,8 +20,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ccason/redline/internal/findings"
-	"github.com/ccason/redline/internal/target"
+	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/target"
 )
 
 // Event is the GitHub review event. Redline posts COMMENT: it reports and does

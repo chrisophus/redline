@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ccason/redline/internal/cover"
-	"github.com/ccason/redline/internal/globmatch"
+	"github.com/chrisophus/redline/internal/cover"
+	"github.com/chrisophus/redline/internal/globmatch"
 	"gopkg.in/yaml.v3"
 )
 
@@ -22,8 +22,8 @@ var configNames = []string{".redline.yml", ".redline.yaml"}
 
 // Config is the harness section of .redline.yml.
 type Config struct {
-	Env       EnvConfig `yaml:"env"`
-	Profiles  []Profile `yaml:"profiles"`
+	Env      EnvConfig `yaml:"env"`
+	Profiles []Profile `yaml:"profiles"`
 	// Worktree steps run in the tree under review (including detached PR
 	// worktrees) before panes that execute tools there, for example make
 	// stub-ui so go:embed dist exists for golangci-lint typecheck.
@@ -32,9 +32,9 @@ type Config struct {
 
 // EnvConfig is optional environment setup before each produce step.
 type EnvConfig struct {
-	// From is a shell script, relative to the repository root, sourced before
-	// each produce command (set -a for export). Use for eval $(make db-dsns)
-	// and similar.
+	// From is a shell script sourced before each produce command (set -a for
+	// export). Relative paths resolve in the checkout that owns .redline.yml,
+	// then in the tree under review.
 	From string `yaml:"from"`
 }
 
@@ -124,35 +124,45 @@ func validateProfiles(profiles *[]Profile, file, section, defaultWhen string, se
 }
 
 // Prepare runs produce for profiles that need fresh artifacts. changed is the
-// paths in the diff under review. Returns the profile ids that were produced.
-func Prepare(root string, changed []string, cfg *Config) ([]string, error) {
+// paths in the diff under review. configRoot is where .redline.yml was read;
+// env.from is resolved there when missing from produceRoot.
+func Prepare(produceRoot, configRoot string, changed []string, cfg *Config) ([]string, error) {
 	if cfg == nil {
 		return nil, nil
 	}
-	return runProfiles(root, changed, cfg.Env.From, cfg.Profiles, "preparing")
+	return runProfiles(produceRoot, configRoot, changed, cfg.Env.From, cfg.Profiles, "preparing")
 }
 
 // PrepareWorktree runs harness.worktree steps in the tree under review before
-// tool panes execute there (detached PR worktrees included).
-func PrepareWorktree(root string, changed []string, cfg *Config) ([]string, error) {
+// tool panes execute there (detached PR worktrees included). Each produce
+// root is prepared at most once per run.
+func PrepareWorktree(produceRoot, configRoot string, changed []string, cfg *Config) ([]string, error) {
 	if cfg == nil {
 		return nil, nil
 	}
-	return runProfiles(root, changed, cfg.Env.From, cfg.Worktree, "worktree")
+	if worktreePrepared[produceRoot] {
+		return nil, nil
+	}
+	produced, err := runProfiles(produceRoot, configRoot, changed, cfg.Env.From, cfg.Worktree, "worktree")
+	if err != nil {
+		return produced, err
+	}
+	worktreePrepared[produceRoot] = true
+	return produced, nil
 }
 
-func runProfiles(root string, changed []string, envFrom string, profiles []Profile, label string) ([]string, error) {
+func runProfiles(produceRoot, configRoot string, changed []string, envFrom string, profiles []Profile, label string) ([]string, error) {
 	if len(profiles) == 0 {
 		return nil, nil
 	}
 	var produced []string
 	for _, p := range profiles {
-		if !needsProduce(root, p, changed) {
+		if !needsProduce(produceRoot, p, changed) {
 			continue
 		}
 		fmt.Fprintf(os.Stderr, "redline: %s %s: %s %s\n", label, p.ID, p.Produce.Command, strings.Join(p.Produce.Args, " "))
-		if err := runProduce(root, envFrom, p.Produce); err != nil {
-			return produced, fmt.Errorf("harness profile %s: %w", p.ID, err)
+		if err := runProduce(produceRoot, configRoot, envFrom, p.Produce); err != nil {
+			return produced, fmt.Errorf("harness %s %s: %w", label, p.ID, err)
 		}
 		produced = append(produced, p.ID)
 	}
@@ -192,7 +202,7 @@ func artifactExists(root, rel string) bool {
 	return err == nil && !st.IsDir() && st.Size() > 0
 }
 
-func runProduce(root, envFrom string, prod ProduceConfig) error {
+func runProduce(produceRoot, configRoot, envFrom string, prod ProduceConfig) error {
 	ctx, cancel := context.WithTimeout(context.Background(), produceTimeout)
 	defer cancel()
 
@@ -200,7 +210,7 @@ func runProduce(root, envFrom string, prod ProduceConfig) error {
 	script.WriteString("set -euo pipefail")
 	if envFrom != "" {
 		script.WriteString("; set -a; source ")
-		script.WriteString(shellQuote(envFrom))
+		script.WriteString(shellQuote(resolveEnvFrom(produceRoot, configRoot, envFrom)))
 		script.WriteString("; set +a")
 	}
 	script.WriteString("; ")
@@ -211,13 +221,38 @@ func runProduce(root, envFrom string, prod ProduceConfig) error {
 	}
 
 	cmd := exec.CommandContext(ctx, "bash", "-lc", script.String())
-	cmd.Dir = root
+	cmd.Dir = produceRoot
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s %s: %w", prod.Command, strings.Join(prod.Args, " "), err)
 	}
 	return nil
+}
+
+// resolveEnvFrom finds env.from when the produce tree is a detached worktree
+// that does not yet carry harness helper scripts from the caller's checkout.
+func resolveEnvFrom(produceRoot, configRoot, envFrom string) string {
+	if envFrom == "" {
+		return ""
+	}
+	if filepath.IsAbs(envFrom) {
+		return envFrom
+	}
+	if configRoot != "" {
+		p := filepath.Join(configRoot, envFrom)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	if produceRoot != "" {
+		p := filepath.Join(produceRoot, envFrom)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+		return filepath.Join(produceRoot, envFrom)
+	}
+	return envFrom
 }
 
 func shellQuote(s string) string {
