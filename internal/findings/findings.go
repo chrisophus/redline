@@ -198,8 +198,7 @@ type Report struct {
 	Unknowns      []Unknown      `json:"unknowns,omitempty"`
 
 	// Agent is the review narrative the agent wrote, read from review.json: an
-	// overview of the change and a per-file summary. Redline composes none of
-	// it. It renders what the agent wrote, marked as the agent's.
+	// overview of the change and a per-file summary, rendered as the agent's.
 	Agent *AgentReview `json:"agent,omitempty"`
 }
 

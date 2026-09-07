@@ -8,10 +8,11 @@ walkthrough, and a plain account of what was examined and what was not. It
 suppresses what reviewers skip: generated code, test bodies, lint CI already
 gates.
 
-Redline composes no judgment and never invokes a model. Claude Code and
-Cursor review code well on their own; what they do not do on their own is
-measure. Redline supplies the facts a review needs and a model cannot
-invent, and whoever is reviewing, human or agent, supplies the reading.
+Redline itself runs no model; it measures. Claude Code and Cursor review
+code well on their own; what they do not do on their own is measure.
+Redline supplies the deterministic facts, folds the reviewer's own
+comments and verdicts — human or agent — into the same report, and every
+finding says which of the two produced it.
 See `redline-design.md` for the design and the plan.
 
 Reviewing is read-only; posting is not, and never happens on its own.

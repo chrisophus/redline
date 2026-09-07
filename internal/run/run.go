@@ -172,7 +172,7 @@ func Run(opts Options) (*Result, error) {
 		// the reason can be honest about whether the findings list is empty.
 		reason := "this change is entirely unexamined; the empty findings list below is not evidence of correctness"
 		if len(res.Report.Findings) > 0 {
-			reason = "this change is entirely unexamined by Redline's panes; the findings below are the agent's reading, not measured evidence"
+			reason = "no pane covers these files; the findings below come from the agent's review"
 		}
 		res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
 			Substrate: "redline",

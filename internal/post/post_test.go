@@ -401,8 +401,7 @@ func TestCommentableLinesIgnoresNoNewlineMarker(t *testing.T) {
 	}
 }
 
-// An agent comment posted to GitHub reads with the same weight as a measured
-// finding unless the label says otherwise.
+// A posted finding's label names its source: pane-measured or agent review.
 func TestFindingLabelNamesTheAgent(t *testing.T) {
 	f := findings.Finding{Severity: findings.SeverityWarning, Source: findings.SourceLLM}
 	if got := findingLabel(f); got != "Warning · agent" {

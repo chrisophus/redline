@@ -58,9 +58,8 @@ func banner(b *strings.Builder, rep *findings.Report) {
 	switch {
 	case rep.Coverage.ExaminedFiles == 0:
 		if len(rep.Findings) > 0 {
-			fmt.Fprintf(b, "> **Redline examined none of this change.** No pane it currently ships "+
-				"covers these files; the findings below are the agent's own comments, not "+
-				"measured evidence. Review it by hand.\n\n")
+			fmt.Fprintf(b, "> **Redline's panes examined none of this change.** No pane it currently "+
+				"ships covers these files. The findings below come from the agent's review.\n\n")
 		} else {
 			fmt.Fprintf(b, "> **Redline examined none of this change.** No pane it currently ships "+
 				"covers these files, so the empty findings list below says nothing about whether "+

@@ -7,8 +7,9 @@ description: Observe a change with Redline — the working tree, the latest comm
 
 Redline measures a change and reports evidence: migration hygiene, API
 contract breaking changes, diff coverage, what was examined and what was
-not. It never invokes a model and it composes no judgment. The review is
-yours; Redline exists so you do not spend your context re-deriving what a
+not. It runs no model itself; it measures, and it carries your review —
+comments and verdicts you write merge into the same report, marked as
+yours. Redline exists so you do not spend your context re-deriving what a
 deterministic check already established.
 
 ## When to use
@@ -42,8 +43,9 @@ stderr.
   and `unknowns[]`. These tell you what nobody has measured, which is where
   your own reading matters most.
 - Review with your own skills and tools: read the diff, follow the callers,
-  weigh the change against the repo's rules. Redline has no opinion on any
-  of that.
+  weigh the change against the repo's rules. That reading is your half of
+  the report — write it to `review.json` (below) and Redline renders it
+  beside its own findings.
 
 **3. Present it.**
 
@@ -107,7 +109,7 @@ When you receive it:
 If you produce a review of the change, an overview, a per-file summary, and line
 comments, write it to `.redline/review.json` and Redline folds it into the
 report on the next run. This is the same file the verdicts below live in. Redline
-renders what you wrote, marked as yours, and composes none of it.
+renders what you wrote, marked as yours.
 
 ```json
 {

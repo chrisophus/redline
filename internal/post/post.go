@@ -373,9 +373,9 @@ func bodyLocation(f findings.Finding) string {
 
 func marker(s string) string { return "<!-- " + s + " -->" }
 
-// findingLabel is the bold lead of a posted finding. An agent comment says so
-// in the label: on GitHub it reads with the same weight as a measured finding,
-// and the reader deserves to know which kind they are looking at.
+// findingLabel is the bold lead of a posted finding, carrying its source: a
+// pane measured it, or the agent's review said it, and the posted comment
+// names which.
 func findingLabel(f findings.Finding) string {
 	if f.Source == findings.SourceLLM {
 		return severityLabel(f.Severity) + " · agent"

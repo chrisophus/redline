@@ -13,7 +13,7 @@ import (
 //
 // Overview and Files are prose about the change. Comments are line remarks that
 // become findings marked source llm. Verdicts are judgments keyed by a finding's
-// fingerprint. Redline composes none of it.
+// fingerprint.
 type Review struct {
 	Overview string             `json:"overview,omitempty"`
 	Files    map[string]string  `json:"files,omitempty"`
