@@ -692,3 +692,75 @@ func TestSuppressionsDetectsEveryDirectiveKind(t *testing.T) {
 		})
 	}
 }
+
+// A v2-format golangci config keeps its exclusions under linters.exclusions,
+// which a v1-only reader parses cleanly as nothing — and then certifies an
+// edit that silences findings as clean. Both schemas must be read.
+func TestConfigSeesGolangciV2Exclusions(t *testing.T) {
+	base := "version: \"2\"\nlinters:\n  enable: [errcheck]\n"
+	head := base + "  exclusions:\n    rules:\n      - linters: [gosec]\n        path: internal/\n    paths:\n      - vendor/\n"
+	out, ok := golangciDisabled(base, head)
+	if !ok {
+		t.Fatal("a v2 config must parse")
+	}
+	if len(out) != 2 || !strings.Contains(out[0], "adds 1 exclusion rule(s)") ||
+		!strings.Contains(out[1], `excludes path "vendor/"`) {
+		t.Fatalf("v2 exclusions must be reported, got %v", out)
+	}
+}
+
+// Deleting the whole explicit enable list hands the choice of linters back to
+// golangci's default set; several of the listed linters keep running. That is
+// one config fact, not a per-linter "stops enabling" for every entry.
+func TestConfigEnableListRemovalIsOneNote(t *testing.T) {
+	base := "linters:\n  enable: [errcheck, govet, staticcheck]\n"
+	head := "linters: {}\n"
+	out, ok := golangciDisabled(base, head)
+	if !ok {
+		t.Fatal("both sides must parse")
+	}
+	if len(out) != 1 || !strings.Contains(out[0], "removes the explicit enable list (3 linter(s))") {
+		t.Fatalf("want one removal note, got %v", out)
+	}
+}
+
+// A committed .redline.yml that fails to parse must dark the lint pane, not
+// remove it: built-in detection still scopes the changed files, and Observe
+// then reports the parse error.
+func TestDeltaBrokenRedlineConfigDarksNotVanishes(t *testing.T) {
+	r := newRepo(t)
+	r.write(".golangci.yml", "version: \"2\"\n")
+	r.write(".redline.yml", "tools: [\n")
+	r.write("a.go", "package a\n")
+	r.commit("base")
+	r.write("a.go", "package a\n\nvar X = 1\n")
+
+	p := &Delta{Repo: r.open()}
+	scope := p.Scope([]string{"a.go"})
+	if len(scope) == 0 {
+		t.Fatal("a broken .redline.yml must not empty the scope: the pane would read as skipped")
+	}
+	if _, err := p.Observe(pane.Worktree); err == nil {
+		t.Fatal("observe must fail so the pane darks with the parse error")
+	}
+}
+
+// With no built-in tool detected either, an unreadable config leaves no way
+// to say which files its tools cover — so the whole change scopes under the
+// pane, which then darks, rather than the pane silently vanishing.
+func TestDeltaBrokenConfigWithNoBuiltinsScopesTheChange(t *testing.T) {
+	r := newRepo(t)
+	r.write(".redline.yml", "tools: [\n")
+	r.write("data.txt", "x\n")
+	r.commit("base")
+	r.write("data.txt", "y\n")
+
+	p := &Delta{Repo: r.open()}
+	scope := p.Scope([]string{"data.txt"})
+	if len(scope) != 1 || scope[0] != "data.txt" {
+		t.Fatalf("with no readable config the whole change is under the dark pane, got %v", scope)
+	}
+	if _, err := p.Observe(pane.Worktree); err == nil {
+		t.Fatal("observe must fail so the pane darks with the parse error")
+	}
+}

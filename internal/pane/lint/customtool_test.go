@@ -3,6 +3,7 @@ package lint
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ccason/redline/internal/findings"
@@ -247,5 +248,84 @@ func TestConfiguredDifferTool(t *testing.T) {
 	if res.Findings[0].File != "openapi.yaml" || res.Findings[0].Line != 5 ||
 		res.Findings[0].Severity != findings.SeverityError {
 		t.Errorf("differ finding misdescribed: %+v", res.Findings[0])
+	}
+}
+
+// A differ tool has no pair to compare for a file this change adds or
+// deletes. Handing the tool an empty base or a missing head path would fail
+// it and dark the whole pane; instead the file is skipped, the skip stated,
+// and the clean confirmation withheld.
+func TestDifferSkipsAddedAndDeletedFiles(t *testing.T) {
+	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
+	r := newRepo(t)
+	r.write(".redline.yml", `tools:
+  - name: oasdiff
+    kind: differ
+    command: fakeoasdiff-never-runs
+    args: ["{{base}}", "{{head}}"]
+    scope: ["*.yaml"]
+    format: json
+    fields: {file: source, line: line, rule: id, message: text, severity: level}
+`)
+	r.write("deleted.yaml", "openapi: 3.0.0\n")
+	base := r.commit("base")
+	r.write("added.yaml", "openapi: 3.0.0\n")
+	if err := os.Remove(filepath.Join(r.dir, "deleted.yaml")); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &Delta{Repo: r.open()}
+	if got := p.Scope([]string{"added.yaml", "deleted.yaml"}); len(got) != 2 {
+		t.Fatalf("both specs are in scope, got %v", got)
+	}
+	res := runPane(t, p, base)
+	if len(res.Findings) != 0 {
+		t.Fatalf("nothing was compared, so nothing is introduced: %+v", res.Findings)
+	}
+	if len(res.Unknowns) != 2 {
+		t.Fatalf("each skipped file must be stated, got %+v", res.Unknowns)
+	}
+	for _, c := range res.Confirmations {
+		if c.Rule == "lint-clean-delta" {
+			t.Fatal("a comparison that never ran must not confirm a clean delta")
+		}
+	}
+}
+
+// An unreadable baseline degrades the delta and says so; the lint-clean-delta
+// confirmation would assert a comparison that never happened, so it is
+// withheld even when no head issue lands on an added line.
+func TestBaselineUnreadableForfeitsCleanConfirmation(t *testing.T) {
+	fakeToolFromFixture(t, "mylint", "mylint-fixture.json")
+	r := newRepo(t)
+	r.write(".redline.yml", `tools:
+  - name: mylint
+    command: mylint
+    scope: ["**/*.go"]
+    format: json
+    resultsPath: issues
+    fields: {file: file, line: line, rule: rule, message: msg, severity: sev}
+    baseline: {mode: file, file: missing-baseline.json}
+`)
+	r.write("a.go", "package a\n")
+	base := r.commit("base")
+	r.write("a.go", "package a\n\nfunc A() {}\n")
+
+	p := &Delta{Repo: r.open()}
+	p.Scope([]string{"a.go"})
+	res := runPane(t, p, base)
+	found := false
+	for _, u := range res.Unknowns {
+		if strings.Contains(u.Message, "baseline") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the unreadable baseline must be stated, got %+v", res.Unknowns)
+	}
+	for _, c := range res.Confirmations {
+		if c.Rule == "lint-clean-delta" {
+			t.Fatal("an unreadable baseline must withhold the clean confirmation")
+		}
 	}
 }

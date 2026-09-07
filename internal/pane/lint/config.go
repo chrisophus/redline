@@ -197,11 +197,22 @@ func disabledRules(path, baseRaw, headRaw string) ([]string, bool) {
 }
 
 // golangciConfig is the slice of golangci's config this pane reads: what is
-// disabled and what is excluded.
+// disabled and what is excluded. It carries both schemas — v1's
+// issues.exclude-rules/exclude and v2's linters.exclusions — because a v2
+// config parses cleanly into a v1-only struct (unknown YAML keys are ignored)
+// and its exclusions would then read as a clean edit.
 type golangciConfig struct {
 	Linters struct {
-		Disable []string `yaml:"disable"`
-		Enable  []string `yaml:"enable"`
+		Disable    []string `yaml:"disable"`
+		Enable     []string `yaml:"enable"`
+		Exclusions struct {
+			Rules []struct {
+				Linters []string `yaml:"linters"`
+				Path    string   `yaml:"path"`
+				Text    string   `yaml:"text"`
+			} `yaml:"rules"`
+			Paths []string `yaml:"paths"`
+		} `yaml:"exclusions"`
 	} `yaml:"linters"`
 	Issues struct {
 		ExcludeRules []struct {
@@ -222,18 +233,31 @@ func golangciDisabled(baseRaw, headRaw string) ([]string, bool) {
 	for _, l := range newEntries(base.Linters.Disable, head.Linters.Disable) {
 		out = append(out, fmt.Sprintf("disables the %s linter", l))
 	}
-	for _, l := range newEntries(head.Linters.Enable, base.Linters.Enable) {
-		// Present in base's enable list and gone from head's: with an explicit
-		// enable list, dropping an entry stops running that linter.
-		if len(base.Linters.Enable) > 0 {
+	dropped := newEntries(head.Linters.Enable, base.Linters.Enable)
+	if len(head.Linters.Enable) > 0 {
+		// Present in base's explicit enable list and gone from head's:
+		// dropping an entry stops running that linter.
+		for _, l := range dropped {
 			out = append(out, fmt.Sprintf("stops enabling the %s linter", l))
 		}
+	} else if len(dropped) > 0 {
+		// The whole explicit enable list is gone. Which linters now run is
+		// golangci's default-set question, not a per-linter fact this pane
+		// can assert, so it states the removal once instead of claiming
+		// every listed linter stopped.
+		out = append(out, fmt.Sprintf("removes the explicit enable list (%d linter(s)); golangci-lint's defaults now decide what runs", len(dropped)))
 	}
 	if added := len(head.Issues.ExcludeRules) - len(base.Issues.ExcludeRules); added > 0 {
 		out = append(out, fmt.Sprintf("adds %d exclude-rule(s)", added))
 	}
 	for _, pattern := range newEntries(base.Issues.Exclude, head.Issues.Exclude) {
 		out = append(out, fmt.Sprintf("excludes findings matching %q", pattern))
+	}
+	if added := len(head.Linters.Exclusions.Rules) - len(base.Linters.Exclusions.Rules); added > 0 {
+		out = append(out, fmt.Sprintf("adds %d exclusion rule(s)", added))
+	}
+	for _, pattern := range newEntries(base.Linters.Exclusions.Paths, head.Linters.Exclusions.Paths) {
+		out = append(out, fmt.Sprintf("excludes path %q from linting", pattern))
 	}
 	return out, true
 }
