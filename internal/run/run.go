@@ -261,6 +261,7 @@ func Run(opts Options) (*Result, error) {
 	if review != nil {
 		mergeMutationVerdicts(res.Report.Mutation, review.MutationVerdicts)
 	}
+	recordMutationSubstrate(&res.Report, res.Change, cfg)
 	return res, nil
 }
 
@@ -357,6 +358,67 @@ func mergeMutationVerdicts(res *mutation.Result, verdicts map[string]findings.Ve
 			}
 		}
 	}
+}
+
+// recordMutationSubstrate states mutation in substrates[] so findings.json shows
+// whether gomutants ran, the way the panes do. Mutation is not a pane, it reads
+// a report rather than observing two revisions, but a reader should still see
+// "mutation: ran", a not-applicable row that renders nowhere when it is not
+// configured, and a confirmation when every mutant on the added lines was killed.
+func recordMutationSubstrate(rep *findings.Report, ch *change.Set, cfg *harness.Config) {
+	configured := cfg != nil && len(cfg.MutationPaths()) > 0
+	st, conf := mutationSubstrate(rep.Mutation, configured, hasGoFile(ch))
+	rep.Substrates = append(rep.Substrates, st)
+	if conf != nil {
+		rep.Confirmations = append(rep.Confirmations, *conf)
+	}
+}
+
+// mutationSubstrate is the pure decision behind recordMutationSubstrate: given
+// the diff-scoped result, whether a report is configured, and whether the change
+// touches Go, it returns the substrate row and an optional all-killed
+// confirmation. Split out so the states can be tested without a repository.
+func mutationSubstrate(m *mutation.Result, configured, hasGo bool) (findings.SubstrateStatus, *findings.Confirmation) {
+	const name = "redline/mutation"
+	if m != nil {
+		st := findings.SubstrateStatus{
+			Name:   name,
+			State:  findings.SubstrateRan,
+			Detail: fmt.Sprintf("%s: %d killed, %d survived on this change's added lines", m.Report, m.Killed, m.Lived),
+		}
+		if m.Lived == 0 && m.Killed > 0 {
+			return st, &findings.Confirmation{
+				Substrate: name,
+				Rule:      "mutation-all-killed",
+				Message:   fmt.Sprintf("every mutant on this change's added lines was killed (%d)", m.Killed),
+			}
+		}
+		return st, nil
+	}
+	if !configured {
+		return findings.SubstrateStatus{
+			Name:   name,
+			State:  findings.SubstrateNotApplicable,
+			Detail: "no gomutants report configured in .redline.yml",
+		}, nil
+	}
+	detail := "the gomutants report covers none of this change's added lines"
+	if !hasGo {
+		detail = "this change touches no Go file to mutate"
+	}
+	return findings.SubstrateStatus{Name: name, State: findings.SubstrateSkipped, Detail: detail}, nil
+}
+
+func hasGoFile(ch *change.Set) bool {
+	if ch == nil {
+		return false
+	}
+	for _, f := range ch.Files {
+		if strings.HasSuffix(f.Path, ".go") {
+			return true
+		}
+	}
+	return false
 }
 
 // originCoverageDir returns the origin checkout's root when the reviewed

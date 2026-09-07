@@ -265,7 +265,11 @@ func evidenceTable(rep *findings.Report) string {
 		var result string
 		switch s.State {
 		case findings.SubstrateRan:
-			result = fmt.Sprintf("ran — %d finding(s)", perSubstrate[s.Name])
+			if s.Detail != "" {
+				result = "ran — " + escapeCell(s.Detail)
+			} else {
+				result = fmt.Sprintf("ran — %d finding(s)", perSubstrate[s.Name])
+			}
 		case findings.SubstrateSkipped:
 			result = "did not apply"
 		case findings.SubstrateNotApplicable:
