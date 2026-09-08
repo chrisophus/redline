@@ -42,10 +42,11 @@ type ReviewComment struct {
 	// Confidence folds a weak remark away on the report without asking the
 	// reviewer to withhold it.
 	Confidence Confidence `json:"confidence,omitempty"`
-	// Category overrides the default. Only "correlation" is accepted; every
-	// other value falls back to the review default, because a reviewer
-	// labelling its own remark as a schema measurement would put an opinion
-	// in the place the report reserves for facts.
+	// Category overrides the default. Only "correlation" is accepted, in
+	// whatever case it was written; every other value falls back to the
+	// review default, because a reviewer labelling its own remark as a
+	// schema measurement would put an opinion in the place the report
+	// reserves for facts.
 	Category Category `json:"category,omitempty"`
 }
 
@@ -84,7 +85,8 @@ type reviewFileEntry struct {
 // what the file claims: Redline attributes the reading, the file does not.
 //
 // Aliases accepted for cross-tool compatibility: what_it_does for overview;
-// findings for comments; path for file; high/medium/low severities.
+// findings for comments; path for file; high/medium/low severities; related
+// for relatedFindings; and any casing of the category.
 func LoadReview(path string) (*Review, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -177,7 +179,7 @@ func parseReviewComments(commentsRaw, findingsRaw json.RawMessage) ([]ReviewComm
 			Body:            w.Body,
 			RelatedFindings: related,
 			Confidence:      Confidence(strings.TrimSpace(w.Confidence)),
-			Category:        Category(strings.TrimSpace(w.Category)),
+			Category:        normalizeCategory(Category(w.Category)),
 		})
 	}
 	return out, nil
@@ -241,6 +243,21 @@ func normalizeSeverityFor(s Severity, cat Category) Severity {
 		return SeverityInfo
 	}
 	return cat.DefaultSeverity()
+}
+
+// normalizeCategory maps whatever the review file wrote onto the one category
+// a reviewer may claim, forgiving case and whitespace the way severity and
+// confidence are forgiven. The un-schema'd path an agent hand-writes spells
+// the label however prose spells it, and "Correlation" taken verbatim matched
+// nothing: the one finding a second wave exists to produce arrived as an
+// ordinary remark, with the agent-comment rule, the review category and the
+// severity that goes with it. Anything else reads as the review category, for
+// the reason ReviewComment's Category field gives.
+func normalizeCategory(c Category) Category {
+	if Category(strings.ToLower(strings.TrimSpace(string(c)))) == CategoryCorrelation {
+		return CategoryCorrelation
+	}
+	return CategoryReview
 }
 
 // MergeVerdicts attaches verdicts to findings by fingerprint. Call after

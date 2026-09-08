@@ -48,7 +48,10 @@ type Expectation struct {
 	// same words.
 	Correlation bool `json:"correlation"`
 	// RelatesToRules names the wave-one rules the correlation should
-	// reference. Checked against the fixture's own findings.
+	// reference. Checked against the fixture's own findings: the comment's
+	// references are resolved the way the report resolves them, and a
+	// reference that lands nowhere, or lands on some other rule, is not a
+	// correlation caught.
 	RelatesToRules []string `json:"relates_to_rules"`
 	// Optional expectations are worth having and are not scored as misses.
 	Optional bool `json:"optional"`
@@ -162,11 +165,18 @@ func Score(f Fixture, rev findings.Review) Scorecard {
 		Clean:    f.Annotation.Clean,
 		Comments: len(rev.Comments),
 	}
+	// The frozen session's own findings, which is what a correlation's
+	// references have to resolve against: the reviewer was shown these and
+	// nothing else.
+	var prior *findings.Report
+	if f.Session != nil {
+		prior = &f.Session.Report
+	}
 	matched := make([]bool, len(rev.Comments))
 	for _, exp := range f.Annotation.Expect {
 		hit := -1
 		for i, c := range rev.Comments {
-			if expectationMatches(exp, c) {
+			if expectationMatches(exp, c, prior) {
 				hit = i
 				break
 			}
@@ -202,7 +212,7 @@ func Score(f Fixture, rev findings.Review) Scorecard {
 	return sc
 }
 
-func expectationMatches(exp Expectation, c findings.ReviewComment) bool {
+func expectationMatches(exp Expectation, c findings.ReviewComment, prior *findings.Report) bool {
 	if exp.File != "" && c.File != exp.File {
 		return false
 	}
@@ -210,6 +220,9 @@ func expectationMatches(exp Expectation, c findings.ReviewComment) bool {
 		if c.Category != findings.CategoryCorrelation || len(c.RelatedFindings) == 0 {
 			return false
 		}
+	}
+	if len(exp.RelatesToRules) > 0 && !referencesRules(exp.RelatesToRules, c, prior) {
+		return false
 	}
 	body := strings.ToLower(c.Body)
 	for _, want := range exp.AllOf {
@@ -226,6 +239,30 @@ func expectationMatches(exp Expectation, c findings.ReviewComment) bool {
 		}
 	}
 	return false
+}
+
+// referencesRules resolves a comment's references against the frozen
+// session's findings, the same way the report resolves them when it renders
+// the link, and reports whether they cover every rule the expectation names.
+// Counting a non-empty relatedFindings as enough made the correlation score
+// meaningless: a stale id, an invented id and [""] all read as caught, which
+// is the one number this milestone is measured on.
+func referencesRules(rules []string, c findings.ReviewComment, prior *findings.Report) bool {
+	if prior == nil || c.Category != findings.CategoryCorrelation {
+		return false
+	}
+	got := make(map[string]bool, len(c.RelatedFindings))
+	for _, ref := range c.RelatedFindings {
+		if f := prior.FindRef(ref); f != nil {
+			got[f.Rule] = true
+		}
+	}
+	for _, want := range rules {
+		if !got[want] {
+			return false
+		}
+	}
+	return true
 }
 
 func quietViolated(q Quiet, c findings.ReviewComment) bool {
@@ -254,12 +291,17 @@ type Totals struct {
 	CleanHeld       int
 }
 
-// Sum aggregates.
+// Sum aggregates. Expected counts the whole expectation set, optional ones
+// included whether or not they were caught: a caught optional lands in Caught
+// and a missed one in MissedOptional, so leaving MissedOptional out moved the
+// denominator with the result. Two configurations then printed 5/5 and 4/4
+// for the same fixture set, and the comparison table's rows are only worth
+// reading side by side if the number under the line is the same.
 func Sum(cards []Scorecard) Totals {
 	var t Totals
 	for _, c := range cards {
 		t.Fixtures++
-		t.Expected += len(c.Caught) + len(c.Missed)
+		t.Expected += len(c.Caught) + len(c.Missed) + len(c.MissedOptional)
 		t.Caught += len(c.Caught)
 		t.Missed += len(c.Missed)
 		t.KnownGaps += len(c.KnownGaps)

@@ -178,15 +178,42 @@ func TestScoreCountsACorrelationOnlyWhenItReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The right answer: a correlation carrying a reference.
-	good := findings.Review{Comments: []findings.ReviewComment{{
-		File: "internal/store/user.go", Line: 8,
-		Body:            "TenantID is a plain string while the migration makes tenant_id NOT NULL with no default, so any insert that omits it writes an empty string.",
-		Category:        findings.CategoryCorrelation,
-		RelatedFindings: []string{"f2076e74fbd"},
-	}}}
-	if sc := Score(f, good); len(sc.Caught) != 1 {
+	// The reference is read out of the fixture rather than written into the
+	// test: the annotation names a rule, and the score is only meaningful if
+	// it resolves the comment's reference to that rule's finding.
+	var prior, other string
+	for _, fd := range f.Session.Report.Findings {
+		switch {
+		case fd.Rule == "migration-add-not-null-no-default":
+			prior = fd.ID
+		case other == "":
+			other = fd.ID
+		}
+	}
+	if prior == "" || other == "" {
+		t.Fatalf("this fixture needs the NOT NULL prior and one other finding to reference: %+v",
+			f.Session.Report.Findings)
+	}
+	correlation := func(refs ...string) findings.Review {
+		return findings.Review{Comments: []findings.ReviewComment{{
+			File: "internal/store/user.go", Line: 8,
+			Body:            "TenantID is a plain string while the migration makes tenant_id NOT NULL with no default, so any insert that omits it writes an empty string.",
+			Category:        findings.CategoryCorrelation,
+			RelatedFindings: refs,
+		}}}
+	}
+	// The right answer: a correlation whose reference lands on the rule the
+	// annotation says it has to connect to.
+	if sc := Score(f, correlation(prior)); len(sc.Caught) != 1 {
 		t.Fatalf("a correct correlation scored as %+v", sc)
+	}
+	// An id from some other run reads as a correlation and connects nothing.
+	if sc := Score(f, correlation("f00000000000")); len(sc.Caught) != 0 {
+		t.Fatalf("a reference that resolves to nothing scored as caught: %+v", sc)
+	}
+	// Neither does one that resolves to a different finding.
+	if sc := Score(f, correlation(other)); len(sc.Caught) != 0 {
+		t.Fatalf("a reference to the wrong rule scored as caught: %+v", sc)
 	}
 	// The same words with no reference and no category is the failure mode
 	// this fixture exists to catch: restating the prior.
@@ -229,16 +256,21 @@ func TestSumBuildsTheComparisonTable(t *testing.T) {
 		{Fixture: "a", Caught: []string{"x"}},
 		{Fixture: "b", Missed: []string{"y"}, KnownGaps: []string{"y"}, Extra: 2},
 		{Fixture: "c", Clean: true, CleanHeld: true},
+		// An optional expectation nobody caught. It still belongs in the
+		// denominator: the configuration that does catch it counts it in
+		// Caught, and a denominator that moves with the result makes two
+		// rows of this table incomparable.
+		{Fixture: "d", MissedOptional: []string{"z"}},
 	}
 	tot := Sum(cards)
-	if tot.Expected != 2 || tot.Caught != 1 || tot.Missed != 1 {
+	if tot.Expected != 3 || tot.Caught != 1 || tot.Missed != 1 {
 		t.Fatalf("totals = %+v", tot)
 	}
 	if tot.KnownGaps != 1 {
 		t.Fatal("a known gap must stay visible in the totals")
 	}
 	row := Table("sonnet single pass", 0.2871, tot)
-	if !strings.Contains(row, "1/2") || !strings.Contains(row, "1/1") {
+	if !strings.Contains(row, "1/3") || !strings.Contains(row, "1/1") {
 		t.Fatalf("row = %q", row)
 	}
 }

@@ -186,9 +186,11 @@ type Envelope struct {
 }
 
 // Validate reports whether an envelope is one Redline can spend. It checks
-// the frame, never the contents: a provider that emitted an unknown role or
-// an unreadable version is a bug worth failing loudly for, and a provider
-// that found nothing is a legitimate answer.
+// the frame, never the contents: a provider that emitted an unreadable
+// version, no name, or an expansion with no role at all is a bug worth
+// failing loudly for, and a provider that found nothing is a legitimate
+// answer. A role Redline does not rank is not a failure here; it is reported
+// by UnknownRoles, for the forward compatibility reason stated there.
 func (e *Envelope) Validate() error {
 	if e == nil {
 		return fmt.Errorf("envelope is absent")
