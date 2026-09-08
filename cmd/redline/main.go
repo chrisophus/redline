@@ -64,7 +64,14 @@ flags:
   --file            open (or print) the report as a file:// path, no server
   --port N          loopback port for open/serve (default 8765; the next
                     free port is used if it is taken)
-  --model NAME      with review: model to review with (default claude-sonnet-5)
+  --api NAME        with review: anthropic (default) or openai. openai is any
+                    endpoint speaking the OpenAI chat completions protocol,
+                    a proxy included; one shot only.
+  --base-url URL    with review: endpoint to send the call to, for a proxy
+                    (default: the vendor's public endpoint; also read from
+                    ANTHROPIC_BASE_URL or OPENAI_BASE_URL)
+  --model NAME      with review: model to review with (default claude-sonnet-5,
+                    or gpt-5 with --api openai)
   --effort LEVEL    with review: low|medium|high|xhigh|max (default: the model's)
   --mode MODE       with review: oneshot (default) sends the context Redline
                     chose; explore sends a catalogue and lets the reviewer
@@ -112,7 +119,7 @@ func main() {
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
 	reportURL, profile, olderThan                                     string
-	model, effort, mode                                               string
+	model, effort, mode, api, baseURL                                 string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
 	stats                                                             bool
 	port, ceiling, maxTokens, maxTurns                                int
@@ -151,6 +158,8 @@ func runMain(args []string) error {
 	fs.StringVar(&o.profile, "profile", "", "with post: YAML profile for merge-gate pass/fail markers")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "with post: print the review payload as JSON instead of posting")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
+	fs.StringVar(&o.api, "api", "", "with review: anthropic or openai")
+	fs.StringVar(&o.baseURL, "base-url", "", "with review: endpoint to send the call to, for a proxy")
 	fs.StringVar(&o.model, "model", "", "with review: model to review with")
 	fs.StringVar(&o.effort, "effort", "", "with review: low|medium|high|xhigh|max")
 	fs.StringVar(&o.mode, "mode", "", "with review: oneshot or explore")

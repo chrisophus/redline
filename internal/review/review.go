@@ -26,8 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/findings"
@@ -106,14 +104,35 @@ type Options struct {
 	// the command fills it from the ledger's measured median once there is
 	// one, so the number converges on this installation's own reviews.
 	ExpectedOutput int64
-	APIKey         string
+	// API names the wire the call goes over: "anthropic" (default) or
+	// "openai", which is any endpoint that speaks the OpenAI chat
+	// completions protocol, a proxy in front of one included. The prompt,
+	// the schema, the ceiling and the tripwire are the same either way;
+	// only the wire format differs. It is not a context provider, which is
+	// a language toolchain that resolves the envelope.
+	API string
+	// BaseURL overrides the endpoint. This is how a proxy is reached: the
+	// request goes to BaseURL + "/chat/completions" for openai, and to the
+	// SDK's usual paths under BaseURL for anthropic. Empty means the
+	// vendor's public API.
+	BaseURL string
+	// APIKey overrides the credential. Empty leaves it to the wire: the
+	// Anthropic SDK reads ANTHROPIC_API_KEY itself, and the command fills
+	// this from OPENAI_API_KEY for openai.
+	APIKey string
 	// DryRun assembles the prompt and prices it without calling anything.
 	DryRun bool
 }
 
 func (o Options) withDefaults() Options {
+	if o.API == "" {
+		o.API = APIAnthropic
+	}
 	if o.Model == "" {
 		o.Model = DefaultModel
+		if o.API == APIOpenAI {
+			o.Model = DefaultOpenAIModel
+		}
 	}
 	if o.Ceiling <= 0 {
 		o.Ceiling = envelope.DefaultCeiling
@@ -138,10 +157,16 @@ func (o Options) withDefaults() Options {
 
 // Result is one review and what it cost.
 type Result struct {
-	Review  findings.Review `json:"review"`
-	Model   string          `json:"model"`
-	Usage   Usage           `json:"usage"`
-	CostUSD float64         `json:"costUSD"`
+	Review findings.Review `json:"review"`
+	API    string          `json:"api"`
+	Model  string          `json:"model"`
+	Usage  Usage           `json:"usage"`
+	// UsageEstimated is set when the endpoint reported no token counts and
+	// Usage was filled from the pre-call estimate instead, so the ledger
+	// still gets a line for a call that was paid for. Some proxies strip
+	// usage from a stream. The command says so when it happens.
+	UsageEstimated bool    `json:"usageEstimated,omitempty"`
+	CostUSD        float64 `json:"costUSD"`
 	// CostCeilingUSD is the most the request could cost, with the model
 	// spending every output token it is allowed. The tripwire measures
 	// against this; CostUSD is what to expect.
@@ -188,8 +213,8 @@ type Result struct {
 // the numbers this whole design is accountable to, so they are printed
 // rather than left to a dashboard.
 func (r *Result) Summary() string {
-	return fmt.Sprintf("model=%s turns=%d in=%d out=%d cost=%s wall=%s findings=%d",
-		r.Model, r.Turns, r.Usage.InputTokens, r.Usage.OutputTokens,
+	return fmt.Sprintf("api=%s model=%s turns=%d in=%d out=%d cost=%s wall=%s findings=%d",
+		r.API, r.Model, r.Turns, r.Usage.InputTokens, r.Usage.OutputTokens,
 		FormatCost(r.CostUSD, r.CostKnown),
 		r.Duration.Round(time.Millisecond), len(r.Review.Comments))
 }
@@ -239,6 +264,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	cost, known := EstimateCost(opts.Model, est, expected)
 	ceiling, _ := CeilingCost(opts.Model, est, opts.MaxTokens)
 	return &Result{
+		API:            opts.API,
 		Model:          opts.Model,
 		Budget:         budget,
 		Prompt:         prompt,
@@ -257,6 +283,12 @@ func Assemble(in Input, opts Options) (*Result, error) {
 // Run performs the review: one call, no tools, structured output.
 func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
+	switch opts.API {
+	case APIAnthropic, APIOpenAI:
+	default:
+		return nil, fmt.Errorf("unknown api %q; use %s or %s",
+			opts.API, APIAnthropic, APIOpenAI)
+	}
 	res, err := Assemble(in, opts)
 	if err != nil {
 		return nil, err
@@ -286,87 +318,62 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 			res.FixedEstimate, opts.Ceiling)
 	}
 	if opts.Mode == ModeExplore {
+		if opts.API != APIAnthropic {
+			return res, fmt.Errorf("explore mode is only implemented against the Anthropic API; "+
+				"use --mode oneshot with --api %s", opts.API)
+		}
 		res.Turns = 0
 		return runExplore(ctx, in, opts, res)
 	}
 
-	var clientOpts []option.RequestOption
-	if opts.APIKey != "" {
-		clientOpts = append(clientOpts, option.WithAPIKey(opts.APIKey))
-	}
-	client := anthropic.NewClient(clientOpts...)
-
-	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(opts.Model),
-		MaxTokens: opts.MaxTokens,
-		System: []anthropic.TextBlockParam{{
-			Text: res.System,
-		}},
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(res.Prompt)),
-		},
-		OutputConfig: anthropic.OutputConfigParam{
-			Format: anthropic.JSONOutputFormatParam{Schema: outputSchema()},
-		},
-	}
-	if opts.Effort != "" {
-		params.OutputConfig.Effort = anthropic.OutputConfigEffort(opts.Effort)
-	}
-
-	// Streamed because the input is large and the response may be too: a
-	// non-streaming request at this size risks an HTTP timeout, and a
-	// timeout after paying for 120k of input is the worst outcome available.
-	start := time.Now()
-	stream := client.Messages.NewStreaming(ctx, params)
-	var msg anthropic.Message
 	// Usage is captured on the way out of every path, not just the one that
 	// succeeds. The input is billed as soon as the request is accepted, so a
-	// stream that breaks partway has already cost what it cost, and the
-	// message_start event carries the input count before any content
-	// arrives. A result that reports no usage is how a paid call ends up
-	// with no ledger line, which is the failure this ordering exists to
-	// prevent.
-	captureUsage := func() {
-		res.Usage = Usage{
-			InputTokens:      msg.Usage.InputTokens,
-			OutputTokens:     msg.Usage.OutputTokens,
-			CacheReadTokens:  msg.Usage.CacheReadInputTokens,
-			CacheWriteTokens: msg.Usage.CacheCreationInputTokens,
-		}
-		res.CostUSD, res.CostKnown = res.Usage.Cost(opts.Model)
-	}
-	for stream.Next() {
-		if err := msg.Accumulate(stream.Current()); err != nil {
-			captureUsage()
-			return res, fmt.Errorf("accumulate: %w", err)
-		}
+	// stream that breaks partway has already cost what it cost. A result
+	// that reports no usage is how a paid call ends up with no ledger line,
+	// which is the failure this ordering exists to prevent.
+	start := time.Now()
+	var c completion
+	if opts.API == APIOpenAI {
+		c, err = completeOpenAI(ctx, opts, res)
+	} else {
+		c, err = completeAnthropic(ctx, opts, res)
 	}
 	res.Duration = time.Since(start)
 	res.Turns = 1
-	if err := stream.Err(); err != nil {
-		captureUsage()
+	res.Usage = c.usage
+	if err == nil && c.usage == (Usage{}) {
+		// The call went out and came back, so it was paid for. An endpoint
+		// that reports no counts, which some proxies do on a stream, would
+		// otherwise leave the ledger with nothing and the command saying
+		// nothing was sent.
+		res.Usage = Usage{
+			InputTokens:  int64(res.InputEstimate),
+			OutputTokens: int64(envelope.EstimateTokens(c.text)),
+		}
+		res.UsageEstimated = true
+	}
+	res.CostUSD, res.CostKnown = res.Usage.Cost(opts.Model)
+	if err != nil {
 		return res, fmt.Errorf("review call: %w", err)
 	}
-
-	captureUsage()
-	res.StopReason = string(msg.StopReason)
+	res.StopReason = c.stopReason
 
 	// A refusal comes back as a normal 200 with an empty-looking body, so
 	// the stop reason is checked before the content is read. Reporting it as
 	// "the reviewer found nothing" would be a lie in the one direction this
 	// tool must never lie.
-	if msg.StopReason == anthropic.StopReasonRefusal {
+	if c.refused {
 		return res, fmt.Errorf("the model declined this request (%s); no review was produced",
-			msg.StopDetails.Category)
+			c.detail)
 	}
-	if msg.StopReason == anthropic.StopReasonMaxTokens {
+	if c.truncated {
 		return res, fmt.Errorf("the response hit the %d-token cap and is truncated; raise --max-tokens",
 			opts.MaxTokens)
 	}
 
-	body := textOf(msg)
+	body := c.text
 	if strings.TrimSpace(body) == "" {
-		return res, fmt.Errorf("the model returned no content (stop reason %q)", msg.StopReason)
+		return res, fmt.Errorf("the model returned no content (stop reason %q)", c.stopReason)
 	}
 	rev, err := parseReview([]byte(body))
 	if err != nil {
@@ -399,16 +406,6 @@ func languageOf(e *envelope.Envelope) string {
 		return "this repository"
 	}
 	return e.Provider.Language
-}
-
-func textOf(msg anthropic.Message) string {
-	var b strings.Builder
-	for _, block := range msg.Content {
-		if t, ok := block.AsAny().(anthropic.TextBlock); ok {
-			b.WriteString(t.Text)
-		}
-	}
-	return b.String()
 }
 
 // parseReview reads the structured response. It goes through the same

@@ -221,10 +221,35 @@ something the author cannot reproduce gets bypassed inside a month.
 Flags: `--model` (default `claude-sonnet-5`), `--effort`, `--ceiling`
 (default 250000 tokens, bounding the whole request), `--max-tokens`,
 `--max-cost` (a tripwire checked against the worst-case cost before anything
-is sent), `--stats`, `--dry-run`.
+is sent), `--stats`, `--dry-run`, `--api`, `--base-url`.
 
 Credentials come from `ANTHROPIC_API_KEY` or an `ant auth login` profile.
 Without one, every other command still works.
+
+### Sending the call through a proxy
+
+The call goes to Anthropic's API by default. `--api openai` sends the
+same request over the OpenAI chat completions protocol instead, which is
+what most model gateways and proxies speak whatever model sits behind
+them, and `--base-url` says where. The prompt, the output schema, the
+ceiling, and the tripwire are decided before the provider is consulted, so
+the review is the same review on either wire; only the one-shot mode is
+carried, since `--mode explore` uses Anthropic-only features.
+
+```
+export OPENAI_BASE_URL=https://llm-gateway.example.internal/v1
+export OPENAI_API_KEY=...            # optional for a proxy that authenticates some other way
+redline review --api openai --model gpt-5
+```
+
+`--base-url` wins over `OPENAI_BASE_URL`, and with the default provider it
+overrides `ANTHROPIC_BASE_URL` the same way. The endpoint has to accept a
+streamed request with `response_format: json_schema`; one that drops the
+schema constraint still works as long as the model returns the JSON,
+fenced or not. A proxy that reports no token usage on the stream gets its
+ledger line from the request-size estimate, and the command says so. A
+model name the price table does not know is sent unpriced, which also
+disables the `--max-cost` tripwire, and the command says that too.
 
 ### Context providers
 

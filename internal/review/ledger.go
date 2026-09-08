@@ -28,6 +28,7 @@ const ledgerFile = "reviews.jsonl"
 // Entry is one review's cost record.
 type Entry struct {
 	At       time.Time `json:"at"`
+	API      string    `json:"api,omitempty"`
 	Model    string    `json:"model"`
 	Effort   string    `json:"effort,omitempty"`
 	Usage    Usage     `json:"usage"`
@@ -51,7 +52,7 @@ func Record(dir string, r *Result, effort string) error {
 		return nil
 	}
 	e := Entry{
-		At: time.Now().UTC(), Model: r.Model, Effort: effort,
+		At: time.Now().UTC(), API: r.API, Model: r.Model, Effort: effort,
 		Usage: r.Usage, CostUSD: r.CostUSD, Known: r.CostKnown,
 		Seconds: r.Duration.Seconds(), Findings: len(r.Review.Comments),
 		Ceiling: r.Ceiling, InputEstimate: r.InputEstimate, OverCeiling: r.OverCeiling,
@@ -180,7 +181,7 @@ func Summarize(entries []Entry) Stats {
 // clamp is for pct at the ends, not for the arithmetic; ceil(pct*n/100)-1 is
 // within range for every n >= 1.
 func percentile(sorted []float64, pct int) float64 {
-	idx := (len(sorted)*pct + 99) / 100 - 1
+	idx := (len(sorted)*pct+99)/100 - 1
 	if idx < 0 {
 		idx = 0
 	}
