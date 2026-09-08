@@ -72,8 +72,10 @@ flags:
                     mode --max-cost is a governor, not a tripwire.
   --max-turns N     with review --mode explore: turn limit (default 5)
   --ceiling N       with review: token ceiling for the whole request
-                    (default 250000). A tail bound, not a per-review budget.
-  --max-tokens N    with review: cap on the response (default 16000)
+                    (default 250000). A tail bound, not a per-review budget:
+                    a change whose diff and findings alone exceed it is
+                    refused, not reviewed with the context dropped.
+  --max-tokens N    with review: cap on the response (default 32000)
   --max-cost USD    with review: refuse to send a request estimated above this
                     (default 2.00). A tripwire, not a governor.
   --stats           with review: print the cost distribution of the reviews
@@ -153,7 +155,7 @@ func runMain(args []string) error {
 	fs.StringVar(&o.effort, "effort", "", "with review: low|medium|high|xhigh|max")
 	fs.StringVar(&o.mode, "mode", "", "with review: oneshot or explore")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "with review --mode explore: turn limit")
-	fs.IntVar(&o.ceiling, "ceiling", 0, "with review: token ceiling for the context block")
+	fs.IntVar(&o.ceiling, "ceiling", 0, "with review: token ceiling for the whole request")
 	fs.IntVar(&o.maxTokens, "max-tokens", 0, "with review: cap on the response")
 	fs.Float64Var(&o.maxCost, "max-cost", 0, "with review: refuse a request estimated above this many dollars")
 	fs.StringVar(&o.olderThan, "older-than", "", "with gc: only remove cached worktrees older than this duration (e.g. 168h)")

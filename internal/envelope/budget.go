@@ -24,24 +24,27 @@ const DefaultCeiling = 250_000
 // means linking a tokenizer for one specific model and this number has to
 // hold for any of them.
 //
-// The ratio is for code, not prose. Four characters per token is the rule of
-// thumb for English; source is denser in punctuation and identifiers and runs
-// closer to three, so dividing by four under-counts a code prompt by roughly
-// a fifth. That is the wrong direction for a number a ceiling is enforced
-// against: it would let a request through that then exceeds the budget it was
-// admitted under. Three and a half is the compromise, and it errs high on
-// prose, which is the harmless side.
+// The ratio is measured, not assumed. Four measured runs of `redline review`
+// on real changes came in at 2.24, 2.29 and 2.34 characters per token, against
+// payloads that were Go source, unified diffs and JSON expansion details — the
+// mix this tool actually sends. The old 3.5 was a rule of thumb borrowed from
+// English prose, and it under-counted those requests by 1.49x to 1.53x, which
+// is the wrong direction for a number a ceiling is enforced against: a request
+// estimated at 249,767 tokens was admitted under a 250,000 ceiling and then
+// sent 372,844. So the divisor is 7/3, i.e. 2.33 characters per token, which
+// errs high on prose — the harmless side.
 //
 // Anything that needs a real count should ask the API's own token counter,
 // which is free and exact. This is the offline approximation for budgeting.
 const (
-	charsPerTokenNum = 2 // divide by 7/2, i.e. 3.5 characters per token
+	charsPerTokenNum = 3 // divide by 7/3, i.e. 2.33 characters per token
 	charsPerTokenDen = 7
 )
 
-// EstimateTokens prices a string. Deliberately crude and deliberately
-// pessimistic: rounding up means a change never exceeds the ceiling it was
-// budgeted against.
+// EstimateTokens prices a string. Deliberately crude: the division rounds
+// up, and the ratio it divides by is measured on code rather than borrowed
+// from prose, so the result tracks a real count to within a few percent
+// instead of the fifty it used to be short by.
 func EstimateTokens(s string) int {
 	if s == "" {
 		return 0

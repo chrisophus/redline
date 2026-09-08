@@ -59,7 +59,7 @@ func TestFitIsDeterministicForEqualRanks(t *testing.T) {
 }
 
 func TestFitDropsOnlyWhatDoesNotFit(t *testing.T) {
-	big := strings.Repeat("x", 4000) // about 1000 tokens
+	big := strings.Repeat("x", 4000) // about 1700 tokens
 	e := &Envelope{Expansions: []Expansion{
 		exp(RoleEnclosing, 0, "big.go", 1, big),
 		exp(RoleCaller, 0, "small.go", 1, "tiny"),

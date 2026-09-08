@@ -64,6 +64,21 @@ func TestPromptSaysWhenNothingWasEstablished(t *testing.T) {
 	}
 }
 
+// No report at all is not a clean report. Saying the checks found nothing
+// when nothing ran tells the reviewer a surface is covered when it is not.
+func TestPromptDistinguishesAMissingReportFromAnEmptyOne(t *testing.T) {
+	got, err := Assemble(Input{}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got.Prompt, "found nothing to report") {
+		t.Fatal("an absent report must not be presented as checks that found nothing")
+	}
+	if !strings.Contains(got.Prompt, "not available") {
+		t.Fatalf("the absence must be stated: %q", got.Prompt)
+	}
+}
+
 func TestPromptNamesProducersThatDidNotRun(t *testing.T) {
 	got, err := Assemble(Input{Absent: []string{"gorefactor (context): not on PATH"}}, Options{})
 	if err != nil {
@@ -304,6 +319,58 @@ func TestADiffLargerThanTheCeilingIsReported(t *testing.T) {
 	}
 }
 
+// Reporting it is not enough: an over-ceiling request used to be sent
+// anyway, with a stderr warning, so the ceiling bounded nothing. --max-cost
+// is raised out of the way here so what fails is the ceiling.
+func TestAnOverCeilingRequestIsRefusedRatherThanSent(t *testing.T) {
+	in := Input{
+		Change: &change.Set{Files: []change.File{{Path: "a.go", Diff: strings.Repeat("+line\n", 20000)}}},
+	}
+	res, err := Run(context.Background(), in, Options{Ceiling: 5000, MaxCostUSD: 100})
+	if err == nil {
+		t.Fatal("a request larger than the ceiling must be refused, not sent")
+	}
+	if res == nil || !strings.Contains(err.Error(), "review a smaller range") {
+		t.Fatalf("the refusal must be the ceiling's, and must name the way out, got %v", err)
+	}
+	// A dry run prices the request it cannot afford; that is how the caller
+	// finds out what ceiling it would take.
+	if _, err := Run(context.Background(), in, Options{Ceiling: 5000, MaxCostUSD: 100, DryRun: true}); err != nil {
+		t.Fatalf("--dry-run must still print an over-ceiling request: %v", err)
+	}
+}
+
+// A provider's fragment is sent on every call, so it is priced like any
+// other input. It used to be assembled at call time and counted nowhere,
+// which understated both the ceiling check and the cost estimate.
+func TestProviderFragmentsArePricedAndSent(t *testing.T) {
+	frag := strings.Repeat("Go advice. ", 2000)
+	env := &envelope.Envelope{
+		Provider:       envelope.Provider{Name: "prov", Language: "go"},
+		PromptFragment: frag,
+	}
+	bare, err := Assemble(Input{}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Assemble(Input{Envelopes: []*envelope.Envelope{env}}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.System, "Go advice.") {
+		t.Fatal("the fragment is part of the system block that is sent")
+	}
+	want := envelope.EstimateTokens(frag)
+	if got.FixedEstimate-bare.FixedEstimate < want {
+		t.Fatalf("fixed estimate grew by %d for a %d-token fragment",
+			got.FixedEstimate-bare.FixedEstimate, want)
+	}
+	if got.InputEstimate-bare.InputEstimate < want {
+		t.Fatalf("input estimate grew by %d for a %d-token fragment",
+			got.InputEstimate-bare.InputEstimate, want)
+	}
+}
+
 func TestContextFitsWhenThereIsRoom(t *testing.T) {
 	in := Input{
 		Change: &change.Set{Files: []change.File{{Path: "a.go", Diff: "+one line\n"}}},
@@ -358,6 +425,40 @@ func TestLedgerRecordsAndAverages(t *testing.T) {
 	}
 	if s.Min != 0.05 {
 		t.Fatalf("min = %.4f", s.Min)
+	}
+}
+
+// The p90 has to be the tail, not the maximum. The old (n*9)/10 index sat one
+// rank too high, so with ten or fewer reviews p90 was always the single most
+// expensive one, and the tail statistic said nothing the max did not.
+func TestP90IsTheTailAndNotTheMaximum(t *testing.T) {
+	var entries []Entry
+	for _, c := range []float64{
+		0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10,
+		0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 2.00,
+	} {
+		entries = append(entries, Entry{Model: "claude-sonnet-5", CostUSD: c, Known: true})
+	}
+	s := Summarize(entries)
+	if s.P90 != 0.18 {
+		t.Fatalf("p90 = %.4f, want 0.18 (the 18th of 20 sorted costs)", s.P90)
+	}
+	if s.P90 == s.Max {
+		t.Fatalf("p90 equals the max at 20 reviews; one outlier is being reported as the tail")
+	}
+	if s.Median != 0.10 {
+		t.Fatalf("median = %.4f, want 0.10", s.Median)
+	}
+}
+
+// Two reviews: the median must not be the expensive one.
+func TestMedianOfTwoIsNotTheLarger(t *testing.T) {
+	s := Summarize([]Entry{
+		{Model: "claude-sonnet-5", CostUSD: 0.90, Known: true},
+		{Model: "claude-sonnet-5", CostUSD: 0.10, Known: true},
+	})
+	if s.Median != 0.10 {
+		t.Fatalf("median = %.4f, want 0.10", s.Median)
 	}
 }
 

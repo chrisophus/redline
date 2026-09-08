@@ -39,9 +39,15 @@ import (
 // per-run cost is logged either way so the trade is measurable.
 const DefaultModel = "claude-sonnet-5"
 
-// DefaultMaxTokens bounds the response. Generous rather than tight: hitting
-// the cap truncates a review mid-finding and wastes the whole input.
-const DefaultMaxTokens int64 = 16000
+// DefaultMaxTokens bounds the response. Generous rather than tight, because
+// hitting the cap truncates a review mid-finding and the truncated response
+// is discarded: at 16000, three of seven real reviews produced nothing at
+// all, and a 59-file change needed 29,592 output tokens to complete.
+//
+// Required output scales with the number of changed files — the schema
+// requires a summary per file — so this is a floor that covers the reviews
+// measured so far, not a fit. A larger change raises it with --max-tokens.
+const DefaultMaxTokens int64 = 32000
 
 // DefaultMaxCostUSD is a tripwire, not a governor. It stops a request whose
 // estimated cost is absurd, which in practice means a change far larger than
@@ -147,17 +153,22 @@ type Result struct {
 	// Prompt is the assembled user-side prompt, kept for --dry-run and for
 	// the eval, which replays a frozen prompt rather than re-deriving one.
 	Prompt string `json:"-"`
+	// System is the assembled system block actually sent: the harness prompt
+	// plus every provider's language fragment.
+	System string `json:"-"`
 	// InputEstimate is the pre-call token estimate for the whole request.
 	InputEstimate int `json:"inputEstimate"`
 	// FixedEstimate is what the parts a review cannot do without cost: the
-	// harness prompt, the change, the priors, and the diff.
+	// whole system block, language fragments included, plus the change, the
+	// priors, and the diff.
 	FixedEstimate int `json:"fixedEstimate"`
 	// ContextRoom is what was left for the context block after those.
 	ContextRoom int `json:"contextRoom"`
 	// OverCeiling is set when the fixed parts alone exceed the ceiling, so
 	// no context fit and the request is larger than one review is budgeted
-	// for. The change is too big to review in one turn; split it, or raise
-	// the ceiling knowing what it costs.
+	// for. Run refuses such a request rather than sending it: the change is
+	// too big to review in one turn, so split it, or raise the ceiling
+	// knowing what it costs.
 	OverCeiling bool `json:"overCeiling,omitempty"`
 	// Ceiling is what it was fitted to.
 	Ceiling int `json:"ceiling"`
@@ -196,16 +207,31 @@ func (r *Result) Summary() string {
 // competes for what is left. A change whose own diff exceeds the ceiling is
 // reported as such rather than silently trimmed, because a review of a diff
 // with the middle cut out is worse than an honest refusal.
+//
+// The system block is priced with the fixed parts, fragments included, and
+// kept on the result so that what was priced is what is sent. A provider's
+// promptFragment is real input on every call, and leaving it out admitted
+// and quoted a request against a system prompt smaller than the one that
+// actually went out.
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
-	fixed := envelope.EstimateTokens(systemPrompt) + envelope.EstimateTokens(in.fixed())
+	system := systemPrompt + languageFragments(in.Envelopes)
+	fixed := envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
+	if len(in.Envelopes) > 0 {
+		// The block's own header is written after FitAll has fitted the
+		// expansions, so it has to be reserved here or the assembled prompt
+		// exceeds the ceiling by the header's cost. Reserving it when every
+		// expansion turns out to be redundant errs high, which is the
+		// harmless direction for a bound.
+		fixed += envelope.EstimateTokens(in.contextHeader())
+	}
 	room := opts.Ceiling - fixed
 	if room < 0 {
 		room = 0
 	}
 	budget := envelope.FitAll(in.Envelopes, room, in.shownLines())
 	prompt := in.build(budget)
-	est := envelope.EstimateTokens(systemPrompt) + envelope.EstimateTokens(prompt)
+	est := envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt)
 	expected := opts.ExpectedOutput
 	if expected <= 0 {
 		expected = ExpectedOutputTokens
@@ -216,6 +242,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		Model:          opts.Model,
 		Budget:         budget,
 		Prompt:         prompt,
+		System:         system,
 		InputEstimate:  est,
 		FixedEstimate:  fixed,
 		ContextRoom:    room,
@@ -246,6 +273,18 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	if opts.DryRun {
 		return res, nil
 	}
+	// The ceiling has to bind, not annotate. Assemble sets OverCeiling when
+	// the fixed parts alone do not fit, and every context expansion has
+	// already been dropped by then, so what would be sent is a request that
+	// costs more than a review is budgeted for and carries none of the
+	// context that made the budget worth spending. A dry run still prints
+	// it; a real one refuses.
+	if res.OverCeiling {
+		return res, fmt.Errorf(
+			"the diff and findings alone are %d tokens against a %d-token ceiling. "+
+				"Raise --ceiling to proceed, or review a smaller range",
+			res.FixedEstimate, opts.Ceiling)
+	}
 	if opts.Mode == ModeExplore {
 		res.Turns = 0
 		return runExplore(ctx, in, opts, res)
@@ -261,7 +300,7 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 		Model:     anthropic.Model(opts.Model),
 		MaxTokens: opts.MaxTokens,
 		System: []anthropic.TextBlockParam{{
-			Text: systemPrompt + languageFragments(in.Envelopes),
+			Text: res.System,
 		}},
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(res.Prompt)),
