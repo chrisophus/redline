@@ -164,14 +164,25 @@ func (in Input) build(budget envelope.Budgeted) string {
 	b.WriteString(in.priorsSection())
 	b.WriteString(in.absentSection())
 	if ctx := budget.Render(); ctx != "" {
-		b.WriteString("## Context beyond the diff\n")
-		b.WriteString("\nResolved by " + providerNames(in.Envelopes) + ". Each block says what it is: ")
-		b.WriteString("an enclosing declaration, a caller of something this change touched, ")
-		b.WriteString("a type in a changed signature, a sibling implementation, a test, or prior history of these lines.\n")
+		b.WriteString(in.contextHeader())
 		b.WriteString(ctx)
 		b.WriteString("\n")
 	}
 	b.WriteString(in.diffSection())
+	return b.String()
+}
+
+// contextHeader introduces the context block. It is priced with the fixed
+// parts rather than counted against the block itself: it is written after
+// FitAll has already fitted the expansions to the room left over, so leaving
+// it out of the fixed total let the assembled prompt exceed the ceiling it
+// was admitted under by the header's own cost.
+func (in Input) contextHeader() string {
+	var b strings.Builder
+	b.WriteString("## Context beyond the diff\n")
+	b.WriteString("\nResolved by " + providerNames(in.Envelopes) + ". Each block says what it is: ")
+	b.WriteString("an enclosing declaration, a caller of something this change touched, ")
+	b.WriteString("a type in a changed signature, a sibling implementation, a test, or prior history of these lines.\n")
 	return b.String()
 }
 
@@ -258,8 +269,20 @@ func (in Input) generatedLine() string {
 
 // priorsSection is wave one's output, marked as already known. Each finding
 // carries its fingerprint, which is the id wave two references it by.
+//
+// A missing report and a report with nothing in it are different facts, and
+// the model acts on the difference: "the checks found nothing" is evidence
+// about the change, and a reviewer told that will not raise what the checks
+// cover. When there is no report at all, nothing was checked, and saying
+// otherwise invents a clean result out of an absent one.
 func (in Input) priorsSection() string {
-	if in.Report == nil || len(in.Report.Findings) == 0 {
+	if in.Report == nil {
+		var b strings.Builder
+		b.WriteString("## Findings already established\n\n")
+		b.WriteString("The deterministic findings were not available for this review.\n\n")
+		return b.String()
+	}
+	if len(in.Report.Findings) == 0 {
 		var b strings.Builder
 		b.WriteString("## Findings already established\n\n")
 		b.WriteString("None. The deterministic checks that ran found nothing to report.\n\n")
