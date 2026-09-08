@@ -319,24 +319,36 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	start := time.Now()
 	stream := client.Messages.NewStreaming(ctx, params)
 	var msg anthropic.Message
+	// Usage is captured on the way out of every path, not just the one that
+	// succeeds. The input is billed as soon as the request is accepted, so a
+	// stream that breaks partway has already cost what it cost, and the
+	// message_start event carries the input count before any content
+	// arrives. A result that reports no usage is how a paid call ends up
+	// with no ledger line, which is the failure this ordering exists to
+	// prevent.
+	captureUsage := func() {
+		res.Usage = Usage{
+			InputTokens:      msg.Usage.InputTokens,
+			OutputTokens:     msg.Usage.OutputTokens,
+			CacheReadTokens:  msg.Usage.CacheReadInputTokens,
+			CacheWriteTokens: msg.Usage.CacheCreationInputTokens,
+		}
+		res.CostUSD, res.CostKnown = res.Usage.Cost(opts.Model)
+	}
 	for stream.Next() {
 		if err := msg.Accumulate(stream.Current()); err != nil {
+			captureUsage()
 			return res, fmt.Errorf("accumulate: %w", err)
 		}
 	}
 	res.Duration = time.Since(start)
 	res.Turns = 1
 	if err := stream.Err(); err != nil {
+		captureUsage()
 		return res, fmt.Errorf("review call: %w", err)
 	}
 
-	res.Usage = Usage{
-		InputTokens:      msg.Usage.InputTokens,
-		OutputTokens:     msg.Usage.OutputTokens,
-		CacheReadTokens:  msg.Usage.CacheReadInputTokens,
-		CacheWriteTokens: msg.Usage.CacheCreationInputTokens,
-	}
-	res.CostUSD, res.CostKnown = res.Usage.Cost(opts.Model)
+	captureUsage()
 	res.StopReason = string(msg.StopReason)
 
 	// A refusal comes back as a normal 200 with an empty-looking body, so
