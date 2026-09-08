@@ -8,37 +8,60 @@ import (
 )
 
 func TestSkipKind(t *testing.T) {
-	skips := []string{
-		"\tt.Skip(\"flaky\")",
-		"    b.SkipNow()",
-		"  it.skip('x', () => {})",
-		"@pytest.mark.skip",
-		"  self.skipTest('n')",
-		"  xit('x', () => {})",
+	const focus = "focuses tests, so the others in the file will not run"
+	cases := []struct {
+		line string
+		lang string
+		want string
+	}{
+		{"\tt.Skip(\"flaky\")", langGo, "skips a test"},
+		{"    b.SkipNow()", langGo, "skips a test"},
+		{"  it.skip('x', () => {})", langJS, "skips a test"},
+		{"@pytest.mark.skip", langPy, "skips a test"},
+		{"  self.skipTest('n')", langPy, "skips a test"},
+		{"  xit('x', () => {})", langJS, "skips a test"},
+		{"  describe.only('x', () => {})", langJS, focus},
+		{"  fit('x', () => {})", langJS, focus},
+		{"\treturn nil", langGo, ""},
+		{"\tt.Errorf(\"boom\")", langGo, ""},
+		{"\t// skip this comment mentions skip but is not a directive", langGo, ""},
+		{"\t// t.Skip(\"disabled for now\") — left as a note", langGo, ""},
+		{"  // it.skip('x', () => {})", langJS, ""},
+		{"  # self.skipTest('n')", langPy, ""},
 	}
-	focus := []string{
-		"  describe.only('x', () => {})",
-		"  fit('x', () => {})",
-	}
-	none := []string{
-		"\treturn nil",
-		"\tt.Errorf(\"boom\")",
-		"\t// skip this comment mentions skip but is not a directive",
-	}
-	for _, l := range skips {
-		if got := skipKind(l); got != "skips a test" {
-			t.Errorf("skipKind(%q) = %q, want a skip", l, got)
+	for _, c := range cases {
+		if got := skipKind(c.line, c.lang); got != c.want {
+			t.Errorf("skipKind(%q, %q) = %q, want %q", c.line, c.lang, got, c.want)
 		}
 	}
-	for _, l := range focus {
-		if got := skipKind(l); !strings.HasPrefix(got, "focuses") {
-			t.Errorf("skipKind(%q) = %q, want a focus", l, got)
+}
+
+// The three findings this pane reported on redline's own PR were all the English
+// word "fit" in a Go comment or string literal, caught by the Jasmine
+// fit/fdescribe pattern. Each claimed the change focuses tests, which was
+// categorically false.
+func TestSkipKindIgnoresProse(t *testing.T) {
+	prose := []string{
+		"// to fit the ceiling one review is budgeted for.",
+		"\t\tt.Fatal(\"context should have been trimmed to fit alongside the diff\")",
+		"\t\tt.Fatalf(\"no context can fit, got room for %d tokens\", got.ContextRoom)",
+	}
+	for _, l := range prose {
+		if got := skipKind(l, langGo); got != "" {
+			t.Errorf("skipKind(%q, go) = %q, want none", l, got)
 		}
 	}
-	for _, l := range none {
-		if got := skipKind(l); got != "" {
-			t.Errorf("skipKind(%q) = %q, want none", l, got)
-		}
+}
+
+// Whether `fit` is a directive is decided by the path: a call in a .test.ts file,
+// an ordinary word in Go.
+func TestSkipKindLanguageGate(t *testing.T) {
+	const line = "  fit('renders', () => {})"
+	if got := skipKind(line, testLang("ui/src/a.test.ts")); !strings.HasPrefix(got, "focuses") {
+		t.Errorf("skipKind(%q, .test.ts) = %q, want a focus", line, got)
+	}
+	if got := skipKind("\tfit := budget.fit(n)", testLang("internal/a/a_test.go")); got != "" {
+		t.Errorf("fit in a Go test file = %q, want none", got)
 	}
 }
 
@@ -103,5 +126,23 @@ func TestSourceWithoutTest(t *testing.T) {
 	f := res.Findings[0]
 	if f.Rule != "source-without-test" || f.Anchor == nil || f.Anchor.ID != "internal/a" {
 		t.Fatalf("finding = %+v (anchor %+v)", f, f.Anchor)
+	}
+}
+
+// A change with no Go file in it never reached the source-without-test check, so
+// the confirmation must not report that every changed package changed a test.
+func TestConfirmationWithoutGoOmitsPackageClause(t *testing.T) {
+	p := &Pane{}
+	p.Scope([]string{"ui/src/app.ts", "ui/src/util.ts"})
+	res, err := p.Diff(&observation{Rev: "base"}, &observation{Rev: "head"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Confirmations) != 1 {
+		t.Fatalf("want 1 confirmation, got %+v", res.Confirmations)
+	}
+	got := res.Confirmations[0].Message
+	if got != "no test was skipped or focused, and no assertions were removed" {
+		t.Errorf("confirmation = %q, want only the checks that ran", got)
 	}
 }

@@ -82,10 +82,20 @@ func (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {
 	p.assertionsRemoved(base.Rev, &res, &lines)
 
 	if len(res.Findings) == 0 {
+		// The package clause is Go's alone: sourceWithoutTest skips every path
+		// without a .go suffix, so on a TypeScript- or Python-only change
+		// nothing ever asked whether a test in the package moved. Confirmations
+		// are this report's "we checked and it held" channel, so a change with
+		// no Go file in it gets a message naming only the checks that ran —
+		// otherwise an absence would read as a pass.
+		msg := "no test was skipped or focused, and no assertions were removed"
+		if p.changedGo() {
+			msg = "every changed package changed a test, " + msg
+		}
 		res.Confirmations = append(res.Confirmations, findings.Confirmation{
 			Substrate: Substrate,
 			Rule:      "tests-move-with-code",
-			Message:   "every changed package changed a test, none were skipped or focused, and no assertions were removed",
+			Message:   msg,
 		})
 	}
 	res.Render = pane.Render{
@@ -135,12 +145,26 @@ func (p *Pane) sourceWithoutTest(res *pane.Result, lines *[]string) {
 	}
 }
 
+// changedGo reports whether the change touches a Go file at all, which is what
+// decides whether the source-without-test question was asked of it.
+func (p *Pane) changedGo() bool {
+	for _, f := range p.changed {
+		if strings.HasSuffix(f, ".go") {
+			return true
+		}
+	}
+	return false
+}
+
 // skipsAdded reports a skip or focus directive on a line this change adds to a
 // test file. A skip quietly removes a test from the run; a focus (.only, fit)
-// quietly removes every other test in the file.
+// quietly removes every other test in the file. Each line is classified in its
+// own file's language, because several of these directives are ordinary words
+// in another one.
 func (p *Pane) skipsAdded(baseRev string, res *pane.Result, lines *[]string) {
 	for _, f := range p.scoped {
-		if !isTestFile(f) {
+		lang := testLang(f)
+		if lang == "" {
 			continue
 		}
 		added := map[int]bool{}
@@ -159,7 +183,7 @@ func (p *Pane) skipsAdded(baseRev string, res *pane.Result, lines *[]string) {
 			if !added[lineNo] {
 				continue
 			}
-			if what := skipKind(line); what != "" {
+			if what := skipKind(line, lang); what != "" {
 				res.Findings = append(res.Findings, findings.Finding{
 					File:      f,
 					Line:      lineNo,
@@ -221,25 +245,66 @@ func (p *Pane) assertionsRemoved(baseRev string, res *pane.Result, lines *[]stri
 	}
 }
 
-// skipKind classifies a skip or focus directive, or returns "" for neither.
-func skipKind(line string) string {
-	switch {
-	case focusRe.MatchString(line):
-		return "focuses tests, so the others in the file will not run"
-	case skipRe.MatchString(line):
-		return "skips a test"
+// skipKind classifies a skip or focus directive on a line of a test file in
+// lang, or returns "" for neither. Two things keep prose out. The JS/TS
+// patterns are tried only on JS/TS files, because Jasmine's bare fit and
+// fdescribe are indistinguishable from the English word "fit": matching them
+// everywhere turned a Go comment about trimming context "to fit the ceiling"
+// into a finding claiming the change focuses tests, and a Go string literal
+// saying "no context can fit" into another. And a directive has to look like
+// the call or declaration it is: the call forms need their opening parenthesis,
+// and an obvious line comment is cut off first, so a directive merely named in
+// a comment or a string does not count. This is deliberately lexical; the pane
+// does not parse Go.
+func skipKind(line, lang string) string {
+	code := line
+	marker := "//"
+	if lang == langPy {
+		marker = "#"
+	}
+	if i := strings.Index(code, marker); i >= 0 {
+		code = code[:i]
+	}
+	switch lang {
+	case langGo:
+		if goSkipRe.MatchString(code) {
+			return "skips a test"
+		}
+	case langJS:
+		if jsFocusRe.MatchString(code) {
+			return "focuses tests, so the others in the file will not run"
+		}
+		if jsSkipRe.MatchString(code) {
+			return "skips a test"
+		}
+	case langPy:
+		if pySkipRe.MatchString(code) {
+			return "skips a test"
+		}
 	}
 	return ""
 }
 
-var (
-	skipRe = regexp.MustCompile(`\b[tbsf]\.Skip(Now|f)?\s*\(` + // Go t.Skip / b.Skip
-		`|\b(it|test|describe|context)\.skip\b` + // JS/TS .skip
-		`|\bx(it|describe)\b` + // JS/TS xit / xdescribe
-		`|@(pytest\.mark\.skip|unittest\.skip)` + // Python decorators
-		`|\bpytest\.skip\s*\(|\bself\.skipTest\s*\(`)
+// The languages skipKind can classify a line in.
+const (
+	langGo = "go"
+	langJS = "js"
+	langPy = "py"
+)
 
-	focusRe = regexp.MustCompile(`\b(it|test|describe|context)\.only\b|\bf(it|describe)\b`)
+var (
+	goSkipRe = regexp.MustCompile(`\b[tbsf]\.Skip(Now|f)?\s*\(`) // t.Skip / b.SkipNow
+
+	jsSkipRe = regexp.MustCompile(`\b(it|test|describe|context)\.skip\s*\(` + // .skip
+		`|\bx(it|describe)\s*\(`) // xit / xdescribe
+
+	jsFocusRe = regexp.MustCompile(`\b(it|test|describe|context)\.only\s*\(` + // .only
+		`|\bf(it|describe)\s*\(`) // fit / fdescribe
+
+	// Python's skip decorators are declarations rather than calls, so the @ that
+	// introduces them stands in for the parenthesis the call forms require.
+	pySkipRe = regexp.MustCompile(`@(pytest\.mark\.skip|unittest\.skip)` + // decorators
+		`|\bpytest\.skip\s*\(|\bself\.skipTest\s*\(`)
 
 	assertionRe = regexp.MustCompile(`\b(assert|require)\.\w+` + // Go testify
 		`|\bt\.(Error|Errorf|Fatal|Fatalf|Fail|FailNow)\b` + // Go testing
@@ -248,22 +313,33 @@ var (
 		`|\bself\.assert\w+\s*\(`) // Python unittest
 )
 
-// isTestFile reports whether a path is a test file in a supported language.
-func isTestFile(f string) bool {
+// jsExts are the JavaScript and TypeScript extensions. A ".test." or "__tests__/"
+// path only counts as a JS/TS test file if it actually is one, so that a file
+// from another language never gets read for JS directives.
+var jsExts = []string{".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
+
+// testLang reports the language of a test file, or "" when the path is not a
+// test file in a supported language.
+func testLang(f string) string {
 	base := path.Base(f)
 	switch {
 	case strings.HasSuffix(f, "_test.go"):
-		return true
+		return langGo
 	case strings.HasPrefix(base, "test_") && strings.HasSuffix(base, ".py"),
 		strings.HasSuffix(base, "_test.py"):
-		return true
+		return langPy
+	case !hasExt(base, jsExts):
+		return ""
 	case strings.Contains(base, ".test.") || strings.Contains(base, ".spec."):
-		return true
+		return langJS
 	case strings.Contains(f, "__tests__/"):
-		return true
+		return langJS
 	}
-	return false
+	return ""
 }
+
+// isTestFile reports whether a path is a test file in a supported language.
+func isTestFile(f string) bool { return testLang(f) != "" }
 
 func hasExt(f string, exts []string) bool {
 	for _, e := range exts {
