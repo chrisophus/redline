@@ -243,7 +243,10 @@ redline review --api openai --model gpt-5
 ```
 
 `--base-url` wins over `OPENAI_BASE_URL`, and with the default provider it
-overrides `ANTHROPIC_BASE_URL` the same way. The endpoint has to accept a
+overrides `ANTHROPIC_BASE_URL` the same way. A gateway that meters by
+caller and wants the user in the bearer token gets it from `--api-user`
+or `OPENAI_USER`: the header is then `Bearer user=<user>&key=<key>`
+instead of the bare key. The endpoint has to accept a
 streamed request with `response_format: json_schema`; one that drops the
 schema constraint still works as long as the model returns the JSON,
 fenced or not. A proxy that reports no token usage on the stream gets its

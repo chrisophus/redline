@@ -70,6 +70,9 @@ flags:
   --base-url URL    with review: endpoint to send the call to, for a proxy
                     (default: the vendor's public endpoint; also read from
                     ANTHROPIC_BASE_URL or OPENAI_BASE_URL)
+  --api-user NAME   with review --api openai: name the caller to a proxy that
+                    wants one, sent as "Bearer user=NAME&key=KEY" (also read
+                    from OPENAI_USER)
   --model NAME      with review: model to review with (default claude-sonnet-5,
                     or gpt-5 with --api openai)
   --effort LEVEL    with review: low|medium|high|xhigh|max (default: the model's)
@@ -119,7 +122,7 @@ func main() {
 type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
 	reportURL, profile, olderThan                                     string
-	model, effort, mode, api, baseURL                                 string
+	model, effort, mode, api, baseURL, apiUser                        string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
 	stats                                                             bool
 	port, ceiling, maxTokens, maxTurns                                int
@@ -160,6 +163,7 @@ func runMain(args []string) error {
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 	fs.StringVar(&o.api, "api", "", "with review: anthropic or openai")
 	fs.StringVar(&o.baseURL, "base-url", "", "with review: endpoint to send the call to, for a proxy")
+	fs.StringVar(&o.apiUser, "api-user", "", "with review --api openai: caller name for a proxy that wants one beside the key")
 	fs.StringVar(&o.model, "model", "", "with review: model to review with")
 	fs.StringVar(&o.effort, "effort", "", "with review: low|medium|high|xhigh|max")
 	fs.StringVar(&o.mode, "mode", "", "with review: oneshot or explore")

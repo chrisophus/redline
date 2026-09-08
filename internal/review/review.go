@@ -120,6 +120,10 @@ type Options struct {
 	// Anthropic SDK reads ANTHROPIC_API_KEY itself, and the command fills
 	// this from OPENAI_API_KEY for openai.
 	APIKey string
+	// APIUser names the caller to a proxy that wants one beside the key.
+	// When set, the openai wire sends "Bearer user=<user>&key=<key>"
+	// instead of the bare key. Ignored by the anthropic wire.
+	APIUser string
 	// DryRun assembles the prompt and prices it without calling anything.
 	DryRun bool
 }

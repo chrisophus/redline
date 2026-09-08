@@ -64,6 +64,10 @@ func cmdReview(o opts) error {
 		if ropts.BaseURL == "" {
 			ropts.BaseURL = os.Getenv("OPENAI_BASE_URL")
 		}
+		ropts.APIUser = o.apiUser
+		if ropts.APIUser == "" {
+			ropts.APIUser = os.Getenv("OPENAI_USER")
+		}
 	}
 
 	out, err := review.Run(context.Background(), in, ropts)
