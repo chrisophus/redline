@@ -70,6 +70,12 @@ type view struct {
 	DiffFiles []fileView
 	Observed  []findingView
 
+	// LowConfidence is the agent findings that said so themselves. They are
+	// folded away rather than dropped: the review prompt promises an
+	// uncertain finding costs the reader nothing, and a reviewer who is
+	// charged full price for hedging stops hedging.
+	LowConfidence []findingView
+
 	Groups   []drillGroup
 	Confirms []findings.Confirmation
 	Unknowns []findings.Unknown
@@ -103,9 +109,109 @@ type navLink struct {
 	Warn  bool
 }
 
+// findingView is one finding as a card renders it. Heading and Body exist
+// because an agent comment arrives with its entire remark in Message: a
+// one-line deterministic message is a title, a paragraph is not, and the two
+// have to share this template.
 type findingView struct {
 	findings.Finding
 	Evidence template.HTML
+	// Related are the priors a correlation names, resolved against this run.
+	// A reference to a finding this run does not have is dropped here, so the
+	// card never shows a broken link.
+	Related []relatedRef
+}
+
+// relatedRef is a prior finding a correlation builds on: enough to recognise
+// and find it, and deliberately not its message. The point of a reference is
+// that the reader sees both halves of the connection without the same text
+// appearing twice on one page.
+type relatedRef struct {
+	Rule     string
+	Location string
+	ID       string
+}
+
+// headingMax is how long a message may be before the card splits it — about
+// one line of h3 at the report's width. Past that the heading sets as a block
+// of bold prose: on two real reports, 10 of 24 headings ran over 200
+// characters and the longest was 1023, eleven lines deep, which is the end of
+// the ten-second orientation the briefing exists for. A message this short
+// renders exactly as it always has.
+const headingMax = 120
+
+// Heading is the card's title: the whole message when it is short enough to
+// be one, otherwise its first sentence or its first line, whichever ends
+// sooner.
+func (f findingView) Heading() string {
+	head, _ := splitMessage(f.Message)
+	return head
+}
+
+// Body is what the heading left behind, for the slot a deterministic card
+// fills with evidence rows. Empty on a short message, so that card keeps its
+// single-line title and nothing else moves.
+func (f findingView) Body() template.HTML {
+	_, rest := splitMessage(f.Message)
+	if rest == "" {
+		return ""
+	}
+	return template.HTML(codeSpans(template.HTMLEscapeString(rest)))
+}
+
+// splitMessage cuts a long message into a heading and the rest. Two
+// candidates and the shorter wins: the first sentence, and the first line —
+// a remark that opens with a line of its own has already said where its
+// title ends.
+func splitMessage(msg string) (head, rest string) {
+	msg = strings.TrimSpace(msg)
+	if len(msg) <= headingMax {
+		return msg, ""
+	}
+	cut := len(msg)
+	if i := strings.IndexByte(msg, '\n'); i >= 0 {
+		cut = i
+	}
+	if i := firstSentenceEnd(msg); i > 0 && i < cut {
+		cut = i
+	}
+	return strings.TrimSpace(msg[:cut]), strings.TrimSpace(msg[cut:])
+}
+
+// sentenceEnd is a full stop that ends a sentence: terminal punctuation, any
+// closing quote or bracket, then whitespace or the end of the text.
+var sentenceEnd = regexp.MustCompile(`[.!?]["')\]]*(?:\s|$)`)
+
+// minHeading is the shortest heading a sentence cut may produce. The same
+// pattern matches the dot in "e.g." and "cf.", which agent prose is full of,
+// and a four-character heading is worse than no split at all — so a candidate
+// that short is read as an abbreviation and the scan carries on.
+const minHeading = 32
+
+// firstSentenceEnd returns the offset just past the first sentence-ending
+// punctuation, or -1 when the message has none worth cutting at.
+func firstSentenceEnd(msg string) int {
+	for _, m := range sentenceEnd.FindAllStringIndex(msg, -1) {
+		// The match swallows the space after the stop; the heading keeps the
+		// punctuation itself.
+		end := len(strings.TrimRight(msg[:m[1]], " \t\r\n\f\v"))
+		if end >= minHeading {
+			return end
+		}
+	}
+	return -1
+}
+
+// inlineCode is a `code` span in agent prose, which quotes identifiers
+// constantly and until now showed the backticks literally.
+var inlineCode = regexp.MustCompile("`([^`\n]+)`")
+
+// codeSpans turns `x` into <code>x</code>. It must run on already-escaped
+// text: this is the one place the card introduces markup of its own, so what
+// it wraps has to be inert before it arrives or the body becomes an injection
+// point.
+func codeSpans(escaped string) string {
+	return inlineCode.ReplaceAllString(escaped, "<code>$1</code>")
 }
 
 // drillGroup is one language/kind cell of the drill-in: the files of that
@@ -196,6 +302,11 @@ func buildView(in HTMLInput) view {
 				fv.Evidence = template.HTML(highlightDiff(a.Content))
 			}
 		}
+		fv.Related = relatedRefs(rep, f)
+		if f.Confidence == findings.ConfidenceLow {
+			v.LowConfidence = append(v.LowConfidence, fv)
+			continue
+		}
 		v.Observed = append(v.Observed, fv)
 	}
 
@@ -244,6 +355,31 @@ func buildView(in HTMLInput) view {
 	return v
 }
 
+// relatedRefs resolves the priors a correlation names. The markdown report has
+// rendered these since the field existed and the HTML report showed nothing,
+// so the connection a correlation exists to draw was visible on one of the two
+// reports only.
+func relatedRefs(rep *findings.Report, f findings.Finding) []relatedRef {
+	var out []relatedRef
+	for _, ref := range f.RelatedFindings {
+		prior := rep.FindRef(ref)
+		if prior == nil {
+			// A reference to a finding this run does not have is dropped.
+			// Rendering a broken link would be worse than saying nothing.
+			continue
+		}
+		loc := prior.File
+		if loc == "" {
+			loc = prior.Anchor.Key()
+		}
+		if prior.Line > 0 {
+			loc += ":" + strconv.Itoa(prior.Line)
+		}
+		out = append(out, relatedRef{Rule: prior.Rule, Location: loc, ID: prior.ID})
+	}
+	return out
+}
+
 // navFor lists the sections this page will render, in page order. It must stay
 // in step with the template: TestNavMatchesTheSectionsOnThePage fails if a
 // section gains or loses a heading without its entry moving too.
@@ -273,7 +409,10 @@ func navFor(v view) []navLink {
 	if len(v.Renders) > 0 {
 		nav = append(nav, navLink{ID: "changed", Label: "What changed", Count: len(v.Renders)})
 	}
-	nav = append(nav, navLink{ID: "observed", Label: "What Redline observed", Count: len(v.Observed)})
+	// The count is every finding in the section, folded ones included: the
+	// fold takes a low-confidence finding out of the list, not out of the
+	// tally, so the sidebar still says how much is there.
+	nav = append(nav, navLink{ID: "observed", Label: "What Redline observed", Count: len(v.Observed) + len(v.LowConfidence)})
 	nav = append(nav,
 		navLink{ID: "unknowns", Label: "Undetermined", Count: len(v.Unknowns) + len(v.Failed), Warn: len(v.Unknowns)+len(v.Failed) > 0},
 		navLink{ID: "confirms", Label: "Checked and held", Count: len(v.Confirms)},

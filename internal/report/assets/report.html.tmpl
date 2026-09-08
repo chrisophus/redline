@@ -93,6 +93,18 @@ table.comp td.minus{color:var(--error);font-variant-numeric:tabular-nums}
 .verdict{margin-top:8px;display:flex;gap:8px;align-items:baseline;font-size:13px}
 .meta-row{color:var(--muted);font-size:13px;margin-top:8px}
 .meta-row b{color:var(--ink);font-weight:600}
+/* An agent comment arrives as one block of prose: its first sentence becomes
+   the card's heading and the rest lands here, where a deterministic finding
+   puts its evidence rows. */
+.f .msg{margin:10px 0 0;white-space:pre-wrap}
+/* The priors a correlation was built from — named, not restated, so the same
+   text does not appear twice on one page. */
+.f .rel{color:var(--muted);font-size:13px;margin-top:8px}
+.f .rel .id{font-family:ui-monospace,monospace;opacity:.7}
+/* Low-confidence agent findings are folded away, not discarded: an uncertain
+   finding has to cost the reader nothing, or the agent stops reporting the
+   class of finding this layer exists to surface. */
+details.fold>summary{color:var(--muted)}
 blockquote{margin:12px 0 0;padding:10px 14px;background:var(--code);border-radius:6px;
   font-size:14px;color:var(--muted)}
 code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
@@ -299,12 +311,14 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 
 {{define "finding"}}
 <div class="f {{lower .Severity}}" data-file="{{.File}}" data-line="{{.Line}}" data-rule="{{.Rule}}" data-sev="{{.Severity}}">
-  <h3>{{.Message}}</h3>
+  <h3>{{.Heading}}</h3>
   <div>
     <span class="tag">{{.Severity}}</span>
     <span class="tag">{{.Rule}}</span>
+    {{if .Confidence}}<span class="tag">{{.Confidence}} confidence</span>{{end}}
     <span class="tag det">{{if eq (lower .Source) "llm"}}agent{{else}}observed{{end}}</span>
   </div>
+  {{with .Body}}<p class="msg">{{.}}</p>{{end}}
   {{with .Verdict}}
   <div class="verdict"><span class="tag vd">{{.Ruling}}</span><span class="s">agent{{if .Rationale}} · {{.Rationale}}{{end}}</span>{{if .Fix}}<div class="fix">fix: {{.Fix}}</div>{{end}}</div>
   {{end}}
@@ -316,6 +330,9 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   </div>
   {{if .Evidence}}<pre class="diff">{{.Evidence}}</pre>{{end}}
   {{if .Context}}<blockquote>{{.Context}}</blockquote>{{end}}
+  {{with .Related}}
+  <div class="rel">builds on {{range $i, $r := .}}{{if $i}}, {{end}}<code>{{$r.Rule}}</code>{{if $r.Location}} at {{$r.Location}}{{end}}{{if $r.ID}} <span class="id">{{$r.ID}}</span>{{end}}{{end}}</div>
+  {{end}}
   <div class="f-actions">
     {{if .File}}<button type="button" class="f-view" data-file="{{.File}}" data-line="{{.Line}}" title="Open this file's diff at the finding">View code</button>{{end}}
     <button type="button" class="f-copy" title="Copy this finding for the agent">Copy</button>
@@ -341,8 +358,14 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <h2 id="observed">What Redline observed</h2>
 {{if .Observed}}
 {{range .Observed}}{{template "finding" .}}{{end}}
-{{else}}
+{{else if not .LowConfidence}}
 <p class="empty">{{if eq .Coverage.ExaminedFiles 0}}Nothing — because no pane examined this change. See the note above.{{else}}Nothing. The panes that ran found no defects.{{end}}</p>
+{{end}}
+{{if .LowConfidence}}
+<details class="fold">
+  <summary>{{len .LowConfidence}} low-confidence agent finding{{if ne (len .LowConfidence) 1}}s{{end}} folded away<span class="s">uncertain, not discarded — open to read them</span></summary>
+  <div class="body">{{range .LowConfidence}}{{template "finding" .}}{{end}}</div>
+</details>
 {{end}}
 
 
@@ -596,7 +619,11 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   function bindFindingCard(card) {
     var meta = {file: card.dataset.file || "", line: +card.dataset.line || 0,
                 rule: card.dataset.rule || "", sev: card.dataset.sev || ""};
-    var msg = (card.querySelector("h3") || {}).textContent || "";
+    // A long agent message is split across the heading and the body; the
+    // agent needs the remark it wrote back, not just the title.
+    var head = (card.querySelector("h3") || {}).textContent || "";
+    var rest = (card.querySelector(".msg") || {}).textContent || "";
+    var msg = rest ? head + "\n\n" + rest : head;
     function snippetText() {
       var rows = card.querySelectorAll("pre.src .src-line");
       if (!rows.length) return "";
