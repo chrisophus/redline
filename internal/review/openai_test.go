@@ -220,6 +220,21 @@ func TestOpenAIProxyMayNeedNoKey(t *testing.T) {
 	}
 }
 
+func TestOpenAIUserRidesInTheBearerWhenNamed(t *testing.T) {
+	srv, _, hdr, _ := openAIServer(t, func(w http.ResponseWriter, req openAIRequest) {
+		_, _ = io.WriteString(w, sse(reviewBody, "stop", `{"prompt_tokens":10,"completion_tokens":5}`))
+	})
+	_, err := Run(context.Background(), smallInput(), Options{
+		API: APIOpenAI, BaseURL: srv.URL, APIKey: "k1", APIUser: "chris",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hdr.Get("Authorization"); got != "Bearer user=chris&key=k1" {
+		t.Fatalf("a gateway that meters by caller wants the user beside the key, got %q", got)
+	}
+}
+
 func TestOpenAIVendorEndpointNeedsAKeyBeforeUploading(t *testing.T) {
 	_, err := Run(context.Background(), smallInput(), Options{API: APIOpenAI})
 	if err == nil || !strings.Contains(err.Error(), "OPENAI_API_KEY") {

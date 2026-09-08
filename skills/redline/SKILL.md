@@ -67,7 +67,9 @@ yourself anyway: it costs money, and the loop below is your own review.
 It needs `ANTHROPIC_API_KEY` or an `ant auth login` profile; without one,
 every other command still works. To send the call through an
 OpenAI-compatible proxy instead, pass `--api openai` with `--base-url`
-(or `OPENAI_BASE_URL`) and `OPENAI_API_KEY`; that path is one shot only.
+(or `OPENAI_BASE_URL`) and `OPENAI_API_KEY`, plus `--api-user` or
+`OPENAI_USER` when the proxy wants the caller in the bearer token; that
+path is one shot only.
 
 Its findings are advisory, marked `source: llm`, and never reach the merge
 gate whatever severity they carry. Verdicts already in `review.json` are

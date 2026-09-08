@@ -122,8 +122,8 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
-	if opts.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+opts.APIKey)
+	if token := bearerToken(opts); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	resp, err := openAIHTTPClient.Do(req)
@@ -135,6 +135,16 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 		return completion{}, openAIStatusError(resp)
 	}
 	return readOpenAIStream(resp.Body)
+}
+
+// bearerToken is what follows "Bearer" in the Authorization header. A
+// gateway that meters by caller wants the user in the token beside the key,
+// as user=<user>&key=<key>; with no user named, the key goes as it is.
+func bearerToken(opts Options) string {
+	if opts.APIUser == "" {
+		return opts.APIKey
+	}
+	return "user=" + opts.APIUser + "&key=" + opts.APIKey
 }
 
 // openAIStatusError turns a non-200 into an error that quotes the server's
