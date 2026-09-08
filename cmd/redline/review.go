@@ -44,6 +44,8 @@ func cmdReview(o opts) error {
 		expected = review.Summarize(entries).ExpectedOutput()
 	}
 	ropts := review.Options{
+		API:            o.api,
+		BaseURL:        o.baseURL,
 		Model:          o.model,
 		Effort:         o.effort,
 		Ceiling:        o.ceiling,
@@ -53,6 +55,15 @@ func cmdReview(o opts) error {
 		MaxTurns:       o.maxTurns,
 		ExpectedOutput: expected,
 		DryRun:         o.dryRun,
+	}
+	if o.api == review.APIOpenAI {
+		// The Anthropic SDK reads its own environment. The OpenAI backend is
+		// plain HTTP, so the same convention is applied here, in the names
+		// the vendor's own tools use, and the flag wins over the variable.
+		ropts.APIKey = os.Getenv("OPENAI_API_KEY")
+		if ropts.BaseURL == "" {
+			ropts.BaseURL = os.Getenv("OPENAI_BASE_URL")
+		}
 	}
 
 	out, err := review.Run(context.Background(), in, ropts)
@@ -68,6 +79,13 @@ func cmdReview(o opts) error {
 				"redline: the diff and findings alone are %d tokens against a %d ceiling, "+
 					"so no context beyond the diff fits. Review a smaller range, or raise --ceiling.\n",
 				out.FixedEstimate, out.Ceiling)
+		}
+		if out.UsageEstimated {
+			// A ledger line built from an estimate is better than none, and
+			// worse than one the endpoint counted; say which this is.
+			fmt.Fprintf(os.Stderr,
+				"redline: the endpoint reported no token usage, so the cost below is estimated "+
+					"from the request size rather than counted.\n")
 		}
 		if !out.CostKnown && !o.dryRun && out.Usage.InputTokens > 0 {
 			// A model missing from the price table has no estimate, so the

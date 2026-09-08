@@ -29,6 +29,14 @@ var priceTable = map[string]Pricing{
 	"claude-sonnet-5": {InPerM: 2, OutPerM: 10},
 	"claude-sonnet-4": {InPerM: 3, OutPerM: 15},
 	"claude-haiku-4":  {InPerM: 1, OutPerM: 5},
+	// OpenAI list rates, for --api openai. A proxy that aliases a model
+	// to another name prices as unknown, which is the honest answer.
+	"gpt-5":        {InPerM: 1.25, OutPerM: 10},
+	"gpt-5-mini":   {InPerM: 0.25, OutPerM: 2},
+	"gpt-5-nano":   {InPerM: 0.05, OutPerM: 0.40},
+	"gpt-4.1":      {InPerM: 2, OutPerM: 8},
+	"gpt-4.1-mini": {InPerM: 0.40, OutPerM: 1.60},
+	"gpt-4o":       {InPerM: 2.50, OutPerM: 10},
 }
 
 // LookupPricing resolves a model id to its rate by longest-prefix match.
@@ -70,7 +78,8 @@ func (u Usage) Cost(model string) (usd float64, ok bool) {
 	// Cache writes bill above base input and reads far below it. Neither is
 	// used by default here (a pre-push tool firing a few times a day pays
 	// every write and reads none of them), so the multipliers are stated
-	// rather than assumed away.
+	// rather than assumed away. The OpenAI backend reports cache reads at
+	// the same tenth and never a write, so the same arithmetic serves it.
 	in := float64(u.InputTokens)/million*p.InPerM +
 		float64(u.CacheWriteTokens)/million*p.InPerM*1.25 +
 		float64(u.CacheReadTokens)/million*p.InPerM*0.1

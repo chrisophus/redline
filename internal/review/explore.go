@@ -134,6 +134,9 @@ func runExplore(ctx context.Context, in Input, opts Options, res *Result) (*Resu
 	if opts.APIKey != "" {
 		clientOpts = append(clientOpts, option.WithAPIKey(opts.APIKey))
 	}
+	if opts.BaseURL != "" {
+		clientOpts = append(clientOpts, option.WithBaseURL(opts.BaseURL))
+	}
 	client := anthropic.NewClient(clientOpts...)
 
 	msgs := []anthropic.BetaMessageParam{
