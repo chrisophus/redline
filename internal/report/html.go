@@ -401,7 +401,11 @@ func navFor(v view) []navLink {
 		nav = append(nav, navLink{ID: "coverage", Label: "Coverage", Warn: coverageGap})
 	}
 	if v.Mutation != nil {
-		nav = append(nav, navLink{ID: "mutation", Label: "Mutation", Count: v.Mutation.Lived, Warn: v.Mutation.Lived > 0})
+		// A run whose mutants failed on the runner is worth the same mark as
+		// one with survivors: both mean the added lines are not known to be
+		// asserted.
+		nav = append(nav, navLink{ID: "mutation", Label: "Mutation", Count: v.Mutation.Lived,
+			Warn: v.Mutation.Lived > 0 || v.Mutation.Infra > 0})
 	}
 	if len(v.Groups) > 0 {
 		nav = append(nav, navLink{ID: "drill", Label: "Drill in", Count: len(v.Groups)})

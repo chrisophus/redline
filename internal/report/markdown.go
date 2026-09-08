@@ -69,11 +69,34 @@ func mutationSection(b *strings.Builder, rep *findings.Report) {
 					fmt.Fprintf(b, " (%s)", mt.Verdict.Rationale)
 				}
 			}
+			if repro := mt.Repro(); repro != "" {
+				fmt.Fprintf(b, " — repro: `%s`", repro)
+			}
 			fmt.Fprintln(b)
 		}
 	}
 	if len(m.Survived) > 0 {
 		fmt.Fprintln(b)
+	}
+	if m.Infra > 0 {
+		fmt.Fprintf(b, "%d mutant(s) on these lines could not be run: the test binary failed for a reason of its own, "+
+			"so those lines were not measured. They are not killed.\n\n", m.Infra)
+		for _, fs := range m.Unreliable {
+			for _, mt := range fs.Mutants {
+				fmt.Fprintf(b, "- `%s:%d` — %s (run failed)", fs.Path, mt.Line, mt.Mutator)
+				if repro := mt.Repro(); repro != "" {
+					fmt.Fprintf(b, " — repro: `%s`", repro)
+				}
+				fmt.Fprintln(b)
+			}
+		}
+		if len(m.Unreliable) > 0 {
+			fmt.Fprintln(b)
+		}
+	}
+	if m.Equivalent > 0 {
+		fmt.Fprintf(b, "%d mutant(s) are equivalent: the mutated program does the same thing, so no test can kill them. Not a gap.\n\n",
+			m.Equivalent)
 	}
 }
 

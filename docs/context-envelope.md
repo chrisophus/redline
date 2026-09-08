@@ -19,6 +19,7 @@ because a provider is free to use a model of its own to fill an envelope.
 | This schema | owns | fills |
 | Expansion roles vocabulary | owns | tags |
 | Ranking and token budgeting | owns | supplies priority hints |
+| Which classes of context a review pays for | owns | emits regardless |
 | Symbol resolution, callers, types | never | owns |
 | Generated files: gitattributes, path patterns | owns | |
 | Generated files: language conventions, regeneration | | owns |
@@ -104,6 +105,15 @@ provider cannot promote a test above an enclosing declaration; `priority`
 orders expansions *within* one role and does nothing else. Higher is more
 valuable. A role Redline does not know ranks after every role it does, is
 kept when it fits, and is named in the report when it does not.
+
+Before any of that, Redline decides whether a class of context is wanted at
+all. Today one class is not: test code. A `test` expansion, and any expansion
+whose file is test material by path, is held back and counted, because the
+review is told not to comment on test adequacy and the panes measure it
+anyway. The exception is a change that touches nothing but tests, where the
+tests are the change and everything is sent. Keep emitting `test` expansions:
+the role stays in the vocabulary, the decision is Redline's per review, and a
+provider that stopped emitting them would take the choice away.
 
 `symbol` and `scope` are opaque strings. There is no package field, and
 nothing here may be language-shaped: anything that only makes sense for one

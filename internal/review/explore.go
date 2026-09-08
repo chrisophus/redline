@@ -125,7 +125,7 @@ func fetchToolParam() anthropic.BetaToolUnionParam {
 // runExplore drives the tool loop. It returns when the model stops asking for
 // context, when the dollar cap is reached, or when the turn limit is.
 func runExplore(ctx context.Context, in Input, opts Options, res *Result) (*Result, error) {
-	budget := envelope.FitAll(in.Envelopes, opts.Ceiling, in.shownLines())
+	budget := envelope.FitAllFilter(in.Envelopes, opts.Ceiling, in.shownLines(), in.contextFilter())
 	kept := budget.Kept
 	res.Budget = budget
 	res.Prompt = in.build(envelope.Budgeted{}) + catalogue(kept)

@@ -164,6 +164,8 @@ body.drawer-open{overflow:hidden}
 .filter-note{font-size:13px;color:var(--muted);margin:8px 0}
 .filter-note button{font:inherit;font-size:13px;background:none;border:0;color:var(--accent);cursor:pointer;text-decoration:underline}
 .empty{color:var(--muted);font-style:italic}
+p.warn{color:var(--warn)}
+p.s,li .s{font-size:12px;color:var(--muted)}
 pre.diff span[data-line]{cursor:text;position:relative;border-left:3px solid transparent}
 pre.diff span[data-line]::before{content:attr(data-line);display:inline-block;width:3em;
   margin-right:14px;text-align:right;color:var(--muted);user-select:none;opacity:.7}
@@ -281,9 +283,23 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <details>
   <summary>{{.Lived}} surviving mutant{{if ne .Lived 1}}s{{end}} no test caught</summary>
   <div class="body"><ul class="plain">
-  {{range .Survived}}{{$p := .Path}}{{range .Mutants}}<li><button type="button" class="mut-jump" data-jump="{{$p}}" data-line="{{.Line}}"><code>{{$p}}:{{.Line}}</code> · {{.Mutator}}{{if .Original}}: <code>{{.Original}}</code> → <code>{{.Replacement}}</code>{{end}}</button>{{with .Verdict}} <span class="tag vd">{{.Ruling}}</span>{{if .Rationale}} <span class="s">{{.Rationale}}</span>{{end}}{{end}}</li>{{end}}{{end}}
+  {{range .Survived}}{{$p := .Path}}{{range .Mutants}}<li><button type="button" class="mut-jump" data-jump="{{$p}}" data-line="{{.Line}}"><code>{{$p}}:{{.Line}}</code> · {{.Mutator}}{{if .Original}}: <code>{{.Original}}</code> → <code>{{.Replacement}}</code>{{end}}</button>{{with .Verdict}} <span class="tag vd">{{.Ruling}}</span>{{if .Rationale}} <span class="s">{{.Rationale}}</span>{{end}}{{end}}{{if .Repro}}<div class="s">repro: <code>{{.Repro}}</code></div>{{end}}</li>{{end}}{{end}}
   </ul></div>
 </details>
+{{end}}
+{{if .Infra}}
+<p class="warn"><b>{{.Infra}}</b> mutant{{if ne .Infra 1}}s{{end}} could not be run: the test binary failed for a reason of its own (out of memory, disk, open files), so those lines were not measured at all. Do not read them as killed.</p>
+{{if .Unreliable}}
+<details>
+  <summary>{{.Infra}} mutant{{if ne .Infra 1}}s{{end}} whose run failed</summary>
+  <div class="body"><ul class="plain">
+  {{range .Unreliable}}{{$p := .Path}}{{range .Mutants}}<li><button type="button" class="mut-jump" data-jump="{{$p}}" data-line="{{.Line}}"><code>{{$p}}:{{.Line}}</code> · {{.Mutator}}</button>{{if .Repro}}<div class="s">repro: <code>{{.Repro}}</code></div>{{end}}</li>{{end}}{{end}}
+  </ul></div>
+</details>
+{{end}}
+{{end}}
+{{if .Equivalent}}
+<p class="s">{{.Equivalent}} mutant{{if ne .Equivalent 1}}s{{end}} on these lines {{if eq .Equivalent 1}}is{{else}}are{{end}} equivalent: the mutated program does the same thing, so no test can kill {{if eq .Equivalent 1}}it{{else}}them{{end}}. Not a gap.</p>
 {{end}}
 {{end}}
 

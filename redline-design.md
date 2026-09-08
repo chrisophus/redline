@@ -275,7 +275,9 @@ cross-kind question, and a Go type checker cannot answer half of it.
 Nothing in the contract has to change to try it. Providers are found by
 config, several merge into one budget, and the roles are language-agnostic. A
 graph provider would sit beside the Go one and Redline would not know the
-difference.
+difference. What that adapter would emit, which roles a name-resolved edge may
+honestly claim, and why the graph has to be treated as a harness artifact with
+a staleness check are worked out in docs/plans/graph-context.md.
 
 ### What is still open
 

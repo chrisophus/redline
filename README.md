@@ -183,6 +183,16 @@ turns over a growing context cost several dollars, because every turn
 re-sends the whole conversation. So the context is generous and the loop is
 one call.
 
+Test code is not part of it. Changed test files are named on the request with
+how many lines moved in them, and their bodies are left out, the same bargain
+generated files get; a `test` expansion from a context provider is held back
+the same way, and the count of what was withheld is printed. Whether the tests
+assert enough is measured, by the coverage pane and by mutation, and those
+answers reach the review as findings it is told not to restate. Sending the
+bodies too buys a second opinion on a settled question with the budget that
+would have paid for a correlation finding. A change that is only tests is the
+exception: there the tests are the change, so they are sent.
+
 The cost target is an average across reviews, not a cap on each one. Most
 changes are small and cost cents; a few are large and cost more. Holding
 every review to the average would trim context from exactly the large changes

@@ -593,3 +593,86 @@ func TestModeDefaultsToOneShot(t *testing.T) {
 		t.Fatalf("mode = %q; explore costs more and must be asked for", got.Mode)
 	}
 }
+
+// Test code is measured, not read. The reviewer is told the tests moved and
+// how much, and the bodies stay out of the request.
+func TestPromptNamesTestFilesInsteadOfSendingThem(t *testing.T) {
+	in := Input{Change: &change.Set{Files: []change.File{
+		{Path: "store.go", Status: "modified", Added: 3, Diff: "@@ -1,1 +1,3 @@\n+ok := insert()",
+			Head: "package store\n\nfunc insert() bool { return true }\n", Language: "go"},
+		{Path: "store_test.go", Status: "modified", Added: 40, Removed: 2,
+			Diff: "@@ -1,1 +1,40 @@\n+func TestInsert(t *testing.T) { mustNotAppear() }",
+			Head: "package store\n\nfunc TestInsert(t *testing.T) { mustNotAppear() }\n", Language: "go"},
+	}}}
+	got, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got.Prompt, "mustNotAppear") {
+		t.Fatal("test bodies must not reach the request")
+	}
+	if !strings.Contains(got.Prompt, "store_test.go") {
+		t.Fatal("an exclusion the reader cannot see reads as a change with no tests")
+	}
+	if !strings.Contains(got.Prompt, "+40 -2") {
+		t.Fatal("how much moved in the tests is the part that survives the exclusion")
+	}
+	if !strings.Contains(got.Prompt, "### store.go") {
+		t.Fatal("the code under test still has to be sent")
+	}
+}
+
+// A change that is only tests has nothing else to review, so the tests are
+// the change and they are sent.
+func TestATestOnlyChangeIsStillReviewed(t *testing.T) {
+	in := Input{Change: &change.Set{Files: []change.File{
+		{Path: "store_test.go", Status: "modified", Added: 4,
+			Diff: "@@ -1,1 +1,4 @@\n+func TestInsert(t *testing.T) { assertThis() }", Language: "go"},
+	}}}
+	got, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Prompt, "assertThis") {
+		t.Fatal("a review shown none of the change is not a review")
+	}
+}
+
+// The context block obeys the same rule the diff does: a provider resolves a
+// test that covers a changed symbol, and Redline decides not to pay for it.
+func TestTestExpansionsAreHeldBackAndCounted(t *testing.T) {
+	env := &envelope.Envelope{
+		SchemaVersion: envelope.SchemaVersion,
+		Provider:      envelope.Provider{Name: "prov", Version: "v9", Language: "go"},
+		Expansions: []envelope.Expansion{
+			{Role: envelope.RoleTest, Symbol: "TestInsert", File: "store_test.go",
+				StartLine: 1, EndLine: 3, Content: "func TestInsert() { coveringTest() }"},
+			{Role: envelope.RoleEnclosing, Symbol: "helper", File: "helper_test.go",
+				StartLine: 1, EndLine: 3, Content: "func helper() { fixtureBody() }"},
+			{Role: envelope.RoleCaller, Symbol: "Caller", File: "c.go",
+				StartLine: 3, EndLine: 4, Content: "callIt()"},
+		},
+	}
+	in := Input{
+		Change: &change.Set{Files: []change.File{
+			{Path: "store.go", Status: "modified", Added: 1, Diff: "@@ -1,1 +1,1 @@\n+x", Language: "go"},
+		}},
+		Envelopes: []*envelope.Envelope{env},
+	}
+	got, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got.Prompt, "coveringTest") || strings.Contains(got.Prompt, "fixtureBody") {
+		t.Fatal("a test expansion is test code, whatever role it arrived under")
+	}
+	if !strings.Contains(got.Prompt, "callIt()") {
+		t.Fatal("the rest of the context still has to be spent")
+	}
+	if got.Budget.Excluded != 2 {
+		t.Fatalf("Excluded = %d, want 2; a silent exclusion cannot be measured", got.Budget.Excluded)
+	}
+	if !strings.Contains(got.Budget.Summary(), "test code") {
+		t.Fatalf("the summary must say what was withheld: %q", got.Budget.Summary())
+	}
+}

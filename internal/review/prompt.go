@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/findings"
 )
@@ -80,6 +81,76 @@ one costs them the finding.
 Write plainly. One or two sentences per comment, naming the specific thing and
 what happens because of it.`
 
+// hidesTests reports whether the request holds the change's test files back.
+//
+// Test code is the biggest thing a review can be sent that it was not asked
+// to judge. On this repository's own changes it is routinely half the diff,
+// and the half a reviewer told not to comment on coverage has the least to do
+// with. Whether the tests are adequate is measured, by the coverage pane and
+// by mutation, and those answers arrive as priors. Sending the test bodies
+// too buys a second opinion on a question already answered, at the price of
+// the context that would have paid for a correlation finding.
+//
+// The exception is a change that is only tests. There the tests are the
+// change, and a review shown nothing is not a review, so they are sent.
+func (in Input) hidesTests() bool {
+	if in.Change == nil {
+		return false
+	}
+	for _, f := range in.Change.Files {
+		if change.IsTest(f.Path) {
+			continue
+		}
+		if f.Diff != "" || f.Head != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// contextFilter keeps test code out of the context block too. A provider
+// resolves a test that covers a changed symbol because the contract asks it
+// to; whether this review pays for it is Redline's call, and it is the same
+// call the diff section makes.
+func (in Input) contextFilter() envelope.Filter {
+	if !in.hidesTests() {
+		return envelope.Filter{}
+	}
+	return envelope.Filter{
+		What: "test code",
+		Drop: func(x envelope.Expansion) bool {
+			return x.Role == envelope.RoleTest || change.IsTest(x.File)
+		},
+	}
+}
+
+// testsLine is what the held-back test files get: their names and how much
+// moved in them. The same bargain generated files get. Naming them is what
+// keeps the exclusion visible, and a reviewer that is not told the tests
+// exist will write "this is untested" about a change that is not.
+func (in Input) testsLine() string {
+	if in.Change == nil || !in.hidesTests() {
+		return ""
+	}
+	var paths []string
+	var added, removed int
+	for _, f := range in.Change.Files {
+		if !change.IsTest(f.Path) {
+			continue
+		}
+		paths = append(paths, f.Path)
+		added += f.Added
+		removed += f.Removed
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d test file(s) also changed (+%d -%d) and are not shown: %s. "+
+		"They moved, so the change is not untested. Whether what they assert is enough is measured "+
+		"by the checks whose findings you were given, not read here. Judge the code they test.",
+		len(paths), added, removed, strings.Join(paths, ", "))
+}
+
 // shownLines is every line of the change the diff section already puts in
 // front of the model, read from the unified-diff hunk headers.
 //
@@ -93,7 +164,14 @@ func (in Input) shownLines() envelope.Seen {
 	if in.Change == nil {
 		return seen
 	}
+	hideTests := in.hidesTests()
 	for _, f := range in.Change.Files {
+		if hideTests && change.IsTest(f.Path) {
+			// Held back below, so nothing in it has been shown. Marking it
+			// seen would suppress expansions on the grounds that the model
+			// had already read lines it was never sent.
+			continue
+		}
 		if f.Head != "" {
 			// The whole file reaches the model, so every expansion inside it
 			// is already shown and must not be sent twice.
@@ -234,6 +312,9 @@ func (in Input) changeSection() string {
 	if gen := in.generatedLine(); gen != "" {
 		b.WriteString(gen + "\n\n")
 	}
+	if tests := in.testsLine(); tests != "" {
+		b.WriteString(tests + "\n\n")
+	}
 	return b.String()
 }
 
@@ -350,8 +431,14 @@ func (in Input) diffSection() string {
 		"The invariant a change breaks usually lives in the part of the file the change did " +
 		"not touch, and the added lines are already in the file, so repeating them as a diff " +
 		"would only send them twice. Larger files are shown as a diff instead.\n\n")
+	hideTests := in.hidesTests()
 	for _, f := range in.Change.Files {
 		if f.Diff == "" && f.Head == "" {
+			continue
+		}
+		if hideTests && change.IsTest(f.Path) {
+			// Named in the change section with its line counts, and that is
+			// all a review of the code under test needs from it.
 			continue
 		}
 		fmt.Fprintf(&b, "### %s\n\n", f.Path)

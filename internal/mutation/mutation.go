@@ -45,7 +45,10 @@ func Locate(root string) string {
 }
 
 // rawMutant mirrors one entry of a gomutants report's per-file mutations list.
+// ID arrived in gomutants v0.6.0 and is absent from older reports, which is
+// why nothing here requires it.
 type rawMutant struct {
+	ID          string `json:"id"`
 	Type        string `json:"type"`
 	Status      string `json:"status"`
 	Line        int    `json:"line"`
@@ -72,8 +75,15 @@ type Mutant struct {
 	Mutator     string `json:"mutator"`
 	Original    string `json:"original,omitempty"`
 	Replacement string `json:"replacement,omitempty"`
-	// Key identifies this survivor for an agent's verdict in review.json,
-	// "<path>:<line>:<mutator>". Stable across runs while the survivor is.
+	// ID is gomutants' own fingerprint for this mutant, like
+	// "internal/foo/foo.go:Double:RETURN_ZERO#1". Empty for a report written
+	// before v0.6.0. It is what `gomutants --run-mutant-id` re-runs, and it
+	// survives a rebase that moves the line.
+	ID string `json:"id,omitempty"`
+	// Key identifies this survivor for an agent's verdict in review.json.
+	// It is the mutant id when the report carries one, and
+	// "<path>:<line>:<mutator>" when it does not: an id is stable across the
+	// line shifts that a path-and-line key is not.
 	Key string `json:"key"`
 	// Verdict is the agent's judgment of this survivor, merged from
 	// review.json's mutationVerdicts by Key. Nil until an agent has ruled.
@@ -97,15 +107,39 @@ type FileSurvivors struct {
 	Mutants []Mutant `json:"mutants"`
 }
 
+// Repro is the command that re-runs this one mutant, or "" for a report that
+// carries no id. Reading a survivor is where a reviewer wants to run it.
+func (m Mutant) Repro() string {
+	if m.ID == "" {
+		return ""
+	}
+	return fmt.Sprintf("gomutants --run-mutant-id '%s'", m.ID)
+}
+
 // Result is the diff-scoped mutation picture: of the mutants that sit on the
 // lines this change adds, how many a test killed, how many lived, and the
 // survivors themselves. Killed and Lived count only lines this change touched,
 // so the number describes the change and not the whole repository.
 type Result struct {
-	Report   string          `json:"report"`
-	Killed   int             `json:"killed"`
-	Lived    int             `json:"lived"`
+	Report string `json:"report"`
+	Killed int    `json:"killed"`
+	Lived  int    `json:"lived"`
+	// Infra counts mutants on the added lines whose test run failed for an
+	// environmental reason: out of memory, no disk, too many open files.
+	// gomutants v0.6.0 reports those as INFRA_ERROR rather than guessing.
+	// They are not killed and must never be folded into Killed: a runner
+	// that fell over on half the mutants would otherwise read as a suite
+	// that caught them.
+	Infra int `json:"infra,omitempty"`
+	// Equivalent counts mutants gomutants proved no test can kill, because
+	// the mutated program compiles to the same thing. A survivor a test
+	// cannot catch is not a gap, so these are counted apart from Lived.
+	Equivalent int `json:"equivalent,omitempty"`
+	// Survived are the LIVED mutants: a test runs the line and nothing fails.
 	Survived []FileSurvivors `json:"survived,omitempty"`
+	// Unreliable are the INFRA_ERROR mutants, named rather than only counted
+	// so the report can point at the lines whose efficacy is unknown.
+	Unreliable []FileSurvivors `json:"unreliable,omitempty"`
 }
 
 // Changed is one changed file and the new-side line numbers it added.
@@ -142,7 +176,7 @@ func Compute(root string, changed []Changed) *Result {
 		for _, l := range c.Added {
 			added[l] = true
 		}
-		var survivors []Mutant
+		var survivors, unreliable []Mutant
 		for _, m := range muts {
 			if !added[m.Line] {
 				continue
@@ -152,10 +186,12 @@ func Compute(root string, changed []Changed) *Result {
 				res.Killed++
 			case "lived":
 				res.Lived++
-				survivors = append(survivors, Mutant{
-					Line: m.Line, Mutator: m.Type, Original: m.Original, Replacement: m.Replacement,
-					Key: fmt.Sprintf("%s:%d:%s", c.Path, m.Line, m.Type),
-				})
+				survivors = append(survivors, newMutant(c.Path, m))
+			case "infra-error":
+				res.Infra++
+				unreliable = append(unreliable, newMutant(c.Path, m))
+			case "equivalent":
+				res.Equivalent++
 			}
 			// not-covered, not-viable and timed-out are left out. Coverage already
 			// reports lines no test runs, and the other two are mutants gomutants
@@ -164,11 +200,27 @@ func Compute(root string, changed []Changed) *Result {
 		if len(survivors) > 0 {
 			res.Survived = append(res.Survived, FileSurvivors{Path: c.Path, Mutants: survivors})
 		}
+		if len(unreliable) > 0 {
+			res.Unreliable = append(res.Unreliable, FileSurvivors{Path: c.Path, Mutants: unreliable})
+		}
 	}
-	if res.Killed == 0 && res.Lived == 0 {
+	if res.Killed == 0 && res.Lived == 0 && res.Infra == 0 && res.Equivalent == 0 {
 		return nil
 	}
 	return res
+}
+
+// newMutant carries one raw entry across, keyed by gomutants' own id when the
+// report has one.
+func newMutant(path string, m rawMutant) Mutant {
+	key := m.ID
+	if key == "" {
+		key = fmt.Sprintf("%s:%d:%s", path, m.Line, m.Type)
+	}
+	return Mutant{
+		Line: m.Line, Mutator: m.Type, Original: m.Original, Replacement: m.Replacement,
+		ID: m.ID, Key: key,
+	}
 }
 
 // mutationsFor matches a repository path against gomutants' file_name. That name
@@ -190,8 +242,11 @@ func mutationsFor(r raw, path string) []rawMutant {
 	return best
 }
 
-// normalize folds a gomutants status ("NOT COVERED") to a lowercase hyphenated
-// token ("not-covered").
+// normalize folds a gomutants status to a lowercase hyphenated token: "NOT
+// COVERED" and "INFRA_ERROR" both reach the switch in the same shape. The two
+// spellings are not a hypothetical, the report uses a space in one status and
+// an underscore in another, and a status that misses the switch is silently
+// dropped.
 func normalize(status string) string {
-	return strings.ReplaceAll(strings.ToLower(status), " ", "-")
+	return strings.NewReplacer(" ", "-", "_", "-").Replace(strings.ToLower(status))
 }

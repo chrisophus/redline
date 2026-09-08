@@ -3,6 +3,7 @@ package envelope
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // DefaultCeiling bounds one review's whole request.
@@ -134,6 +135,29 @@ type Budgeted struct {
 	Redundant int
 	// RedundantTokens is what keeping them would have cost.
 	RedundantTokens int
+	// Excluded counts expansions a caller's Filter held back before
+	// anything competed for the budget. Counted for the same reason
+	// Redundant is: context withheld silently reads like context that was
+	// never resolved.
+	Excluded int
+	// ExcludedTokens is what sending them would have cost.
+	ExcludedTokens int
+	// ExcludedWhat names the class the filter held back, for the summary.
+	ExcludedWhat string
+}
+
+// Filter decides which expansions never reach the budget at all. It is the
+// caller's, not the provider's: a provider resolves what surrounds a change
+// and does not get to decide what a review is willing to pay for.
+//
+// Ranking still reads role and priority alone. A filter is a different
+// question, asked once, before the ranking: is this kind of context wanted at
+// all. Drop returning true holds the expansion back and counts it in
+// Excluded. What names the class in the summary, so the report can say what
+// was withheld without this package knowing what it was.
+type Filter struct {
+	What string
+	Drop func(Expansion) bool
 }
 
 // DroppedTotal is how many expansions did not fit.
@@ -149,11 +173,15 @@ func (b Budgeted) DroppedTotal() int {
 // everything fit.
 func (b Budgeted) Summary() string {
 	if b.DroppedTotal() == 0 {
+		var parts []string
 		if b.Redundant > 0 {
-			return fmt.Sprintf("%d expansion(s) were already in the diff and were not repeated to the model, saving about %d tokens",
-				b.Redundant, b.RedundantTokens)
+			parts = append(parts, fmt.Sprintf("%d expansion(s) were already in the diff and were not repeated to the model, saving about %d tokens",
+				b.Redundant, b.RedundantTokens))
 		}
-		return ""
+		if b.Excluded > 0 {
+			parts = append(parts, b.excludedClause())
+		}
+		return strings.Join(parts, ". ")
 	}
 	roles := make([]Role, 0, len(b.Dropped))
 	for r := range b.Dropped {
@@ -176,7 +204,19 @@ func (b Budgeted) Summary() string {
 		s += fmt.Sprintf(". A further %d were already in the diff and were not repeated, saving about %d tokens",
 			b.Redundant, b.RedundantTokens)
 	}
+	if b.Excluded > 0 {
+		s += ". " + b.excludedClause()
+	}
 	return s
+}
+
+func (b Budgeted) excludedClause() string {
+	what := b.ExcludedWhat
+	if what == "" {
+		what = "context the review does not send"
+	}
+	return fmt.Sprintf("%d expansion(s) carried %s and were held back, saving about %d tokens",
+		b.Excluded, what, b.ExcludedTokens)
 }
 
 // Fit ranks an envelope's expansions and keeps as many as the ceiling allows.
@@ -197,7 +237,12 @@ func Fit(e *Envelope, ceiling int) Budgeted {
 // context that only restates the diff is dropped before anything competes for
 // the budget.
 func FitSeen(e *Envelope, ceiling int, seen Seen) Budgeted {
-	out := Budgeted{Dropped: map[Role]int{}, Ceiling: ceiling}
+	return FitFilter(e, ceiling, seen, Filter{})
+}
+
+// FitFilter is FitSeen with a caller's filter applied first.
+func FitFilter(e *Envelope, ceiling int, seen Seen, filter Filter) Budgeted {
+	out := Budgeted{Dropped: map[Role]int{}, Ceiling: ceiling, ExcludedWhat: filter.What}
 	if e == nil {
 		return out
 	}
@@ -227,6 +272,11 @@ func FitSeen(e *Envelope, ceiling int, seen Seen) Budgeted {
 	// starve every cheaper expansion behind it.
 	for _, x := range ranked {
 		cost := x.Tokens()
+		if filter.Drop != nil && filter.Drop(x) {
+			out.Excluded++
+			out.ExcludedTokens += cost
+			continue
+		}
 		if seen != nil && seen.unseen(x) == 0 {
 			out.Redundant++
 			out.RedundantTokens += cost
@@ -273,6 +323,13 @@ func (b Budgeted) Render() string {
 // then the provider's hint. Neither provider can spend more of the budget by
 // scoring its own expansions higher, because role rank is Redline's.
 func FitAll(envs []*Envelope, ceiling int, seen Seen) Budgeted {
+	return FitAllFilter(envs, ceiling, seen, Filter{})
+}
+
+// FitAllFilter is FitAll with a caller's filter applied to every provider's
+// expansions alike. What a review will not pay for is Redline's decision, so
+// one filter governs all of them.
+func FitAllFilter(envs []*Envelope, ceiling int, seen Seen, filter Filter) Budgeted {
 	merged := &Envelope{}
 	for _, e := range envs {
 		if e == nil {
@@ -280,5 +337,5 @@ func FitAll(envs []*Envelope, ceiling int, seen Seen) Budgeted {
 		}
 		merged.Expansions = append(merged.Expansions, e.Expansions...)
 	}
-	return FitSeen(merged, ceiling, seen)
+	return FitFilter(merged, ceiling, seen, filter)
 }
