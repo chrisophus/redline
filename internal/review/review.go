@@ -258,7 +258,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	if room < 0 {
 		room = 0
 	}
-	budget := envelope.FitAll(in.Envelopes, room, in.shownLines())
+	budget := envelope.FitAllFilter(in.Envelopes, room, in.shownLines(), in.contextFilter())
 	prompt := in.build(budget)
 	est := envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt)
 	expected := opts.ExpectedOutput

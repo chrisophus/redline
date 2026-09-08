@@ -83,3 +83,74 @@ func TestComputeFindsMutationReportJSON(t *testing.T) {
 		t.Fatalf("mutation-report.json: %+v", res)
 	}
 }
+
+// gomutants v0.6.0 reports INFRA_ERROR when the test binary died for a reason
+// of its own. Counting it as killed is how a runner that ran out of memory
+// reads as a suite that caught the break.
+const v060 = `{
+  "go_module": "example.com/x",
+  "files": [
+    {"file_name": "internal/foo/foo.go", "mutations": [
+      {"id":"internal/foo/foo.go:Double:RETURN_ZERO#1","type":"RETURN_ZERO","status":"LIVED","line":10,"replacement":"0"},
+      {"id":"internal/foo/foo.go:Double:CONDITIONALS_BOUNDARY#1","type":"CONDITIONALS_BOUNDARY","status":"INFRA_ERROR","line":11},
+      {"id":"internal/foo/foo.go:Double:EXPRESSION_REMOVE#1","type":"EXPRESSION_REMOVE","status":"EQUIVALENT","line":12},
+      {"id":"internal/foo/foo.go:Double:RETURN_ERROR_NIL#1","type":"RETURN_ERROR_NIL","status":"KILLED","line":13}
+    ]}
+  ]
+}`
+
+func TestInfraErrorIsCountedApartFromKilled(t *testing.T) {
+	dir := writeReport(t, "mutants.json", v060)
+	res := mutation.Compute(dir, []mutation.Changed{{Path: "internal/foo/foo.go", Added: []int{10, 11, 12, 13}}})
+	if res == nil {
+		t.Fatal("a v0.6.0 report on changed lines must produce a result")
+	}
+	if res.Killed != 1 || res.Lived != 1 || res.Infra != 1 || res.Equivalent != 1 {
+		t.Fatalf("killed=%d lived=%d infra=%d equivalent=%d, want 1 each",
+			res.Killed, res.Lived, res.Infra, res.Equivalent)
+	}
+	if len(res.Unreliable) != 1 || len(res.Unreliable[0].Mutants) != 1 ||
+		res.Unreliable[0].Mutants[0].Line != 11 {
+		t.Fatalf("the lines that were not measured have to be namable: %+v", res.Unreliable)
+	}
+	if len(res.Survived) != 1 || len(res.Survived[0].Mutants) != 1 ||
+		res.Survived[0].Mutants[0].Line != 10 {
+		t.Fatalf("an equivalent mutant is not a survivor: %+v", res.Survived)
+	}
+}
+
+// A run where every mutant failed on the runner is not a run with nothing to
+// say. It is the one that most needs saying.
+func TestInfraOnlyReportIsNotNil(t *testing.T) {
+	body := `{"files":[{"file_name":"a.go","mutations":[
+	  {"id":"a.go:F:RETURN_ZERO#1","type":"RETURN_ZERO","status":"INFRA_ERROR","line":3}]}]}`
+	dir := writeReport(t, "mutants.json", body)
+	res := mutation.Compute(dir, []mutation.Changed{{Path: "a.go", Added: []int{3}}})
+	if res == nil || res.Infra != 1 {
+		t.Fatalf("a report of nothing but failed runs must still be reported: %+v", res)
+	}
+}
+
+// The id is what survives a rebase that moves the line, so it is the verdict
+// key when the report has one.
+func TestSurvivorKeyPrefersTheMutantID(t *testing.T) {
+	dir := writeReport(t, "mutants.json", v060)
+	res := mutation.Compute(dir, []mutation.Changed{{Path: "internal/foo/foo.go", Added: []int{10}}})
+	m := res.Survived[0].Mutants[0]
+	if m.ID != "internal/foo/foo.go:Double:RETURN_ZERO#1" || m.Key != m.ID {
+		t.Fatalf("survivor = %+v; the key must be the mutant id when there is one", m)
+	}
+	if m.Repro() != "gomutants --run-mutant-id 'internal/foo/foo.go:Double:RETURN_ZERO#1'" {
+		t.Fatalf("repro = %q", m.Repro())
+	}
+}
+
+// A pre-0.6.0 report has no ids, and the path-and-line key still has to work.
+func TestSurvivorKeyFallsBackToPathAndLine(t *testing.T) {
+	dir := writeReport(t, "mutants.json", sample)
+	res := mutation.Compute(dir, []mutation.Changed{{Path: "internal/foo/foo.go", Added: []int{12}}})
+	m := res.Survived[0].Mutants[0]
+	if m.Key != "internal/foo/foo.go:12:EXPRESSION_REMOVE" || m.Repro() != "" {
+		t.Fatalf("survivor = %+v; repro = %q", m, m.Repro())
+	}
+}

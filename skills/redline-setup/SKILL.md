@@ -90,7 +90,11 @@ with `path: mutants.json` (or `mutation-report.json`) and no `produce`
 when you want the report required for matching changes. Redline never runs
 gomutants and `--prepare` does not produce mutation reports. Ensure the
 repository's mutate command passes `-o mutants.json`. Run mutate by hand
-before `redline run` when the profile is configured.
+before `redline run` when the profile is configured. Recommend gomutants
+v0.6.0 or later: its reports carry stable mutant ids, which Redline uses as
+the verdict key, and an `INFRA_ERROR` status for a mutant whose test run
+failed on the runner, which Redline reports as an unknown rather than
+counting as killed.
 
 For each of these, confirm the binary is on PATH and, for coverage, that
 the profile exists and is fresh. Those are the two ways a built-in pane

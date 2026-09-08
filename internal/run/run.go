@@ -468,6 +468,38 @@ func recordMutationSubstrate(rep *findings.Report, ch *change.Set, cfg *harness.
 	if conf != nil {
 		rep.Confirmations = append(rep.Confirmations, *conf)
 	}
+	if u := mutationUnknown(rep.Mutation); u != nil {
+		rep.Unknowns = append(rep.Unknowns, *u)
+	}
+}
+
+// mutationUnknown reports the mutants that failed on the runner rather than on
+// the tests. gomutants marks them INFRA_ERROR: the test binary died for a
+// reason that has nothing to do with the mutation, so the line's efficacy was
+// not measured. That is an unknown and not a pass, and it is the difference
+// between a suite that caught a break and a runner that ran out of memory
+// before it could try.
+func mutationUnknown(m *mutation.Result) *findings.Unknown {
+	if m == nil || m.Infra == 0 {
+		return nil
+	}
+	var where []string
+	for _, fs := range m.Unreliable {
+		for _, mt := range fs.Mutants {
+			where = append(where, fmt.Sprintf("%s:%d", fs.Path, mt.Line))
+		}
+	}
+	msg := fmt.Sprintf("%d mutant(s) on this change's added lines could not be run (%s reports INFRA_ERROR), "+
+		"so whether a test catches a break on those lines is not known; they are not killed",
+		m.Infra, m.Report)
+	if len(where) > 0 {
+		msg += ": " + strings.Join(where, ", ")
+	}
+	return &findings.Unknown{
+		Substrate: "redline/mutation",
+		Message:   msg,
+		Reason:    "re-run gomutants on a runner with room; a single mutant re-runs with --run-mutant-id",
+	}
 }
 
 // mutationSubstrate is the pure decision behind recordMutationSubstrate: given
@@ -477,12 +509,20 @@ func recordMutationSubstrate(rep *findings.Report, ch *change.Set, cfg *harness.
 func mutationSubstrate(m *mutation.Result, configured, hasGo bool) (findings.SubstrateStatus, *findings.Confirmation) {
 	const name = "redline/mutation"
 	if m != nil {
-		st := findings.SubstrateStatus{
-			Name:   name,
-			State:  findings.SubstrateRan,
-			Detail: fmt.Sprintf("%s: %d killed, %d survived on this change's added lines", m.Report, m.Killed, m.Lived),
+		detail := fmt.Sprintf("%s: %d killed, %d survived on this change's added lines", m.Report, m.Killed, m.Lived)
+		if m.Infra > 0 {
+			detail += fmt.Sprintf(", %d could not be run", m.Infra)
 		}
-		if m.Lived == 0 && m.Killed > 0 {
+		if m.Equivalent > 0 {
+			detail += fmt.Sprintf(", %d equivalent", m.Equivalent)
+		}
+		st := findings.SubstrateStatus{Name: name, State: findings.SubstrateRan, Detail: detail}
+		// An all-killed confirmation is a statement that the added lines are
+		// asserted. A run where mutants failed on the runner rather than on
+		// the tests cannot support it: those mutants were never tried, and
+		// reading them as caught is exactly the inflation INFRA_ERROR exists
+		// to stop.
+		if m.Lived == 0 && m.Killed > 0 && m.Infra == 0 {
 			return st, &findings.Confirmation{
 				Substrate: name,
 				Rule:      "mutation-all-killed",

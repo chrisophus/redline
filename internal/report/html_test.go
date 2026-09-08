@@ -830,6 +830,37 @@ func TestReportRendersMutationSurvivors(t *testing.T) {
 	}
 }
 
+// A mutant whose test run failed on the runner is not a killed one. It renders
+// as its own paragraph with the lines named, and the repro command comes with
+// it, because reading a failed run is where someone wants to re-run it.
+func TestReportRendersMutantsThatCouldNotBeRun(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Mutation: &mutation.Result{
+				Report: "mutants.json", Killed: 2, Infra: 1, Equivalent: 1,
+				Unreliable: []mutation.FileSurvivors{{Path: "a.go", Mutants: []mutation.Mutant{
+					{Line: 7, Mutator: "RETURN_ZERO", ID: "a.go:F:RETURN_ZERO#1", Key: "a.go:F:RETURN_ZERO#1"},
+				}}},
+			},
+		},
+		Change: &change.Set{Files: []change.File{{Path: "a.go", Language: "go", Diff: "@@ -1 +1,7 @@\n+x\n"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"could not be run", "gomutants --run-mutant-id", "equivalent", `data-line="7"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("the mutation section is missing %q", want)
+		}
+	}
+	if strings.Contains(html, `data-survived="7"`) {
+		t.Error("a mutant that never ran must not stripe the line as a survivor")
+	}
+}
+
 // An agent's verdict on a surviving mutant renders beside it in the Mutation
 // section.
 func TestReportRendersMutationVerdict(t *testing.T) {

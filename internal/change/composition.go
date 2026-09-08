@@ -89,6 +89,24 @@ func Composition(files []File) []LinesRow {
 	return rows
 }
 
+// IsTest reports whether a path is test material: a test file, a fixture, or
+// anything under a test directory. The patterns are conventions rather than a
+// parse, and they hold across languages, which is what lets Redline decide
+// test-vs-not without a toolchain for the language in hand.
+//
+// It is exported because the boundary is used outside the composition table:
+// the review producer holds test code back from the request, and it must draw
+// the line in the same place the report's own counts do.
+func IsTest(path string) bool {
+	lower := strings.ToLower(path)
+	base := filepath.Base(lower)
+	return strings.HasSuffix(lower, "_test.go") || strings.Contains(base, ".test.") ||
+		strings.Contains(base, ".spec.") ||
+		strings.Contains(lower, "/tests/") || strings.HasPrefix(lower, "tests/") ||
+		strings.Contains(lower, "/test/") || strings.HasPrefix(lower, "test/") ||
+		strings.Contains(lower, "/testdata/") || strings.HasPrefix(lower, "testdata/")
+}
+
 // kind classifies what role a file plays in the change. Test wins over
 // config or docs when a path could read as either (a Markdown file inside a
 // testdata directory is still docs; the boundary Redline actually cares
@@ -98,11 +116,7 @@ func kind(path string) string {
 	base := filepath.Base(lower)
 	ext := filepath.Ext(lower)
 
-	if strings.HasSuffix(lower, "_test.go") || strings.Contains(base, ".test.") ||
-		strings.Contains(base, ".spec.") ||
-		strings.Contains(lower, "/tests/") || strings.HasPrefix(lower, "tests/") ||
-		strings.Contains(lower, "/test/") || strings.HasPrefix(lower, "test/") ||
-		strings.Contains(lower, "/testdata/") || strings.HasPrefix(lower, "testdata/") {
+	if IsTest(path) {
 		return KindTest
 	}
 	if ext == ".md" || ext == ".rst" || ext == ".adoc" ||

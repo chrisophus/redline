@@ -1,10 +1,11 @@
 # Report roadmap
 
 Where the report is going, and why. Redline measures a change and states facts.
-It never calls a model. The agent writes prose and judgment out of band, drops a
-JSON file, and Redline renders it beside the instrument's facts. Every item here
-rides that one boundary: the agent writes a file, Redline merges and renders,
-and the interactive requests are payloads a human copies to the agent.
+`run` calls no model. The judgment arrives out of band as a JSON file, from an
+agent or from `redline review`, the one command that does call a model, and
+Redline renders it beside the instrument's facts. Every item here rides that
+one boundary: something writes a review file, Redline merges and renders, and
+the interactive requests are payloads a human copies to the agent.
 
 The through line is one view of a changed line that shows everything known about
 it at once: is it changed, does a linter flag it, does a test run it, does the
@@ -75,17 +76,31 @@ is changed. Coverage says a test ran the line; mutation says whether a test woul
 catch it breaking. `make mutants` produces the report. The survivors are in
 findings.json under `mutation`, so the agent can act on them.
 
-**gomutants v0.6.0+ (see [potential-enhancements.md](potential-enhancements.md)):**
-reports now carry stable mutant `id` fields and an **`INFRA_ERROR`** status for
-environmental test failures (OOM, disk, etc.). Redline today only ingests
-**KILLED** and **LIVED**; infra failures are dropped. Next step: count
-**INFRA_ERROR** on changed lines as an unknown (unreliable efficacy), surface
-mutant `id` on survivors for verdicts and `gomutants --run-mutant-id` repro,
-and recommend v0.6.0+ in setup when a mutation harness profile is enabled.
+**The v0.6.0 statuses, also shipped.** A report from v0.6.0 or later carries a
+stable mutant `id` and an **`INFRA_ERROR`** status for a test run that failed
+for a reason of its own (OOM, disk, open files). Redline counts those apart,
+names the lines they sit on as an unknown, and withholds the all-killed
+confirmation while any are present: a runner that fell over is not a suite that
+caught the break. **EQUIVALENT** is counted apart from **LIVED** and rendered
+as a muted note, because a survivor no test can kill is not a gap. The `id` is
+the verdict key when the report has one, so a verdict survives a rebase that
+moves the line, and each survivor carries the `gomutants --run-mutant-id`
+command that re-runs it.
 
 This is most of the unified line: changed, linted, covered, asserted. What is
 still missing is naming the exact tests behind a line, which neither the coverage
 profile nor the gomutants report exposes (see the section above).
+
+## Shipped: test code is not in the review request
+
+The review is told not to comment on test adequacy, and the coverage and
+mutation panes measure it. So the request names the changed test files with how
+many lines moved in each and leaves their bodies out, the same bargain
+generated files get, and a `test` expansion from a context provider is held
+back before anything competes for the budget. What was withheld is counted and
+printed, because an exclusion nobody can see reads as a change with no tests. A
+change that touches nothing but tests is the exception: there the tests are the
+change and they are sent.
 
 ## Backlog
 
@@ -102,6 +117,9 @@ Ideas that are real but not scheduled.
   fixtures, and they read as real findings today.
 - Broader agent-context skill: why a lint was ignored, whether it is fixable,
   whether the rule is noisy.
+- A standing code graph beside the per-change envelope, for the neighbors a Go
+  type checker cannot see: a migration next to the struct that writes the row.
+  Worked out in [graph-context.md](graph-context.md), not scheduled.
 - `untested-function` is not fully redundant with the coverage pane. Coverage is
   diff percentage; untested-function is whether a function has any test at all.
   Fixable if scoped to changed functions with repo-relative paths. It needs

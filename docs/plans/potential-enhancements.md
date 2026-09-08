@@ -2,8 +2,10 @@
 
 Ideas for Redline itself: new panes, harness behavior, tool wiring, and
 workflow. Report layout and drill-in UX live in
-[report-roadmap.md](report-roadmap.md). Phased design rationale is in
-[redline-design.md](../../redline-design.md) at the repo root.
+[report-roadmap.md](report-roadmap.md). A standing code graph beside the
+per-change envelope is worked out in [graph-context.md](graph-context.md).
+Phased design rationale is in [redline-design.md](../../redline-design.md) at
+the repo root.
 
 Each item is a candidate, not a commitment. Effort is rough: **S** days,
 **M** weeks, **L** multi-week.
@@ -11,33 +13,33 @@ Each item is a candidate, not a commitment. Effort is rough: **S** days,
 ## Mutation (gomutants v0.6.0+)
 
 gomutants **v0.6.0** (latest stable; MCT pins it in `GOMUTANTS_VERSION`) adds
-several features aimed at CI and review workflows. Redline already ingests
-`mutants.json` and overlays **LIVED** survivors on changed lines. It does not
-yet use the v0.6.0 report fields or statuses below.
+several features aimed at CI and review workflows. Redline ingests
+`mutants.json`, overlays **LIVED** survivors on changed lines, and now reads
+the v0.6.0 statuses and the stable mutant `id`.
 
 ### Shipped in gomutants v0.6.0
 
 | Upstream change | Why it matters | Redline today |
 |-----------------|----------------|---------------|
-| **`INFRA_ERROR` status** ([PR #83](https://github.com/szhekpisov/gomutants/pull/83)) | Per-mutant classification when `go test` fails for environmental reasons (OOM, disk full, too many open files), not because the mutant was caught. Stops silent **KILLED** inflation on flaky CI runners. | **Dropped.** `internal/mutation` only counts `killed` and `lived`; other statuses are ignored. |
-| **Stable mutant `id` in JSON** (#86) | Fingerprint like `internal/foo/foo.go:Double:RETURN_ZERO#1` survives rebases better than file+line+type. Enables `gomutants --run-mutant-id` for repro. | **Not read.** `Mutant` struct has no `id` field. |
+| **`INFRA_ERROR` status** ([PR #83](https://github.com/szhekpisov/gomutants/pull/83)) | Per-mutant classification when `go test` fails for environmental reasons (OOM, disk full, too many open files), not because the mutant was caught. Stops silent **KILLED** inflation on flaky CI runners. | **Read.** Counted apart as `mutation.infra`, named in `unreliable[]`, reported as an unknown, and it withholds the all-killed confirmation. |
+| **Stable mutant `id` in JSON** (#86) | Fingerprint like `internal/foo/foo.go:Double:RETURN_ZERO#1` survives rebases better than file+line+type. Enables `gomutants --run-mutant-id` for repro. | **Read.** On every survivor as `id`, used as the verdict key when present, with the repro command on the report. |
 | **`--changed-since` merge-base scope** (#85) | Mutants limited to lines changed vs the merge base, not an arbitrary ref tip. Matches PR review scope. | N/A (gomutants CLI). MCT `make mutate` already passes `--changed-since origin/main`. |
 | **Return-value mutators** (#80) | `RETURN_ERROR_NIL`, wrong-return variants; catches error-swallowing gaps. | Surfaces as ordinary **LIVED** when on added lines (no special labeling). |
 | **`--run-mutant-id`** (#87) | Re-run one mutant for debugging after reading the report. | Not wired into "Copy for the agent" or report UI. |
-| **`--detect-equivalent`** (existing; MCT uses on `make mutate`) | Marks provably unkillable survivors **EQUIVALENT** after assembly compare. | **Dropped** if status is not `lived`/`killed`. |
+| **`--detect-equivalent`** (existing; MCT uses on `make mutate`) | Marks provably unkillable survivors **EQUIVALENT** after assembly compare. | **Read.** Counted apart from **LIVED** and rendered as a muted note, not a survivor. |
 
 ### Redline enhancements (gomutants-aware)
 
 | Item | What | Effort |
 |------|------|--------|
-| **Surface `INFRA_ERROR`** | Count infra failures separately from killed/lived. On changed lines, add `findings.Unknown` (substrate `mutation`) naming file, line, mutant `id`, and that efficacy for that line is unreliable. Mutation section summary: "N infra errors on changed lines; do not treat as killed." Never fold into **KILLED**. | S |
-| **Carry mutant `id` in `findings.json`** | Parse `id` from report; expose on each survivor; use as verdict fingerprint key (see verdicts row below). Link text in HTML: "repro: `gomutants --run-mutant-id '…'`". | S |
-| **Label mutator types on survivors** | Show `RETURN_ERROR_NIL`, `CONDITIONALS_BOUNDARY`, etc. in the drawer (type is already in JSON as `type`; ensure it renders in markdown/HTML). | S |
+| **Surface `INFRA_ERROR`** | Count infra failures separately from killed/lived. On changed lines, add `findings.Unknown` (substrate `mutation`) naming file, line, mutant `id`, and that efficacy for that line is unreliable. Mutation section summary: "N infra errors on changed lines; do not treat as killed." Never fold into **KILLED**. | done |
+| **Carry mutant `id` in `findings.json`** | Parse `id` from report; expose on each survivor; use as verdict fingerprint key (see verdicts row below). Link text in HTML: "repro: `gomutants --run-mutant-id '…'`". | done |
+| **Label mutator types on survivors** | Show `RETURN_ERROR_NIL`, `CONDITIONALS_BOUNDARY`, etc. in the drawer (type is already in JSON as `type`; ensure it renders in markdown/HTML). | done |
 | **Report-level efficacy context** | Optional one-liner from top-level `test_efficacy`, `mutants_total`, `mutants_killed`, `mutants_lived` when present, with caveat when `infra_errors > 0`. | S |
-| **`EQUIVALENT` / `NOT COVERED` nuance** | **NOT COVERED**: leave to coverage pane (today). **EQUIVALENT**: info finding or muted marker, not a red survivor stripe. | S |
-| **Harness: minimum gomutants version** | Setup skill and docs: recommend **v0.6.0+** when mutation profile is enabled; note that pre-0.6.0 reports lack `INFRA_ERROR` and stable ids. | S |
+| **`EQUIVALENT` / `NOT COVERED` nuance** | **NOT COVERED**: leave to coverage pane (today). **EQUIVALENT**: info finding or muted marker, not a red survivor stripe. | done |
+| **Harness: minimum gomutants version** | Setup skill and docs: recommend **v0.6.0+** when mutation profile is enabled; note that pre-0.6.0 reports lack `INFRA_ERROR` and stable ids. | done |
 | **CI ingest without local mutate** | MCT `mutation-quality-check` filters daily CI artifacts to changed files (~seconds). Redline could read the same JSON shape from a downloaded artifact path (harness profile `path` only, no produce). Complements local `make mutate`. | M |
-| **Verdicts keyed by mutant `id`** | "needs test" / "equivalent" / "acceptable" per survivor; stable across line shifts when id is present. Depends on id field above. | S |
+| **Verdicts keyed by mutant `id`** | "needs test" / "equivalent" / "acceptable" per survivor; stable across line shifts when id is present. Depends on id field above. | done |
 
 ### MCT CI context (dogfood)
 
@@ -127,6 +129,14 @@ gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
 | `redline serve` live loop | Replace copy-paste "Copy for the agent" with a websocket or stdin bridge. Upgrade path noted in report-roadmap. | L |
 | Broader review skill context | Skill text for "why was this nolint added" and whether a rule is noisy. Docs/skills, not binary code. | S |
 
+## What the review request carries
+
+| Item | What | Effort |
+|------|------|--------|
+| Test code held back | Changed test files are named with their line counts and not pasted, and `test` expansions are dropped before budgeting. Coverage and mutation already answer whether the tests assert enough, and the reviewer is told not to comment on it. A test-only change is the exception. | done |
+| Graph provider beside the Go one | A standing cross-language graph as a second context provider, for the neighbors a Go type checker cannot see. Worked out in [graph-context.md](graph-context.md). | M |
+| Measure what the exclusions bought | The budget summary now counts held-back and redundant expansions. Nothing reads those counts back across runs; the ledger could, and the clean rate is what would settle whether the trade was right. | S |
+
 ## Setup, CLI, and distribution
 
 | Item | What | Effort |
@@ -168,7 +178,8 @@ Items surfaced while wiring `.redline.yml` on a large Go + React + OpenAPI repo:
 
 If picking a small set that improves most adopter repos without runtime infrastructure:
 
-1. **gomutants v0.6.0 report ingest:** `INFRA_ERROR` → unknowns, mutant `id` on survivors, repro hint for `--run-mutant-id`.
+1. ~~**gomutants v0.6.0 report ingest:** `INFRA_ERROR` → unknowns, mutant `id`
+   on survivors, repro hint for `--run-mutant-id`.~~ Shipped.
 2. Built-in or shared `tsc` JSON wrapper.
 3. Setup skill proposals for worktree install steps and harness profiles (mutation profile + v0.6.0 pin).
 4. Verdict vocabulary for coverage and lint findings (not only suppressions); mutation verdicts keyed by `id`.

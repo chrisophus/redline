@@ -94,7 +94,11 @@ preserved, so running it does not discard judgments you recorded.
   the assertion a test is missing. Produce one with the repository's mutate
   target (`make mutate` in MCT) or `gomutants --changed-since <base> -o
   mutants.json <packages>`. Redline reads the report from the checkout you
-  run in, not from a detached PR worktree.
+  run in, not from a detached PR worktree. Use gomutants v0.6.0 or later:
+  older reports carry no mutant ids and no `INFRA_ERROR` status, so a mutant
+  whose test run died on the runner is indistinguishable from one the tests
+  caught. When the report does carry them, `unknowns[]` names the lines whose
+  mutants could not be run. Those lines are unmeasured, not asserted.
 - Review with your own skills and tools: read the diff, follow the callers,
   weigh the change against the repo's rules. That reading is your half of
   the report — write it to `review.json` (below) and Redline renders it
@@ -245,9 +249,13 @@ not a second pass over the whole diff.
 ## Judge the mutation survivors
 
 When a gomutants report is present, `mutation.survived[]` in `findings.json` lists
-the mutants a test ran but did not catch. Each carries a `key`
-(`<path>:<line>:<mutator>`). Rule on the ones worth judging and write them to the
-same `.redline/review.json`, under `mutationVerdicts`, keyed by that `key`:
+the mutants a test ran but did not catch. Each carries a `key`: gomutants' own
+mutant `id` when the report has one (v0.6.0 and later), and
+`<path>:<line>:<mutator>` when it does not. The id survives a rebase that moves
+the line, so use whatever `key` says rather than rebuilding it. A survivor with
+an `id` also carries the command that re-runs that one mutant. Rule on the ones
+worth judging and write them to the same `.redline/review.json`, under
+`mutationVerdicts`, keyed by that `key`:
 
 ```json
 {"mutationVerdicts": {
