@@ -124,6 +124,17 @@ Ideas that are real but not scheduled.
   diff percentage; untested-function is whether a function has any test at all.
   Fixable if scoped to changed functions with repo-relative paths. It needs
   gorefactor to emit repo-relative paths for the untested-* rules first.
+- `redline/context` unknown wording overstates the failure. On MKT-1415 the
+  `unknowns` entry read "gorefactor could not fully resolve this change... no
+  sibling expansions: no changed type implements an interface declared in this
+  module" — read alone in the report this sounds like context-gathering failed.
+  The actual envelope held 364 real expansions (206 test, 71 caller, 61
+  enclosing, 12 type, 14 history); only the interface-sibling check came up
+  empty, because that repo's provider code is concrete siblings, not interface
+  implementers. Report the expansion counts by role alongside the unknown so
+  "364 expansions gathered; 0 interface-sibling matches" replaces the blanket
+  "could not fully resolve" — otherwise a reviewer reasonably distrusts a pane
+  that is actually working.
 
 ## gorefactor deficiencies that block the unified view
 

@@ -80,6 +80,7 @@ gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
 | Test-delta facts (shipped) | Info findings from the diff: a Go package changed with no test in it, a `t.Skip`/`.skip`/`.only` added, or a net drop in assertion-like lines in a test. Pane `internal/pane/testdelta`. | done |
 | Per-test attribution | Map a line to the tests that execute it. Needs per-test profiles and real test runs; same data mutation wants. Opt-in command, not default `run`. See report-roadmap. | L |
 | CI profile ingest | Read `coverage.out` (or lcov) from a CI artifact URL or path when local produce is too heavy. Harness `from: ci` or env substitution. | M |
+| Diff-coverage vs. repo baseline as a gated finding | Today diff coverage renders as a descriptive markdown table only (`report.coverage.diffCoverage`), no severity, no `findings` entry. Dogfooding on MKT-1415 (Marketplace Core): diff coverage was 49% against a 79% repo-wide baseline, and MCT's own `CLAUDE.md` states "Never lower coverage thresholds" as an invariant — exactly the kind of drop that should surface as a `WARNING`/`ERROR` finding, not sit only in a table a reviewer might skim past. Threshold (repo baseline, a configured floor, or both) should be configurable per adopter. | S |
 
 ## Lint and external tools
 
@@ -98,7 +99,7 @@ gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
 
 | Item | What | Effort |
 |------|------|--------|
-| Dependency install steps | Worktree `produce` for `node_modules`, `go generate` stubs, or other gitignored dirs linters need. MCT needs `ui/dist` (shipped) and `ui/node_modules` (not yet). | S |
+| Dependency install steps | Worktree `produce` for `node_modules`, `go generate` stubs, or other gitignored dirs linters need. MCT needs `ui/dist` (shipped) and `ui/node_modules` (not yet). **Confirmed live on MKT-1415**: `redline/lint` (eslint) failed on that run with exactly this cause — `ui/node_modules/.bin/eslint` missing in the detached review worktree — meaning every UI-touching PR reviewed from a detached worktree gets zero lint coverage until this ships. Same `produce`-on-`when: missing` shape as the existing `ui-embed` entry; wire `scripts/ui-yarn-install-if-needed.sh`. | S |
 | Mutation produce (opt-in) | Harness profile with `produce: make mutate` scoped to changed packages. Slow and DB-dependent; must stay off default `--prepare`, documented as explicit opt-in. Require gomutants **v0.6.0+** in docs. | S |
 | Generated-code drift pane | `verify-generated` style: run codegen and diff. Not a linter delta; needs a pane that reports "these generated paths drifted" with file list. | M |
 | Staleness hints for slow profiles | When `coverage.out` or `mutants.json` is present but older than the diff, say how stale (mtime vs HEAD) in the report and `findings.json`. Partial today; make it consistent. | S |
@@ -117,6 +118,7 @@ gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
 | Import / arch lint | `go-arch-lint` or depguard matrix as a scoped custom tool. Complements golangci, not a duplicate delta. | S |
 | UI capture | Pinned browser, route screenshots, console errors, failed requests. No perceptual diff. Explicit `redline setup browser`; pane skipped when missing. Design doc phase 4. | L |
 | Interface section | Permanent gap banner vs agent screenshots vs deterministic "what UI moved" list. No decision yet. See report-roadmap backlog. | M |
+| Provider-parity pane | Deterministic, gorefactor-complementary: for repos with sibling provider/adapter directories (e.g. MCT's `internal/provider/{aws,azure,gcp}/**`), diff filenames and exported-symbol names across siblings when a change touches one. Flags "this capability exists for provider A but not B/C" without a shared interface — the exact class of gap gorefactor's sibling-expansion missed on MKT-1415 (`internal/provider/gcp/offer_amend_mutability.go` has no Azure/AWS analog, and no shared interface links them, so `redline/context` reported "no sibling expansions" even though the parity question itself is answerable cheaply and deterministically). Path/name heuristic only — no LLM, no semantic graph. | S |
 
 ## Agent workflow and decisions
 
@@ -128,6 +130,7 @@ gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
 | Multi-reviewer `review.json` | Merge agent + Bugbot (or two agents) into one report without overwriting. MCT publishes per-reviewer; Redline could key by `reviewer` field. | M |
 | `redline serve` live loop | Replace copy-paste "Copy for the agent" with a websocket or stdin bridge. Upgrade path noted in report-roadmap. | L |
 | Broader review skill context | Skill text for "why was this nolint added" and whether a rule is noisy. Docs/skills, not binary code. | S |
+| Domain-aware `promptFragment` | Today `envelopes[].promptFragment` is entirely generic per-language doctrine (errors-as-values, `context.Context`, goroutine leaks, nil semantics, table-driven tests for Go) — the same text regardless of what the diff actually touches. Dogfooding on MKT-1415: the one real finding (`validateCreateOfferPriorOffer` accepting a PUBLIC prior offer) was a domain-logic bug, not a generic-Go one, and the fragment never referenced the repo's own documented invariants (`CLAUDE.md`, `CODING_GUIDELINES.md`, relevant ADRs under `docs/decisions/`). Let adopters point a config key at project-convention docs and append a short excerpt (or an agent-curated digest of them) to the fragment when the diff's scope matches. Docs/config, not new binary machinery. | S |
 
 ## What the review request carries
 
@@ -178,10 +181,11 @@ Items surfaced while wiring `.redline.yml` on a large Go + React + OpenAPI repo:
 
 If picking a small set that improves most adopter repos without runtime infrastructure:
 
-1. ~~**gomutants v0.6.0 report ingest:** `INFRA_ERROR` → unknowns, mutant `id`
-   on survivors, repro hint for `--run-mutant-id`.~~ Shipped.
-2. Built-in or shared `tsc` JSON wrapper.
-3. Setup skill proposals for worktree install steps and harness profiles (mutation profile + v0.6.0 pin).
-4. Verdict vocabulary for coverage and lint findings (not only suppressions); mutation verdicts keyed by `id`.
-5. Generated / verify-generated drift pane (even if Go-only first).
-6. Document CI artifact + `--report-url` posting pattern.
+1. **gomutants v0.6.0 report ingest:** `INFRA_ERROR` → unknowns, mutant `id` on survivors, repro hint for `--run-mutant-id`.
+2. **`ui/node_modules` worktree produce step** — confirmed failing live on MKT-1415, not just a theoretical gap; same shape as the shipped `ui-embed` entry.
+3. Built-in or shared `tsc` JSON wrapper.
+4. Setup skill proposals for worktree install steps and harness profiles (mutation profile + v0.6.0 pin).
+5. Diff-coverage-vs-baseline as a gated finding, and verdict vocabulary for coverage and lint findings (not only suppressions); mutation verdicts keyed by `id`.
+6. Generated / verify-generated drift pane (even if Go-only first).
+7. Provider-parity pane — cheap, deterministic, fills the gap gorefactor's interface-only sibling expansion structurally can't reach.
+8. Document CI artifact + `--report-url` posting pattern.
