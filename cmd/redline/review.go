@@ -66,17 +66,47 @@ func cmdReview(o opts) error {
 			// a different review from one that did.
 			fmt.Fprintf(os.Stderr,
 				"redline: the diff and findings alone are %d tokens against a %d ceiling, "+
-					"so no context beyond the diff was sent. Review a smaller range, or raise --ceiling.\n",
+					"so no context beyond the diff fits. Review a smaller range, or raise --ceiling.\n",
 				out.FixedEstimate, out.Ceiling)
+		}
+		if !out.CostKnown && !o.dryRun && out.Usage.InputTokens > 0 {
+			// A model missing from the price table has no estimate, so the
+			// --max-cost tripwire in review.Run cannot fire and the request
+			// went out with no cost guard at all. Silence here reads as a
+			// priced request that came in under the cap.
+			fmt.Fprintf(os.Stderr,
+				"redline: %s is not in the price table, so the request was sent unpriced "+
+					"and the --max-cost tripwire did not apply.\n", out.Model)
+		}
+	}
+	// Record before returning the error, not after the review succeeds.
+	// review.Run fills in Usage and CostUSD before it reports a truncated,
+	// refused, or unparseable response, so by the time those errors surface
+	// the money is already spent; returning here with no ledger line is how
+	// two paid calls left reviews.jsonl untouched and --stats claiming one
+	// review. The usage guard is what separates a request that was actually
+	// sent from one that never left — a dry run, or a refusal before the
+	// call — so those still write nothing.
+	if out != nil && !o.dryRun && out.Usage.InputTokens > 0 {
+		if rerr := review.Record(o.out, out, o.effort); rerr != nil {
+			// Not fatal. A review that produced findings has done its job,
+			// and losing a cost line is not worth failing the command over.
+			fmt.Fprintf(os.Stderr, "redline: could not record the run's cost: %v\n", rerr)
 		}
 	}
 	if err != nil {
 		return err
 	}
 	if o.dryRun {
-		// Print the prompt rather than a summary of it. The point of a dry
-		// run is to see exactly what would be sent, and the estimated price
-		// of sending it.
+		// Print the whole request rather than a summary of it, both halves
+		// of it. The system block carries every provider's promptFragment,
+		// which comes from another repository entirely and decides as much
+		// about the review as the user turn does; a dry run that showed only
+		// the user turn could not answer what would be sent. Then the
+		// estimated price of sending it.
+		fmt.Println("--- system ---")
+		fmt.Println(out.System)
+		fmt.Println("--- prompt ---")
 		fmt.Print(out.Prompt)
 		fmt.Fprintf(os.Stderr, "\nredline: %d input tokens estimated; expect %s, at most %s\n",
 			out.InputEstimate,
@@ -91,11 +121,6 @@ func cmdReview(o opts) error {
 			fmt.Fprint(os.Stderr, ", stopped by the cost cap")
 		}
 		fmt.Fprintln(os.Stderr)
-	}
-	if err := review.Record(o.out, out, o.effort); err != nil {
-		// Not fatal. A review that produced findings has done its job, and
-		// losing a cost line is not worth failing the command over.
-		fmt.Fprintf(os.Stderr, "redline: could not record the run's cost: %v\n", err)
 	}
 	if entries, rerr := review.ReadLedger(o.out); rerr == nil && len(entries) > 1 {
 		// The target is an average, so print the average. One review's cost

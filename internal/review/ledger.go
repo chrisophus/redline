@@ -162,15 +162,32 @@ func Summarize(entries []Entry) Stats {
 		sum += c
 	}
 	s.Mean = sum / float64(s.Count)
-	s.Median = costs[s.Count/2]
-	s.P90 = costs[(s.Count*9)/10]
-	if idx := (s.Count * 9) / 10; idx >= s.Count {
-		s.P90 = costs[s.Count-1]
-	}
+	s.Median = percentile(costs, 50)
+	s.P90 = percentile(costs, 90)
 	s.Min = costs[0]
 	s.Max = costs[s.Count-1]
 	s.MeanSeconds = secs / float64(s.Count)
 	return s
+}
+
+// percentile is the nearest-rank value at pct of a sorted slice: index
+// ceil(pct*n/100)-1.
+//
+// The naive (n*pct)/100 is one rank too high, and biased the same way at
+// every size: at two reviews the "median" was the more expensive of the two,
+// and for any n up to ten the "p90" was the maximum, so the tail statistic
+// that exists to show one outlier beside the average was that outlier. The
+// clamp is for pct at the ends, not for the arithmetic; ceil(pct*n/100)-1 is
+// within range for every n >= 1.
+func percentile(sorted []float64, pct int) float64 {
+	idx := (len(sorted)*pct + 99) / 100 - 1
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(sorted) {
+		idx = len(sorted) - 1
+	}
+	return sorted[idx]
 }
 
 // String renders the distribution for a terminal. The average leads because
