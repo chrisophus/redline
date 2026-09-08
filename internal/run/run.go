@@ -297,8 +297,13 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 	}
 	var envs []*envelope.Envelope
 	var absent []string
+	spokenFor := make(map[string]bool, len(changed))
 	for _, p := range providers {
-		if len(p.Claimed(changed)) == 0 {
+		claimed := p.Claimed(changed)
+		for _, path := range claimed {
+			spokenFor[path] = true
+		}
+		if len(claimed) == 0 {
 			continue
 		}
 		env, runErr := p.Run(observeRoot, baseSHA)
@@ -326,6 +331,32 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 			})
 		}
 		envs = append(envs, env)
+	}
+	// The union above is what the context block actually speaks for. A change
+	// that is half Go and half something no provider covers would otherwise
+	// ship a context block for the Go half and say nothing about the rest,
+	// which reads as if the whole change was resolved. Name the gap, the same
+	// honesty the lint pane gives a file no tool reads. A repository that
+	// configured no providers at all promised no context in the first place,
+	// so saying it of every file there would be noise, not a gap.
+	if len(providers) > 0 {
+		var uncovered []string
+		for _, path := range changed {
+			if !spokenFor[path] {
+				uncovered = append(uncovered, path)
+			}
+		}
+		if len(uncovered) > 0 {
+			reason := "no configured provider speaks for them, so the context below covers the rest of the change only"
+			if len(uncovered) <= 5 {
+				reason = fmt.Sprintf("no configured provider speaks for %s, so the context below covers the rest of the change only", strings.Join(uncovered, ", "))
+			}
+			rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+				Substrate: "redline/context",
+				Message:   fmt.Sprintf("%d changed file(s) fall outside every configured context provider's scope", len(uncovered)),
+				Reason:    reason,
+			})
+		}
 	}
 	return envs, absent
 }
