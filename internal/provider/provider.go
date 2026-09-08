@@ -181,6 +181,14 @@ func (c Config) Run(dir, baseSHA string) (*envelope.Envelope, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, c.Command, args...)
 	cmd.Dir = dir
+	// Stdout and Stderr here are not *os.File, so os/exec copies them
+	// through a pipe and cmd.Run blocks until every write end is closed.
+	// Killing the provider on the deadline does not close a pipe a
+	// grandchild still holds — and a context provider spawns exactly those
+	// (go list, git log -L) — so without a bound the DeadlineExceeded check
+	// below is never reached and the review hangs. WaitDelay is what makes
+	// the deadline enforceable: after it, the copy is abandoned.
+	cmd.WaitDelay = 5 * time.Second
 	var out, errBuf strings.Builder
 	cmd.Stdout = &out
 	cmd.Stderr = &errBuf
@@ -201,6 +209,13 @@ func (c Config) Run(dir, baseSHA string) (*envelope.Envelope, error) {
 	}
 	env, err := Parse([]byte(out.String()))
 	if err != nil {
+		// Anything on stderr is the provider's own account of why it wrote
+		// no usable envelope. This message reaches the model verbatim as the
+		// Absent line, so dropping it tells the reviewer context is missing
+		// without saying why.
+		if diag := strings.TrimSpace(errBuf.String()); diag != "" {
+			return nil, fmt.Errorf("%s: %w: %s", c.Name, err, firstLine(diag))
+		}
 		return nil, fmt.Errorf("%s: %w", c.Name, err)
 	}
 	return env, nil
@@ -237,11 +252,18 @@ func Parse(stdout []byte) (*envelope.Envelope, error) {
 	}
 	body := []byte(trimmed)
 	var wrap resultWrapper
-	if err := json.Unmarshal(body, &wrap); err == nil && wrap.OK != nil && len(wrap.Data) > 0 {
+	if err := json.Unmarshal(body, &wrap); err == nil && wrap.OK != nil {
+		// A failure frame carries no payload when the CLI's result type
+		// declares `Data any` with omitempty, so requiring data before
+		// believing ok:false would unmarshal {"ok":false,"error":...} into a
+		// zero envelope and blame a schema version for the tool's own
+		// diagnosis. Trust the flag first.
 		if !*wrap.OK {
 			return nil, fmt.Errorf("reported failure: %s", wrap.Error)
 		}
-		body = wrap.Data
+		if len(wrap.Data) > 0 {
+			body = wrap.Data
+		}
 	}
 	var env envelope.Envelope
 	if err := json.Unmarshal(body, &env); err != nil {

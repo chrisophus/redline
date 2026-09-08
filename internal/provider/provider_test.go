@@ -3,6 +3,7 @@ package provider
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -123,6 +124,16 @@ func TestParseSurfacesAProvidersOwnFailure(t *testing.T) {
 	_, err := Parse([]byte(`{"ok":false,"error":"packages failed to load","data":{}}`))
 	if err == nil {
 		t.Fatal("a provider reporting failure must not read as an empty context")
+	}
+}
+
+func TestParseSurfacesAFailureFrameWithNoPayload(t *testing.T) {
+	_, err := Parse([]byte(`{"ok":false,"error":"no merge base"}`))
+	if err == nil {
+		t.Fatal("a provider reporting failure must not read as an empty context")
+	}
+	if !strings.Contains(err.Error(), "no merge base") {
+		t.Fatalf("err = %v, want the provider's own diagnosis, not a schema mismatch", err)
 	}
 }
 
