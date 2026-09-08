@@ -450,3 +450,31 @@ func TestOpenFileMissingReportIsAnError(t *testing.T) {
 		t.Fatal("a missing report must be an error, not a silent success")
 	}
 }
+
+// A dry run answers exactly one question: what would be sent. The system
+// block is half the request — the harness instructions plus every provider's
+// language fragment, which come from another repository entirely — so a dry
+// run that printed only the user turn answered the question wrong while
+// looking complete. It calls nothing, so this needs no key and no network.
+func TestReviewDryRunPrintsTheSystemBlockAndTheUserTurn(t *testing.T) {
+	dir := worktreeSession(t)
+
+	var err error
+	out := captureStdout(t, func() {
+		err = cmdReview(opts{out: dir, dryRun: true, noOpen: true})
+	})
+	if err != nil {
+		t.Fatalf("a dry run calls nothing and should succeed: %v", err)
+	}
+	system, prompt, ok := strings.Cut(out, "--- prompt ---")
+	if !ok {
+		t.Fatalf("the two halves of the request must be distinguishable:\n%s", out)
+	}
+	system = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(system), "--- system ---"))
+	if system == "" {
+		t.Fatalf("the dry run printed no system block, so it did not show what would be sent:\n%s", out)
+	}
+	if !strings.Contains(prompt, "## The change") {
+		t.Fatalf("the user turn must still be printed after the system block:\n%s", out)
+	}
+}
