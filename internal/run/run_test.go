@@ -748,3 +748,62 @@ func TestVerdictMergedFromReviewFile(t *testing.T) {
 		t.Errorf("a merged verdict is the agent's reading: source = %q, want llm", v.Source)
 	}
 }
+
+// providerRepo commits a declared context provider on main, then branches, so
+// the config itself is not part of the change under review.
+func providerRepo(t *testing.T) *repo {
+	t.Helper()
+	r := newRepo(t)
+	r.write(".redline.yml", "context:\n  - name: gofake\n    command: redline-test-no-such-provider\n    scope:\n      - \"**/*.go\"\n")
+	r.commit("declare a context provider")
+	r.git("checkout", "-b", "feature")
+	return r
+}
+
+// A change that is half Go and half something no provider covers must say so.
+// The context block would otherwise cover the Go half and report nothing about
+// the rest, which reads exactly like a change that was fully resolved — the
+// failure the whole unknown vocabulary exists to prevent.
+//
+// The provider's command does not exist, which is deliberate: scope decides
+// what a provider speaks for and is answered before anything runs, so the gap
+// is reported without depending on a binary being installed.
+func TestChangedFilesOutsideEveryProviderScopeAreReported(t *testing.T) {
+	r := providerRepo(t)
+	r.write("internal/a/a.go", "package a\n\nfunc A() {}\n")
+	r.write("web/app.ts", "export const app = 1;\n")
+
+	rep := r.run(run.Options{Base: "main"}).Report
+
+	var gap *findings.Unknown
+	for i, u := range rep.Unknowns {
+		if strings.Contains(u.Message, "outside every configured context provider") {
+			gap = &rep.Unknowns[i]
+		}
+	}
+	if gap == nil {
+		t.Fatalf("the .ts file no provider claims must be reported as uncovered, got %+v", rep.Unknowns)
+	}
+	if !strings.Contains(gap.Reason, "web/app.ts") {
+		t.Errorf("the gap must name the file: reason = %q", gap.Reason)
+	}
+	if strings.Contains(gap.Reason, "internal/a/a.go") {
+		t.Errorf("the Go file is inside the provider's scope and must not be named: reason = %q", gap.Reason)
+	}
+}
+
+// The same repository with nothing outside the provider's scope must not
+// manufacture a gap: an unknown that fires on a fully covered change is noise,
+// and noise in this channel is what teaches a reader to skip it.
+func TestNoGapWhenEveryChangedFileIsClaimed(t *testing.T) {
+	r := providerRepo(t)
+	r.write("internal/a/a.go", "package a\n\nfunc A() {}\n")
+
+	rep := r.run(run.Options{Base: "main"}).Report
+
+	for _, u := range rep.Unknowns {
+		if strings.Contains(u.Message, "outside every configured context provider") {
+			t.Fatalf("no file is outside the scope, yet a gap was reported: %+v", u)
+		}
+	}
+}

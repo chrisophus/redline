@@ -159,61 +159,6 @@ func (f findingView) Body() template.HTML {
 	return template.HTML(codeSpans(template.HTMLEscapeString(rest)))
 }
 
-// splitMessage cuts a long message into a heading and the rest. Two
-// candidates and the shorter wins: the first sentence, and the first line —
-// a remark that opens with a line of its own has already said where its
-// title ends.
-func splitMessage(msg string) (head, rest string) {
-	msg = strings.TrimSpace(msg)
-	if len(msg) <= headingMax {
-		return msg, ""
-	}
-	cut := len(msg)
-	if i := strings.IndexByte(msg, '\n'); i >= 0 {
-		cut = i
-	}
-	if i := firstSentenceEnd(msg); i > 0 && i < cut {
-		cut = i
-	}
-	return strings.TrimSpace(msg[:cut]), strings.TrimSpace(msg[cut:])
-}
-
-// sentenceEnd is a full stop that ends a sentence: terminal punctuation, any
-// closing quote or bracket, then whitespace or the end of the text.
-var sentenceEnd = regexp.MustCompile(`[.!?]["')\]]*(?:\s|$)`)
-
-// minHeading is the shortest heading a sentence cut may produce. The same
-// pattern matches the dot in "e.g." and "cf.", which agent prose is full of,
-// and a four-character heading is worse than no split at all — so a candidate
-// that short is read as an abbreviation and the scan carries on.
-const minHeading = 32
-
-// firstSentenceEnd returns the offset just past the first sentence-ending
-// punctuation, or -1 when the message has none worth cutting at.
-func firstSentenceEnd(msg string) int {
-	for _, m := range sentenceEnd.FindAllStringIndex(msg, -1) {
-		// The match swallows the space after the stop; the heading keeps the
-		// punctuation itself.
-		end := len(strings.TrimRight(msg[:m[1]], " \t\r\n\f\v"))
-		if end >= minHeading {
-			return end
-		}
-	}
-	return -1
-}
-
-// inlineCode is a `code` span in agent prose, which quotes identifiers
-// constantly and until now showed the backticks literally.
-var inlineCode = regexp.MustCompile("`([^`\n]+)`")
-
-// codeSpans turns `x` into <code>x</code>. It must run on already-escaped
-// text: this is the one place the card introduces markup of its own, so what
-// it wraps has to be inert before it arrives or the body becomes an injection
-// point.
-func codeSpans(escaped string) string {
-	return inlineCode.ReplaceAllString(escaped, "<code>$1</code>")
-}
-
 // drillGroup is one language/kind cell of the drill-in: the files of that
 // language and role, each openable in the drawer, with the line totals the
 // composition table used to show on its own.
@@ -353,6 +298,61 @@ func buildView(in HTMLInput) view {
 	}
 	v.Nav = navFor(v)
 	return v
+}
+
+// splitMessage cuts a long message into a heading and the rest. Two
+// candidates and the shorter wins: the first sentence, and the first line —
+// a remark that opens with a line of its own has already said where its
+// title ends.
+func splitMessage(msg string) (head, rest string) {
+	msg = strings.TrimSpace(msg)
+	if len(msg) <= headingMax {
+		return msg, ""
+	}
+	cut := len(msg)
+	if i := strings.IndexByte(msg, '\n'); i >= 0 {
+		cut = i
+	}
+	if i := firstSentenceEnd(msg); i > 0 && i < cut {
+		cut = i
+	}
+	return strings.TrimSpace(msg[:cut]), strings.TrimSpace(msg[cut:])
+}
+
+// sentenceEnd is a full stop that ends a sentence: terminal punctuation, any
+// closing quote or bracket, then whitespace or the end of the text.
+var sentenceEnd = regexp.MustCompile(`[.!?]["')\]]*(?:\s|$)`)
+
+// minHeading is the shortest heading a sentence cut may produce. The same
+// pattern matches the dot in "e.g." and "cf.", which agent prose is full of,
+// and a four-character heading is worse than no split at all — so a candidate
+// that short is read as an abbreviation and the scan carries on.
+const minHeading = 32
+
+// firstSentenceEnd returns the offset just past the first sentence-ending
+// punctuation, or -1 when the message has none worth cutting at.
+func firstSentenceEnd(msg string) int {
+	for _, m := range sentenceEnd.FindAllStringIndex(msg, -1) {
+		// The match swallows the space after the stop; the heading keeps the
+		// punctuation itself.
+		end := len(strings.TrimRight(msg[:m[1]], " \t\r\n\f\v"))
+		if end >= minHeading {
+			return end
+		}
+	}
+	return -1
+}
+
+// inlineCode is a `code` span in agent prose, which quotes identifiers
+// constantly and until now showed the backticks literally.
+var inlineCode = regexp.MustCompile("`([^`\n]+)`")
+
+// codeSpans turns `x` into <code>x</code>. It must run on already-escaped
+// text: this is the one place the card introduces markup of its own, so what
+// it wraps has to be inert before it arrives or the body becomes an injection
+// point.
+func codeSpans(escaped string) string {
+	return inlineCode.ReplaceAllString(escaped, "<code>$1</code>")
 }
 
 // relatedRefs resolves the priors a correlation names. The markdown report has
