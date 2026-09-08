@@ -855,3 +855,119 @@ func TestReportRendersMutationVerdict(t *testing.T) {
 		}
 	}
 }
+
+// The review prompt, the output schema, and the skill all promise the report
+// folds a low-confidence finding away — the inducement offered for reporting
+// an uncertain one at all. Nothing implemented it, so every hedge landed on
+// the briefing at full weight. Folded away is not discarded: the card has to
+// stay reachable, and the reader has to be told it exists.
+func TestLowConfidenceFindingsAreFoldedAwayButStayReachable(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Findings: []findings.Finding{
+				{File: "a.go", Line: 3, Rule: "sure-thing", Severity: findings.SeverityError,
+					Message: "this breaks", Source: findings.SourceLLM, Confidence: findings.ConfidenceHigh},
+				{File: "a.go", Line: 9, Rule: "hunch", Severity: findings.SeverityInfo,
+					Message: "this might leak a goroutine", Source: findings.SourceLLM,
+					Confidence: findings.ConfidenceLow},
+			},
+		},
+		Change: &change.Set{Files: []change.File{{Path: "a.go", Language: "go", Diff: "@@ -1 +1,9 @@\n+x\n"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fold := strings.Index(html, `<details class="fold">`)
+	if fold < 0 {
+		t.Fatal("a low-confidence finding must render inside a fold, not as a card in the list")
+	}
+	if !strings.Contains(html, "1 low-confidence agent finding folded away") {
+		t.Error("the summary must say how many are folded, so the reader knows they exist")
+	}
+	// Reachable means inside the fold and nowhere else: before it, it was
+	// never folded; after it, the fold is a label over an empty box.
+	low := strings.Index(html, `data-rule="hunch"`)
+	shut := strings.Index(html[fold:], "</details>")
+	if low < fold || shut < 0 || low > fold+shut {
+		t.Error("the low-confidence card must render inside the fold")
+	}
+	if high := strings.Index(html, `data-rule="sure-thing"`); high < 0 || high > fold {
+		t.Error("a confident finding must stay in the list, above the fold")
+	}
+	// Confidence has to be legible on the cards that do render, or a reader
+	// cannot tell a hedge from a measurement.
+	if !strings.Contains(html, `<span class="tag">high confidence</span>`) {
+		t.Error("confidence must render as a tag beside severity and rule")
+	}
+}
+
+// An agent comment arrives with its whole remark in Message. Rendered straight
+// into the h3 it produced headings over 1000 characters — eleven lines of bold
+// prose where the deterministic card beside it has a one-line title — which is
+// the end of the ten-second orientation the briefing exists for.
+func TestLongAgentMessageSplitsIntoHeadingAndBody(t *testing.T) {
+	long := "The migration adds a NOT NULL column with no default, so every row " +
+		"already in `users` violates it the moment this deploys. Backfill first " +
+		"with `UPDATE users`, then add the constraint in a second migration. " +
+		"<script>alert(1)</script>"
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Findings: []findings.Finding{
+				{File: "m.sql", Line: 12, Rule: "schema-risk", Severity: findings.SeverityError,
+					Message: long, Source: findings.SourceLLM},
+				{File: "m.sql", Line: 1, Rule: "suppression-added", Severity: findings.SeverityInfo,
+					Message: "this change adds a nolint directive"},
+			},
+		},
+		Change: &change.Set{Files: []change.File{{Path: "m.sql", Diff: "@@ -1 +1,12 @@\n+x\n"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := "<h3>The migration adds a NOT NULL column with no default, so every row already in `users` violates it the moment this deploys.</h3>"
+	if !strings.Contains(html, head) {
+		t.Error("the heading must be the first sentence only, not the whole remark")
+	}
+	if !strings.Contains(html, `<p class="msg">Backfill first with <code>UPDATE users</code>, then add the constraint in a second migration.`) {
+		t.Error("the rest of the message must render as body text, with its code spans marked up")
+	}
+	if strings.Contains(html, "<script>alert(1)</script>") {
+		t.Error("the body must be escaped before code spans are applied, or it is an injection point")
+	}
+	// A message short enough to be a title is still exactly a title.
+	if !strings.Contains(html, "<h3>this change adds a nolint directive</h3>") {
+		t.Error("a short message must render as it always has, with no body")
+	}
+}
+
+// A correlation names the priors it builds on instead of restating them, which
+// only works if the report resolves the reference. Markdown did; HTML rendered
+// nothing, so the connection was visible on one of the two reports only.
+func TestCorrelationNamesItsPriorOnTheCard(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Findings: []findings.Finding{
+				{File: "m.sql", Line: 4, Rule: "migration-not-null-no-default", ID: "f1a2b3c4",
+					Severity: findings.SeverityError, Message: "adds NOT NULL"},
+				{File: "s.go", Line: 9, Rule: "correlation", Severity: findings.SeverityWarning,
+					Message: "the writer here is the one that will fail", Source: findings.SourceLLM,
+					RelatedFindings: []string{"f1a2b3c4", "e7e7e7e7"}},
+			},
+		},
+		Change: &change.Set{Files: []change.File{{Path: "s.go", Diff: "@@ -1 +1,9 @@\n+x\n"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, `builds on <code>migration-not-null-no-default</code> at m.sql:4 <span class="id">f1a2b3c4</span>`) {
+		t.Error("the correlation card must name the prior's rule, location, and short id")
+	}
+	// A reference to a finding this run does not have is dropped rather than
+	// rendered as a broken link.
+	if strings.Contains(html, "e7e7e7e7") {
+		t.Error("an unresolvable reference must not render")
+	}
+}
