@@ -39,24 +39,6 @@ func TestHighlightDiffForUsesSourceLineNumbers(t *testing.T) {
 	}
 }
 
-func TestReviewIdentityDiffersForWorktreeChanges(t *testing.T) {
-	base := "aaaaaaaaaaaaaaaa"
-	a := reviewIdentity(base, "worktree", &change.Set{
-		Files: []change.File{{Path: "a.go", Diff: "+one"}},
-	})
-	b := reviewIdentity(base, "worktree", &change.Set{
-		Files: []change.File{{Path: "a.go", Diff: "+two"}},
-	})
-	if a == b {
-		t.Fatal("different working-tree diffs must not share a comment key")
-	}
-	c := reviewIdentity(base, "bbbbbbbbbbbbbbbb", nil)
-	d := reviewIdentity(base, "bbbbbbbbbbbbbbbb", nil)
-	if c != d {
-		t.Fatal("same base+head SHA must share a comment key")
-	}
-}
-
 // The HTML report dropped pane.Render (the lint delta's "N introduced, M
 // resolved", a suppression's added-directive list) on the floor entirely —
 // markdown has rendered it since section1 existed. A report with a real

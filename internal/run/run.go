@@ -229,6 +229,11 @@ func Run(opts Options) (*Result, error) {
 	res.Report.Coverage = coverage(changed, examined)
 	res.Report.Coverage.Generated = generated
 	res.Report.Unknowns = append(res.Report.Unknowns, unbuiltPanes(changed, examined)...)
+	// Built here rather than after the panes because the staleness check
+	// below needs it: a review is stamped with the change it was written
+	// against, and comparing that needs the change assembled. Nothing
+	// between here and where it used to be built touches the tree.
+	res.Change = change.Build(repo, tgt, baseSHA, changed)
 	// The agent's review, if it has written one. Loaded before Finalize so its
 	// line comments become findings that get fingerprints stamped with the rest;
 	// verdicts merge after, joining on those fingerprints. Never fatal: a run
@@ -240,6 +245,25 @@ func Run(opts Options) (*Result, error) {
 			Message:   "review.json was present but could not be read, so no agent review was merged",
 			Reason:    verr.Error(),
 		})
+	}
+	if review != nil {
+		// A review stamped with another change is not merged. review.json
+		// lives beside the session and outlives it, so the previous
+		// review of the previous target is exactly what is sitting there
+		// when the next run writes over the session: one pull request's
+		// review rendered onto another here, and `post` would have put it
+		// on the wrong pull request. An unstamped review is merged, because
+		// writing one by hand is the documented path and predates the stamp.
+		if id := change.ReviewIdentity(res.Report.BaseSHA, res.Change); review.Revision != "" && review.Revision != id {
+			res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
+				Substrate: "redline/review",
+				Message: fmt.Sprintf("review.json was written against %s and this change is %s, so no agent review was merged",
+					review.Revision, id),
+				Reason: "re-run `redline review` for this change, or delete review.json; a review of another revision " +
+					"is worse than none, because it reads as this one",
+			})
+			review = nil
+		}
 	}
 	if review != nil {
 		res.Report.Findings = append(res.Report.Findings, review.CommentFindings()...)
@@ -268,7 +292,6 @@ func Run(opts Options) (*Result, error) {
 	findings.Sort(res.Report.Findings)
 
 	res.Envelopes, res.ContextAbsent = resolveContext(&res.Report, configRoot, tgt.Dir, baseSHA, changed)
-	res.Change = change.Build(repo, tgt, baseSHA, changed)
 	covDir := originCoverageDir(opts.Dir, tgt)
 	attachDiffCoverage(&res.Report, res.Change, tgt.Dir, covDir, cfg)
 	res.LineCoverage = lineCoverageOverlay(tgt.Dir, covDir, res.Change)

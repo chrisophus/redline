@@ -807,3 +807,113 @@ func TestNoGapWhenEveryChangedFileIsClaimed(t *testing.T) {
 		}
 	}
 }
+
+// A review written against another change must not be merged. review.json
+// lives beside the session and outlives it, so the review of the last target
+// is exactly what is sitting there when the next run writes over the session.
+// This happened: one pull request's review rendered onto another, and `post`
+// would have put it on the wrong pull request.
+func TestAReviewFromAnotherChangeIsNotMerged(t *testing.T) {
+	r := newRepo(t)
+	r.write("a.go", "package a\n")
+	r.commit("base")
+	r.write("a.go", "package a\n\nfunc A() {}\n")
+	out := filepath.Join(r.dir, ".redline")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(findings.Review{
+		Revision: "deadbeef:cafebabe",
+		Overview: "a review of something else entirely",
+		Comments: []findings.ReviewComment{{
+			File: "a.go", Line: 3, Body: "this remark belongs to another change",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "review.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rep := r.run(run.Options{Base: "main", Out: out}).Report
+	for _, f := range rep.Findings {
+		if f.Source == findings.SourceLLM {
+			t.Errorf("a review of another change reached the findings: %+v", f)
+		}
+	}
+	if rep.Agent != nil {
+		t.Errorf("a review of another change reached the report's prose: %+v", rep.Agent)
+	}
+	// Refusing quietly would be the same bug wearing a different hat: the
+	// reader has to be told a review was found and not used.
+	var said bool
+	for _, u := range rep.Unknowns {
+		if strings.Contains(u.Message, "was written against") {
+			said = true
+		}
+	}
+	if !said {
+		t.Errorf("the refusal is not stated anywhere: %+v", rep.Unknowns)
+	}
+}
+
+// A review with no stamp is merged. Writing review.json by hand is the
+// documented path for an agent and predates the stamp, so an unstamped file is
+// not evidence of staleness.
+func TestAnUnstampedReviewIsStillMerged(t *testing.T) {
+	r := newRepo(t)
+	r.write("a.go", "package a\n")
+	r.commit("base")
+	r.write("a.go", "package a\n\nfunc A() {}\n")
+	out := filepath.Join(r.dir, ".redline")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(findings.Review{
+		Overview: "written by hand, no stamp",
+		Comments: []findings.ReviewComment{{File: "a.go", Line: 3, Body: "hand-written remark"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "review.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rep := r.run(run.Options{Base: "main", Out: out}).Report
+	if rep.Agent == nil || rep.Agent.Overview == "" {
+		t.Error("an unstamped review was refused; writing one by hand is the documented path")
+	}
+}
+
+// The stamp `redline review` writes has to match what the next run computes,
+// or every real review reads as stale. Same session, same identity, twice.
+func TestTheStampMatchesTheChangeItWasWrittenFor(t *testing.T) {
+	r := newRepo(t)
+	r.write("a.go", "package a\n")
+	r.commit("base")
+	r.write("a.go", "package a\n\nfunc A() {}\n")
+	out := filepath.Join(r.dir, ".redline")
+
+	res := r.run(run.Options{Base: "main", Out: out})
+	id := change.ReviewIdentity(res.Report.BaseSHA, res.Change)
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(findings.Review{
+		Revision: id,
+		Overview: "a review of this very change",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "review.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rep := r.run(run.Options{Base: "main", Out: out}).Report
+	if rep.Agent == nil {
+		t.Fatalf("a review stamped with this change was refused; unknowns: %+v", rep.Unknowns)
+	}
+}
