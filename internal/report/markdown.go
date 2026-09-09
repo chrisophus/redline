@@ -167,7 +167,8 @@ func coverageSection(b *strings.Builder, rep *findings.Report) {
 		fmt.Fprintf(b, "> **The profile `%s` predates this change**, so its number does not describe "+
 			"the code under review. Re-run the suite with `-coverprofile`.\n\n", c.Profile)
 	}
-	if c.Percent < 0 && c.Stale && rep.Coverage.CoverableFiles > 0 {
+	switch {
+	case c.Percent < 0 && c.Stale && rep.Coverage.CoverableFiles > 0:
 		// A stale profile that mentions none of the added lines is not the
 		// same claim as a change with nothing to test, and saying the second
 		// blames the author for the first. The profile predates the lines,
@@ -175,9 +176,9 @@ func coverageSection(b *strings.Builder, rep *findings.Report) {
 		fmt.Fprintf(b, "None of this change's added lines appear in `%s` at all, which is what a profile "+
 			"older than the change looks like: %d changed file(s) could be covered. Re-run the suite with "+
 			"`-coverprofile` before reading this as untested.\n\n", c.Profile, rep.Coverage.CoverableFiles)
-	} else if c.Percent < 0 {
+	case c.Percent < 0:
 		fmt.Fprintf(b, "No added line is coverable, so there is nothing for a test to execute (`%s`).\n\n", c.Profile)
-	} else {
+	default:
 		fmt.Fprintf(b, "**%.0f%%** of the %d coverable line(s) this change adds are executed by a test, "+
 			"according to `%s`. %d covered, %d not.\n\n",
 			c.Percent, c.Lines, c.Profile, c.Covered, c.Lines-c.Covered)
