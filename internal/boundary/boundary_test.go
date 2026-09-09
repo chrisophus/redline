@@ -101,12 +101,23 @@ func TestGoModRequiresNoLanguageToolchain(t *testing.T) {
 // knows about rather than a provider it runs, and the first time it happened
 // nothing would fail. So it fails here.
 //
+// internal/scout is here for a sharper reason. It calls a model, and `run`
+// calling no model by any route is a property this tool is built on: observing
+// costs nothing and needs no credentials, and judging is a separate command
+// that costs money. A provider is allowed to spend money because a repository
+// opted into it by name in its own config, and the subprocess boundary is what
+// keeps that opt-in explicit. An import of this package from anywhere else
+// would put an API call inside `run` itself, where nobody asked for one.
+//
 // It is also what keeps the split cheap. The adapter is a spike inside this
 // repository; if it earns its own, this test says exactly what has to come
 // with it.
 var providerOnlyPackages = map[string][]string{
 	"github.com/chrisophus/redline/internal/graphify": {
 		"github.com/chrisophus/redline/cmd/redline-graphify-context",
+	},
+	"github.com/chrisophus/redline/internal/scout": {
+		"github.com/chrisophus/redline/cmd/redline-scout",
 	},
 }
 

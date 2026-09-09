@@ -1,6 +1,7 @@
 /.redline/
 /redline
 /redline-graphify-context
+/redline-scout
 # The Graphify index the context provider reads. It is a build artifact that
 # drifts with whatever last ran `graphify update`, which is why the harness
 # profile treats it like a coverage profile rather than a source file.

@@ -1,0 +1,140 @@
+package main
+
+import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/chrisophus/redline/internal/gitx"
+)
+
+func repo(t *testing.T) (*gitx.Repo, string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not on PATH")
+	}
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	write := func(path, body string) {
+		t.Helper()
+		full := filepath.Join(dir, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git("init", "-b", "main")
+	git("config", "user.email", "t@example.com")
+	git("config", "user.name", "t")
+	write("store.go", "package store\n\nfunc Insert() error { return nil }\n")
+	write("store_test.go", "package store\n\nfunc TestInsert(t *testing.T) {}\n")
+	git("add", "-A")
+	git("commit", "-m", "base")
+	write("store.go", "package store\n\nfunc Insert(email string) error { return nil }\n")
+	write("store_test.go", "package store\n\nfunc TestInsert(t *testing.T) { _ = 1 }\n")
+	git("add", "-A")
+	git("commit", "-m", "change")
+	r, err := gitx.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r, dir
+}
+
+// The scout's brief is the diff the reviewer will see. Test files are left
+// out of it because Redline holds test context back from the review, so a
+// scout that read them would be working on material nobody is shown.
+func TestTheBriefLeavesOutTestFiles(t *testing.T) {
+	r, _ := repo(t)
+	base := strings.TrimSpace(mustGit(t, r.Root, "rev-parse", "HEAD~1"))
+	got := diffOf(r, base, []string{"store.go", "store_test.go"})
+	if !strings.Contains(got, "email string") {
+		t.Errorf("the brief does not carry the change:\n%s", got)
+	}
+	if strings.Contains(got, "_ = 1") {
+		t.Errorf("the brief carries test code the reviewer never sees:\n%s", got)
+	}
+	if !strings.Contains(got, "store_test.go (test file, not shown)") {
+		t.Errorf("the omission is not named, so the scout cannot know it happened:\n%s", got)
+	}
+}
+
+func TestIsTestPath(t *testing.T) {
+	for path, want := range map[string]bool{
+		"internal/x_test.go": true,
+		"src/a.test.ts":      true,
+		"src/a.spec.js":      true,
+		"tests/test_x.py":    true,
+		"internal/x.go":      false,
+	} {
+		if got := isTestPath(path); got != want {
+			t.Errorf("isTestPath(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
+func TestGraphIsOptional(t *testing.T) {
+	_, dir := repo(t)
+	if got := resolveGraph(dir, ""); got != "" {
+		t.Errorf("resolveGraph = %q with no graph present, want empty", got)
+	}
+	graph := filepath.Join(dir, "graphify-out", "graph.json")
+	if err := os.MkdirAll(filepath.Dir(graph), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(graph, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveGraph(dir, ""); got != graph {
+		t.Errorf("resolveGraph = %q, want the graph it found", got)
+	}
+}
+
+func TestChangedIsRequired(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	if err := run(nil, &out, &errBuf); err == nil {
+		t.Error("ran without a base revision")
+	}
+	if out.Len() > 0 {
+		t.Errorf("wrote to stdout while failing:\n%s", out.String())
+	}
+}
+
+// Without a key the provider fails, and Redline records a provider that did
+// not run. It must not print a usable-looking empty envelope.
+func TestNoCredentialIsAFailureNotAnEmptyEnvelope(t *testing.T) {
+	_, dir := repo(t)
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
+	var out, errBuf bytes.Buffer
+	err := run([]string{"--changed", "HEAD~1", "--dir", dir, "--base-url", "http://127.0.0.1:1"}, &out, &errBuf)
+	if err == nil {
+		t.Fatal("produced an envelope with no model behind it")
+	}
+	if strings.Contains(out.String(), "schemaVersion") {
+		t.Errorf("wrote an envelope anyway:\n%s", out.String())
+	}
+}
+
+func mustGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %s: %v", strings.Join(args, " "), err)
+	}
+	return string(out)
+}

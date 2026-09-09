@@ -301,3 +301,52 @@ The reading: on a single-language repository that already has an exact
 provider, the graph adds type-definition context and not much else. The
 correlation case it was built for needs a repository whose changes actually
 span kinds, and that is what the missing eval fixture has to be drawn from.
+
+## The third option, which is what shipped next
+
+This doc frames the choice as one-shot expansions now and the explore loop
+later, with the loop deferred because a live query in the reviewer's own turn
+cannot be replayed by the eval. There is a third arrangement it does not
+consider, and on the numbers it beats both: put the loop in a cheap model in
+front of the expensive one.
+
+`cmd/redline-scout` is that. It is a context provider like any other, so
+Redline runs it as a subprocess and reads an envelope; what is inside is a
+tool loop on Sonnet under a cost cap. It reads the diff, decides what this
+change needs, and fetches it. The reviewer stays one-shot over a fixed
+payload, which is the property the deferral was protecting: the scout's
+findings are frozen into the envelope before the expensive call happens, so a
+saved session still replays.
+
+Three things it settles that the graph adapter could not.
+
+The costs come out in the right places. Three turns of exploring on Opus is
+about a dollar and every resend is billed at Opus rates; the same three turns
+on Sonnet, with the result handed to one Opus call, is about sixty cents and
+the resends are billed at Sonnet's. Prompt caching does not close that gap in
+the one-shot case at all, because a cache write is 1.25x the base rate and a
+review has no second request to read it back.
+
+The graph's CLI turns out to be the right interface after all, one layer up.
+The section above rejected `graphify query` and `affected` for the adapter
+because they answer a question in prose and truncate to a token budget, which
+is the wrong shape for a program. It is the right shape for a model: the scout
+gets `graph_affected` and `graph_path` as tools, and `graph path "A" "B"` is
+the cross-kind correlation question asked directly rather than reconstructed
+from a one-hop walk. So the graph earns its place as a tool even where the
+adapter's own expansions did not.
+
+And the roles become a claim someone actually made. The adapter guesses a role
+from an edge relation, which is why five type definitions arrived under
+`neighbor`. The scout knows why it fetched something, because it went and got
+it for a reason, so `history` on a deleted guard and `caller` on a changed
+signature are the reading of the change rather than a mapping table's best
+effort.
+
+What it costs is reproducibility, and only on its own side. gorefactor writes
+the same envelope for a revision every time and the scout does not, so
+`provider.version` carries the model and the effort, and regenerating a
+fixture that used it produces a different one. The reviewer's half keeps the
+property that matters. Whether the trade is worth it is the same measurement
+this whole doc has been waiting on: the fixture set, reviewer alone against
+reviewer plus scout, on the clean rate and the correlation findings.
