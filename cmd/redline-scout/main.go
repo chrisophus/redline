@@ -35,6 +35,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/gitx"
 	"github.com/chrisophus/redline/internal/review"
 	"github.com/chrisophus/redline/internal/scout"
@@ -115,11 +116,13 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("no changed files against %s", base[:8])
 	}
 
+	generated := generatedIn(repo, paths)
 	opts := scout.Options{
 		Root:       repo.Root,
 		Changed:    paths,
+		Generated:  generated,
 		BaseSHA:    base,
-		Diff:       diffOf(repo, base, paths),
+		Diff:       diffOf(repo, base, paths, generated),
 		Graph:      resolveGraph(repo.Root, *graph),
 		Model:      *model,
 		Effort:     *effort,
@@ -153,14 +156,39 @@ func capNote(s scout.Spend) string {
 }
 
 // diffOf is the change as the reviewer will see it, which is the scout's
-// brief. Test files are left out of it: Redline holds test context back from
-// the review, so a scout that spent turns reading tests would be working on
-// material the reviewer is never shown.
-func diffOf(repo *gitx.Repo, base string, paths []string) string {
+// brief. It holds back what Redline holds back from the review itself, for
+// the same two reasons.
+//
+// Test files, because Redline keeps test context out of the review, so a
+// scout that spent turns reading them would be working on material the
+// reviewer is never shown.
+//
+// Generated files, because a regenerated protobuf or a lockfile is tens of
+// thousands of lines of machine output that no reviewer acts on. Sending it
+// would spend the scout's context and its cost cap on the one part of the
+// change that cannot carry a finding, and on a large regeneration it would
+// crowd out the hand-written lines entirely.
+//
+// Neither is dropped silently. Both are named with their counts, which is the
+// same bargain the review prompt strikes: the scout can see that a file moved
+// and decide whether that matters, without being handed its contents.
+func diffOf(repo *gitx.Repo, base string, paths []string, generated map[string]string) string {
+	counts := map[string]gitx.DiffStat{}
+	stats, err := repo.Stat(base, "")
+	if err == nil {
+		for _, st := range stats {
+			counts[st.Path] = st
+		}
+	}
 	var b strings.Builder
 	for _, p := range paths {
+		st := counts[p]
+		if reason := generated[p]; reason != "" {
+			fmt.Fprintf(&b, "--- %s (generated: %s, +%d -%d, not shown)\n\n", p, reason, st.Added, st.Removed)
+			continue
+		}
 		if isTestPath(p) {
-			fmt.Fprintf(&b, "--- %s (test file, not shown)\n\n", p)
+			fmt.Fprintf(&b, "--- %s (test file, +%d -%d, not shown)\n\n", p, st.Added, st.Removed)
 			continue
 		}
 		d := repo.DiffPath(base, p)
@@ -174,6 +202,22 @@ func diffOf(repo *gitx.Repo, base string, paths []string) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// generatedIn classifies the change the way Redline does, so the scout and
+// the review agree about what is machine output. The detection is
+// deliberately conservative on Redline's side because hiding a hand-written
+// file is worse than showing a generated one, and that judgement is reused
+// here rather than guessed at again from file names.
+func generatedIn(repo *gitx.Repo, paths []string) map[string]string {
+	attrs := repo.AttrSet("linguist-generated", paths)
+	out := map[string]string{}
+	for _, p := range paths {
+		if reason := change.GeneratedReason(repo.Root, p, attrs); reason != "" {
+			out[p] = reason
+		}
+	}
+	return out
 }
 
 func isTestPath(p string) bool {
