@@ -1,0 +1,100 @@
+{
+  "name": "gorefactor-changectx",
+  "origin": "real: gorefactor PR #65 (a2ac4a1..1ee9d89), labelled from defects verified by reading the code, all but one of which were subsequently fixed and merged",
+  "summary": "gorefactor gains `context --changed <ref>`: a new internal/changectx package that resolves a whole change into a context envelope for redline to consume. Six roles, a manifest, git line history, and a tool-facing command.",
+  "clean": false,
+  "why_this_fixture_exists": "The shipped fixture set carries four expectations across eight fixtures, so no two review configurations can be told apart on it. This one carries fourteen defects in a single real change, each confirmed by reading the code rather than by asking a model, which makes it possible to compare architectures on recall instead of on impressions.",
+  "expect": [
+    {
+      "key": "history-walks-head-not-base",
+      "what": "logLineHistory passes no revision to git, so `log -L` walks from HEAD, and on a committed change HEAD is the change under review: the history returned is the commit being reviewed.",
+      "file": "internal/changectx/git.go",
+      "all_of": ["logLineHistory"],
+      "any_of": ["HEAD", "revision", "base", "log -l"]
+    },
+    {
+      "key": "removed-history-priority-inverted",
+      "what": "Removed-line history is scored Priority: 1 under a comment claiming it ranks above surviving history, but the sort is descending and surviving history scores 50..100, so it ranks last and is dropped first.",
+      "file": "internal/changectx/expand.go",
+      "all_of": ["priority"],
+      "any_of": ["descending", "inverted", "ranks last", "sorts last", "below", "lowest", "first to be dropped"]
+    },
+    {
+      "key": "untracked-listing-error-swallowed",
+      "what": "changedFiles binds the ls-files error and never reads it, so a failure silently drops an added file from the manifest while notes stays empty.",
+      "file": "internal/changectx/git.go",
+      "all_of": ["ls-files"],
+      "any_of": ["swallow", "ignored", "never read", "discard", "uerr", "silently"]
+    },
+    {
+      "key": "history-cap-keeps-wrong-spans",
+      "what": "The per-file history cap keeps the first three spans in line order rather than the most substantial ones, and records nothing when it drops the rest.",
+      "file": "internal/changectx/expand.go",
+      "any_of": ["line order", "first three", "historyrangesperfile", "cap", "position order"]
+    },
+    {
+      "key": "whole-file-history-misattributed",
+      "what": "declCovering returns the first overlapping declaration, so a whole-file history span on an added file is labelled with whichever declaration sits topmost, and its priority derives from that one symbol.",
+      "file": "internal/changectx/expand.go",
+      "any_of": ["declcovering", "first overlap", "topmost", "whole-file span", "more than one declaration", "arbitrary"]
+    },
+    {
+      "key": "deletion-only-change-has-no-history",
+      "what": "expand returns early when no declaration resolved, and resolve skips deleted files, so a change that only deletes files yields zero expansions including zero removed-line history.",
+      "file": "internal/changectx/expand.go",
+      "any_of": ["b.decls", "deletion", "deleted file", "git rm", "zero expansions", "no expansions"]
+    },
+    {
+      "key": "test-role-emits-duplicates",
+      "what": "The test-role dedup key includes the target, so one test function is emitted once per changed symbol it touches, byte-identical apart from details.covers.",
+      "file": "internal/changectx/expand_uses.go",
+      "any_of": ["duplicate", "once per", "dedup", "same test", "repeated", "key includes"]
+    },
+    {
+      "key": "caller-role-reemits-the-change",
+      "what": "collectUses skips a use only when it falls inside its own target's span, so uses inside other changed declarations are kept and the caller role repeats lines an enclosing expansion already carries.",
+      "file": "internal/changectx/expand_uses.go",
+      "any_of": ["inside the change", "already in the diff", "enclosing expansion", "outside the change", "own target", "twice"]
+    },
+    {
+      "key": "caller-kind-mislabelled",
+      "what": "addCallerSite hardcodes kind=call-site while collectUses walks TypesInfo.Uses wholesale, so const, type and var references are labelled call sites.",
+      "file": "internal/changectx/expand_uses.go",
+      "any_of": ["call-site", "call site", "mislabel", "const", "type reference", "not a call"]
+    },
+    {
+      "key": "enclosing-duplicates-the-diff",
+      "what": "expandEnclosing emits the whole declaration unconditionally, so on an added file the expansion is a second copy of lines the diff already carries.",
+      "any_of": ["already in the diff", "second copy", "duplicate", "redundant", "already carries", "verbatim copy"]
+    },
+    {
+      "key": "empty-roles-are-silent",
+      "what": "A role that produces no expansions says nothing in notes, so an honest zero is indistinguishable from a stage that failed.",
+      "any_of": ["no note", "notes is empty", "indistinguishable", "empty role", "silently empty", "says nothing"]
+    },
+    {
+      "key": "history-line-span-breaks-the-contract",
+      "what": "History expansions set startLine/endLine to a span that does not locate their content, which the consumer's own contract says should be zero for that role.",
+      "any_of": ["startline", "endline", "line span", "does not locate", "zero"]
+    },
+    {
+      "key": "weak-history-assertion",
+      "what": "The only assertion on history content checks for the substring 'commit ', which any git log of any span produces, so it cannot fail on the span being wrong.",
+      "file": "internal/changectx/changectx_test.go",
+      "any_of": ["commit ", "cannot fail", "any git log", "weak", "always pass"]
+    },
+    {
+      "key": "promptfragment-wording-pin",
+      "what": "The test pins the incidental token %w inside a prose constant the consumer treats as opaque data, so it is sensitive to rewording and blind to the field being gutted.",
+      "file": "internal/changectx/changectx_test.go",
+      "any_of": ["%w", "wording", "incidental", "opaque", "prose"]
+    }
+  ],
+  "quiet": [
+    {
+      "about": "restating a wave-one finding as if it were a review",
+      "note": "data-clumps, sibling-missing-file and test-skip-added are already on the report. Repeating one is not a review.",
+      "matches_without_correlation": ["data-clumps", "sibling-missing-file", "skips a test", "parameter group"]
+    }
+  ]
+}
