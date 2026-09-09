@@ -78,6 +78,10 @@ type Input struct {
 	// Absent names producers that did not run, so the eval can tell a
 	// genuine miss from a missing input.
 	Absent []string
+	// LineCoverage is, per changed file, whether each coverable line was
+	// executed by the suite. Empty when no profile was found, which is the
+	// common case and not an error.
+	LineCoverage map[string]map[int]bool
 }
 
 // Options configures one call.

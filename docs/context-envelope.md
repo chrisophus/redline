@@ -155,6 +155,14 @@ The cost, worth naming: Go review knowledge ends up next to the provider's
 own rules rather than next to the harness, encoded in one repository and
 consumed in another. That is why `provider.version` exists.
 
+### What the envelope does not carry
+
+Deterministic findings, coverage and mutation are Redline's own output, not a
+provider's, and they reach the review through the prompt rather than through
+here. A provider that tried to supply them would be asserting facts about a
+change it did not measure. Keep to what a provider resolves: the context
+around the change, and what it could not resolve.
+
 ### `notes`
 
 Things the provider could not determine. They reach the report as unknowns.

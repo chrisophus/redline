@@ -64,11 +64,47 @@ func outputSchema() map[string]any {
 			"summary": map[string]any{"type": "string", "description": "One line on what this file's change does."},
 		},
 	}
+	// verdict is a ruling on one finding a deterministic check already made.
+	// The three words are the ones the report already renders and the skill
+	// already documents for an agent writing review.json; this is the same
+	// vocabulary reaching the same fields from the one command that calls a
+	// model, rather than a second vocabulary meaning the same things.
+	//
+	// It is an array here and a map keyed by fingerprint on disk. A strict
+	// output schema cannot describe an object whose keys are not known in
+	// advance, and the fingerprints are not: parseReview does the conversion.
+	verdict := map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"finding", "ruling", "rationale"},
+		"properties": map[string]any{
+			"finding": map[string]any{
+				"type":        "string",
+				"description": "Id of the finding being ruled on, exactly as given in brackets above.",
+			},
+			"ruling": map[string]any{
+				"type": "string",
+				"enum": []string{"should-fix", "justified", "rule-noisy"},
+				"description": "should-fix: the finding is right and the code should change. " +
+					"justified: what it flags is deliberate and correct here. " +
+					"rule-noisy: the check is wrong here, or fires too often to be worth reading.",
+			},
+			"rationale": map[string]any{
+				"type":        "string",
+				"description": "One line on why, naming what you saw that the check could not.",
+			},
+			"fix": map[string]any{
+				"type":        "string",
+				"description": "How to resolve it, one or two lines. Empty unless the ruling is should-fix.",
+			},
+		},
+	}
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"overview", "files", "comments"},
+		"required":             []string{"overview", "files", "comments", "verdicts"},
 		"properties": map[string]any{
+			"verdicts": map[string]any{"type": "array", "items": verdict},
 			"overview": map[string]any{
 				"type":        "string",
 				"description": "One or two paragraphs on what this change is and why it exists.",

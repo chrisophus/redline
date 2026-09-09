@@ -239,8 +239,21 @@ func TestMergeIntoAFreshFile(t *testing.T) {
 func TestSchemaForcesEveryFieldToBePresent(t *testing.T) {
 	s := outputSchema()
 	req, _ := s["required"].([]string)
-	if len(req) != 3 {
-		t.Fatalf("required = %v", req)
+	// The set rather than a count: a field added to the schema and left out
+	// of required is the failure this guards, and a count says nothing about
+	// which field that is.
+	want := map[string]bool{"overview": true, "files": true, "comments": true, "verdicts": true}
+	if len(req) != len(want) {
+		t.Fatalf("required = %v, want %v", req, want)
+	}
+	for _, r := range req {
+		if !want[r] {
+			t.Errorf("required names %q, which the contract does not define", r)
+		}
+		delete(want, r)
+	}
+	for r := range want {
+		t.Errorf("%q is in the schema but not required, so the model may omit it", r)
 	}
 	props := s["properties"].(map[string]any)
 	comments := props["comments"].(map[string]any)

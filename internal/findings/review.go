@@ -57,7 +57,7 @@ type reviewWire struct {
 	Files            json.RawMessage    `json:"files"`
 	Comments         json.RawMessage    `json:"comments"`
 	Findings         json.RawMessage    `json:"findings"`
-	Verdicts         map[string]Verdict `json:"verdicts"`
+	Verdicts         json.RawMessage    `json:"verdicts"`
 	MutationVerdicts map[string]Verdict `json:"mutationVerdicts"`
 }
 
@@ -99,7 +99,11 @@ func LoadReview(path string) (*Review, error) {
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return nil, err
 	}
-	r := &Review{Verdicts: wire.Verdicts}
+	verdicts, err := parseReviewVerdicts(wire.Verdicts)
+	if err != nil {
+		return nil, fmt.Errorf("review verdicts: %w", err)
+	}
+	r := &Review{Verdicts: verdicts}
 	r.MutationVerdicts = wire.MutationVerdicts
 	r.Overview = strings.TrimSpace(wire.Overview)
 	if r.Overview == "" {
@@ -124,6 +128,52 @@ func LoadReview(path string) (*Review, error) {
 		r.MutationVerdicts[k] = v
 	}
 	return r, nil
+}
+
+// parseReviewVerdicts accepts either shape, the same allowance files and
+// comments already get. An agent writing review.json by hand keys them by
+// fingerprint, which is what MergeVerdicts joins on. `redline review` emits an
+// array instead, because a strict output schema cannot describe an object
+// whose keys are fingerprints the model has never seen.
+//
+// A verdict missing its finding or its ruling is dropped rather than failing
+// the load: the comments and the overview are the review, and one unattached
+// ruling is worth losing on its own.
+func parseReviewVerdicts(raw json.RawMessage) (map[string]Verdict, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var asMap map[string]Verdict
+	if err := json.Unmarshal(raw, &asMap); err == nil {
+		return asMap, nil
+	}
+	var asList []reviewVerdictEntry
+	if err := json.Unmarshal(raw, &asList); err != nil {
+		return nil, fmt.Errorf("want object or array of {finding, ruling, rationale, fix}")
+	}
+	out := make(map[string]Verdict, len(asList))
+	for _, e := range asList {
+		id := strings.TrimSpace(e.Finding)
+		ruling := strings.TrimSpace(e.Ruling)
+		if id == "" || ruling == "" {
+			continue
+		}
+		out[id] = Verdict{
+			Ruling:    ruling,
+			Rationale: strings.TrimSpace(e.Rationale),
+			Fix:       strings.TrimSpace(e.Fix),
+		}
+	}
+	return out, nil
+}
+
+// reviewVerdictEntry is the array form: the fingerprint moves from the key
+// into the object.
+type reviewVerdictEntry struct {
+	Finding   string `json:"finding"`
+	Ruling    string `json:"ruling"`
+	Rationale string `json:"rationale"`
+	Fix       string `json:"fix"`
 }
 
 func parseReviewFiles(raw json.RawMessage) (map[string]string, error) {

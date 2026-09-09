@@ -54,6 +54,7 @@ func Contributions(fixtures []Fixture) []Contribution {
 		in := review.Input{
 			Report: &f.Session.Report, Change: f.Session.Change,
 			Envelopes: f.Session.Envelopes, Absent: f.Session.ContextAbsent,
+			LineCoverage: f.Session.LineCoverage,
 		}
 		res, err := review.Assemble(in, review.Options{})
 		if err != nil {
