@@ -5,8 +5,48 @@ import (
 	"testing"
 
 	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/cover"
 	"github.com/chrisophus/redline/internal/findings"
 )
+
+// A stale profile mentions none of the lines a change adds, because it
+// predates them. Reporting that as "nothing here is coverable" states the one
+// thing the author could act on and gets it backwards: the change is not
+// untestable, nobody has measured it yet. Both facts produce Percent == -1,
+// so the render has to tell them apart.
+func TestStaleProfileIsNotReportedAsNothingToTest(t *testing.T) {
+	rep := &findings.Report{Coverage: findings.Coverage{
+		CoverableFiles: 2,
+		Diff: &cover.Result{
+			Profile: "coverage.out",
+			Percent: -1,
+			Stale:   true,
+		},
+	}}
+	md := Markdown(rep, nil, nil, nil)
+	if strings.Contains(md, "nothing for a test to execute") {
+		t.Errorf("a stale profile is reported as an untestable change:\n%s", md)
+	}
+	if !strings.Contains(md, "added lines appear in") {
+		t.Errorf("the render does not say the lines are absent from the profile:\n%s", md)
+	}
+}
+
+// The same sentinel with a fresh profile really does mean the change added no
+// line a profile could describe, and that wording has to survive.
+func TestNothingCoverableStillSaysSo(t *testing.T) {
+	rep := &findings.Report{Coverage: findings.Coverage{
+		CoverableFiles: 1,
+		Diff: &cover.Result{
+			Profile: "coverage.out",
+			Percent: -1,
+		},
+	}}
+	md := Markdown(rep, nil, nil, nil)
+	if !strings.Contains(md, "nothing for a test to execute") {
+		t.Errorf("a fresh profile with no coverable added line must say so:\n%s", md)
+	}
+}
 
 func TestMarkdownRendersCompositionTable(t *testing.T) {
 	ch := &change.Set{Files: []change.File{
