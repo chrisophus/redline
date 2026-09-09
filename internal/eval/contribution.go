@@ -34,6 +34,8 @@ type Contribution struct {
 	Redundant int
 	// RedundantTokens is what sending it would have cost.
 	RedundantTokens int
+	// KeptTokens is what the kept expansions cost.
+	KeptTokens int
 	// ByRole counts what was sent, per role.
 	ByRole map[envelope.Role]int
 }
@@ -69,6 +71,7 @@ func Contributions(fixtures []Fixture) []Contribution {
 		c.Sent = len(res.Budget.Kept)
 		c.Redundant = res.Budget.Redundant
 		c.RedundantTokens = res.Budget.RedundantTokens
+		c.KeptTokens = res.Budget.Tokens
 		for _, x := range res.Budget.Kept {
 			c.ByRole[x.Role]++
 		}
@@ -80,16 +83,16 @@ func Contributions(fixtures []Fixture) []Contribution {
 // Report renders the contribution table.
 func ContributionReport(cs []Contribution) string {
 	var b strings.Builder
-	b.WriteString("| Fixture | produced | sent | redundant | tokens saved | roles sent |\n")
-	b.WriteString("|---|---|---|---|---|---|\n")
+	b.WriteString("| Fixture | produced | sent | redundant | kept tokens | tokens saved | roles sent |\n")
+	b.WriteString("|---|---|---|---|---|---|---|\n")
 	for _, c := range cs {
 		roles := make([]string, 0, len(c.ByRole))
 		for r, n := range c.ByRole {
 			roles = append(roles, fmt.Sprintf("%s=%d", r, n))
 		}
 		sort.Strings(roles)
-		fmt.Fprintf(&b, "| %s | %d | %d | %d | %d | %s |\n",
-			c.Fixture, c.Produced, c.Sent, c.Redundant, c.RedundantTokens,
+		fmt.Fprintf(&b, "| %s | %d | %d | %d | %d | %d | %s |\n",
+			c.Fixture, c.Produced, c.Sent, c.Redundant, c.KeptTokens, c.RedundantTokens,
 			strings.Join(roles, " "))
 	}
 	return b.String()
