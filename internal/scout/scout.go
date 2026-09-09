@@ -182,6 +182,10 @@ func Run(ctx context.Context, opts Options) (*envelope.Envelope, Spend, error) {
 		spend.Usage.OutputTokens += msg.Usage.OutputTokens
 		spend.Usage.CacheReadTokens += msg.Usage.CacheReadInputTokens
 		spend.Usage.CacheWriteTokens += msg.Usage.CacheCreationInputTokens
+		// Priced every turn, not once at the end: overBudget adds this to the
+		// next turn's ceiling, and a total that is still zero while the loop
+		// runs makes the governor a per-turn check that never accumulates.
+		spend.CostUSD, spend.CostKnown = spend.Usage.Cost(opts.Model)
 
 		// ToParam carries the assistant turn back unchanged, thinking blocks
 		// included, which is what a tool loop on a thinking model requires.

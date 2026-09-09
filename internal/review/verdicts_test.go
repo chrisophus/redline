@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/cover"
 	"github.com/chrisophus/redline/internal/findings"
 )
 
@@ -221,7 +222,7 @@ func TestHandlesError(t *testing.T) {
 // The line numbers have to line up with the file, or the reviewer is pointed
 // at the wrong code.
 func TestAddedLineTextTracksHunkOffsets(t *testing.T) {
-	got := addedLineText("@@ -1,2 +1,3 @@\n unchanged\n+added at 2\n context\n@@ -40,0 +41,1 @@\n+added at 41\n")
+	got := cover.AddedLineText("@@ -1,2 +1,3 @@\n unchanged\n+added at 2\n context\n@@ -40,0 +41,1 @@\n+added at 41\n")
 	if got[2] != "added at 2" {
 		t.Errorf("line 2 = %q", got[2])
 	}

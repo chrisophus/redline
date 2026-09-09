@@ -442,6 +442,29 @@ func parseReview(body []byte) (*findings.Review, error) {
 	return rev, nil
 }
 
+// keepRulings merges verdicts by fingerprint, keeping the one already on
+// disk wherever both have a ruling for the same finding.
+//
+// Replacing the whole map was right while only a person or an agent wrote
+// verdicts: a re-run must not overwrite someone's judgment. It stopped being
+// right when `redline review` learned to rule on findings itself, because the
+// map it now returns was thrown away in full on every run after the first.
+// Per-fingerprint keeps both promises: an existing ruling survives, and a
+// finding nobody has ruled on yet takes the new one.
+func keepRulings(existing, fresh map[string]findings.Verdict) map[string]findings.Verdict {
+	if len(existing) == 0 {
+		return fresh
+	}
+	out := make(map[string]findings.Verdict, len(existing)+len(fresh))
+	for id, v := range fresh {
+		out[id] = v
+	}
+	for id, v := range existing {
+		out[id] = v
+	}
+	return out
+}
+
 // Merge writes the review to path, preserving the judgments already there.
 //
 // review.json is the reviewer's own state. A human or another agent may have
@@ -456,8 +479,8 @@ func Merge(path string, rev findings.Review) error {
 	}
 	out := rev
 	if existing != nil {
-		out.Verdicts = existing.Verdicts
-		out.MutationVerdicts = existing.MutationVerdicts
+		out.Verdicts = keepRulings(existing.Verdicts, rev.Verdicts)
+		out.MutationVerdicts = keepRulings(existing.MutationVerdicts, rev.MutationVerdicts)
 	}
 	buf, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {

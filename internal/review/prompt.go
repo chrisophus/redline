@@ -460,7 +460,7 @@ func (in Input) coverageSection() string {
 			continue
 		}
 		var uncovered, onErrorPath []int
-		text := addedLineText(f.Diff)
+		text := cover.AddedLineText(f.Diff)
 		for _, line := range cover.AddedLines(f.Diff) {
 			if covered, known := lines[line]; !known || covered {
 				continue
@@ -509,50 +509,6 @@ const (
 	maxCoverageFiles  = 15
 	maxCoverageRanges = 12
 )
-
-// addedLineText maps an added line's number to its text, so the coverage
-// section can say something about what an uncovered line is rather than only
-// where it is.
-func addedLineText(diff string) map[int]string {
-	out := map[int]string{}
-	line := 0
-	for _, raw := range strings.Split(diff, "\n") {
-		switch {
-		case strings.HasPrefix(raw, "@@"):
-			line = hunkStart(raw)
-		case strings.HasPrefix(raw, "+++"), strings.HasPrefix(raw, "---"):
-		case strings.HasPrefix(raw, "+"):
-			if line > 0 {
-				out[line] = raw[1:]
-				line++
-			}
-		case strings.HasPrefix(raw, "-"):
-		default:
-			if line > 0 {
-				line++
-			}
-		}
-	}
-	return out
-}
-
-// hunkStart reads the new-file start line out of an @@ header.
-func hunkStart(header string) int {
-	i := strings.Index(header, "+")
-	if i < 0 {
-		return 0
-	}
-	rest := header[i+1:]
-	end := strings.IndexAny(rest, ", ")
-	if end < 0 {
-		return 0
-	}
-	n, err := strconv.Atoi(rest[:end])
-	if err != nil {
-		return 0
-	}
-	return n
-}
 
 // handlesError reports whether a line looks like error handling.
 //

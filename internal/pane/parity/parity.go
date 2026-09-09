@@ -52,24 +52,57 @@ type Pane struct {
 	Repo *gitx.Repo
 
 	scoped []string
+	byDir  map[string]map[string]bool
 }
 
 // Name implements pane.Pane.
 func (p *Pane) Name() string { return Substrate }
 
-// Scope selects changed files that live at least two directories deep, which
-// is the shallowest a sibling set can be: a parent holding the set, and the
-// implementations under it.
+// Scope selects the changed files that actually sit in a set of parallel
+// implementations.
+//
+// Depth alone was the first cut and it was wrong in a way worth naming: the
+// union of every pane's scope is how much of the change Redline says it
+// examined, so a pane that claims a file it will not read makes the report
+// state it looked at something it did not. Nearly every changed file is two
+// directories deep, so that version emptied the "what could not be
+// determined" section, which is the part of this report other tools leave
+// out.
+//
+// Scoping to files whose directory has a parallel sibling costs one listing
+// of the tree and makes the claim true.
 func (p *Pane) Scope(changed []string) []string {
+	byDir := p.tree()
 	var out []string
 	for _, f := range changed {
-		if strings.Count(path.Dir(f), "/") >= 1 {
+		if len(parallelSiblings(byDir, path.Dir(normalize(f)))) > 0 {
 			out = append(out, f)
 		}
 	}
 	p.scoped = out
 	return out
 }
+
+// tree lists the working copy once per run. Scope is called again with every
+// path in the repository to decide whether the pane applies at all, and a git
+// call per invocation would be paid twice for the same answer.
+func (p *Pane) tree() map[string]map[string]bool {
+	if p.byDir != nil {
+		return p.byDir
+	}
+	p.byDir = map[string]map[string]bool{}
+	if p.Repo == nil {
+		return p.byDir
+	}
+	blobs, err := p.Repo.WorktreeBlobs()
+	if err != nil {
+		return p.byDir
+	}
+	p.byDir = groupByDir(keys(blobs))
+	return p.byDir
+}
+
+func normalize(p string) string { return path.Clean(strings.TrimPrefix(p, "./")) }
 
 // observation is the file listing at one revision. The parity question is
 // about what exists rather than about what changed inside a file, so the
