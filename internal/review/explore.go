@@ -169,13 +169,27 @@ func runExplore(ctx context.Context, in Input, opts Options, res *Result) (*Resu
 		// turn one against a real change.
 		stream := client.Beta.Messages.NewStreaming(ctx, params)
 		var acc anthropic.BetaMessage
+		var streamErr error
 		for stream.Next() {
 			if err := acc.Accumulate(stream.Current()); err != nil {
-				return res, fmt.Errorf("accumulate (turn %d): %w", turn, err)
+				streamErr = fmt.Errorf("accumulate (turn %d): %w", turn, err)
+				break
 			}
 		}
-		if err := stream.Err(); err != nil {
-			return res, fmt.Errorf("review call (turn %d): %w", turn, err)
+		if streamErr == nil {
+			if err := stream.Err(); err != nil {
+				streamErr = fmt.Errorf("review call (turn %d): %w", turn, err)
+			}
+		}
+		// Closed here rather than deferred: this loop opens a stream per
+		// turn, and Next returning false does not close the response body,
+		// so deferring would hold every turn's connection open until the
+		// review finished and leak one per turn on the error paths.
+		if err := stream.Close(); err != nil && streamErr == nil {
+			streamErr = fmt.Errorf("review call (turn %d): closing the stream: %w", turn, err)
+		}
+		if streamErr != nil {
+			return res, streamErr
 		}
 		msg := &acc
 		res.Turns = turn

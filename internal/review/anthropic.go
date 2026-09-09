@@ -64,6 +64,10 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 	}
 
 	stream := client.Messages.NewStreaming(ctx, params)
+	// Next returning false at the end of the stream does not close the
+	// response body; only Close does. One per call here, so a deferred close
+	// is enough.
+	defer func() { _ = stream.Close() }()
 	var msg anthropic.Message
 	// The message_start event carries the input count before any content
 	// arrives, so a stream that breaks partway still reports what it cost.
