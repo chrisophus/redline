@@ -16,6 +16,30 @@ import (
 // describes. The scout may use it for the same reason.
 const RoleNeighbor = envelope.Role("neighbor")
 
+// RoleGuideline is a rule the repository wrote down about itself: a house
+// style, a convention, a decision record, the paragraph of a design doc that
+// says why a thing is the way it is.
+//
+// It ships as a role Redline does not rank, the same way neighbor did, and
+// for the same reason: the contract already keeps an unknown role and reports
+// it, so the measurement decides whether it belongs in the vocabulary rather
+// than the decision being made by writing it down first.
+//
+// What it is for is the review nobody wants: the one that says to use an em
+// dash in a repository whose own style file forbids them, or to add a getter
+// where the conventions file says not to. A finding that contradicts the
+// house rules is wrong twice, because it is also evidence the tool did not
+// read what the team wrote.
+const RoleGuideline = envelope.Role("guideline")
+
+// guidelineFloor keeps a rule from being the first thing dropped when the
+// budget binds. Guideline and neighbor are both roles Redline does not rank,
+// so they sort against each other on priority alone, and record order would
+// otherwise decide it: the scout finds code first and reads the rules last,
+// which is exactly backwards. A twenty-line rule the reviewer would otherwise
+// contradict is worth more than the last adjacent file.
+const guidelineFloor = 80
+
 // allowedRoles is what the scout may tag an expansion with. A provider must
 // not invent roles, and a model asked for a role will invent one cheerfully,
 // so the set is enforced here rather than requested in the prompt.
@@ -26,6 +50,7 @@ var allowedRoles = map[envelope.Role]bool{
 	envelope.RoleSibling:   true,
 	envelope.RoleHistory:   true,
 	RoleNeighbor:           true,
+	RoleGuideline:          true,
 	// RoleTest is deliberately absent. Redline holds test expansions back per
 	// review, so a scout turn spent finding one is a turn spent for nothing.
 }
@@ -41,6 +66,7 @@ var foundVia = map[string]bool{
 	"graph":      true,
 	"read":       true,
 	"history":    true,
+	"docs":       true,
 }
 
 // Limits bound what one scout run may put in an envelope. They are relevance
@@ -100,10 +126,10 @@ func newResolver(root string, limits Limits) *resolver {
 // than a silent hole in the context.
 func (r *resolver) validate(rec record) error {
 	if !allowedRoles[rec.Role] {
-		return fmt.Errorf("role %q is not one Redline ranks; use enclosing, caller, type, sibling, history or neighbor", rec.Role)
+		return fmt.Errorf("role %q is not one Redline ranks; use enclosing, caller, type, sibling, history, neighbor or guideline", rec.Role)
 	}
 	if rec.FoundVia != "" && !foundVia[rec.FoundVia] {
-		return fmt.Errorf("found_via %q is not one of diff, grep, gorefactor, graph, read, history", rec.FoundVia)
+		return fmt.Errorf("found_via %q is not one of diff, grep, gorefactor, graph, read, history, docs", rec.FoundVia)
 	}
 	if strings.TrimSpace(rec.File) == "" {
 		return fmt.Errorf("no file")
@@ -183,7 +209,7 @@ func (r *resolver) Expansions(records []record) []envelope.Expansion {
 			continue
 		}
 		seen[key] = true
-		if x, ok := r.resolve(rec, 100-i); ok {
+		if x, ok := r.resolve(rec, priorityFor(rec.Role, i)); ok {
 			out = append(out, x)
 		}
 	}
@@ -203,6 +229,21 @@ func (r *resolver) Expansions(records []record) []envelope.Expansion {
 		}
 	})
 	return out
+}
+
+// priorityFor orders expansions within their role. Record order is the only
+// ranking signal the scout gives, and it is a real one: it found the thing it
+// went looking for first. Guidelines are the exception, for the reason
+// guidelineFloor states.
+func priorityFor(role envelope.Role, i int) int {
+	p := 100 - i
+	if p < 1 {
+		p = 1
+	}
+	if role == RoleGuideline && p < guidelineFloor {
+		p = guidelineFloor
+	}
+	return p
 }
 
 // Notes are what the resolver could not do. They join the scout's own notes

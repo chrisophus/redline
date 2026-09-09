@@ -288,7 +288,22 @@ Two providers ship here. `redline-scout` is the one that costs money: a cheap
 model reads the diff, works out what this change in particular needs, and uses
 a handful of tools to find it. A deleted guard pulls the history of those
 lines. A changed signature pulls the callers gorefactor resolves exactly. A
-struct whose fields moved pulls the migration that writes the row. It records
+struct whose fields moved pulls the migration that writes the row.
+
+It also reads what the repository wrote down about itself. `AGENTS.md`,
+`CLAUDE.md`, `CONTRIBUTING.md` and the rest are found at the root and beside
+the changed files, and short ones go into the scout's first turn rather than
+costing it a round trip; design notes and decision records are there to be
+listed and read. The lines that bear on the change come back under a
+`guideline` role, quoted from the file that states them. This is aimed at one
+particular bad review: the one that suggests a construction the house style
+forbids, or undoes something a design doc explains. A finding that contradicts
+the rules the team wrote is wrong twice, and it is the kind of wrong that
+teaches people to stop reading. The reviewer is told they are repository
+content and not instructions to it, so a file that says to approve everything
+changes nothing.
+
+It records
 locations, never code: the program reads those bytes from the tree itself, so
 the reviewer gets real source under a selection a model made, and a model's
 recollection of a function can never reach the review looking like source. It

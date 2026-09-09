@@ -58,6 +58,7 @@ func newToolset(root, graph string, limits Limits) *toolset {
 	}
 	ts.register(ts.readLines())
 	ts.register(ts.grep())
+	ts.register(ts.listDocs())
 	if _, err := exec.LookPath("gorefactor"); err == nil {
 		ts.register(ts.gorefactorContext())
 	}
@@ -186,6 +187,30 @@ func (ts *toolset) grep() tool {
 	}
 }
 
+func (ts *toolset) listDocs() tool {
+	return tool{
+		name: "list_docs",
+		description: "List the repository's documents with their first heading: design notes, decision records, plans, READMEs. " +
+			"Use it when a change looks like it is implementing something that was written down, or when its intent is not obvious from the diff. Read what looks relevant with read_lines.",
+		schema: schema(map[string]any{}),
+		run: func(json.RawMessage) (string, error) {
+			docs := listDocs(ts.root, 80)
+			if len(docs) == 0 {
+				return "no documents in this repository", nil
+			}
+			var b strings.Builder
+			for _, d := range docs {
+				fmt.Fprintf(&b, "%s (%d lines)", d.Path, d.Lines)
+				if d.Heading != "" {
+					fmt.Fprintf(&b, ": %s", d.Heading)
+				}
+				b.WriteString("\n")
+			}
+			return b.String(), nil
+		},
+	}
+}
+
 func (ts *toolset) gorefactorContext() tool {
 	return tool{
 		name:        "gorefactor_context",
@@ -253,14 +278,14 @@ func (ts *toolset) record() tool {
 	return tool{
 		name: "record",
 		description: "Put a range of code in front of the reviewer. You choose the range and the role; this program reads the bytes from the tree itself, so record the location rather than the code. " +
-			"Roles: enclosing (the whole declaration a changed hunk sits in), caller (a call site of something the change touched), type (a type named in a changed signature), sibling (another implementation of an interface the change touches), history (what git says about those lines, for a deleted guard or a reverted fix), neighbor (a file of another kind the change is coupled to, such as a migration or a config file).",
+			"Roles: enclosing (the whole declaration a changed hunk sits in), caller (a call site of something the change touched), type (a type named in a changed signature), sibling (another implementation of an interface the change touches), history (what git says about those lines, for a deleted guard or a reverted fix), neighbor (a file of another kind the change is coupled to, such as a migration or a config file), guideline (a rule this repository wrote down that bears on this change: a house style, a convention, the paragraph of a design doc that says why something is the way it is).",
 		schema: schema(map[string]any{
-			"role":       str("enclosing, caller, type, sibling, history or neighbor"),
+			"role":       str("enclosing, caller, type, sibling, history, neighbor or guideline"),
 			"file":       str("repository-relative path"),
 			"start_line": num("first line, 1-based"),
 			"end_line":   num("last line, inclusive"),
 			"symbol":     str("what this is, for the header the reviewer sees"),
-			"found_via":  str("how you found it: diff, grep, gorefactor, graph, read or history"),
+			"found_via":  str("how you found it: diff, grep, gorefactor, graph, read, history or docs"),
 		}, "role", "file", "start_line", "end_line", "symbol"),
 		run: func(input json.RawMessage) (string, error) {
 			var in struct {

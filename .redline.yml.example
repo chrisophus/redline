@@ -167,6 +167,12 @@ tools:
 # copies those bytes from the tree, so the reviewer gets real source under a
 # selection a model made.
 #
+# It also reads this repository's own rules: AGENTS.md, CLAUDE.md,
+# CONTRIBUTING.md and the like, at the root and next to the changed files,
+# plus whatever design notes list_docs turns up. The lines that bear on the
+# change reach the review under a guideline role, so a finding that
+# contradicts the house style is one the reviewer can see is wrong.
+#
 # Configuring it means `redline run` calls a model and needs ANTHROPIC_API_KEY.
 # --max-cost is a governor, not a tripwire: when it binds the scout stops,
 # says so in the report's unknowns, and the review still happens.
