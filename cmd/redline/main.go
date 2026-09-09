@@ -89,7 +89,7 @@ flags:
                     (default 250000). A tail bound, not a per-review budget:
                     a change whose diff and findings alone exceed it is
                     refused, not reviewed with the context dropped.
-  --max-tokens N    with review: cap on the response (default 32000)
+  --max-tokens N    with review: cap on the response (default 64000)
   --max-cost USD    with review: refuse to send a request estimated above this
                     (default 2.00). A tripwire, not a governor.
   --stats           with review: print the cost distribution of the reviews

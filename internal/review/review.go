@@ -39,13 +39,19 @@ const DefaultModel = "claude-sonnet-5"
 
 // DefaultMaxTokens bounds the response. Generous rather than tight, because
 // hitting the cap truncates a review mid-finding and the truncated response
-// is discarded: at 16000, three of seven real reviews produced nothing at
-// all, and a 59-file change needed 29,592 output tokens to complete.
+// is discarded: the whole call is paid for and yields nothing.
 //
-// Required output scales with the number of changed files — the schema
-// requires a summary per file — so this is a floor that covers the reviews
-// measured so far, not a fit. A larger change raises it with --max-tokens.
-const DefaultMaxTokens int64 = 32000
+// The number is set from the ledger rather than guessed. At 16000, three of
+// seven real reviews produced nothing at all. At 32000, reviews that did
+// complete were emitting 23,000 to 25,000 output tokens, which is not
+// headroom, and three of the next six calls truncated to zero findings
+// again. Required output also scales with the change: the schema wants a
+// summary per changed file before a single comment is written.
+//
+// Raising it costs nothing until it is used, because output is billed by the
+// token emitted and not by the cap allowed. What it removes is the outcome
+// where a review is paid for in full and thrown away.
+const DefaultMaxTokens int64 = 64000
 
 // DefaultMaxCostUSD is a tripwire, not a governor. It stops a request whose
 // estimated cost is absurd, which in practice means a change far larger than
@@ -293,7 +299,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		// exceeds the ceiling by the header's cost. Reserving it when every
 		// expansion turns out to be redundant errs high, which is the
 		// harmless direction for a bound.
-		fixed += envelope.EstimateTokens(in.contextHeader())
+		fixed += envelope.EstimateTokens(in.contextHeader(envelopeRoles(in.Envelopes)))
 	}
 	room := opts.Ceiling - fixed
 	if room < 0 {
