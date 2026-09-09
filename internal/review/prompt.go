@@ -299,7 +299,7 @@ func (in Input) build(budget envelope.Budgeted) string {
 	b.WriteString(in.coverageSection())
 	b.WriteString(in.absentSection())
 	if ctx := budget.Render(); ctx != "" {
-		b.WriteString(in.contextHeader())
+		b.WriteString(in.contextHeader(keptRoles(budget)))
 		b.WriteString(ctx)
 		b.WriteString("\n")
 	}
@@ -307,18 +307,93 @@ func (in Input) build(budget envelope.Budgeted) string {
 	return b.String()
 }
 
-// contextHeader introduces the context block. It is priced with the fixed
-// parts rather than counted against the block itself: it is written after
-// FitAll has already fitted the expansions to the room left over, so leaving
-// it out of the fixed total let the assembled prompt exceed the ceiling it
-// was admitted under by the header's own cost.
-func (in Input) contextHeader() string {
+// contextHeader introduces the context block, naming the roles it actually
+// contains. The sentence used to enumerate Redline's six roles unconditionally,
+// which made an exhaustive claim the block could contradict: a provider may
+// ship a role Redline does not rank — the graph adapter's `neighbor` — and
+// that block then arrived under a sentence saying every block was one of six
+// other things. An unranked role is described by its own provider's
+// promptFragment, so the honest header names it and leaves the words to the
+// provider.
+//
+// It is priced with the fixed parts rather than counted against the block
+// itself: it is written after FitAll has already fitted the expansions to the
+// room left over, so leaving it out of the fixed total let the assembled
+// prompt exceed the ceiling it was admitted under by the header's own cost.
+// Pricing passes every role the envelopes carry and rendering passes the
+// roles that survived, so the estimate errs high when a role is dropped.
+func (in Input) contextHeader(roles []envelope.Role) string {
 	var b strings.Builder
 	b.WriteString("## Context beyond the diff\n")
-	b.WriteString("\nResolved by " + providerNames(in.Envelopes) + ". Each block says what it is: ")
-	b.WriteString("an enclosing declaration, a caller of something this change touched, ")
-	b.WriteString("a type in a changed signature, a sibling implementation, a test, or prior history of these lines.\n")
+	b.WriteString("\nResolved by " + providerNames(in.Envelopes) + ".")
+	if named := describeRoles(roles); named != "" {
+		b.WriteString(" Each block says what it is: " + named + ".")
+	}
+	b.WriteString("\n")
 	return b.String()
+}
+
+// describeRoles renders the roles in rank order, glossing the ones Redline
+// knows and naming the ones it does not.
+func describeRoles(roles []envelope.Role) string {
+	ordered := append([]envelope.Role(nil), roles...)
+	// Rank order, so the sentence reads in the same order the blocks are
+	// rendered in. Unranked roles sort last and tie on their own name, which
+	// keeps the sentence stable across runs.
+	sort.SliceStable(ordered, func(i, j int) bool {
+		ri, _ := ordered[i].Rank()
+		rj, _ := ordered[j].Rank()
+		if ri != rj {
+			return ri < rj
+		}
+		return ordered[i] < ordered[j]
+	})
+	// One pass: an unranked role sorts last above, so naming it last needs no
+	// second slice.
+	seen := map[envelope.Role]bool{}
+	var parts []string
+	for _, r := range ordered {
+		if seen[r] {
+			continue
+		}
+		seen[r] = true
+		if g := r.Gloss(); g != "" {
+			parts = append(parts, g)
+			continue
+		}
+		parts = append(parts, "a block labelled "+string(r)+", which the provider's own note above describes")
+	}
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0]
+	}
+	return strings.Join(parts[:len(parts)-1], ", ") + ", or " + parts[len(parts)-1]
+}
+
+// keptRoles is what survived the budget, and envelopeRoles is everything the
+// providers offered. The header is rendered from the first and priced against
+// the second.
+func keptRoles(b envelope.Budgeted) []envelope.Role {
+	out := make([]envelope.Role, 0, len(b.Kept))
+	for _, x := range b.Kept {
+		out = append(out, x.Role)
+	}
+	return out
+}
+
+func envelopeRoles(envs []*envelope.Envelope) []envelope.Role {
+	var out []envelope.Role
+	for _, e := range envs {
+		if e == nil {
+			continue
+		}
+		for _, x := range e.Expansions {
+			out = append(out, x.Role)
+		}
+	}
+	return out
 }
 
 func providerNames(envs []*envelope.Envelope) string {

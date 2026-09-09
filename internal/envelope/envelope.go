@@ -97,6 +97,31 @@ func Roles() []Role {
 	return out
 }
 
+// Gloss is how a role is described to a model in one noun phrase. It lives
+// beside the vocabulary rather than in the prompt because a role added here
+// and left undescribed there produces a context block introduced by a
+// sentence that does not account for it.
+//
+// A role Redline does not know has no gloss: the provider that invented it
+// describes it in its own promptFragment, which is where the words belong.
+func (r Role) Gloss() string {
+	switch r {
+	case RoleEnclosing:
+		return "an enclosing declaration"
+	case RoleCaller:
+		return "a caller of something this change touched"
+	case RoleType:
+		return "a type in a changed signature"
+	case RoleSibling:
+		return "a sibling implementation"
+	case RoleTest:
+		return "a test that covers a changed symbol"
+	case RoleHistory:
+		return "prior history of these lines"
+	}
+	return ""
+}
+
 // Class is what a changed file is, for the manifest. Redline decides the
 // language-agnostic layers (gitattributes, path patterns) and a provider
 // decides the language conventions; the envelope carries the answer so
