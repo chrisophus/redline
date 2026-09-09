@@ -13,6 +13,7 @@ import (
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/gitx"
 	"github.com/chrisophus/redline/internal/harness"
+	"github.com/chrisophus/redline/internal/houserules"
 	"github.com/chrisophus/redline/internal/mutation"
 	"github.com/chrisophus/redline/internal/pane"
 	"github.com/chrisophus/redline/internal/pane/lint"
@@ -379,6 +380,20 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 				Reason:    "they are ranked last rather than dropped; a newer provider may want a newer Redline",
 			})
 		}
+		envs = append(envs, env)
+	}
+	// The repository's own rules, read from where GitHub's convention puts
+	// them. No provider is configured for these and none should be: their
+	// location is fixed, so resolving them needs no tool, no subprocess and
+	// no model, which is what lets every run carry them.
+	if env, err := houserules.Resolve(observeRoot, changed); err != nil {
+		absent = append(absent, fmt.Sprintf("%s (context): %v", houserules.ProviderName, err))
+		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+			Substrate: "redline/context",
+			Message:   "this repository's instruction files could not be read, so the review does not carry its rules",
+			Reason:    err.Error(),
+		})
+	} else if env != nil {
 		envs = append(envs, env)
 	}
 	// The union above is what the context block actually speaks for. A change
