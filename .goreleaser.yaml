@@ -27,8 +27,30 @@ builds:
       - -X main.commit={{ .ShortCommit }}
       - -X main.date={{ .Date }}
 
+  # The Graphify context provider. Redline runs it as a subprocess and links
+  # none of it, so it is its own binary; it ships in the same archive because
+  # a provider that is not on PATH is a context layer that silently does not
+  # run.
+  - id: redline-graphify-context
+    main: ./cmd/redline-graphify-context
+    binary: redline-graphify-context
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+
 archives:
   - id: redline
+    ids:
+      - redline
+      - redline-graphify-context
     formats:
       - tar.gz
     name_template: >-

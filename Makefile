@@ -7,6 +7,11 @@
 # that predates a packet field the skill relies on reads as a tool bug.
 
 BIN      := redline
+# A context provider is a separate program by design, and this one is a
+# separate program that happens to live here: it reads a Graphify graph and
+# writes an envelope, links no language toolchain, and Redline finds it on
+# PATH through .redline.yml like any other provider.
+ADAPTER  := redline-graphify-context
 BINDIR   ?= $(HOME)/.local/bin
 SKILLDIR ?= $(HOME)/.claude/skills
 ROOT     := $(abspath $(dir $(firstword $(MAKEFILE_LIST))))
@@ -30,6 +35,7 @@ all: build
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/redline
+	go build -ldflags "$(LDFLAGS)" -o $(ADAPTER) ./cmd/redline-graphify-context
 
 test:
 	go test ./...
@@ -130,6 +136,8 @@ install-bin: build
 	@mkdir -p $(BINDIR)
 	@ln -sfn $(ROOT)/$(BIN) $(BINDIR)/$(BIN)
 	@echo "$(BINDIR)/$(BIN) -> $(ROOT)/$(BIN)"
+	@ln -sfn $(ROOT)/$(ADAPTER) $(BINDIR)/$(ADAPTER)
+	@echo "$(BINDIR)/$(ADAPTER) -> $(ROOT)/$(ADAPTER)"
 
 # The skill directory is symlinked, not copied, so editing skills/redline/
 # in this checkout is immediately what the agent reads. A copy drifts, and
@@ -165,14 +173,14 @@ install-repo:
 	@echo "note: teammates still need the redline binary on PATH."
 
 uninstall:
-	@rm -f $(BINDIR)/$(BIN)
+	@rm -f $(BINDIR)/$(BIN) $(BINDIR)/$(ADAPTER)
 	@for s in $(SKILLS); do \
 	  if [ -L "$(SKILLDIR)/$$s" ]; then rm -f "$(SKILLDIR)/$$s"; fi; \
 	done
 	@echo "Removed $(BINDIR)/$(BIN) and the skills under $(SKILLDIR)."
 
 clean:
-	rm -f $(BIN)
+	rm -f $(BIN) $(ADAPTER)
 
 # goreleaser cuts the cross-platform release. snapshot builds locally without a
 # tag or publishing, to check the config; release runs in CI on a pushed tag.

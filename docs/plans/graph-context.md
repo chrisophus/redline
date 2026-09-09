@@ -196,3 +196,108 @@ an AST-only incremental update still costs wall-clock minutes to re-cluster
 even with zero token spend. Whoever adopts this pane owns keeping
 `graphify update` current (the git hook, or CI) as a standing cost beside
 the adapter itself, not a one-time build.
+
+## What the first cut built
+
+`cmd/redline-graphify-context` is the adapter, with the mapping in
+`internal/graphify` and a boundary test that stops anything else in the
+module importing it. The M and the first S above; the `neighbor` role and the
+explore-mode queries are not built.
+
+It lives here rather than in its own repository because it parses nothing:
+the language boundary test is satisfied, one `make build` produces both
+binaries, and the fixture graph sits next to the contract it is written
+against. If it earns its own repository, the boundary test names exactly what
+has to travel with it.
+
+Three things about the graph were not knowable when this was written, and two
+of them changed the design.
+
+`graph.json` is NetworkX `node_link_data`, so the edge list is `links` and
+not `edges` (the loader accepts both), and the file carries `built_at_commit`
+at the top level. That last field is a better staleness check than the mtime
+one proposed above, and it is what `provider.version` carries: two graphs of
+the same repository at different revisions are different inputs as far as a
+replayed review is concerned. The adapter compares it to the revision under
+review and says so in `notes`, which means staleness needs no Redline-side
+code at all. The harness profile is then the ordinary kind, a path and a
+produce command, with nothing about graphs in it.
+
+The determinism guard needed a third test. Nodes carry `file_type`, so an
+edge into a document, paper, image, rationale or concept node is the semantic
+half and is refused. Relations are checked against an allowlist of what the
+tree-sitter extractors emit, which refuses `semantically_similar_to` and its
+siblings by name. Neither is sufficient: Graphify's semantic pass is allowed
+to write `calls`, `implements` and `references` between two code nodes, and
+those pass both tests. What separates them is `_origin`, which Graphify
+stamps `"ast"` on every node and edge the tree-sitter pass writes and which
+persists into `graph.json`. Where a graph carries it, it decides. Where it
+does not, the weaker check runs and the envelope says so in a note rather
+than letting one pass for the other.
+
+The build revision is usually absent. `graphify update .` on this repository
+wrote a graph with no `built_at_commit` at all, so `provider.version` reads
+"unknown" and the commit comparison has nothing to compare. The fallback is
+the mtime check the section above proposed, the same one a coverage profile
+gets: a graph older than a file this change touches cannot be describing it.
+Both checks run, and the envelope says which one it had.
+
+The SQL gap is confirmed at `graphify/extractors/sql.py:284`: without
+`tree_sitter_sql` the extractor returns `{"nodes": [], "edges": [], "error":
+...}` and the error is dropped downstream. Redline cannot fix that from here,
+and it does not have to. The adapter knows which files it claimed, so a
+claimed file the graph holds no nodes for becomes a note and reaches the
+report as an unknown. A missing grammar and a file with nothing structural in
+it still look identical, but the review is now told that something it claimed
+came back empty.
+
+## What was left out, and why
+
+The callee is not sent. An outgoing `calls` edge points at what the changed
+code calls, which is often the most useful thing to read, and no role in the
+vocabulary describes it. Sending it under `neighbor` would blur the one
+measurement `neighbor` exists to produce, so it waits for that answer.
+
+Community membership raises an expansion's priority within its role and never
+produces one of its own. A community on a large graph runs to hundreds of
+nodes with no edge to the change; walking it would be an unbounded amount of
+weakly related code competing for the same ceiling. One hop, with the
+community as a tiebreak, is the bounded version of "other files in the same
+community".
+
+Nothing is measured yet. The adapter has unit tests and a fixture graph; it
+has no eval fixture, so the clean rate and the correlation findings are still
+the open question the effort list above was sized against.
+
+## What one real run looked like
+
+`graphify update . --no-cluster` over this repository: 142 files, 1516 nodes,
+4610 edges, no model call. The adapter against that graph, on a change to its
+own source, sent five expansions, and every one of them was `neighbor`.
+
+That is worth reading carefully before anyone concludes much from it. No
+`caller`, because `--defer-callers **/*.go` hands those to gorefactor, which
+is the arrangement working as intended. No `type` and no `sibling`, because
+the Go extractor emits no `implements` or `inherits` edges at all: the
+relations in that graph are `calls`, `contains`, `references`,
+`imports_from`, `method`, `depends_on`, `defines` and `embeds`. So on a Go
+repository the interface-shaped roles will almost never fire, and what is
+left is the fallback: a `references` edge to a type the change names, sent as
+`neighbor` because a `references` edge cannot back the `type` role's claim
+on its own.
+
+It could, with a label heuristic. Graphify's Go extractor labels functions
+`Name()`, methods `.Name()` and types bare, so "a `references` edge whose
+target has no parentheses is a type" would promote most of those five. That
+is guessing a language's conventions out of a string, in the one component
+that is supposed to know no language, to make a claim the edge does not
+carry. Left alone on purpose.
+
+The bare-node problem is real here too, not only on Marketplace Core: the
+same run reported `Graph`, `Options`, `io.Writer` and `testing.T` resolving
+to nodes with no source file.
+
+The reading: on a single-language repository that already has an exact
+provider, the graph adds type-definition context and not much else. The
+correlation case it was built for needs a repository whose changes actually
+span kinds, and that is what the missing eval fixture has to be drawn from.

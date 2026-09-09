@@ -284,6 +284,20 @@ A provider that is missing or fails degrades to a gap: the review runs
 without it, and the report says which context was absent, because a check
 that did not run and one that came back clean look identical otherwise.
 
+One provider ships here: `redline-graphify-context`, which reads the graph
+[Graphify](https://github.com/Graphify-Labs/graphify) writes at
+`graphify-out/graph.json` and answers for every changed file rather than for
+one language. It parses nothing itself. Its edges match by name, so
+`--defer-callers` leaves the caller question to a provider that resolves it
+through types, and the rest of the graph still comes through: the type behind
+a change, the other implementations of an interface it touches, and the file
+of another kind sitting next to it, which is how a migration reaches a review
+of the code that writes the row. Only the tree-sitter half of the graph is
+read; the half a model wrote is left out, because an envelope that cannot be
+reproduced makes the eval measure noise. `.redline.yml.example` has the
+entry, and the harness profile that keeps the graph from going stale
+underneath a review.
+
 ## Posting
 
 `post` submits one review (event `COMMENT` - it reports, it never requests
@@ -380,6 +394,8 @@ its own facts. The reasoning and the removal inventory are in
 
 ```
 cmd/redline           CLI
+cmd/redline-graphify-context
+                      context provider: a Graphify graph to an envelope
 internal/change       the change under review: files, diffs, classification;
                       generated-file detection
 internal/cover        diff coverage from an existing profile
@@ -388,6 +404,8 @@ internal/envelope     the context contract, and budgeting it to a ceiling
 internal/eval         scoring a review against annotated fixtures, offline
 internal/findings     wire format: doctor's schema, reimplemented and extended
 internal/gitx         git layer (observe; fetch/worktrees for PR/branch)
+internal/graphify     the graph provider's own half: Graphify's schema to
+                      roles, and nothing else in here may import it
 internal/pane         the observe/diff pane interface
 internal/pane/lint         lint delta, suppression triage, config drift
 internal/pane/migrations   migration hygiene

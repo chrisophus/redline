@@ -139,6 +139,37 @@ tools:
 #     args: ["--base", "{{base}}", "--json"]
 #     scope: ["**/*.ts", "**/*.tsx"]
 #
+# graphify — a provider backed by a Graphify graph
+# (github.com/Graphify-Labs/graphify), which parses the whole repository with
+# tree-sitter into graphify-out/graph.json. It reaches the SQL, Terraform and
+# shell files no single language toolchain sees, which is why its scope is
+# everything: a changed file outside every provider's scope is reported as
+# unexamined, and today that is every file that is not Go.
+#
+# Its edges match by name, not by type, so --defer-callers hands the caller
+# question back to whichever provider resolves it exactly. Point it at that
+# provider's scope. Everything else the graph knows still comes through.
+#
+# Pair it with the harness profile below. graph.json is a build artifact, and
+# an adapter reading a stale one writes a different envelope for the same
+# commit.
+#
+# context:
+#   - name: graphify
+#     command: redline-graphify-context
+#     args: ["--graph", "graphify-out/graph.json", "--changed", "{{base}}",
+#            "--defer-callers", "**/*.go"]
+#     scope: ["**/*"]
+#
+# harness:
+#   profiles:
+#     - id: graph
+#       path: graphify-out/graph.json
+#       produce:
+#         command: graphify
+#         args: [update, "."]
+#       when: stale
+#
 #   name         identifier; shows up on the report and in error messages
 #   command/args the executable and its arguments; "{{base}}" becomes the
 #                merge-base SHA
