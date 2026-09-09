@@ -32,7 +32,7 @@ COMMIT   := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE     := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS  := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 
-.PHONY: all build test vet check boundary install install-bin install-skill \
+.PHONY: all build test vet fmt check boundary install install-bin install-skill \
         install-repo uninstall clean lint gorefactor-lint gorefactor-doctor \
         coverage bench mutate mutate-full mutants snapshot release
 
@@ -48,6 +48,15 @@ test:
 
 vet:
 	go vet ./...
+
+# golangci-lint v2 keeps formatters in their own section and this repo
+# declares none, so nothing else checks this. Its own target so `make check`
+# and CI agree about what "formatted" means.
+fmt:
+	@unformatted=$$(gofmt -l ./cmd ./internal); \
+	if [ -n "$$unformatted" ]; then \
+	  echo "gofmt -w these files:"; echo "$$unformatted"; exit 1; \
+	fi
 
 # golangci-lint reads .golangci.yml. Not installed is not an error here: a
 # missing tool darks this target the same way an unconfigured repo darks
@@ -127,7 +136,7 @@ mutants:
 boundary:
 	go test ./internal/boundary/ -v
 
-check: vet test lint gorefactor-lint boundary
+check: fmt vet test lint gorefactor-lint boundary
 
 # install is for this machine: the skill becomes available in every repo.
 install: install-bin install-skill

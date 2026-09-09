@@ -1,6 +1,7 @@
 package scout
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -354,18 +355,23 @@ func envelopeRole(s string) envelope.Role {
 }
 
 func runCmd(dir, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), toolTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	var out, errBuf strings.Builder
 	cmd.Stdout = &out
 	cmd.Stderr = &errBuf
-	timer := time.AfterFunc(toolTimeout, func() {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-	})
+	// Stdout and Stderr here are not *os.File, so os/exec copies them through
+	// a pipe and Run blocks until every write end is closed. Killing the tool
+	// on the deadline does not close a pipe a grandchild still holds, and
+	// these tools spawn exactly those: graphify runs Python, gorefactor runs
+	// go list. WaitDelay is what makes the deadline enforceable.
+	cmd.WaitDelay = 5 * time.Second
 	err := cmd.Run()
-	timer.Stop()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("%s did not finish within %s", name, toolTimeout)
+	}
 	if err != nil {
 		msg := strings.TrimSpace(errBuf.String())
 		if msg == "" {

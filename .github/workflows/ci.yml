@@ -23,18 +23,56 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
 
-      # The architecture rests on Redline linking no language toolchain.
-      # Run it as its own step so a failure reads as the boundary breaking
-      # rather than as one more test going red.
-      - name: language boundary
-        run: go test ./internal/boundary/ -run 'TestRedlineParsesNoLanguage|TestGoModRequiresNoLanguageToolchain' -v
+      # gofmt is not part of the golangci-lint run: v2 moved formatters into
+      # their own section and this repo's config declares none. Checked here
+      # so an unformatted file fails on the PR that wrote it.
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l ./cmd ./internal)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt -w these files:"; echo "$unformatted"; exit 1
+          fi
 
-      - run: go test ./... -coverprofile=coverage.out -covermode=atomic
+      # The architecture rests on two claims: Redline links no language
+      # toolchain, and a provider's own knowledge stays behind the envelope.
+      # Run the package as its own step so a failure reads as the boundary
+      # breaking rather than as one more test going red. The whole package,
+      # not a list of test names: a list is how the provider-boundary check
+      # was left out of this step when it was added.
+      - name: architecture boundary
+        run: go test ./internal/boundary/ -v
+
+      # -race because the providers shell out under a deadline, and a timer
+      # racing a subprocess start is the kind of bug that passes every run
+      # until it does not.
+      - run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
       - run: go tool cover -func=coverage.out | tail -1
 
       - uses: golangci/golangci-lint-action@v7
         with:
           version: v2.13.2
+
+  release-config:
+    # The release workflow only runs on a tag, so without this a broken
+    # .goreleaser.yaml is discovered at release time by whoever is cutting
+    # the release. `check` validates it and the snapshot proves every binary
+    # it declares actually builds.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # goreleaser reads history for the changelog
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: check
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: build --snapshot --clean --single-target
 
   bench:
     # Advisory: records numbers in the log, never fails the build. A
