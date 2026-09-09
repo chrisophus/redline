@@ -306,6 +306,14 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	if expected <= 0 {
 		expected = ExpectedOutputTokens
 	}
+	if expected > opts.MaxTokens {
+		// The model cannot emit more than the cap, so an expectation above
+		// it is not an expectation. Left unclamped, a --max-tokens below the
+		// ledger's measured median printed an expected cost higher than the
+		// worst case beside it, which is a contradiction the reader has to
+		// resolve rather than a number they can use.
+		expected = opts.MaxTokens
+	}
 	cost, known := EstimateCost(opts.Model, est, expected)
 	ceiling, _ := CeilingCost(opts.Model, est, opts.MaxTokens)
 	return &Result{

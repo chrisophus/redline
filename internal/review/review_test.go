@@ -138,6 +138,30 @@ func TestAssembleIsDeterministic(t *testing.T) {
 	}
 }
 
+// The expected cost cannot exceed the worst case: a model cannot emit more
+// than its cap. With --max-tokens below the ledger's measured median, the
+// unclamped estimate printed an expected cost above the "at most" figure
+// beside it, which the reader has to resolve instead of use.
+func TestExpectedCostNeverExceedsTheCeilingCost(t *testing.T) {
+	in := Input{Report: priors(), Change: &change.Set{Files: []change.File{
+		{Path: "a.go", Status: "modified", Added: 1, Diff: "+x"},
+	}}}
+	got, err := Assemble(in, Options{
+		Model:          "claude-sonnet-5",
+		MaxTokens:      1_000,
+		ExpectedOutput: 40_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.CostKnown {
+		t.Fatal("a priced model must produce a known cost")
+	}
+	if got.CostUSD > got.CostCeilingUSD {
+		t.Errorf("expected cost %v exceeds the worst case %v", got.CostUSD, got.CostCeilingUSD)
+	}
+}
+
 func TestTripwireRefusesBeforeSpending(t *testing.T) {
 	big := strings.Repeat("x ", 400_000)
 	in := Input{Change: &change.Set{Files: []change.File{{Path: "a.go", Diff: big}}}}
