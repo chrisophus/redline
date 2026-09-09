@@ -48,9 +48,19 @@ func LookupPricing(model string) (Pricing, bool) {
 	}
 	sort.Slice(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
 	for _, k := range keys {
-		if strings.HasPrefix(m, k) {
-			return priceTable[k], true
+		if !strings.HasPrefix(m, k) {
+			continue
 		}
+		// The prefix has to end where a component ends. A dated or versioned
+		// id is the family plus "-something", so that still resolves; a
+		// different family that merely starts with these characters does not.
+		// `gpt-5.6-terra` priced as `gpt-5` and reported the cost as known,
+		// which is the one thing this table's comment says it will not do: a
+		// rate borrowed from another model is not a modest absolute error.
+		if rest := m[len(k):]; rest != "" && rest[0] != '-' {
+			continue
+		}
+		return priceTable[k], true
 	}
 	return Pricing{}, false
 }
