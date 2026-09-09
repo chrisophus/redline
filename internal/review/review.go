@@ -128,6 +128,20 @@ type Options struct {
 	// When set, the openai wire sends "Bearer user=<user>&key=<key>"
 	// instead of the bare key. Ignored by the anthropic wire.
 	APIUser string
+	// Samples is how many independent reviews to take and union. One is the
+	// default and the only value that costs what a review used to.
+	//
+	// It exists because samples do not overlap. Measured on a fixture
+	// carrying fourteen labelled defects, forty-odd samples across eleven
+	// configurations produced not one finding that two samples both found:
+	// recall rose from 3 of 14 at one sample to 7 at three, and the union is
+	// therefore additive rather than a vote. That also rules out treating
+	// agreement as confidence, which was the first thing this looked like it
+	// should do.
+	//
+	// Cost scales with Samples and wall time does not, because the calls are
+	// independent and go out together.
+	Samples int
 	// DryRun assembles the prompt and prices it without calling anything.
 	DryRun bool
 }
@@ -159,6 +173,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.TaskBudget <= 0 {
 		o.TaskBudget = DefaultTaskBudget
+	}
+	if o.Samples <= 0 {
+		o.Samples = 1
 	}
 	return o
 }
@@ -212,6 +229,12 @@ type Result struct {
 	// CapHit records that the loop was stopped by the dollar cap rather than
 	// by the reviewer deciding it had enough.
 	CapHit bool `json:"capHit,omitempty"`
+	// Samples is how many independent reviews were unioned, and
+	// SamplesFailed how many of them did not answer. A union of two that
+	// cost three is a different result from a union of three, and the
+	// ledger has to be able to say which it was.
+	Samples       int `json:"samples,omitempty"`
+	SamplesFailed int `json:"samplesFailed,omitempty"`
 	// StopReason is what ended the turn. Checked rather than assumed: a
 	// refusal returns HTTP 200 and an empty-looking result.
 	StopReason string `json:"stopReason,omitempty"`
@@ -221,10 +244,19 @@ type Result struct {
 // the numbers this whole design is accountable to, so they are printed
 // rather than left to a dashboard.
 func (r *Result) Summary() string {
-	return fmt.Sprintf("api=%s model=%s turns=%d in=%d out=%d cost=%s wall=%s findings=%d",
+	s := fmt.Sprintf("api=%s model=%s turns=%d in=%d out=%d cost=%s wall=%s findings=%d",
 		r.API, r.Model, r.Turns, r.Usage.InputTokens, r.Usage.OutputTokens,
 		FormatCost(r.CostUSD, r.CostKnown),
 		r.Duration.Round(time.Millisecond), len(r.Review.Comments))
+	if r.Samples > 1 {
+		// The cost is the whole union's, so the sample count has to be beside
+		// it: otherwise a line reads as one expensive review.
+		s += fmt.Sprintf(" samples=%d", r.Samples)
+		if r.SamplesFailed > 0 {
+			s += fmt.Sprintf(" failed=%d", r.SamplesFailed)
+		}
+	}
+	return s
 }
 
 // Assemble builds the prompt and prices it without calling anything. It is
@@ -330,10 +362,23 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 			return res, fmt.Errorf("explore mode is only implemented against the Anthropic API; "+
 				"use --mode oneshot with --api %s", opts.API)
 		}
+		if opts.Samples > 1 {
+			return res, fmt.Errorf("--samples is for the one-shot producer; " +
+				"explore already spends its budget on turns, so sampling it multiplies a loop")
+		}
 		res.Turns = 0
 		return runExplore(ctx, in, opts, res)
 	}
+	if opts.Samples > 1 {
+		return runSamples(ctx, in, opts, res)
+	}
+	return runOnce(ctx, in, opts, res)
+}
 
+// runOnce is one call over an already-assembled prompt. Everything above it
+// has decided what to send and whether to send it; this is the sending.
+func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result, error) {
+	var err error
 	// Usage is captured on the way out of every path, not just the one that
 	// succeeds. The input is billed as soon as the request is accepted, so a
 	// stream that breaks partway has already cost what it cost. A result

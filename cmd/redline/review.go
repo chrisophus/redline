@@ -56,6 +56,7 @@ func cmdReview(o opts) error {
 		MaxCostUSD:     o.maxCost,
 		Mode:           o.mode,
 		MaxTurns:       o.maxTurns,
+		Samples:        o.samples,
 		ExpectedOutput: expected,
 		DryRun:         o.dryRun,
 	}
@@ -140,7 +141,10 @@ func cmdReview(o opts) error {
 		return nil
 	}
 	fmt.Fprintln(os.Stderr, "redline: review", out.Summary())
-	if out.Turns > 1 {
+	// Turns counts samples too, so this line has to name the mode it is
+	// about: a three-sample one-shot review has no turns and fetched
+	// nothing.
+	if out.Samples == 0 && out.Turns > 1 {
 		fmt.Fprintf(os.Stderr, "redline: %d turns, %d context entries fetched", out.Turns, out.Fetched)
 		if out.CapHit {
 			fmt.Fprint(os.Stderr, ", stopped by the cost cap")

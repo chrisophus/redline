@@ -81,6 +81,10 @@ flags:
                     fetch what it wants, costing more by design. In explore
                     mode --max-cost is a governor, not a tripwire.
   --max-turns N     with review --mode explore: turn limit (default 5)
+  --samples N       with review: take N independent reviews and union them
+                    (default 1). Samples do not overlap, so recall rises with
+                    N and cost rises with it too; the calls go out together,
+                    so wall time does not.
   --ceiling N       with review: token ceiling for the whole request
                     (default 250000). A tail bound, not a per-review budget:
                     a change whose diff and findings alone exceed it is
@@ -125,7 +129,7 @@ type opts struct {
 	model, effort, mode, api, baseURL, apiUser                        string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
 	stats                                                             bool
-	port, ceiling, maxTokens, maxTurns                                int
+	port, ceiling, maxTokens, maxTurns, samples                        int
 	maxCost                                                           float64
 }
 
@@ -168,6 +172,7 @@ func runMain(args []string) error {
 	fs.StringVar(&o.effort, "effort", "", "with review: low|medium|high|xhigh|max")
 	fs.StringVar(&o.mode, "mode", "", "with review: oneshot or explore")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "with review --mode explore: turn limit")
+	fs.IntVar(&o.samples, "samples", 0, "with review: independent reviews to union")
 	fs.IntVar(&o.ceiling, "ceiling", 0, "with review: token ceiling for the whole request")
 	fs.IntVar(&o.maxTokens, "max-tokens", 0, "with review: cap on the response")
 	fs.Float64Var(&o.maxCost, "max-cost", 0, "with review: refuse a request estimated above this many dollars")

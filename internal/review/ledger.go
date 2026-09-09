@@ -41,6 +41,12 @@ type Entry struct {
 	Ceiling       int  `json:"ceiling"`
 	InputEstimate int  `json:"inputEstimate"`
 	OverCeiling   bool `json:"overCeiling,omitempty"`
+	// Samples is how many independent reviews this line paid for, and
+	// SamplesFailed how many of them did not answer. A mean cost across
+	// lines is only comparable when it says so: three samples cost three
+	// reviews and record as one line.
+	Samples       int `json:"samples,omitempty"`
+	SamplesFailed int `json:"samplesFailed,omitempty"`
 }
 
 // Record appends one review to the ledger in dir. Failing to write it is not
@@ -56,6 +62,7 @@ func Record(dir string, r *Result, effort string) error {
 		Usage: r.Usage, CostUSD: r.CostUSD, Known: r.CostKnown,
 		Seconds: r.Duration.Seconds(), Findings: len(r.Review.Comments),
 		Ceiling: r.Ceiling, InputEstimate: r.InputEstimate, OverCeiling: r.OverCeiling,
+		Samples: r.Samples, SamplesFailed: r.SamplesFailed,
 	}
 	buf, err := json.Marshal(e)
 	if err != nil {
