@@ -5,9 +5,7 @@
 package report
 
 import (
-	"crypto/sha256"
 	"embed"
-	"encoding/hex"
 	"fmt"
 	"html/template"
 	"os"
@@ -214,22 +212,18 @@ func buildView(in HTMLInput) view {
 			v.Skipped = append(v.Skipped, s)
 		}
 	}
-	head := "worktree"
 	if ch := in.Change; ch != nil {
 		v.Commits = len(ch.Commits)
 		v.UITouched = ch.UITouched
 		if ch.Target != nil {
 			v.Subtitle = ch.Target.Describe()
-			if ch.Target.Head != "" {
-				head = ch.Target.Head
-			}
 			if ch.Target.PR != nil {
 				v.URL = ch.Target.PR.URL
 				v.Author = ch.Target.PR.Author
 			}
 		}
 	}
-	v.Identity = reviewIdentity(rep.BaseSHA, head, in.Change)
+	v.Identity = change.ReviewIdentity(rep.BaseSHA, in.Change)
 	if v.Subtitle == "" {
 		v.Subtitle = fmt.Sprintf("base %s", short(rep.BaseSHA))
 	}
@@ -647,23 +641,4 @@ func (c *diffCursor) classify(line string) (class, side string, src int) {
 		c.new++
 		return "ctx", "new", n
 	}
-}
-
-// reviewIdentity keys browser comments to this change. Branch and PR reviews
-// are identified by base+head SHA. Working-tree reviews include a fingerprint
-// of the changed files so two dirty trees against the same base do not share
-// comments.
-func reviewIdentity(baseSHA, head string, ch *change.Set) string {
-	id := short(baseSHA) + ":" + short(head)
-	if head != "worktree" || ch == nil {
-		return id
-	}
-	h := sha256.New()
-	for _, f := range ch.Files {
-		_, _ = h.Write([]byte(f.Path))
-		_, _ = h.Write([]byte{0})
-		_, _ = h.Write([]byte(f.Diff))
-		_, _ = h.Write([]byte{0})
-	}
-	return id + ":" + hex.EncodeToString(h.Sum(nil)[:8])
 }

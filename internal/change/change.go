@@ -9,6 +9,8 @@
 package change
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"path/filepath"
 	"strings"
 
@@ -48,6 +50,44 @@ type Set struct {
 	// change that moves the interface with nothing captured is a gap, one that
 	// touches no UI is not.
 	UITouched bool `json:"uiTouched"`
+}
+
+// ReviewIdentity names the revision a review was written against.
+//
+// It is one definition on purpose. Three places need to agree about whether a
+// review belongs to the change in front of them -- the report, which keys
+// browser-local comments to it, `run`, which refuses to merge a review from
+// somewhere else, and `post`, which must not put one pull request's review on
+// another -- and three spellings of "the same change" would drift.
+//
+// Base and head SHAs identify a committed change. A working tree has no head
+// SHA and its content moves under an unchanged pair, so the diff is hashed
+// into the identity: editing the tree has to invalidate a review of it, which
+// is the case a SHA cannot see.
+func ReviewIdentity(baseSHA string, s *Set) string {
+	head := "worktree"
+	if s != nil && s.Target != nil && s.Target.Head != "" {
+		head = s.Target.Head
+	}
+	id := shortSHA(baseSHA) + ":" + shortSHA(head)
+	if head != "worktree" || s == nil {
+		return id
+	}
+	h := sha256.New()
+	for _, f := range s.Files {
+		_, _ = h.Write([]byte(f.Path))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(f.Diff))
+		_, _ = h.Write([]byte{0})
+	}
+	return id + ":" + hex.EncodeToString(h.Sum(nil)[:8])
+}
+
+func shortSHA(s string) string {
+	if len(s) > 8 {
+		return s[:8]
+	}
+	return s
 }
 
 // File is one changed file with its diff.

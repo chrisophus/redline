@@ -67,6 +67,24 @@ func cmdPost(o opts) error {
 	}
 	payload := post.BuildAttest(&res.Report, tgt, o.reportURL, commentable, prof)
 
+	// A session outlives the head it observed, so a review can be posted
+	// against a commit that is no longer the tip. require_head refuses that,
+	// but only when a profile asked for it; without one the review used to go
+	// up silently describing code that had moved. The body is the artifact
+	// that stays on the pull request, so the notice belongs there rather than
+	// only on this terminal.
+	if head, err := ghPRHead(owner, repo, num); err != nil {
+		fmt.Fprintf(os.Stderr, "redline: could not read the PR head (%v); "+
+			"cannot say whether this review describes the current commit\n", err)
+	} else if head != tgt.Head {
+		fmt.Fprintf(os.Stderr, "redline: this session reviewed %s and the PR head is now %s; "+
+			"re-run `redline run --pr %d` for a review of the current commit\n",
+			shortSHA(tgt.Head), shortSHA(head), num)
+		payload.Body = fmt.Sprintf("> This review is of `%s`, which is no longer the head of this "+
+			"pull request (`%s`). Findings below may already be addressed.\n\n",
+			shortSHA(tgt.Head), shortSHA(head)) + payload.Body
+	}
+
 	if o.dryRun {
 		return emitJSON(reviewRequest(payload))
 	}

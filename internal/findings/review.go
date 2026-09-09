@@ -16,6 +16,16 @@ import (
 // become findings marked source llm. Verdicts are judgments keyed by a finding's
 // fingerprint.
 type Review struct {
+	// Revision is the change this review was written against, as
+	// change.ReviewIdentity spells it. Stamped by `redline review`; empty in
+	// a review written by hand, which is not an error but is not verifiable
+	// either.
+	//
+	// It exists because review.json is merged onto whatever run comes next,
+	// and nothing stopped that being a different change. A review of one
+	// pull request rendered onto another, and was one command away from
+	// being posted there.
+	Revision string             `json:"revision,omitempty"`
 	Overview string             `json:"overview,omitempty"`
 	Files    map[string]string  `json:"files,omitempty"`
 	Comments []ReviewComment    `json:"comments,omitempty"`
@@ -58,6 +68,7 @@ type reviewWire struct {
 	Comments         json.RawMessage    `json:"comments"`
 	Findings         json.RawMessage    `json:"findings"`
 	Verdicts         json.RawMessage    `json:"verdicts"`
+	Revision         string             `json:"revision"`
 	MutationVerdicts map[string]Verdict `json:"mutationVerdicts"`
 }
 
@@ -104,6 +115,7 @@ func LoadReview(path string) (*Review, error) {
 		return nil, fmt.Errorf("review verdicts: %w", err)
 	}
 	r := &Review{Verdicts: verdicts}
+	r.Revision = strings.TrimSpace(wire.Revision)
 	r.MutationVerdicts = wire.MutationVerdicts
 	r.Overview = strings.TrimSpace(wire.Overview)
 	if r.Overview == "" {

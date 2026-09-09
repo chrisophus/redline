@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/review"
 	"github.com/chrisophus/redline/internal/run"
@@ -157,8 +158,13 @@ func cmdReview(o opts) error {
 		fmt.Fprintln(os.Stderr, "redline: to date,", review.Summarize(entries).String())
 	}
 
+	// Stamped with the change it was written against, so the next `run`
+	// can tell whether it belongs to what it is looking at. review.json
+	// outlives the session it came from.
+	reviewed := out.Review
+	reviewed.Revision = change.ReviewIdentity(res.Report.BaseSHA, res.Change)
 	path := filepath.Join(o.out, "review.json")
-	if err := review.Merge(path, out.Review); err != nil {
+	if err := review.Merge(path, reviewed); err != nil {
 		return err
 	}
 
