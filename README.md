@@ -285,6 +285,31 @@ A provider that is missing or fails degrades to a gap: the review runs
 without it, and the report says which context was absent, because a check
 that did not run and one that came back clean look identical otherwise.
 
+### The rules the repository wrote down
+
+One kind of context needs no provider, no subprocess and no model, because
+GitHub's convention fixes where it lives. Every run reads
+`.github/copilot-instructions.md` and `.github/instructions/*.md` and carries
+them into the review as `guideline` context.
+
+A file in `.github/instructions/` states its own scope in frontmatter, and
+that scope is honoured: `applyTo: "**/*.go"` reaches a review whose change
+touches Go, and a rule scoped to `migrations/**` does not reach one that
+touches no migration. A file with no `applyTo`, and the repository-wide
+`copilot-instructions.md`, apply to every change. Frontmatter is metadata
+about when to read the file, so it is not sent; the prose is.
+
+The reason to read them at all is that a review contradicting the house rules
+is wrong twice: the finding is wrong, and it is evidence the tool did not read
+what the team wrote. The rules are told to the model as binding, and
+explicitly not as a checklist to audit the change against, because a change
+that follows the rules deserves no comment saying so.
+
+`redline-scout` also looks for `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`
+and their neighbours, including ones sitting next to the changed files. That
+search needs a model to judge which of them bear on the change, which is why
+it costs money and is off by default. These two paths are free.
+
 Two providers ship here. `redline-scout` is the one that costs money: a cheap
 model reads the diff, works out what this change in particular needs, and uses
 a handful of tools to find it. A deleted guard pulls the history of those
