@@ -41,6 +41,23 @@ context:
   #          "--covered-scope", "**/*.go"]
   #   scope: ["**/*"]
 
+# The coverage profile. Declared so `--prepare` regenerates it: without a
+# profile here there are no produce steps, `--prepare` does nothing at all,
+# and the diff-coverage number is read from whatever `coverage.out` was last
+# left in the tree. A profile older than the change mentions none of the
+# lines the change adds, which reads as "nothing here is testable" when what
+# happened is that nobody measured. `go test` is available to anyone with a
+# Go toolchain, so unlike the graph below this one is safe to leave on.
+harness:
+  profiles:
+    - id: go
+      path: coverage.out
+      produce:
+        command: make
+        args: [coverage]
+      when: stale
+      scope: ["**/*.go"]
+
 # The graph is a build artifact and an adapter reading a stale one describes
 # code as it was. A harness profile is how that becomes visible, and it is
 # commented out because a required profile fails `redline run` for anyone who
