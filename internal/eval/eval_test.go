@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/review"
+	"github.com/chrisophus/redline/internal/run"
 )
 
 const fixtureDir = "../../testdata/fixtures"
@@ -25,6 +27,108 @@ func load(t *testing.T) []Fixture {
 		t.Fatal("no fixtures; the eval would pass vacuously")
 	}
 	return fx
+}
+
+// sampleFixture is a fixture with two expectations and nothing else, for
+// testing how samples are scored rather than how matching works.
+func sampleFixture() Fixture {
+	return Fixture{
+		Annotation: Annotation{
+			Name: "two-defects",
+			Expect: []Expectation{
+				{Key: "loop", AnyOf: []string{"retry loop"}},
+				{Key: "mutex", AnyOf: []string{"mutex"}},
+			},
+		},
+		Session: &run.Result{},
+	}
+}
+
+func sampleWith(bodies ...string) findings.Review {
+	var rev findings.Review
+	for _, b := range bodies {
+		rev.Comments = append(rev.Comments, findings.ReviewComment{File: "a.go", Body: b})
+	}
+	return rev
+}
+
+// The union is what a reader is handed, so Caught is the union. The rate is
+// what distinguishes configurations, and a single sample cannot express it:
+// two disjoint samples each catching one of two expectations is a full union
+// and a half rate, and those are different facts about the reviewer.
+func TestScoreSamplesSeparatesTheUnionFromTheRate(t *testing.T) {
+	f := sampleFixture()
+	sc := ScoreSamples(f, []findings.Review{
+		sampleWith("the retry loop never bounds attempts"),
+		sampleWith("the mutex is never unlocked"),
+	})
+	if len(sc.Caught) != 2 {
+		t.Errorf("union caught %v, want both", sc.Caught)
+	}
+	if sc.Samples != 2 {
+		t.Errorf("samples = %d, want 2", sc.Samples)
+	}
+	if sc.CaughtIn["loop"] != 1 || sc.CaughtIn["mutex"] != 1 {
+		t.Errorf("caughtIn = %v, want each expectation in exactly one sample", sc.CaughtIn)
+	}
+	tot := Sum([]Scorecard{sc})
+	// Two expectations over two samples is four chances; two hit.
+	if tot.CaughtSampleHits != 2 || tot.Samples != 2 || tot.Expected != 2 {
+		t.Errorf("totals = %+v, want 2 hits of 2×2", tot)
+	}
+	row := Table("cfg", 0.1, tot)
+	if !strings.Contains(row, "2/2") {
+		t.Errorf("the union column is missing from %q", row)
+	}
+	if !strings.Contains(row, "50% of 2×2") {
+		t.Errorf("the rate column does not distinguish this from a reliable catch: %q", row)
+	}
+}
+
+// The same union with every sample catching everything is the reliable
+// configuration, and the table has to show the difference.
+func TestScoreSamplesRateSeparatesReliableFromLucky(t *testing.T) {
+	f := sampleFixture()
+	both := sampleWith("the retry loop never bounds attempts", "the mutex is never unlocked")
+	reliable := Sum([]Scorecard{ScoreSamples(f, []findings.Review{both, both})})
+	lucky := Sum([]Scorecard{ScoreSamples(f, []findings.Review{
+		sampleWith("the retry loop never bounds attempts"),
+		sampleWith("the mutex is never unlocked"),
+	})})
+	if reliable.Caught != lucky.Caught {
+		t.Fatalf("the unions differ (%d vs %d); the rate is the only thing that should",
+			reliable.Caught, lucky.Caught)
+	}
+	if reliable.CaughtSampleHits <= lucky.CaughtSampleHits {
+		t.Errorf("the rate does not separate them: %d vs %d",
+			reliable.CaughtSampleHits, lucky.CaughtSampleHits)
+	}
+}
+
+// A clean fixture that one sample in three comments on is not a clean result.
+// CleanHeld has to be the conjunction, or sampling would launder a false
+// positive into silence.
+func TestScoreSamplesCleanHeldRequiresEverySample(t *testing.T) {
+	f := Fixture{
+		Annotation: Annotation{Name: "clean", Clean: true},
+		Session:    &run.Result{},
+	}
+	sc := ScoreSamples(f, []findings.Review{{}, sampleWith("I would consider renaming this")})
+	if sc.CleanHeld {
+		t.Error("a sample that spoke on a clean change was laundered by the union")
+	}
+}
+
+// Rows are only comparable when both took the same number of samples, so a
+// mixed set withholds the rate rather than averaging it into nonsense.
+func TestSumWithholdsTheRateOnMixedSampleCounts(t *testing.T) {
+	f := sampleFixture()
+	one := ScoreSamples(f, []findings.Review{sampleWith("the retry loop never bounds attempts")})
+	three := ScoreSamples(f, []findings.Review{{}, {}, sampleWith("the mutex is never unlocked")})
+	row := Table("mixed", 0.1, Sum([]Scorecard{one, three}))
+	if !strings.Contains(row, "n/a") {
+		t.Errorf("a mixed sample count reported a rate anyway: %q", row)
+	}
 }
 
 // Every fixture must load offline, from its own frozen files, with no git
@@ -285,6 +389,18 @@ func TestSweep(t *testing.T) {
 	if model == "" {
 		t.Skip("set REDLINE_EVAL_MODEL to run the paid sweep (it calls a model once per fixture)")
 	}
+	// One sample per fixture is not a measurement of a configuration: the
+	// samples do not overlap, so a single run's score is close to a coin
+	// flip. REDLINE_EVAL_SAMPLES buys the rate instead, at k times the cost
+	// and the same wall clock, because the samples go out together.
+	samples := 1
+	if s := os.Getenv("REDLINE_EVAL_SAMPLES"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n < 1 {
+			t.Fatalf("REDLINE_EVAL_SAMPLES=%q is not a positive count", s)
+		}
+		samples = n
+	}
 	fx := load(t)
 	var cards []Scorecard
 	var costs []float64
@@ -293,23 +409,38 @@ func TestSweep(t *testing.T) {
 			Report: &f.Session.Report, Change: f.Session.Change,
 			Envelopes: f.Session.Envelopes, Absent: f.Session.ContextAbsent,
 		}
-		out, err := review.Run(context.Background(), in, review.Options{
-			Model:  model,
-			Effort: os.Getenv("REDLINE_EVAL_EFFORT"),
-		})
-		if err != nil {
-			t.Errorf("%s: %v", f.Annotation.Name, err)
+		var revs []findings.Review
+		var cost float64
+		for range samples {
+			out, err := review.Run(context.Background(), in, review.Options{
+				Model:  model,
+				Effort: os.Getenv("REDLINE_EVAL_EFFORT"),
+			})
+			if out != nil {
+				cost += out.CostUSD
+			}
+			if err != nil {
+				t.Errorf("%s: %v", f.Annotation.Name, err)
+				continue
+			}
+			revs = append(revs, out.Review)
+			t.Logf("%s: %s", f.Annotation.Name, out.Summary())
+		}
+		if len(revs) == 0 {
 			continue
 		}
-		sc := Score(f, out.Review)
+		sc := ScoreSamples(f, revs)
 		cards = append(cards, sc)
-		costs = append(costs, out.CostUSD)
-		t.Logf("%s: %s caught=%v missed=%v quiet=%v extra=%d",
-			f.Annotation.Name, out.Summary(), sc.Caught, sc.Missed, sc.QuietViolations, sc.Extra)
+		costs = append(costs, cost)
+		t.Logf("%s: caught=%v caughtIn=%v missed=%v quiet=%v extra=%d",
+			f.Annotation.Name, sc.Caught, sc.CaughtIn, sc.Missed, sc.QuietViolations, sc.Extra)
 	}
 	label := model
 	if e := os.Getenv("REDLINE_EVAL_EFFORT"); e != "" {
 		label += " effort=" + e
+	}
+	if samples > 1 {
+		label += fmt.Sprintf(" ×%d", samples)
 	}
 	tot := Sum(cards)
 	fmt.Println(TableHeader)

@@ -156,6 +156,21 @@ type Scorecard struct {
 	Extra int
 	// CleanHeld is meaningful for a clean fixture: it stayed silent.
 	CleanHeld bool
+	// Samples is how many independent reviews were scored, and CaughtIn how
+	// many of them caught each expectation.
+	//
+	// A review is not a stable function of its input, and measurement put
+	// the variance at total: across forty-odd samples of one fixture, no
+	// finding was ever produced by two samples. So "did this run catch it"
+	// is close to a coin flip, and a single-sample score is not a
+	// measurement of a configuration. It is what made a k=1 sweep report
+	// 0 of 14 on a fixture where three samples find 7, and nearly shipped a
+	// prompt change on the strength of it.
+	//
+	// Caught above is the union: caught by at least one sample. CaughtIn is
+	// the rate, which is the number to compare configurations on.
+	Samples  int
+	CaughtIn map[string]int
 }
 
 // Score compares one review against one annotation.
@@ -210,6 +225,61 @@ func Score(f Fixture, rev findings.Review) Scorecard {
 	}
 	sc.CleanHeld = !f.Annotation.Clean || len(rev.Comments) == 0
 	return sc
+}
+
+// ScoreSamples scores k independent reviews of one fixture: the union of what
+// they caught, plus the rate at which each expectation was caught.
+//
+// This is the shape a variable producer has to be measured in. Score on one
+// review answers "did this run catch it", which the variance makes close to
+// a coin flip; the rate answers "how reliably does this configuration catch
+// it", which is the question a comparison between configurations is asking.
+//
+// Comments, Extra and QuietViolations are the union's, because that is what a
+// reader of the merged review would see, and CleanHeld requires every sample
+// to have stayed silent: a clean change that one sample in three comments on
+// is not a clean result.
+func ScoreSamples(f Fixture, revs []findings.Review) Scorecard {
+	if len(revs) == 0 {
+		return Scorecard{Fixture: f.Annotation.Name, Clean: f.Annotation.Clean}
+	}
+	caughtIn := map[string]int{}
+	cleanHeld := true
+	for _, rev := range revs {
+		one := Score(f, rev)
+		for _, key := range one.Caught {
+			caughtIn[key]++
+		}
+		cleanHeld = cleanHeld && one.CleanHeld
+	}
+	sc := Score(f, unionOf(revs))
+	sc.Samples = len(revs)
+	sc.CaughtIn = caughtIn
+	sc.CleanHeld = cleanHeld
+	return sc
+}
+
+// unionOf merges samples the way the producer does, so the score is of the
+// review a reader would be handed. Identity is the file plus the message with
+// its digits collapsed: two samples describing one defect are one finding.
+func unionOf(revs []findings.Review) findings.Review {
+	var out findings.Review
+	seen := map[string]bool{}
+	for _, rev := range revs {
+		if len(rev.Overview) > len(out.Overview) {
+			out.Overview = rev.Overview
+		}
+		for _, c := range rev.Comments {
+			key := strings.ToLower(strings.TrimSpace(c.File)) + "\x00" +
+				findings.NormalizeMessage(strings.ToLower(strings.TrimSpace(c.Body)))
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out.Comments = append(out.Comments, c)
+		}
+	}
+	return out
 }
 
 func expectationMatches(exp Expectation, c findings.ReviewComment, prior *findings.Report) bool {
@@ -289,6 +359,13 @@ type Totals struct {
 	Extra           int
 	CleanFixtures   int
 	CleanHeld       int
+	// Samples is the per-fixture sample count when every fixture used the
+	// same one, and CaughtSampleHits the number of (expectation, sample)
+	// pairs that hit. Together they are the rate: a configuration that
+	// catches an expectation in one sample of three is not the equal of one
+	// that catches it in three, and the union hides that difference.
+	Samples          int
+	CaughtSampleHits int
 }
 
 // Sum aggregates. Expected counts the whole expectation set, optional ones
@@ -313,6 +390,17 @@ func Sum(cards []Scorecard) Totals {
 				t.CleanHeld++
 			}
 		}
+		for _, n := range c.CaughtIn {
+			t.CaughtSampleHits += n
+		}
+		switch {
+		case t.Samples == 0:
+			t.Samples = c.Samples
+		case c.Samples != 0 && c.Samples != t.Samples:
+			// Mixed sample counts make the rate meaningless rather than
+			// merely imprecise, so it is withheld instead of averaged.
+			t.Samples = -1
+		}
 	}
 	return t
 }
@@ -324,10 +412,18 @@ func Table(label string, medianCostUSD float64, t Totals) string {
 	if t.CleanFixtures > 0 {
 		clean = fmt.Sprintf("%d/%d", t.CleanHeld, t.CleanFixtures)
 	}
-	return fmt.Sprintf("| %s | $%.4f | %d/%d | %d | %d | %s |",
-		label, medianCostUSD, t.Caught, t.Expected, t.QuietViolations, t.Extra, clean)
+	// The rate is the column to compare on. Caught is the union, which rises
+	// with the sample count for a producer whose samples do not overlap, so
+	// two rows are only comparable on it when both took the same number.
+	rate := "n/a"
+	if t.Samples > 0 && t.Expected > 0 {
+		rate = fmt.Sprintf("%.0f%% of %d×%d", 100*float64(t.CaughtSampleHits)/float64(t.Expected*t.Samples),
+			t.Expected, t.Samples)
+	}
+	return fmt.Sprintf("| %s | $%.4f | %d/%d | %s | %d | %d | %s |",
+		label, medianCostUSD, t.Caught, t.Expected, rate, t.QuietViolations, t.Extra, clean)
 }
 
 // TableHeader is the header for Table's rows.
-const TableHeader = "| Config | Median cost | Caught | False positives | Extra | Clean held |\n" +
-	"|---|---|---|---|---|---|"
+const TableHeader = "| Config | Median cost | Caught (union) | Caught rate | False positives | Extra | Clean held |\n" +
+	"|---|---|---|---|---|---|---|"
