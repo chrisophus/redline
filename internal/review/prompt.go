@@ -17,7 +17,7 @@ import (
 // language. The language half arrives in the envelope's promptFragment,
 // authored by whoever wrote the provider, and is concatenated below.
 //
-// Three instructions here carry most of the weight.
+// Four instructions here carry most of the weight.
 //
 // Not restating priors is what moves the model's attention off what the
 // tools already caught and onto what static analysis structurally cannot
@@ -25,10 +25,24 @@ import (
 // thing no single producer can do, and a model will not volunteer it unless
 // told the connection is the finding.
 //
-// Zero findings being valid is the hardest of the three to get and the one
+// Reporting every defect rather than the most important one was added on
+// measurement, and it is the largest single effect found so far. Against a
+// real change carrying eleven defects a reviewer could reach from the
+// material, the silence rules alone produced 1.44 comments per run and
+// caught none of them at one sample; naming enumeration as the job took it
+// to 4.67 comments and 3 of 11 at one sample, and 7 of 11 at three, which
+// beat nine samples of the old wording at under half the cost and with no
+// rise in unmatched comments. A reviewer that finds one defect and stops has
+// failed the author as surely as one that pads.
+//
+// Zero findings being valid is the hardest of the four to get and the one
 // most homegrown reviewers miss. A reviewer that always finds something is
 // not a reviewer, it is a generator, and the first time it invents a problem
-// on a clean change is the last time anyone reads its output.
+// on a clean change is the last time anyone reads its output. It sits beside
+// the enumeration instruction rather than being replaced by it: the two are
+// the same rule, which is to report what is there and no more. Dropping this
+// half is what turned a weaker model into a padding machine in the same
+// experiment, at 41 comments and 32 unmatched.
 const systemPrompt = `You are reviewing one change in a code repository, once, in a single pass.
 
 You have no tools. Everything you get to see is below. If a question cannot be
@@ -71,10 +85,15 @@ What is not worth reporting:
 - Anything you would qualify with "may", "might", or "could potentially" and
   cannot follow with a concrete consequence.
 
-Zero findings is a valid and expected result. Roughly three in ten real
-changes deserve no comment at all. When this is one of them, return an empty
-comments array and say so in the overview. Do not pad. Do not find something
-because finding something feels like the job.
+This change may carry several independent defects. Report every one you can
+support, each as its own comment, rather than choosing the most important.
+A reviewer that reports one defect and stops has failed the reviewer's job as
+badly as one that pads: the author cannot fix what nobody named. Do not
+invent findings, and do not report style or anything a linter caught, but do
+not stop at the first thing either. Ten defensible findings on a change that
+has ten is the correct answer, and zero on a change that has none is equally
+correct: roughly three in ten real changes deserve no comment at all, and on
+one of those you return an empty comments array and say so in the overview.
 
 Set confidence honestly. Report a finding you are unsure of with confidence
 "low" rather than withholding it. Low-confidence findings are folded away on
