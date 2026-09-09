@@ -2,9 +2,11 @@ package eval
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -483,6 +485,32 @@ func TestSweep(t *testing.T) {
 		costs = append(costs, cost)
 		t.Logf("%s: caught=%v caughtIn=%v missed=%v quiet=%v extra=%d",
 			f.Annotation.Name, sc.Caught, sc.CaughtIn, sc.Missed, sc.QuietViolations, sc.Extra)
+		// An arm's score says how many extras it wrote and never what they
+		// were, so precision work has nothing to read. Keeping the reviews
+		// makes the unmatched comments inspectable after the money is spent,
+		// which is the only time they can be judged.
+		if dir := os.Getenv("REDLINE_EVAL_DUMP"); dir != "" {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			name := f.Annotation.Name
+			if os.Getenv("REDLINE_EVAL_NOCONTEXT") != "" {
+				name += ".nocontext"
+			}
+			buf, err := json.MarshalIndent(struct {
+				Fixture string            `json:"fixture"`
+				Model   string            `json:"model"`
+				Caught  []string          `json:"caught"`
+				Missed  []string          `json:"missed"`
+				Samples []findings.Review `json:"samples"`
+			}{f.Annotation.Name, model, sc.Caught, sc.Missed, revs}, "", "  ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, name+".json"), append(buf, '\n'), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	label := model
 	if e := os.Getenv("REDLINE_EVAL_EFFORT"); e != "" {
