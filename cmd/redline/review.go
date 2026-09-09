@@ -81,8 +81,10 @@ func cmdReview(o opts) error {
 		// identical. Assemble is what --dry-run does and calls nothing, so
 		// the price quoted here is the price about to be paid.
 		if est, aerr := review.Assemble(in, ropts); aerr == nil {
+			// est carries the resolved model and wire, since the defaults are
+			// applied inside Assemble rather than out here.
 			fmt.Fprintf(os.Stderr, "redline: reviewing %s with %s (%s), %d input tokens, expect %s, at most %s\n",
-				describeSession(res), ropts.Model, ropts.API, est.InputEstimate,
+				describeSession(res), est.Model, est.API, est.InputEstimate,
 				review.FormatCost(est.CostUSD, est.CostKnown),
 				review.FormatCost(est.CostCeilingUSD, est.CostKnown))
 		}

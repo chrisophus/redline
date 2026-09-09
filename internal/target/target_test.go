@@ -36,7 +36,10 @@ func TestResolveWorktree(t *testing.T) {
 	}
 }
 
-func TestResolveBranchUsesDetachedWorktree(t *testing.T) {
+// A clean checkout already sitting on the branch tip is the tree to observe:
+// it holds the coverage profile and the rest of the harness output, and a
+// detached worktree holds none of it.
+func TestResolveBranchUsesTheCheckoutWhenItIsAlreadyThere(t *testing.T) {
 	dir := initRepo(t)
 	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
 	tgt, err := Resolve(Options{Dir: dir, Branch: "main"})
@@ -46,14 +49,70 @@ func TestResolveBranchUsesDetachedWorktree(t *testing.T) {
 	if tgt.Kind != KindBranch {
 		t.Fatalf("kind %q", tgt.Kind)
 	}
-	if tgt.Dir == dir {
-		t.Fatal("branch target must not be the user's checkout")
+	if tgt.Detached {
+		t.Error("a clean checkout on the branch tip was copied into a worktree anyway")
+	}
+	if !sameDir(tgt.Dir, dir) {
+		t.Errorf("dir %q want the checkout %q", tgt.Dir, dir)
 	}
 	if tgt.Head == "" {
-		t.Fatal("branch head SHA missing")
+		t.Error("branch head SHA missing")
+	}
+}
+
+// Anything in the tree that is not committed rules the checkout out: the
+// panes observe a directory, so an uncommitted edit would be reported as part
+// of the branch under review.
+func TestResolveBranchDetachesWhenTheTreeIsDirty(t *testing.T) {
+	dir := initRepo(t)
+	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
+	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tgt, err := Resolve(Options{Dir: dir, Branch: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tgt.Detached {
+		t.Fatal("a dirty checkout was observed directly, so uncommitted work would read as the branch")
+	}
+	if sameDir(tgt.Dir, dir) {
+		t.Error("the target is the caller's own tree")
 	}
 	if _, err := os.Stat(filepath.Join(tgt.Dir, "README")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// An untracked file counts as dirty even though no commit contains it, for
+// the same reason: it is picked up as part of the change.
+func TestResolveBranchDetachesForAnUntrackedFile(t *testing.T) {
+	dir := initRepo(t)
+	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
+	if err := os.WriteFile(filepath.Join(dir, "scratch.txt"), []byte("wip\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tgt, err := Resolve(Options{Dir: dir, Branch: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tgt.Detached {
+		t.Fatal("an untracked file did not disqualify the checkout, so it would be reported as part of the branch")
+	}
+}
+
+// The checkout is only usable for the revision it is actually on.
+func TestResolveCommitDetachesForAnotherRevision(t *testing.T) {
+	dir := initRepo(t)
+	writeCommit(t, dir, "next.txt", "two\n", "second")
+	writeCommit(t, dir, "third.txt", "three\n", "third")
+	t.Setenv("REDLINE_WORKTREE_ROOT", t.TempDir())
+	tgt, err := Resolve(Options{Dir: dir, Commit: "HEAD~1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tgt.Detached {
+		t.Fatal("HEAD~1 was observed in a checkout sitting on HEAD")
 	}
 }
 
@@ -67,9 +126,6 @@ func TestResolveCommitUsesParentAsBase(t *testing.T) {
 	}
 	if tgt.Kind != KindCommit {
 		t.Fatalf("kind %q", tgt.Kind)
-	}
-	if tgt.Dir == dir {
-		t.Fatal("commit target must not be the user's checkout")
 	}
 	parent, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD^").Output()
 	if err != nil {
