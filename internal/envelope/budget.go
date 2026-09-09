@@ -267,6 +267,20 @@ func FitFilter(e *Envelope, ceiling int, seen Seen, filter Filter) Budgeted {
 		return a.Symbol < b.Symbol
 	})
 
+	// Kept lines join seen as the walk goes, so the same code is paid for
+	// once however many providers resolved it.
+	//
+	// Without this, seen held the diff alone and two providers sending the
+	// same declaration both got charged for it. That is not hypothetical:
+	// gorefactor resolves the whole vocabulary exhaustively, and a second
+	// provider looking at the same change arrives at the same functions by a
+	// different route. Whichever role ranks higher is the stronger claim and
+	// wins; the other is counted as redundant, which the budget summary
+	// already reports.
+	if seen == nil {
+		seen = Seen{}
+	}
+
 	// One pass, highest rank first. An expansion that does not fit is
 	// dropped and the walk continues: a single large caller must not
 	// starve every cheaper expansion behind it.
@@ -288,8 +302,23 @@ func FitFilter(e *Envelope, ceiling int, seen Seen, filter Filter) Budgeted {
 		}
 		out.Kept = append(out.Kept, x)
 		out.Tokens += cost
+		markSeen(seen, x)
 	}
 	return out
+}
+
+// markSeen records what a kept expansion has now shown the model.
+//
+// History is left out for the reason unseen exempts it: its content is commit
+// messages and prior revisions rather than the current source at those lines,
+// so it does not make the lines it names redundant for anyone else.
+func markSeen(seen Seen, x Expansion) {
+	if x.Role == RoleHistory || x.File == "" || x.StartLine <= 0 {
+		return
+	}
+	for line := x.StartLine; line <= x.EndLine; line++ {
+		seen.Add(x.File, line)
+	}
 }
 
 // Render writes the kept expansions as the context block the model reads.

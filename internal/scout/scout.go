@@ -82,6 +82,18 @@ type Options struct {
 	// Graph is the path to a Graphify graph, when the repository has one. It
 	// turns on the two cross-language tools.
 	Graph string
+	// Covered are the roles another provider already resolves, and the files
+	// it resolves them for. The scout is told, and record refuses them.
+	//
+	// This is the difference between a provider that adds something and one
+	// that pays a model to redo what a type checker already did for free.
+	// gorefactor resolves the whole vocabulary exhaustively on Go: on this
+	// repository's own change it returned 327 enclosing declarations, 29
+	// callers, 19 types, 12 siblings and 44 history entries. A scout spending
+	// turns on any of those is spending money to arrive second.
+	Covered []envelope.Role
+	// CoveredScope are the globs Covered applies to. Empty means everywhere.
+	CoveredScope []string
 
 	Model      string
 	Effort     string
@@ -135,6 +147,7 @@ func Run(ctx context.Context, opts Options) (*envelope.Envelope, Spend, error) {
 	defer cancel()
 
 	ts := newToolset(opts.Root, opts.Graph, opts.Limits)
+	ts.res.covered, ts.res.coveredScope = opts.Covered, opts.CoveredScope
 	var clientOpts []option.RequestOption
 	if opts.APIKey != "" {
 		clientOpts = append(clientOpts, option.WithAPIKey(opts.APIKey))

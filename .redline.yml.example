@@ -177,10 +177,20 @@ tools:
 # --max-cost is a governor, not a tripwire: when it binds the scout stops,
 # says so in the report's unknowns, and the review still happens.
 #
+# --covered is how the scout is kept off ground another provider already holds.
+# List the roles a deterministic provider resolves exactly, and the files it
+# resolves them for, and the scout is told in its opening turn and refused if
+# it records one anyway. Beside gorefactor that is the five Go roles below,
+# which leaves the scout the things a single-language type checker cannot see:
+# the written rule, the coupled migration or schema, the deleted guard's
+# history, and every language gorefactor does not read.
+#
 # context:
 #   - name: scout
 #     command: redline-scout
-#     args: ["--changed", "{{base}}", "--max-cost", "0.25"]
+#     args: ["--changed", "{{base}}", "--max-cost", "0.25",
+#            "--covered", "enclosing,caller,type,sibling,history",
+#            "--covered-scope", "**/*.go"]
 #     scope: ["**/*"]
 #
 # harness:

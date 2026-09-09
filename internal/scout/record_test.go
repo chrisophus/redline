@@ -211,3 +211,59 @@ func TestClassOf(t *testing.T) {
 		}
 	}
 }
+
+// The point of the covered list: gorefactor resolves enclosing declarations
+// from a type checker, so a scout that spends a turn arriving second at the
+// same function has spent it on nothing. The refusal is what makes the brief's
+// instruction more than a suggestion.
+func TestARoleAnotherProviderCoversIsRefused(t *testing.T) {
+	r := newResolver(tree(t), Limits{})
+	r.covered = []envelope.Role{envelope.RoleEnclosing, envelope.RoleType}
+	r.coveredScope = []string{"**/*.go"}
+
+	rec := record{Role: envelope.RoleEnclosing, File: "internal/store/user.go", StartLine: 6, EndLine: 8}
+	err := r.validate(rec)
+	if err == nil {
+		t.Fatal("recorded a role another provider already resolves exactly")
+	}
+	// The scout gets the reason, not a bare rejection, so it can spend the
+	// next turn on something the other provider cannot see.
+	if !strings.Contains(err.Error(), "enclosing") || !strings.Contains(err.Error(), "cannot see") {
+		t.Errorf("refusal does not tell the scout what to do instead: %v", err)
+	}
+}
+
+// The scope is the whole reason the list is per-role rather than global. A Go
+// type checker says nothing about a SQL migration, and the cross-kind coupling
+// it cannot see is the scout's main value.
+func TestACoveredRoleOutsideTheScopeIsStillAllowed(t *testing.T) {
+	r := newResolver(tree(t), Limits{})
+	r.covered = []envelope.Role{RoleNeighbor}
+	r.coveredScope = []string{"**/*.go"}
+
+	if err := r.validate(record{Role: RoleNeighbor, File: "db/0007_email.sql", StartLine: 1, EndLine: 2}); err != nil {
+		t.Errorf("refused a file the other provider does not read: %v", err)
+	}
+}
+
+// A role nobody claimed stays the scout's to record, covered list or not.
+func TestAnUncoveredRoleIsAllowedInTheCoveredScope(t *testing.T) {
+	r := newResolver(tree(t), Limits{})
+	r.covered = []envelope.Role{envelope.RoleEnclosing}
+	r.coveredScope = []string{"**/*.go"}
+
+	if err := r.validate(record{Role: RoleGuideline, File: "internal/store/user.go", StartLine: 1, EndLine: 2}); err != nil {
+		t.Errorf("refused a role no provider covers: %v", err)
+	}
+}
+
+// An empty scope means the roles are covered everywhere, which is what a
+// provider that reads the whole tree warrants.
+func TestNoScopeCoversEveryFile(t *testing.T) {
+	r := newResolver(tree(t), Limits{})
+	r.covered = []envelope.Role{envelope.RoleEnclosing}
+
+	if err := r.validate(record{Role: envelope.RoleEnclosing, File: "db/0007_email.sql", StartLine: 1, EndLine: 2}); err == nil {
+		t.Error("an unscoped covered role did not apply to every file")
+	}
+}

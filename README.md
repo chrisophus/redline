@@ -288,8 +288,16 @@ that did not run and one that came back clean look identical otherwise.
 Two providers ship here. `redline-scout` is the one that costs money: a cheap
 model reads the diff, works out what this change in particular needs, and uses
 a handful of tools to find it. A deleted guard pulls the history of those
-lines. A changed signature pulls the callers gorefactor resolves exactly. A
-struct whose fields moved pulls the migration that writes the row.
+lines. A struct whose fields moved pulls the migration that writes the row.
+
+What it is worth paying for is what nothing else can see, so it is told what
+is already covered. `--covered enclosing,caller,type,sibling,history` with
+`--covered-scope "**/*.go"` says gorefactor resolves those roles for Go from a
+type checker; the scout is told so in its opening turn and refused if it
+records one anyway. Guessing at a caller list somebody else knows exactly is
+the expensive way to be less correct. Redline also drops a second provider's
+duplicate of a line range it already kept, so the same lines are never
+budgeted twice however they were found.
 
 It also reads what the repository wrote down about itself. `AGENTS.md`,
 `CLAUDE.md`, `CONTRIBUTING.md` and the rest are found at the root and beside
