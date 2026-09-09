@@ -35,6 +35,8 @@ func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Re
 	}
 	out := make([]sample, opts.Samples)
 	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var landed int
 	for i := range opts.Samples {
 		wg.Add(1)
 		go func(i int) {
@@ -46,6 +48,23 @@ func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Re
 			one.Samples = 1
 			res, err := runOnce(ctx, in, one, first.clone())
 			out[i] = sample{res: res, err: err}
+			if opts.Progress == nil {
+				return
+			}
+			// Reported in the order they land rather than by index, and
+			// serialised, because the point is only to say that something
+			// arrived: several minutes of silence for a run that is working
+			// looks the same as one that has hung.
+			mu.Lock()
+			defer mu.Unlock()
+			landed++
+			if err != nil {
+				opts.Progress(fmt.Sprintf("sample %d of %d failed: %v", landed, opts.Samples, err))
+				return
+			}
+			opts.Progress(fmt.Sprintf("sample %d of %d: %d finding(s), %s",
+				landed, opts.Samples, len(res.Review.Comments),
+				FormatCost(res.CostUSD, res.CostKnown)))
 		}(i)
 	}
 	wg.Wait()
