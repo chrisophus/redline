@@ -142,6 +142,11 @@ type Options struct {
 	// Cost scales with Samples and wall time does not, because the calls are
 	// independent and go out together.
 	Samples int
+	// Progress is called as work completes, for a command that would
+	// otherwise print nothing for several minutes. A review is one blocking
+	// call of two to five minutes and sampling makes it several, so silence
+	// reads as a hang. Nil is fine; nothing depends on it being called.
+	Progress func(string)
 	// DryRun assembles the prompt and prices it without calling anything.
 	DryRun bool
 }

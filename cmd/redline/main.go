@@ -214,7 +214,12 @@ func (o opts) target() target.Options {
 func (o opts) toRun(dir string) run.Options {
 	return run.Options{Dir: dir, Base: o.base, Upstream: o.upstream,
 		MigDir: o.migDir, PR: o.pr, Branch: o.branch, Commit: o.commit,
-		Range: o.revRange, Out: o.out, AllowMissingCoverage: o.allowMissingCoverage}
+		Range: o.revRange, Out: o.out, AllowMissingCoverage: o.allowMissingCoverage,
+		// Which tree was observed decides what the harness could see, so it
+		// is said out loud rather than left to be inferred from a coverage
+		// number that came back missing.
+		Progress: func(msg string) { fmt.Fprintln(os.Stderr, "redline:", msg) },
+	}
 }
 
 func cmdRun(o opts) error {
