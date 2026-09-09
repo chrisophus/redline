@@ -75,6 +75,10 @@ type Options struct {
 	// Diff is the change as the reviewer will see it. It is the scout's whole
 	// brief: everything else it wants, it fetches.
 	Diff string
+	// Generated maps a changed path to why it is machine output, for the ones
+	// that are. Their diffs are held back, and the manifest says so, which is
+	// the answer to "should a reviewer read this" that the envelope carries.
+	Generated map[string]string
 	// Graph is the path to a Graphify graph, when the repository has one. It
 	// turns on the two cross-language tools.
 	Graph string
@@ -294,16 +298,24 @@ func build(opts Options, ts *toolset) *envelope.Envelope {
 			Version: opts.Model + "/" + opts.Effort,
 		},
 		BaseSHA:        opts.BaseSHA,
-		Files:          manifest(opts.Changed),
+		Files:          manifest(opts.Changed, opts.Generated),
 		Expansions:     expansions,
 		PromptFragment: promptFragment,
 		Notes:          notes,
 	}
 }
-func manifest(changed []string) []envelope.File {
+func manifest(changed []string, generated map[string]string) []envelope.File {
 	out := make([]envelope.File, 0, len(changed))
 	for _, p := range changed {
-		out = append(out, envelope.File{Path: normPath(p), Class: classOf(p)})
+		f := envelope.File{Path: normPath(p), Class: classOf(p)}
+		if generated[p] != "" {
+			// Generated is the answer to "should a reviewer read this",
+			// regardless of which side decided. Redline summarizes these
+			// rather than dropping them, so the count still reaches the model.
+			f.Generated = true
+			f.Class = envelope.ClassGenerated
+		}
+		out = append(out, f)
 	}
 	return out
 }
