@@ -1,0 +1,177 @@
+{
+  "name": "gorefactor-nil-rules",
+  "origin": "gorefactor 20629f3 (lint: add unnecessary-nil-check rule, widen redundant-nil-guard)",
+  "summary": "gorefactor gains a second nil-analysis lint rule and widens the first. `unnecessary-nil-check` walks each function with go/parser and no type information, carrying per-scope facts about which values were constructed non-nil or already guarded, and reports checks it believes cannot fire. `redundant-nil-guard` grows a prologue scan that tolerates earlier guards and caller-side proofs that accept `||` chains and `&&` conjuncts. 9 files, 1329 insertions.",
+  "why_this_fixture_exists": "Every other fixture with enough labels to measure recall is a change that adds new files, where the context provider's expansions are the diff itself: gorefactor-changectx sends 8 of 168, so context is 4.8% informative there and a with-context/without-context comparison is measuring nothing. This change modifies existing code, so the provider carries callers, siblings and history that the diff does not contain: 31 of 118 expansions survive deduplication, 26.3% informative, across caller/history/sibling. It is the fixture a context arm can actually be run on.\n\nIt is also a change where the defects are unusually consequential and unusually checkable. A false positive from either rule is advice to delete a nil guard, so following it introduces a nil dereference, and every label below was reproduced by building gorefactor at this revision and running the rule on a constructed snippet rather than argued from reading.",
+  "clean": false,
+  "expect": [
+    {
+      "key": "closure-parameter-shadowing-false-positive",
+      "what": "checkExpr walks an expression with ast.Inspect, which descends into a function literal's body, and the statement walk has no *ast.FuncLit case, so a closure's own parameters never enter the fact map. A nil check on a closure parameter is therefore resolved against the enclosing function's variable of the same name and reported as impossible. Reproduced: an outer `p := &T{N: 1}` beside `func(p *T) { if p == nil { return 0 } }` yields \"`p == nil` (line 10) can never be true — p was assigned a non-nil value at line 8\". Following the advice removes a mandatory guard on a value the closure's caller controls. Two independent readings anchored this at cmd_lint_unnecessary_nil_check_facts.go:176 and cmd_lint_unnecessary_nil_check.go:278, so no file is required here.",
+      "any_of": [
+        "shadow",
+        "shadowed",
+        "closure parameter",
+        "its own parameter",
+        "the literal's parameter",
+        "parameter of the function literal"
+      ]
+    },
+    {
+      "key": "condition-checked-before-facts-invalidated",
+      "what": "walkIf calls s.checkExpr(st.Cond, scope) and only then invalidateNilFacts(st.Cond, scope), so a finding is emitted before the facts that the condition itself destroys are dropped. Go evaluates && left to right, so a mutating call in the left conjunct really does run before the nil compare in the right one. Reproduced end to end: for `if x.Take() > 0 && x == nil` where Take does `*s = nil`, the rule reports \"`x == nil` (line 15) can never be true\", and running the same code prints `cond: true`. The tool's claim is falsified by executing the program. The identical ordering exists for AssignStmt right-hand sides.",
+      "file": "cmd/gorefactor/cmd_lint_unnecessary_nil_check.go",
+      "any_of": [
+        "invalidatenilfacts",
+        "too late",
+        "before the invalidation",
+        "after the finding",
+        "already emitted",
+        "left to right",
+        "short-circuit",
+        "order"
+      ]
+    },
+    {
+      "key": "entry-prologue-crosses-an-assignment",
+      "what": "hasEntryNilGuard's prologue scan gained `case *ast.AssignStmt, *ast.DeclStmt, *ast.ExprStmt: continue`, so it walks past writes to the very parameter it is deciding about. The rule's premise is that the guarded value is the caller's argument, which stops holding once the prologue rebinds it. Reproduced: `func use(a, b *T) { if a == nil { return }; b = normalize(b); if b == nil { return } }` with a single caller `use(&T{N: 1}, &T{N: 2})` reports b's guard as redundant, though it exists to catch normalize returning nil. Before this commit the first `if` decided and the guard was unreachable.",
+      "file": "cmd/gorefactor/cmd_lint_redundant_nil_guard.go",
+      "any_of": [
+        "prologue",
+        "entry scan",
+        "hasentrynilguard",
+        "assignstmt",
+        "skips assignment",
+        "past an assignment",
+        "recomputed",
+        "rebind",
+        "no longer the caller"
+      ]
+    },
+    {
+      "key": "guard-line-points-at-the-func-declaration",
+      "what": "The message reports fn.fset.Position(fn.decl.Pos()).Line as \"at entry (line %d)\". Now that a prologue may be arbitrarily long, that line names the func keyword rather than the guard the reader is being told to delete, and two findings about two different guards quote the same line. Reproduced: guards on lines 13 and 17 were both reported as \"at entry (line 12)\", which is the `func use(a, b *T) int {` line.",
+      "file": "cmd/gorefactor/cmd_lint_redundant_nil_guard.go",
+      "any_of": [
+        "decl.pos",
+        "func keyword",
+        "declaration line",
+        "not the guard",
+        "points at the function",
+        "wrong line",
+        "same line"
+      ]
+    },
+    {
+      "key": "combined-or-guard-reported-per-name",
+      "what": "nilRejectGuardNames treats `if a == nil || b == nil { return }` as a guard for each name, and hasEntryNilGuard returns true for whichever parameter is being considered, but the advice is per-guard: \"drop the guard\". When callers prove a and not b, only a is reported, and the only guard the reader can drop also removes b's check. The file's own comment eighteen lines below makes exactly this argument for rejecting mixed conditions — \"a mixed guard does more than nil-check, so 'drop the guard' is not safe advice for it\" — and applies it only to non-nil-compare disjuncts. Reproduced: with `combined(&T{N: 1}, b)` passing an unproven b, only a is reported.",
+      "file": "cmd/gorefactor/cmd_lint_redundant_nil_guard.go",
+      "any_of": [
+        "disjunct",
+        "combined guard",
+        "both names",
+        "only one of",
+        "other parameter",
+        "still protects"
+      ]
+    },
+    {
+      "key": "caller-proof-ignores-a-write-before-the-call",
+      "what": "precedingNilReject accepts an earlier sibling `if x == nil { return }` as proof that the argument at a later call is non-nil, and nothing examines what happens to the name between the guard and the call. Reproduced: `if t == nil { return 0 }; t = shrink(t); return guarded(t)` reports guarded's own guard as redundant, though shrink can return nil. enclosingNonNilGuard has the same hole. The flow-insensitivity predates the commit, but both call sites are rewritten here and the widening strictly increases how many sites reach them.",
+      "file": "cmd/gorefactor/cmd_lint_redundant_nil_guard.go",
+      "any_of": [
+        "precedingnilreject",
+        "enclosingnonnilguard",
+        "between the guard and the call",
+        "reassigned before the call",
+        "after the guard",
+        "call site",
+        "flow"
+      ]
+    },
+    {
+      "key": "address-of-invalidation-is-dead",
+      "what": "The `case *ast.UnaryExpr: if st.Op == token.AND` branch of invalidateNilFacts can only ever rewrite factNone to factNone. closureTaintedNames applies the identical predicate over the whole function body before the walk starts, and every producer of a fact refuses tainted names, so any name this branch could clear is already permanently tainted. The function's own doc comment enumerates assignment targets, redeclarations, range variables and method receivers, and does not mention address-taking, which is consistent with the branch being vestigial. Low severity: dead defensive logic that implies address-taking is handled flow-sensitively when it is handled by whole-function taint.",
+      "file": "cmd/gorefactor/cmd_lint_unnecessary_nil_check_facts.go",
+      "any_of": [
+        "dead",
+        "no-op",
+        "never fires",
+        "already tainted",
+        "vestigial",
+        "unreachable",
+        "closuretaintednames"
+      ]
+    },
+    {
+      "key": "global-quiet-test-cannot-fail",
+      "what": "TestUnnecessaryNilCheck_QuietOnGlobal credits its silence to an intervening call that may reassign a package-level variable, but establishFacts skips any name that is absent from vars or not local, and globals are never entered into vars at all. Reproduced: two identical `if g == nil` checks on a package-level var with no intervening call are silent, while the same shape on a local is reported. Delete the mutate() call, or every invalidateNilFacts call site, and the test still passes.",
+      "file": "cmd/gorefactor/cmd_lint_unnecessary_nil_check_test.go",
+      "any_of": [
+        "package-level",
+        "global",
+        "never tracked",
+        "not local",
+        "cannot fail",
+        "vacuous",
+        "wrong reason",
+        "guaranteed"
+      ]
+    },
+    {
+      "key": "goto-test-satisfied-by-the-label",
+      "what": "hasGotoOrLabel returns true on the first *ast.LabeledStmt, and Go requires a goto's target label in the same function, so the BranchStmt/token.GOTO arm can never be the deciding factor for any valid input: TestUnnecessaryNilCheck_SkipsGotoFunctions stays green with that arm deleted. The consequence beyond the test is larger — the predicate disables the rule for every function containing a label with no goto, such as a labelled for with `break outer` — and no test distinguishes the two reasons for skipping.",
+      "file": "cmd/gorefactor/cmd_lint_unnecessary_nil_check_test.go",
+      "any_of": [
+        "label",
+        "labeledstmt",
+        "goto arm",
+        "without a goto",
+        "any label",
+        "break outer"
+      ]
+    },
+    {
+      "key": "reported-location-never-asserted",
+      "what": "Every test routes through wantIssueCount, which asserts len(issues) and iss.Rule and nothing else; neither test file contains a single reference to the issue's File. The rule builds its location as fmt.Sprintf(\"%s:%d\", s.file, s.line(be)), and this release's changelog headlines exactly that: findings now carry their line as path:line so consumers can point at the finding in code. A bug emitting a bare path, the enclosing FuncDecl's position, or the wrong file when several are linted would pass the whole suite.",
+      "file": "cmd/gorefactor/cmd_lint_unnecessary_nil_check_test.go",
+      "any_of": [
+        "file field",
+        "location",
+        "path:line",
+        "line is never",
+        "wantissuecount",
+        "never asserts",
+        "iss.file"
+      ]
+    },
+    {
+      "key": "composite-literal-construction-untested",
+      "what": "The changelog and README advertise slice and map literals as construction facts, and the constructed-value test covers only `&T{N: 1}`, `new(T)` and `make(map[string]int)`. No fixture in either test file assigns a slice or map composite literal, so the *ast.CompositeLit branch of constructedNonNil is dead as far as the suite is concerned. Returning no fact for composite literals, or treating an array literal as a nilable slice, would ship green against a documented claim.",
+      "any_of": [
+        "composite literal",
+        "slice literal",
+        "map literal",
+        "slice/map literal",
+        "compositelit"
+      ],
+      "all_of": [
+        "test"
+      ]
+    },
+    {
+      "key": "caller-side-not-nil-proof-untested",
+      "what": "The widening's headline caller-side proof accepts `x != nil && ...`, and the guard rule's fixtures contain no caller-side `!= nil` guard at all: every one proves non-nil by construction or by a preceding `x == nil` reject. enclosingNonNilGuard and the multi-conjunct tolerance of nonNilConjunctNames are never executed by the suite. Both failure directions are invisible — a proof that never matches silently halves the widening, and one that matches too loosely tells users to delete a load-bearing nil guard.",
+      "any_of": [
+        "enclosingnonnilguard",
+        "!= nil",
+        "conjunct",
+        "nonnilconjunctnames",
+        "caller-side proof"
+      ],
+      "all_of": [
+        "test"
+      ]
+    }
+  ]
+}
