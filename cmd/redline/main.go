@@ -129,7 +129,7 @@ type opts struct {
 	model, effort, mode, api, baseURL, apiUser                        string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
 	stats                                                             bool
-	port, ceiling, maxTokens, maxTurns, samples                        int
+	port, ceiling, maxTokens, maxTurns, samples                       int
 	maxCost                                                           float64
 }
 
