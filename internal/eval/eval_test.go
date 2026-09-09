@@ -401,13 +401,44 @@ func TestSweep(t *testing.T) {
 		}
 		samples = n
 	}
+	// A matrix over models, effort levels and sample counts multiplies the
+	// cost of the whole set, and most of the set is cheap noise for that
+	// purpose: the richly annotated fixtures are where a configuration is
+	// distinguishable. REDLINE_EVAL_FIXTURE narrows it, and naming the clean
+	// one alongside keeps the clean rate in the comparison so a louder
+	// configuration cannot win by padding.
 	fx := load(t)
+	if only := os.Getenv("REDLINE_EVAL_FIXTURE"); only != "" {
+		want := map[string]bool{}
+		for _, name := range strings.Split(only, ",") {
+			want[strings.TrimSpace(name)] = true
+		}
+		var kept []Fixture
+		for _, f := range fx {
+			if want[f.Annotation.Name] {
+				kept = append(kept, f)
+				delete(want, f.Annotation.Name)
+			}
+		}
+		for name := range want {
+			t.Fatalf("REDLINE_EVAL_FIXTURE names %q, which is not a fixture", name)
+		}
+		fx = kept
+	}
 	var cards []Scorecard
 	var costs []float64
 	for _, f := range fx {
 		in := review.Input{
 			Report: &f.Session.Report, Change: f.Session.Change,
 			Envelopes: f.Session.Envelopes, Absent: f.Session.ContextAbsent,
+		}
+		// The arm that answers whether context beyond the diff earns its
+		// cost. Dropping the envelopes rather than the whole field keeps the
+		// prompt's absent-context section honest: the review is told the
+		// context is missing, which is what a provider failure looks like,
+		// instead of being handed a change that silently had no provider.
+		if os.Getenv("REDLINE_EVAL_NOCONTEXT") != "" {
+			in.Envelopes = nil
 		}
 		var revs []findings.Review
 		var cost float64
@@ -438,6 +469,12 @@ func TestSweep(t *testing.T) {
 	label := model
 	if e := os.Getenv("REDLINE_EVAL_EFFORT"); e != "" {
 		label += " effort=" + e
+	}
+	// The configuration a row is compared under has to be readable from the
+	// row: two arms whose only difference is the context, printed under the
+	// same name, are not a comparison.
+	if os.Getenv("REDLINE_EVAL_NOCONTEXT") != "" {
+		label += " nocontext"
 	}
 	if samples > 1 {
 		label += fmt.Sprintf(" ×%d", samples)
