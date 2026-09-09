@@ -459,10 +459,15 @@ func (in Input) coverageSection() string {
 		if !ok || len(lines) == 0 {
 			continue
 		}
-		var uncovered []int
+		var uncovered, onErrorPath []int
+		text := addedLineText(f.Diff)
 		for _, line := range cover.AddedLines(f.Diff) {
-			if covered, known := lines[line]; known && !covered {
-				uncovered = append(uncovered, line)
+			if covered, known := lines[line]; !known || covered {
+				continue
+			}
+			uncovered = append(uncovered, line)
+			if handlesError(text[line]) {
+				onErrorPath = append(onErrorPath, line)
 			}
 		}
 		if len(uncovered) == 0 {
@@ -474,7 +479,12 @@ func (in Input) coverageSection() string {
 		}
 		files++
 		sort.Ints(uncovered)
-		fmt.Fprintf(&b, "- %s: %s\n", f.Path, lineRanges(uncovered))
+		fmt.Fprintf(&b, "- %s: %s", f.Path, lineRanges(uncovered))
+		if len(onErrorPath) > 0 {
+			sort.Ints(onErrorPath)
+			fmt.Fprintf(&b, " (error handling: %s)", lineRanges(onErrorPath))
+		}
+		b.WriteString("\n")
 	}
 	if b.Len() == 0 {
 		return ""
@@ -484,7 +494,10 @@ func (in Input) coverageSection() string {
 	}
 	return "## Added lines no test executes\n\n" +
 		"From the coverage profile, for the files it covers. Use it to sharpen a " +
-		"finding you already have, not to report a number.\n\n" + b.String() + "\n"
+		"finding you already have, not to report a number. Lines marked error " +
+		"handling are the ones worth looking at first: an error path nothing " +
+		"exercises is the case that fails in production and not in CI.\n\n" +
+		b.String() + "\n"
 }
 
 // These bound a section that sits with the facts rather than with the context,
@@ -496,6 +509,82 @@ const (
 	maxCoverageFiles  = 15
 	maxCoverageRanges = 12
 )
+
+// addedLineText maps an added line's number to its text, so the coverage
+// section can say something about what an uncovered line is rather than only
+// where it is.
+func addedLineText(diff string) map[int]string {
+	out := map[int]string{}
+	line := 0
+	for _, raw := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(raw, "@@"):
+			line = hunkStart(raw)
+		case strings.HasPrefix(raw, "+++"), strings.HasPrefix(raw, "---"):
+		case strings.HasPrefix(raw, "+"):
+			if line > 0 {
+				out[line] = raw[1:]
+				line++
+			}
+		case strings.HasPrefix(raw, "-"):
+		default:
+			if line > 0 {
+				line++
+			}
+		}
+	}
+	return out
+}
+
+// hunkStart reads the new-file start line out of an @@ header.
+func hunkStart(header string) int {
+	i := strings.Index(header, "+")
+	if i < 0 {
+		return 0
+	}
+	rest := header[i+1:]
+	end := strings.IndexAny(rest, ", ")
+	if end < 0 {
+		return 0
+	}
+	n, err := strconv.Atoi(rest[:end])
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// handlesError reports whether a line looks like error handling.
+//
+// Text patterns rather than a parser: this package links no language
+// toolchain, the same rule the rest of Redline follows, and the test-delta
+// pane already reads t.Skip and .only the same way. Conservative on purpose.
+// A miss puts the line in the ordinary list, which is where it would have
+// been anyway; a false positive points the reviewer at a line that turns out
+// to be unremarkable, which costs it a look.
+func handlesError(line string) bool {
+	t := strings.TrimSpace(line)
+	if t == "" {
+		return false
+	}
+	switch {
+	case strings.Contains(t, "if err != nil"), strings.Contains(t, "if err !="):
+		return true
+	case strings.HasPrefix(t, "return") && strings.Contains(t, "err"):
+		return true
+	case strings.Contains(t, "fmt.Errorf("), strings.Contains(t, "errors.New("):
+		return true
+	case strings.Contains(t, "panic("):
+		return true
+	case strings.HasPrefix(t, "throw "), strings.HasPrefix(t, "raise "):
+		return true
+	case strings.Contains(t, "catch ("), strings.Contains(t, "} catch"):
+		return true
+	case strings.HasPrefix(t, "except "), strings.HasPrefix(t, "except:"), strings.HasPrefix(t, "rescue"):
+		return true
+	}
+	return false
+}
 
 // lineRanges folds a sorted line list into ranges, because "44-71" is one
 // thing a reader can hold and twenty-eight numbers are not.

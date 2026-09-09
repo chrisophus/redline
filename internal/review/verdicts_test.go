@@ -164,3 +164,62 @@ func TestTheCoverageSectionIsBoundedAndSaysWhatItCut(t *testing.T) {
 		t.Errorf("a file listed %d ranges, want at most %d:\n%s", n+1, maxCoverageRanges, first)
 	}
 }
+
+// An error path nothing exercises is the case that fails in production and
+// not in CI, so it is worth pointing at rather than leaving in a list of line
+// numbers.
+func TestUncoveredErrorHandlingIsCalledOut(t *testing.T) {
+	in := Input{
+		Change: &change.Set{Files: []change.File{{
+			Path: "internal/store/user.go",
+			Diff: "@@ -40,0 +41,4 @@\n+\tif err != nil {\n+\t\treturn fmt.Errorf(\"insert: %w\", err)\n+\t}\n+\ttotal++\n",
+		}}},
+		LineCoverage: map[string]map[int]bool{
+			"internal/store/user.go": {41: false, 42: false, 43: false, 44: false},
+		},
+	}
+	got := in.coverageSection()
+	if !strings.Contains(got, "41-44") {
+		t.Errorf("the uncovered lines are not listed:\n%s", got)
+	}
+	if !strings.Contains(got, "error handling: 41-42") {
+		t.Errorf("the error path is not called out:\n%s", got)
+	}
+	if !strings.Contains(got, "fails in production and not in CI") {
+		t.Errorf("the section does not say why that matters:\n%s", got)
+	}
+}
+
+func TestHandlesError(t *testing.T) {
+	for line, want := range map[string]bool{
+		"\tif err != nil {":                     true,
+		"\t\treturn fmt.Errorf(\"x: %w\", err)": true,
+		"\t\treturn nil, err":                   true,
+		"\tpanic(\"unreachable\")":              true,
+		"  } catch (e) {":                       true,
+		"    raise ValueError(msg)":             true,
+		"\ttotal++":                             false,
+		"\treturn nil":                          false,
+		"":                                      false,
+		"// returns an error when the row is missing": false,
+	} {
+		if got := handlesError(line); got != want {
+			t.Errorf("handlesError(%q) = %v, want %v", line, got, want)
+		}
+	}
+}
+
+// The line numbers have to line up with the file, or the reviewer is pointed
+// at the wrong code.
+func TestAddedLineTextTracksHunkOffsets(t *testing.T) {
+	got := addedLineText("@@ -1,2 +1,3 @@\n unchanged\n+added at 2\n context\n@@ -40,0 +41,1 @@\n+added at 41\n")
+	if got[2] != "added at 2" {
+		t.Errorf("line 2 = %q", got[2])
+	}
+	if got[41] != "added at 41" {
+		t.Errorf("line 41 = %q; the second hunk's offset was not read", got[41])
+	}
+	if len(got) != 2 {
+		t.Errorf("got %d added lines, want 2: %v", len(got), got)
+	}
+}

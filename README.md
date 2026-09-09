@@ -59,6 +59,7 @@ uncommitted work, and on an open pull request. `--pr` fetches via `gh`
 | Context envelope and provider registry | shipped |
 | `redline review`: one model call over the run's own output | shipped |
 | Migration adds a NOT NULL column with no default | shipped |
+| Provider parity: a capability added to one of a set of parallel implementations | shipped |
 | Regeneration verification (run the generator, diff) | not started |
 
 ## Install
@@ -444,6 +445,8 @@ internal/pane         the observe/diff pane interface
 internal/pane/lint         lint delta, suppression triage, config drift
 internal/pane/migrations   migration hygiene
 internal/pane/openapi      contract breaking-change diff
+internal/pane/parity       capabilities added to one of a set of parallel
+                           implementations and not its siblings
 internal/post         the PR review payload and merge-gate profile
 internal/provider     finding and running language context providers
 internal/review       the one model call: prompt, schema, cost
