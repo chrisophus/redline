@@ -34,6 +34,16 @@ type Target struct {
 	Head  string `json:"head"`            // revision under review; empty means the working tree
 	Base  string `json:"base"`            // ref to compare against
 	Label string `json:"label,omitempty"` // as the user named it: HEAD, feat/x, abc..def
+	// Detached is true when Dir is a throwaway worktree Redline created
+	// rather than the caller's own checkout.
+	//
+	// It decides more than a log line. A detached worktree has none of the
+	// artifacts the harness reads -- no coverage profile, no mutants report,
+	// no graph -- so `--prepare` has to produce them there, and anything the
+	// caller produced by hand in their own tree is invisible. When the
+	// checkout already sits on the revision under review, observing it
+	// directly is both faster and the only way those artifacts are seen.
+	Detached bool `json:"detached,omitempty"`
 
 	// PR metadata, present for KindPR. The description is part of the review:
 	// a change that does not do what its author says it does is a finding no
@@ -164,16 +174,50 @@ func parseRange(s string) (left, right string, err error) {
 	return left, right, nil
 }
 
+// detach resolves headRev and returns the tree to observe it in.
+//
+// The caller's own checkout is used when it already sits on that revision
+// with nothing modified. Redline is a reviewing tool and must never move
+// someone off their branch, which is what the worktree was for -- but when
+// the checkout is already on the commit under review, copying it into a
+// throwaway worktree changes nothing about what is observed and loses
+// everything around it: the coverage profile, the mutants report and the
+// graph all live in the caller's tree, and a detached worktree has none of
+// them. `redline run --pr N` on the branch you are already on was reading a
+// bare checkout and reporting the artifacts as missing.
+//
+// Anything modified or untracked rules it out. The tree would then differ
+// from the
+// revision the report names, which is a worse failure than a slow one:
+// findings from uncommitted edits attributed to a pull request. Ignored
+// files are fine; git leaves them out of the question.
 func detach(repo *gitx.Repo, headRev, base string, kind Kind, label, what string) (*Target, error) {
 	head, err := repo.Resolve(headRev)
 	if err != nil {
 		return nil, fmt.Errorf("%s %q: %w", what, headRev, err)
 	}
+	if dir, ok := localCheckout(repo, head); ok {
+		return &Target{Kind: kind, Dir: dir, Head: head, Base: base, Label: label}, nil
+	}
 	dir, err := repo.AddWorktree(head)
 	if err != nil {
 		return nil, err
 	}
-	return &Target{Kind: kind, Dir: dir, Head: head, Base: base, Label: label}, nil
+	return &Target{Kind: kind, Dir: dir, Head: head, Base: base, Label: label, Detached: true}, nil
+}
+
+// localCheckout reports the caller's tree when it is already on head and
+// clean.
+func localCheckout(repo *gitx.Repo, head string) (string, bool) {
+	local, err := repo.Head()
+	if err != nil || local != head {
+		return "", false
+	}
+	clean, err := repo.Clean()
+	if err != nil || !clean {
+		return "", false
+	}
+	return repo.Root, true
 }
 
 // resolvePR fetches the pull request's head commit and its metadata. The
@@ -201,11 +245,19 @@ func resolvePR(repo *gitx.Repo, opts Options) (*Target, error) {
 			}
 		}
 	}
+	// The pull request's head is fetched either way, so the comparison is
+	// against the real remote head rather than whatever the local branch
+	// happens to point at: a checkout that has not pulled is behind, and
+	// reviewing it would report the wrong change under the pull request's
+	// number.
+	if dir, ok := localCheckout(repo, head); ok {
+		return &Target{Kind: KindPR, Dir: dir, Head: head, Base: base, PR: pr}, nil
+	}
 	dir, err := repo.AddWorktree(head)
 	if err != nil {
 		return nil, err
 	}
-	return &Target{Kind: KindPR, Dir: dir, Head: head, Base: base, PR: pr}, nil
+	return &Target{Kind: KindPR, Dir: dir, Head: head, Base: base, PR: pr, Detached: true}, nil
 }
 
 // fetchPR reads PR metadata through gh, which already holds the user's

@@ -294,6 +294,23 @@ func worktreeRoot() (string, error) {
 // Head returns the commit HEAD points at.
 func (r *Repo) Head() (string, error) { return r.Resolve("HEAD") }
 
+// Clean reports whether the working tree matches HEAD.
+//
+// Ignored files do not count: git leaves them out of `status --porcelain`,
+// which is what makes a coverage profile or a build artifact harmless here.
+// Untracked files do count, even though they are not part of any commit,
+// because the panes observe a directory rather than a revision: a new file
+// sitting in the tree is picked up as part of the change, and attributing it
+// to the commit under review is exactly the confusion this question exists to
+// prevent.
+func (r *Repo) Clean() (bool, error) {
+	out, err := r.git("status", "--porcelain")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) == "", nil
+}
+
 // Parent returns the first parent of rev. A root commit has none.
 func (r *Repo) Parent(rev string) (string, error) {
 	sha, err := r.Resolve(rev)

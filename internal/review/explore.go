@@ -200,6 +200,14 @@ func runExplore(ctx context.Context, in Input, opts Options, res *Result) (*Resu
 		res.CostUSD, res.CostKnown = res.Usage.Cost(opts.Model)
 		res.Duration = time.Since(start)
 		res.StopReason = string(msg.StopReason)
+		if opts.Progress != nil {
+			// Each turn is a minute or more and the loop prints nothing until
+			// it is over, so a run that is working looks the same as one that
+			// has hung.
+			opts.Progress(fmt.Sprintf("turn %d: %s so far, %d context entr%s fetched",
+				turn, FormatCost(res.CostUSD, res.CostKnown), res.Fetched,
+				map[bool]string{true: "y", false: "ies"}[res.Fetched == 1]))
+		}
 
 		if msg.StopReason == anthropic.BetaStopReasonRefusal {
 			return res, fmt.Errorf("the model declined this request (%s); no review was produced",

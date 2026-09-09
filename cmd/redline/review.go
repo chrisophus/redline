@@ -74,6 +74,22 @@ func cmdReview(o opts) error {
 			ropts.APIUser = os.Getenv("OPENAI_USER")
 		}
 	}
+	if !o.dryRun {
+		// Said before the call, not after it. A review is one blocking
+		// request of two to five minutes and the command printed nothing
+		// until it returned, so a working run and a hung one looked
+		// identical. Assemble is what --dry-run does and calls nothing, so
+		// the price quoted here is the price about to be paid.
+		if est, aerr := review.Assemble(in, ropts); aerr == nil {
+			fmt.Fprintf(os.Stderr, "redline: reviewing %s with %s (%s), %d input tokens, expect %s, at most %s\n",
+				describeSession(res), ropts.Model, ropts.API, est.InputEstimate,
+				review.FormatCost(est.CostUSD, est.CostKnown),
+				review.FormatCost(est.CostCeilingUSD, est.CostKnown))
+		}
+		ropts.Progress = func(msg string) {
+			fmt.Fprintln(os.Stderr, "redline:", msg)
+		}
+	}
 
 	out, err := review.Run(context.Background(), in, ropts)
 	if out != nil {
@@ -183,4 +199,15 @@ func cmdReview(o opts) error {
 	}
 	fmt.Fprintf(os.Stderr, "redline: wrote %s\n", path)
 	return announce(o.out, o.port, o.open && !o.noOpen)
+}
+
+// describeSession names what is about to be reviewed, so the line printed
+// before a multi-minute call says which change it is about. A session on disk
+// outlives the command that wrote it, and reviewing the wrong one is the
+// mistake this is meant to catch early.
+func describeSession(res *run.Result) string {
+	if res == nil || res.Target == nil {
+		return "the last run"
+	}
+	return res.Target.Describe()
 }

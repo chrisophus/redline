@@ -31,9 +31,10 @@ type Options struct {
 	Upstream string // branch new migrations must not collide with
 	MigDir   string // optional migrations directory filter
 
-	// These point Redline at something other than the working tree.
-	// Each is materialized as a detached worktree, so the user's own
-	// checkout is never moved.
+	// These point Redline at something other than the working tree. Each is
+	// observed in the caller's own checkout when it already sits on that
+	// revision with nothing modified, and in a detached worktree otherwise,
+	// so the user's checkout is never moved.
 	PR     string
 	Branch string
 	Commit string
@@ -43,6 +44,11 @@ type Options struct {
 	// AllowMissingCoverage skips the fail-fast check for configured coverage
 	// harness profiles. Other configured profiles (mutation, etc.) still apply.
 	AllowMissingCoverage bool
+
+	// Progress is called with a line worth printing while the run is
+	// working. Nil keeps the library silent, which is what the tests and any
+	// embedding caller want; the command wires it to stderr.
+	Progress func(string)
 }
 
 // Result is a report plus the per-pane renders backing section 1 and the
@@ -81,10 +87,19 @@ func Run(opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Panes observe the target's directory. For a PR or a branch that is a
-	// detached worktree at the head commit, so "the working tree" and "the
-	// revision under review" are the same thing and no pane needs to know
-	// which kind of target it is looking at.
+	// Panes observe the target's directory, which is either the caller's own
+	// checkout or a detached worktree at the head commit. Either way "the
+	// working tree" and "the revision under review" are the same thing, so
+	// no pane needs to know which kind of target it is looking at.
+	//
+	// The reader does, though. Which tree was observed decides whether the
+	// harness artifacts around it were the caller's or a bare checkout's,
+	// and a run that reported coverage as missing because it was looking at
+	// a worktree is indistinguishable from one where the tests are untested
+	// unless it says so.
+	if opts.Progress != nil {
+		opts.Progress(fmt.Sprintf("observing %s in %s", tgt.Describe(), describeTree(tgt)))
+	}
 	repo, err := gitx.Open(tgt.Dir)
 	if err != nil {
 		return nil, err
@@ -301,6 +316,19 @@ func Run(opts Options) (*Result, error) {
 	}
 	recordMutationSubstrate(&res.Report, res.Change, cfg)
 	return res, nil
+}
+
+// describeTree names the tree the panes are about to read, because which one
+// it is changes what they can see. A detached worktree carries none of the
+// artifacts the harness reads.
+func describeTree(tgt *target.Target) string {
+	if tgt == nil {
+		return "this checkout"
+	}
+	if tgt.Detached {
+		return "a detached worktree (" + tgt.Dir + ")"
+	}
+	return "this checkout (" + tgt.Dir + ")"
 }
 
 // resolveContext runs the language providers this repository configured and
