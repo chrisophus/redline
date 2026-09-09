@@ -162,10 +162,22 @@ func runExplore(ctx context.Context, in Input, opts Options, res *Result) (*Resu
 	start := time.Now()
 	for turn := 1; ; turn++ {
 		params.Messages = msgs
-		msg, err := client.Beta.Messages.New(ctx, params)
-		if err != nil {
+		// Streamed for the same reason the one-shot call is: a non-streaming
+		// request that may run past ten minutes is refused outright, and this
+		// loop grows toward that limit rather than away from it, because
+		// every turn resends the conversation. The blocking call failed on
+		// turn one against a real change.
+		stream := client.Beta.Messages.NewStreaming(ctx, params)
+		var acc anthropic.BetaMessage
+		for stream.Next() {
+			if err := acc.Accumulate(stream.Current()); err != nil {
+				return res, fmt.Errorf("accumulate (turn %d): %w", turn, err)
+			}
+		}
+		if err := stream.Err(); err != nil {
 			return res, fmt.Errorf("review call (turn %d): %w", turn, err)
 		}
+		msg := &acc
 		res.Turns = turn
 		res.Usage.InputTokens += msg.Usage.InputTokens
 		res.Usage.OutputTokens += msg.Usage.OutputTokens
