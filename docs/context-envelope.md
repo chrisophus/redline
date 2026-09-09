@@ -15,7 +15,11 @@ because a provider is free to use a model of its own to fill an envelope.
 One shipped provider does. `redline-scout` reads the diff, decides what this
 particular change needs, fetches it with tools, and records where it is; the
 program then copies those bytes out of the tree, so the content is source and
-only the selection is a judgement. Two consequences are worth stating where a
+only the selection is a judgement. It also quotes the repository's own rules
+under a `guideline` role, which is the case worth knowing about here: an
+expansion may carry text a repository wrote rather than code, and the
+reviewer is told it is content rather than instruction, for the same reason
+`promptFragment` is framed as advice. Two consequences are worth stating where a
 provider author will read them. Its envelope is not byte-identical between
 runs, so `provider.version` carries the model and the effort rather than a
 release, and a fixture that freezes a scouted session freezes one run of it.
