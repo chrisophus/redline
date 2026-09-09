@@ -18,6 +18,7 @@ import (
 	"github.com/chrisophus/redline/internal/pane/lint"
 	"github.com/chrisophus/redline/internal/pane/migrations"
 	"github.com/chrisophus/redline/internal/pane/openapi"
+	"github.com/chrisophus/redline/internal/pane/parity"
 	"github.com/chrisophus/redline/internal/pane/testdelta"
 	"github.com/chrisophus/redline/internal/provider"
 	"github.com/chrisophus/redline/internal/target"
@@ -144,6 +145,7 @@ func Run(opts Options) (*Result, error) {
 		&lint.Suppressions{Repo: repo},
 		&lint.Config{Repo: repo},
 		&testdelta.Pane{Repo: repo},
+		&parity.Pane{Repo: repo},
 	}
 
 	// Every path in the tree under review, listed once and only if a pane
@@ -316,12 +318,8 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 			})
 			continue
 		}
-		for _, note := range env.Notes {
-			rep.Unknowns = append(rep.Unknowns, findings.Unknown{
-				Substrate: "redline/context",
-				Message:   fmt.Sprintf("%s could not fully resolve this change", p.Name),
-				Reason:    note,
-			})
+		if gap := contextGaps(p.Name, env); gap != nil {
+			rep.Unknowns = append(rep.Unknowns, *gap)
 		}
 		if unknown := env.UnknownRoles(); len(unknown) > 0 {
 			rep.Unknowns = append(rep.Unknowns, findings.Unknown{
@@ -359,6 +357,63 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 		}
 	}
 	return envs, absent
+}
+
+// contextGaps turns a provider's notes into one unknown that says what it
+// gathered as well as what it could not.
+//
+// One entry per note read as a row of failures: a run where gorefactor
+// resolved 375 expansions and hit a span cap on a Makefile put seven "could
+// not fully resolve this change" lines on the report, and a reader who sees
+// seven of those reasonably concludes the context layer is broken. It was
+// working. What was missing from the message is the denominator.
+//
+// So the counts lead. A provider that gathered nothing and reported a gap is
+// a different fact from one that gathered hundreds and reported an edge, and
+// the two now read differently.
+func contextGaps(name string, env *envelope.Envelope) *findings.Unknown {
+	if env == nil || len(env.Notes) == 0 {
+		return nil
+	}
+	reason := strings.Join(env.Notes, "; ")
+	total := len(env.Expansions)
+	if total == 0 {
+		return &findings.Unknown{
+			Substrate: "redline/context",
+			Message:   fmt.Sprintf("%s resolved no context for this change", name),
+			Reason:    reason,
+		}
+	}
+	return &findings.Unknown{
+		Substrate: "redline/context",
+		Message: fmt.Sprintf("%s resolved %d expansion(s) (%s) and reported %d gap(s)",
+			name, total, roleTally(env), len(env.Notes)),
+		Reason: reason,
+	}
+}
+
+// roleTally counts an envelope's expansions by role, commonest first, so the
+// unknown can say what shape the context it did gather had.
+func roleTally(env *envelope.Envelope) string {
+	counts := map[envelope.Role]int{}
+	for _, x := range env.Expansions {
+		counts[x.Role]++
+	}
+	roles := make([]envelope.Role, 0, len(counts))
+	for r := range counts {
+		roles = append(roles, r)
+	}
+	sort.Slice(roles, func(i, j int) bool {
+		if counts[roles[i]] != counts[roles[j]] {
+			return counts[roles[i]] > counts[roles[j]]
+		}
+		return roles[i] < roles[j]
+	})
+	parts := make([]string, 0, len(roles))
+	for _, r := range roles {
+		parts = append(parts, fmt.Sprintf("%d %s", counts[r], r))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // attachDiffCoverage computes the number that stands in for reading the tests.

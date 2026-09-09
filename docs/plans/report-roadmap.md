@@ -124,7 +124,15 @@ Ideas that are real but not scheduled.
   diff percentage; untested-function is whether a function has any test at all.
   Fixable if scoped to changed functions with repo-relative paths. It needs
   gorefactor to emit repo-relative paths for the untested-* rules first.
-- `redline/context` unknown wording overstates the failure. On MKT-1415 the
+- ~~`redline/context` unknown wording overstates the failure.~~ Fixed: a
+  provider's notes now collapse into one unknown whose message leads with what
+  it did resolve ("gorefactor resolved 386 expansion(s) (282 enclosing, 36
+  test, 28 history, 26 caller, 14 type) and reported 3 gap(s)"), with the notes
+  themselves as the reason. On this repository's own change that took seven
+  failure-shaped entries down to two that read as what they are. Original note
+  kept below for the reasoning.
+
+  `redline/context` unknown wording overstates the failure. On MKT-1415 the
   `unknowns` entry read "gorefactor could not fully resolve this change... no
   sibling expansions: no changed type implements an interface declared in this
   module" — read alone in the report this sounds like context-gathering failed.

@@ -4,6 +4,9 @@ Ideas for Redline itself: new panes, harness behavior, tool wiring, and
 workflow. Report layout and drill-in UX live in
 [report-roadmap.md](report-roadmap.md). A standing code graph beside the
 per-change envelope is worked out in [graph-context.md](graph-context.md).
+Measuring whether any finding was worth making is in
+[review-feedback.md](review-feedback.md), and it gates most of the choices
+these tables pose.
 Phased design rationale is in [redline-design.md](../../redline-design.md) at
 the repo root.
 
@@ -75,7 +78,7 @@ gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
 | Measured mode (`--measure`) | Run the repo test command with coverage at head when no profile exists or the harness artifact is stale. Off by default so `run` never silently starts a ten-minute suite. | M |
 | Function-level findings | Name new or rewritten functions with no executing test, anchored at the declaration. Finer than a diff-coverage percentage alone. | M |
 | Coverage delta | Per-package percentage at base and head on the two-worktree runner. A drop becomes a finding with the number in it. | M |
-| Error-path nuance | Call out uncovered added lines inside error-handling branches separately from other gaps. | S |
+| Error-path nuance | Call out uncovered added lines inside error-handling branches separately from other gaps. | done |
 | TypeScript / lcov profiles | Read lcov or istanbul output the same way as Go `coverage.out`, including measured mode when the UI test command produces one. | M |
 | Test-delta facts (shipped) | Info findings from the diff: a Go package changed with no test in it, a `t.Skip`/`.skip`/`.only` added, or a net drop in assertion-like lines in a test. Pane `internal/pane/testdelta`. | done |
 | Per-test attribution | Map a line to the tests that execute it. Needs per-test profiles and real test runs; same data mutation wants. Opt-in command, not default `run`. See report-roadmap. | L |
@@ -118,19 +121,19 @@ gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
 | Import / arch lint | `go-arch-lint` or depguard matrix as a scoped custom tool. Complements golangci, not a duplicate delta. | S |
 | UI capture | Pinned browser, route screenshots, console errors, failed requests. No perceptual diff. Explicit `redline setup browser`; pane skipped when missing. Design doc phase 4. | L |
 | Interface section | Permanent gap banner vs agent screenshots vs deterministic "what UI moved" list. No decision yet. See report-roadmap backlog. | M |
-| Provider-parity pane | Deterministic, gorefactor-complementary: for repos with sibling provider/adapter directories (e.g. MCT's `internal/provider/{aws,azure,gcp}/**`), diff filenames and exported-symbol names across siblings when a change touches one. Flags "this capability exists for provider A but not B/C" without a shared interface — the exact class of gap gorefactor's sibling-expansion missed on MKT-1415 (`internal/provider/gcp/offer_amend_mutability.go` has no Azure/AWS analog, and no shared interface links them, so `redline/context` reported "no sibling expansions" even though the parity question itself is answerable cheaply and deterministically). Path/name heuristic only — no LLM, no semantic graph. | S |
+| Provider-parity pane (`internal/pane/parity`, shipped) | Deterministic, gorefactor-complementary: for repos with sibling provider/adapter directories (e.g. MCT's `internal/provider/{aws,azure,gcp}/**`), diff filenames and exported-symbol names across siblings when a change touches one. Flags "this capability exists for provider A but not B/C" without a shared interface — the exact class of gap gorefactor's sibling-expansion missed on MKT-1415 (`internal/provider/gcp/offer_amend_mutability.go` has no Azure/AWS analog, and no shared interface links them, so `redline/context` reported "no sibling expansions" even though the parity question itself is answerable cheaply and deterministically). Path/name heuristic only — no LLM, no semantic graph. Shipped as filenames only: comparing exported symbols would need a per-language notion of what exported means, which is the knowledge that lives behind the provider boundary, and the motivating case is a filename case. A `minShared` guard of three common filenames keeps it quiet on directories that merely sit side by side. | done |
 
 ## Agent workflow and decisions
 
 | Item | What | Effort |
 |------|------|--------|
-| Verdict vocabulary expansion | Today: suppressions (justified / should-fix / rule-noisy). Extend to coverage gaps, config drift, migration findings, lint delta. Same fingerprint machinery. Design doc "Decisions" section. | M |
+| Verdict vocabulary expansion | Was M when only an agent writing review.json could rule on anything. `redline review` now carries verdicts in its own schema and the prompt asks for them, using the same three words (justified / should-fix / rule-noisy) across every finding class rather than a second vocabulary. What is left is smaller and is a wording question, not machinery: whether a coverage gap wants "risk / acceptable" and config drift "reasonable / hiding something", or whether the three existing words carry those too. Decide it against real reviews rather than in advance. | S |
 | Verdicts on mutation survivors | `mutants.json` overlays lines; reviewer records "needs test" / "equivalent" / "acceptable" per survivor. Key verdicts on gomutants v0.6.0+ stable `id` when present. | S |
 | Post verdicts to PR | Whether human/agent decisions ride on `redline post` or stay local. Open question in design doc. | M |
 | Multi-reviewer `review.json` | Merge agent + Bugbot (or two agents) into one report without overwriting. MCT publishes per-reviewer; Redline could key by `reviewer` field. | M |
 | `redline serve` live loop | Replace copy-paste "Copy for the agent" with a websocket or stdin bridge. Upgrade path noted in report-roadmap. | L |
 | Broader review skill context | Skill text for "why was this nolint added" and whether a rule is noisy. Docs/skills, not binary code. | S |
-| Domain-aware `promptFragment` | Today `envelopes[].promptFragment` is entirely generic per-language doctrine (errors-as-values, `context.Context`, goroutine leaks, nil semantics, table-driven tests for Go) — the same text regardless of what the diff actually touches. Dogfooding on MKT-1415: the one real finding (`validateCreateOfferPriorOffer` accepting a PUBLIC prior offer) was a domain-logic bug, not a generic-Go one, and the fragment never referenced the repo's own documented invariants (`CLAUDE.md`, `CODING_GUIDELINES.md`, relevant ADRs under `docs/decisions/`). Let adopters point a config key at project-convention docs and append a short excerpt (or an agent-curated digest of them) to the fragment when the diff's scope matches. Docs/config, not new binary machinery. | S |
+| Domain-aware `promptFragment` | Delivered by the scout rather than as proposed, and better: instead of a config key naming convention docs and a digest appended to every review, `redline-scout` finds `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and the rest at the root and beside the changed files, reads the short ones in its opening turn, and records the lines that bear on this change under a `guideline` role, quoted from the file. Per-change instead of per-repo, and no config to keep current. The MKT-1415 case it was written for is the one it is aimed at: a domain rule written down in the repository, invisible to generic-Go doctrine. | done |
 
 ## What the review request carries
 
