@@ -2,6 +2,7 @@ package eval
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -88,7 +89,13 @@ func Scoreboard(label string, meanCostUSD float64, r Rates, t Totals) string {
 	var b strings.Builder
 	b.WriteString("| Measure | This run | Copilot |\n|---|---|---|\n")
 	fmt.Fprintf(&b, "| Config | %s | code review |\n", label)
-	fmt.Fprintf(&b, "| Mean cost per review | $%.4f | ~$%.2f |\n", meanCostUSD, CopilotCostUSD)
+	// The whole point of this table is a cost comparison against a published
+	// number, so an unpriced model must not print as free.
+	if math.IsNaN(meanCostUSD) {
+		fmt.Fprintf(&b, "| Mean cost per review | unpriced | ~$%.2f |\n", CopilotCostUSD)
+	} else {
+		fmt.Fprintf(&b, "| Mean cost per review | $%.4f | ~$%.2f |\n", meanCostUSD, CopilotCostUSD)
+	}
 	fmt.Fprintf(&b, "| Clean rate | %.0f%% (%d/%d) | %.0f%% |\n",
 		r.CleanRate()*100, r.Silent, r.Reviews, CopilotCleanRate*100)
 	fmt.Fprintf(&b, "| Comments per speaking review | %.1f | %.1f |\n",

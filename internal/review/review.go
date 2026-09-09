@@ -259,6 +259,14 @@ func (r *Result) Summary() string {
 		r.API, r.Model, r.Turns, r.Usage.InputTokens, r.Usage.OutputTokens,
 		FormatCost(r.CostUSD, r.CostKnown),
 		r.Duration.Round(time.Millisecond), len(r.Review.Comments))
+	if r.Usage.CacheReadTokens > 0 {
+		// Without this a cached call reads as `in=3`, which looks like a
+		// request that was never sent. The prompt is the same on every
+		// sample of one fixture, so the second and third are served from
+		// cache and the uncached count collapses; the tokens were still
+		// input, at a different rate.
+		s += fmt.Sprintf(" cached=%d", r.Usage.CacheReadTokens)
+	}
 	if r.Samples > 1 {
 		// The cost is the whole union's, so the sample count has to be beside
 		// it: otherwise a line reads as one expensive review.

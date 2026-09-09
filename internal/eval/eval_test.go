@@ -3,6 +3,7 @@ package eval
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -443,12 +444,29 @@ func TestSweep(t *testing.T) {
 		var revs []findings.Review
 		var cost float64
 		for range samples {
-			out, err := review.Run(context.Background(), in, review.Options{
+			opts := review.Options{
 				Model:  model,
 				Effort: os.Getenv("REDLINE_EVAL_EFFORT"),
-			})
+			}
+			// A model on another wire is an arm like any other. The key and
+			// base URL are read the same way the command reads them, so a
+			// sweep and a real review reach the same endpoint.
+			if os.Getenv("REDLINE_EVAL_API") == "openai" {
+				opts.API = review.APIOpenAI
+				opts.APIKey = os.Getenv("OPENAI_API_KEY")
+				opts.BaseURL = os.Getenv("OPENAI_BASE_URL")
+				opts.APIUser = os.Getenv("OPENAI_USER")
+			}
+			out, err := review.Run(context.Background(), in, opts)
+			// A sample whose model has no rate makes the fixture's cost
+			// unknown rather than smaller. Summing CostUSD would report the
+			// arm as free, which is the number the whole comparison turns on.
 			if out != nil {
-				cost += out.CostUSD
+				if out.CostKnown {
+					cost += out.CostUSD
+				} else {
+					cost = math.NaN()
+				}
 			}
 			if err != nil {
 				t.Errorf("%s: %v", f.Annotation.Name, err)
@@ -489,22 +507,35 @@ func TestSweep(t *testing.T) {
 	fmt.Println(Scoreboard(label, mean(costs), RatesOf(cards), tot))
 }
 
+// mean is NaN when any fixture's cost is, because one unpriced model in the
+// arm makes the arm's cost unknown rather than lower. Summation would do this
+// on its own; it is spelled out so nobody replaces it with a skip.
 func mean(xs []float64) float64 {
 	if len(xs) == 0 {
 		return 0
 	}
 	var sum float64
 	for _, x := range xs {
+		if math.IsNaN(x) {
+			return math.NaN()
+		}
 		sum += x
 	}
 	return sum / float64(len(xs))
 }
 
+// median propagates an unknown, for the reason mean does: NaN sorts first in
+// sort.Float64s, so a mixed set would quietly return the priced half.
 func median(xs []float64) float64 {
 	if len(xs) == 0 {
 		return 0
 	}
 	s := append([]float64{}, xs...)
+	for _, x := range s {
+		if math.IsNaN(x) {
+			return math.NaN()
+		}
+	}
 	sort.Float64s(s)
 	return s[len(s)/2]
 }

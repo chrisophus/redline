@@ -24,6 +24,7 @@ package eval
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -420,8 +421,15 @@ func Table(label string, medianCostUSD float64, t Totals) string {
 		rate = fmt.Sprintf("%.0f%% of %d×%d", 100*float64(t.CaughtSampleHits)/float64(t.Expected*t.Samples),
 			t.Expected, t.Samples)
 	}
-	return fmt.Sprintf("| %s | $%.4f | %d/%d | %s | %d | %d | %s |",
-		label, medianCostUSD, t.Caught, t.Expected, rate, t.QuietViolations, t.Extra, clean)
+	// A model the price table does not carry costs an unknown amount, not
+	// zero. Printing $0.0000 for it makes the cheapest-looking row in the
+	// comparison the one nobody priced.
+	cost := fmt.Sprintf("$%.4f", medianCostUSD)
+	if math.IsNaN(medianCostUSD) {
+		cost = "unpriced"
+	}
+	return fmt.Sprintf("| %s | %s | %d/%d | %s | %d | %d | %s |",
+		label, cost, t.Caught, t.Expected, rate, t.QuietViolations, t.Extra, clean)
 }
 
 // TableHeader is the header for Table's rows.
