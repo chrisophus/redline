@@ -12,6 +12,18 @@ The split is language-specific versus language-agnostic. It is not
 deterministic versus probabilistic; that second split does not exist here,
 because a provider is free to use a model of its own to fill an envelope.
 
+One shipped provider does. `redline-scout` reads the diff, decides what this
+particular change needs, fetches it with tools, and records where it is; the
+program then copies those bytes out of the tree, so the content is source and
+only the selection is a judgement. Two consequences are worth stating where a
+provider author will read them. Its envelope is not byte-identical between
+runs, so `provider.version` carries the model and the effort rather than a
+release, and a fixture that freezes a scouted session freezes one run of it.
+And because `run` executes providers, a repository that configures a
+model-backed provider has made `run` cost money. That is why nothing turns
+one on by default: the opt-in is a named entry in the repository's own
+`.redline.yml`, and the subprocess boundary is what keeps it explicit.
+
 ## What each side owns
 
 | Concern | Redline | Provider |

@@ -27,10 +27,27 @@ builds:
       - -X main.commit={{ .ShortCommit }}
       - -X main.date={{ .Date }}
 
+  # The scout: a context provider that calls a model to decide what the
+  # reviewer needs. It ships beside redline because a provider that is not on
+  # PATH is a context layer that silently does not run, and it costs nothing
+  # until a repository names it in .redline.yml.
+  - id: redline-scout
+    main: ./cmd/redline-scout
+    binary: redline-scout
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+
   # The Graphify context provider. Redline runs it as a subprocess and links
-  # none of it, so it is its own binary; it ships in the same archive because
-  # a provider that is not on PATH is a context layer that silently does not
-  # run.
+  # none of it, so it is its own binary.
   - id: redline-graphify-context
     main: ./cmd/redline-graphify-context
     binary: redline-graphify-context
@@ -51,6 +68,7 @@ archives:
     ids:
       - redline
       - redline-graphify-context
+      - redline-scout
     formats:
       - tar.gz
     name_template: >-

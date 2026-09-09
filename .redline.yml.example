@@ -161,6 +161,22 @@ tools:
 #            "--defer-callers", "**/*.go"]
 #     scope: ["**/*"]
 #
+# scout — the provider that costs money. A cheap model reads the diff, works
+# out what this change needs, finds it with the tools this checkout has
+# (gorefactor, the graph, grep, git log), and records where it is; the program
+# copies those bytes from the tree, so the reviewer gets real source under a
+# selection a model made.
+#
+# Configuring it means `redline run` calls a model and needs ANTHROPIC_API_KEY.
+# --max-cost is a governor, not a tripwire: when it binds the scout stops,
+# says so in the report's unknowns, and the review still happens.
+#
+# context:
+#   - name: scout
+#     command: redline-scout
+#     args: ["--changed", "{{base}}", "--max-cost", "0.25"]
+#     scope: ["**/*"]
+#
 # harness:
 #   profiles:
 #     - id: graph

@@ -12,6 +12,11 @@ BIN      := redline
 # writes an envelope, links no language toolchain, and Redline finds it on
 # PATH through .redline.yml like any other provider.
 ADAPTER  := redline-graphify-context
+# The scout is the provider that costs money: it calls a model to decide what
+# the reviewer needs. It ships beside the others because a provider that is
+# not on PATH is a context layer that silently does not run, and it does
+# nothing at all until a repository names it in .redline.yml.
+SCOUT    := redline-scout
 BINDIR   ?= $(HOME)/.local/bin
 SKILLDIR ?= $(HOME)/.claude/skills
 ROOT     := $(abspath $(dir $(firstword $(MAKEFILE_LIST))))
@@ -36,6 +41,7 @@ all: build
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/redline
 	go build -ldflags "$(LDFLAGS)" -o $(ADAPTER) ./cmd/redline-graphify-context
+	go build -ldflags "$(LDFLAGS)" -o $(SCOUT) ./cmd/redline-scout
 
 test:
 	go test ./...
@@ -138,6 +144,8 @@ install-bin: build
 	@echo "$(BINDIR)/$(BIN) -> $(ROOT)/$(BIN)"
 	@ln -sfn $(ROOT)/$(ADAPTER) $(BINDIR)/$(ADAPTER)
 	@echo "$(BINDIR)/$(ADAPTER) -> $(ROOT)/$(ADAPTER)"
+	@ln -sfn $(ROOT)/$(SCOUT) $(BINDIR)/$(SCOUT)
+	@echo "$(BINDIR)/$(SCOUT) -> $(ROOT)/$(SCOUT)"
 
 # The skill directory is symlinked, not copied, so editing skills/redline/
 # in this checkout is immediately what the agent reads. A copy drifts, and
@@ -173,14 +181,14 @@ install-repo:
 	@echo "note: teammates still need the redline binary on PATH."
 
 uninstall:
-	@rm -f $(BINDIR)/$(BIN) $(BINDIR)/$(ADAPTER)
+	@rm -f $(BINDIR)/$(BIN) $(BINDIR)/$(ADAPTER) $(BINDIR)/$(SCOUT)
 	@for s in $(SKILLS); do \
 	  if [ -L "$(SKILLDIR)/$$s" ]; then rm -f "$(SKILLDIR)/$$s"; fi; \
 	done
 	@echo "Removed $(BINDIR)/$(BIN) and the skills under $(SKILLDIR)."
 
 clean:
-	rm -f $(BIN) $(ADAPTER)
+	rm -f $(BIN) $(ADAPTER) $(SCOUT)
 
 # goreleaser cuts the cross-platform release. snapshot builds locally without a
 # tag or publishing, to check the config; release runs in CI on a pushed tag.

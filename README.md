@@ -284,7 +284,22 @@ A provider that is missing or fails degrades to a gap: the review runs
 without it, and the report says which context was absent, because a check
 that did not run and one that came back clean look identical otherwise.
 
-One provider ships here: `redline-graphify-context`, which reads the graph
+Two providers ship here. `redline-scout` is the one that costs money: a cheap
+model reads the diff, works out what this change in particular needs, and uses
+a handful of tools to find it. A deleted guard pulls the history of those
+lines. A changed signature pulls the callers gorefactor resolves exactly. A
+struct whose fields moved pulls the migration that writes the row. It records
+locations, never code: the program reads those bytes from the tree itself, so
+the reviewer gets real source under a selection a model made, and a model's
+recollection of a function can never reach the review looking like source. It
+explores under a cost cap and its findings are frozen into the envelope, which
+is what keeps the review a single call over a fixed payload while the
+exploring happens at a fraction of the rate. Running out of budget is not a
+failure: it stops, says so in the notes, and the review still happens. It is
+off unless a repository names it, because `run` costing nothing is worth
+keeping by default.
+
+`redline-graphify-context` reads the graph
 [Graphify](https://github.com/Graphify-Labs/graphify) writes at
 `graphify-out/graph.json` and answers for every changed file rather than for
 one language. It parses nothing itself. Its edges match by name, so
@@ -396,6 +411,8 @@ its own facts. The reasoning and the removal inventory are in
 cmd/redline           CLI
 cmd/redline-graphify-context
                       context provider: a Graphify graph to an envelope
+cmd/redline-scout     context provider: a model chooses what the reviewer
+                      needs; this program copies the bytes
 internal/change       the change under review: files, diffs, classification;
                       generated-file detection
 internal/cover        diff coverage from an existing profile
@@ -406,6 +423,8 @@ internal/findings     wire format: doctor's schema, reimplemented and extended
 internal/gitx         git layer (observe; fetch/worktrees for PR/branch)
 internal/graphify     the graph provider's own half: Graphify's schema to
                       roles, and nothing else in here may import it
+internal/scout        the scout provider's own half: the tool loop, the cost
+                      governor, and the rule that content comes from the tree
 internal/pane         the observe/diff pane interface
 internal/pane/lint         lint delta, suppression triage, config drift
 internal/pane/migrations   migration hygiene

@@ -1,24 +1,47 @@
-# Both context providers for `redline review` on this repository. gorefactor
-# is detected from .gorefactor.yaml on its own; it is spelled out here so the
-# two entries sit together and the division of labour is visible: gorefactor
-# resolves Go through go/types, and graphify speaks for everything else, with
-# its name-resolved callers handed back to gorefactor for Go files.
+# Redline's own configuration. See .redline.yml.example for every field.
+#
+# The context providers that resolve this change beyond the diff. Both degrade
+# rather than fail: a provider whose binary is missing is reported as absent
+# and the review runs without it.
 context:
+  # gorefactor resolves Go through go/types, so its callers are facts rather
+  # than name matches. Detected from .gorefactor.yaml on its own; spelled out
+  # here so the division of labour between the two is visible in one place.
   - name: gorefactor
     command: gorefactor
     args: ["context", "--changed", "{{base}}", "--json"]
     scope: ["**/*.go"]
+
+  # graphify speaks for everything gorefactor does not, from a tree-sitter
+  # index of the whole repository. Its caller edges match by name, so they are
+  # handed back to gorefactor for Go files; everything else it knows still
+  # comes through. Needs `graphify update .` to have written the graph.
   - name: graphify
     command: redline-graphify-context
     args: ["--graph", "graphify-out/graph.json", "--changed", "{{base}}",
            "--defer-callers", "**/*.go"]
     scope: ["**/*"]
 
-harness:
-  profiles:
-    - id: graph
-      path: graphify-out/graph.json
-      produce:
-        command: graphify
-        args: [update, ".", "--no-cluster"]
-      when: stale
+  # The scout is off. It calls a model on every `redline run`, which is money,
+  # and `run` costing nothing is a property worth keeping by default. Turn it
+  # on where the extra context is worth a few cents a review, and note that
+  # `redline run` then needs ANTHROPIC_API_KEY.
+  #
+  # - name: scout
+  #   command: redline-scout
+  #   args: ["--changed", "{{base}}", "--max-cost", "0.25"]
+  #   scope: ["**/*"]
+
+# The graph is a build artifact and an adapter reading a stale one describes
+# code as it was. A harness profile is how that becomes visible, and it is
+# commented out because a required profile fails `redline run` for anyone who
+# has not installed graphify. Turn it on in a checkout that has.
+#
+# harness:
+#   profiles:
+#     - id: graph
+#       path: graphify-out/graph.json
+#       produce:
+#         command: graphify
+#         args: [update, ".", "--no-cluster"]
+#       when: stale
