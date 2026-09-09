@@ -36,6 +36,9 @@ func cmdReview(o opts) error {
 		Change:    res.Change,
 		Envelopes: res.Envelopes,
 		Absent:    res.ContextAbsent,
+		// The profile is already read and saved with the session; the review
+		// is the last consumer that had no access to it.
+		LineCoverage: res.LineCoverage,
 	}
 	// Price the estimate against what this installation's reviews actually
 	// emit, when it has emitted any.

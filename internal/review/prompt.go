@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/cover"
 	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/findings"
 )
@@ -62,7 +63,9 @@ What is not worth reporting:
 
 - Style, formatting, and naming, unless the change makes the code wrong.
 - Anything a linter would catch. One already ran.
-- Test coverage as a number. That is measured elsewhere.
+- Test coverage as a number. That is measured elsewhere. A specific line the
+  change added that nothing executes is different: say what breaks if it is
+  wrong, or say nothing.
 - Praise, summaries of what the diff plainly shows, or advice to "consider"
   something without saying what breaks if it is not done.
 - Anything you would qualify with "may", "might", or "could potentially" and
@@ -96,7 +99,23 @@ line for every file whose diff you were shown, and none for the ones held back
 above: their diffs are not here, so anything you said about them would be
 invention. Say what changed and why, not what the diff plainly is. "Holds the
 graph's build revision so a stale graph can be reported" beats "adds a field
-to Graph".`
+to Graph".
+
+The verdicts array is where you rule on the findings the checks already made.
+You have the whole diff and the context beyond it; the check that fired had a
+pattern. So you can tell what it could not:
+
+- should-fix when it is right and the code should change. Put the fix in the
+  fix field.
+- justified when what it flags is deliberate and correct here, and say what
+  makes it so.
+- rule-noisy when the check is wrong here, or fires too often to be worth
+  reading.
+
+Rule only where you have something the check did not. A verdict that restates
+the finding is worse than no verdict: it costs the reader a line and tells
+them nothing. An empty verdicts array is the right answer when the findings
+speak for themselves, and most of the time they do.`
 
 // hidesTests reports whether the request holds the change's test files back.
 //
@@ -246,6 +265,7 @@ func (in Input) fixed() string {
 	var b strings.Builder
 	b.WriteString(in.changeSection())
 	b.WriteString(in.priorsSection())
+	b.WriteString(in.coverageSection())
 	b.WriteString(in.absentSection())
 	b.WriteString(in.diffSection())
 	return b.String()
@@ -257,6 +277,7 @@ func (in Input) build(budget envelope.Budgeted) string {
 	var b strings.Builder
 	b.WriteString(in.changeSection())
 	b.WriteString(in.priorsSection())
+	b.WriteString(in.coverageSection())
 	b.WriteString(in.absentSection())
 	if ctx := budget.Render(); ctx != "" {
 		b.WriteString(in.contextHeader())
@@ -418,6 +439,85 @@ func (in Input) priorsSection() string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// coverageSection is the lines this change added that no test executes.
+//
+// Not the percentage: that is the coverage pane's answer and the prompt tells
+// the reviewer not to repeat it. What a number cannot say is which line, and
+// that is the difference between "coverage went down" and "the error path you
+// just added is the one nothing runs". Added lines only, because an old
+// uncovered line in a file this change touched is not this change's news.
+func (in Input) coverageSection() string {
+	if len(in.LineCoverage) == 0 || in.Change == nil {
+		return ""
+	}
+	var b strings.Builder
+	files, omitted := 0, 0
+	for _, f := range in.Change.Files {
+		lines, ok := in.LineCoverage[f.Path]
+		if !ok || len(lines) == 0 {
+			continue
+		}
+		var uncovered []int
+		for _, line := range cover.AddedLines(f.Diff) {
+			if covered, known := lines[line]; known && !covered {
+				uncovered = append(uncovered, line)
+			}
+		}
+		if len(uncovered) == 0 {
+			continue
+		}
+		if files >= maxCoverageFiles {
+			omitted++
+			continue
+		}
+		files++
+		sort.Ints(uncovered)
+		fmt.Fprintf(&b, "- %s: %s\n", f.Path, lineRanges(uncovered))
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	if omitted > 0 {
+		fmt.Fprintf(&b, "- and %d more file(s) with uncovered added lines\n", omitted)
+	}
+	return "## Added lines no test executes\n\n" +
+		"From the coverage profile, for the files it covers. Use it to sharpen a " +
+		"finding you already have, not to report a number.\n\n" + b.String() + "\n"
+}
+
+// These bound a section that sits with the facts rather than with the context,
+// so it is priced first and never truncated. On a change that rewrites a
+// package every added line is uncovered until the tests land, and unbounded
+// that is hundreds of ranges taking the ceiling from the context block that
+// would have paid for a finding. What is cut is counted, not hidden.
+const (
+	maxCoverageFiles  = 15
+	maxCoverageRanges = 12
+)
+
+// lineRanges folds a sorted line list into ranges, because "44-71" is one
+// thing a reader can hold and twenty-eight numbers are not.
+func lineRanges(lines []int) string {
+	var parts []string
+	for i := 0; i < len(lines); {
+		if len(parts) == maxCoverageRanges {
+			parts = append(parts, fmt.Sprintf("and %d more line(s)", len(lines)-i))
+			break
+		}
+		j := i
+		for j+1 < len(lines) && lines[j+1] == lines[j]+1 {
+			j++
+		}
+		if j == i {
+			parts = append(parts, fmt.Sprintf("%d", lines[i]))
+		} else {
+			parts = append(parts, fmt.Sprintf("%d-%d", lines[i], lines[j]))
+		}
+		i = j + 1
+	}
+	return strings.Join(parts, ", ")
 }
 
 // absentSection names producers that did not run. A producer that errored
