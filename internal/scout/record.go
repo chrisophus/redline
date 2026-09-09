@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/chrisophus/redline/internal/envelope"
+	"github.com/chrisophus/redline/internal/globmatch"
 )
 
 // RoleNeighbor is the cross-kind role the graph adapter introduced: a file of
@@ -112,6 +113,11 @@ type resolver struct {
 	root   string
 	limits Limits
 
+	// covered is what another provider already resolves for coveredScope, so
+	// a record under one of those roles is refused rather than paid for.
+	covered      []envelope.Role
+	coveredScope []string
+
 	cache map[string][]string
 	notes []string
 }
@@ -134,6 +140,10 @@ func (r *resolver) validate(rec record) error {
 	if strings.TrimSpace(rec.File) == "" {
 		return fmt.Errorf("no file")
 	}
+	if r.isCovered(rec.Role, rec.File) {
+		return fmt.Errorf("%s is already resolved for %s by a provider that does it exactly; record something it cannot see instead",
+			rec.Role, rec.File)
+	}
 	lines, err := r.read(rec.File)
 	if err != nil {
 		return fmt.Errorf("%s: %v", rec.File, err)
@@ -145,6 +155,23 @@ func (r *resolver) validate(rec record) error {
 		return fmt.Errorf("%s has %d lines; start_line %d is past the end", rec.File, len(lines), rec.StartLine)
 	}
 	return nil
+}
+
+// isCovered reports whether another provider already resolves this role for
+// this file. Told in the brief and enforced here: a model told not to do
+// something will sometimes do it anyway, and the refusal is correctable
+// because it comes back as an error result rather than ending the run.
+func (r *resolver) isCovered(role envelope.Role, file string) bool {
+	inScope := len(r.coveredScope) == 0 || globmatch.MatchesAny(r.coveredScope, normPath(file))
+	if !inScope {
+		return false
+	}
+	for _, c := range r.covered {
+		if c == role {
+			return true
+		}
+	}
+	return false
 }
 
 // resolve reads the bytes for a record. Content only ever comes from here:

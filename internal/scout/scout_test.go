@@ -387,3 +387,31 @@ func TestTheRecordCapRefusesAndSaysToStop(t *testing.T) {
 		t.Error("the scout was never told it had hit the cap, so it would keep trying")
 	}
 }
+
+// The scout is told what another provider already resolves, in its opening
+// turn, because a refusal after the fact still costs the turn that earned it.
+func TestTheCoveredRolesReachTheScoutsBrief(t *testing.T) {
+	api := serve(t, msg("tool_use", toolUse("tu_1", "done", map[string]any{})))
+	_, _, err := runScout(t, api, Options{
+		Diff:         "diff text",
+		Covered:      []envelope.Role{envelope.RoleEnclosing, envelope.RoleCaller},
+		CoveredScope: []string{"**/*.go"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := fmt.Sprint(api.requests[0])
+	for _, want := range []string{"Already covered", "enclosing, caller", "**/*.go"} {
+		if !strings.Contains(req, want) {
+			t.Errorf("the brief does not carry %q", want)
+		}
+	}
+}
+
+// With nothing covered the brief says nothing about coverage, rather than
+// telling a scout with no peer provider that an empty list is covered.
+func TestNoCoveredRolesSaysNothingAboutCoverage(t *testing.T) {
+	if got := coveredBrief(Options{CoveredScope: []string{"**/*.go"}}); got != "" {
+		t.Errorf("coveredBrief = %q, want nothing when no role is covered", got)
+	}
+}

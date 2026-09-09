@@ -70,7 +70,16 @@ there is a turn wasted.
 
 Do not record something the diff already shows in full. The reviewer has the
 diff. The exception is a declaration a hunk sits inside: if the diff shows
-three changed lines of a forty-line function, record the function.
+three changed lines of a forty-line function, record the function. That
+exception does not apply to anything the brief says is already covered.
+
+Read the covered list at the top of the brief before you decide what to look
+for. Another provider may already resolve some of these roles exactly, from a
+type checker rather than by searching, and for those files it is right and you
+are guessing. Your value is what it cannot see: the rule this repository wrote
+down, the file of another kind the change is coupled to, the history behind a
+deleted guard, and the languages it does not read. Recording a role it covers
+is refused, and the turn is gone either way.
 
 Be frugal. Most changes need one to five records. A mechanical change, a
 dependency bump, a documentation edit, needs none, and recording nothing is a
@@ -96,10 +105,31 @@ func brief(opts Options) string {
 	if opts.Graph == "" {
 		b.WriteString("\nThis repository has no cross-language graph, so the code tools are all you have.\n")
 	}
+	b.WriteString(coveredBrief(opts))
 	b.WriteString(guidelineBrief(opts.Root, guidelines(opts.Root, opts.Changed), inlineGuidelineLines, totalGuidelineLines))
 	b.WriteString("\nThe diff:\n\n")
 	b.WriteString(opts.Diff)
 	return b.String()
+}
+
+// coveredBrief says what another provider already resolves, so the scout does
+// not spend turns arriving second at something a type checker did exactly.
+func coveredBrief(opts Options) string {
+	if len(opts.Covered) == 0 {
+		return ""
+	}
+	roles := make([]string, len(opts.Covered))
+	for i, r := range opts.Covered {
+		roles[i] = string(r)
+	}
+	scope := "every file in this change"
+	if len(opts.CoveredScope) > 0 {
+		scope = strings.Join(opts.CoveredScope, ", ")
+	}
+	return fmt.Sprintf(
+		"\nAlready covered, exactly, by another provider, for %s: %s. "+
+			"Do not record those; recording one is refused. Look for what it cannot see.\n",
+		scope, strings.Join(roles, ", "))
 }
 
 // The repository's own rules are the one piece of context that bears on every

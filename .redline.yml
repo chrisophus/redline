@@ -27,9 +27,18 @@ context:
   # on where the extra context is worth a few cents a review, and note that
   # `redline run` then needs ANTHROPIC_API_KEY.
   #
+  # --covered is what keeps it from paying a model to arrive second. gorefactor
+  # resolves those five roles for Go from a type checker; a scout that greps
+  # for the same callers is guessing at something already known. Naming them
+  # here spends its turns on what nothing above can see: the rule this
+  # repository wrote down, the migration the code is coupled to, the history
+  # behind a deleted guard.
+  #
   # - name: scout
   #   command: redline-scout
-  #   args: ["--changed", "{{base}}", "--max-cost", "0.25"]
+  #   args: ["--changed", "{{base}}", "--max-cost", "0.25",
+  #          "--covered", "enclosing,caller,type,sibling,history",
+  #          "--covered-scope", "**/*.go"]
   #   scope: ["**/*"]
 
 # The graph is a build artifact and an adapter reading a stale one describes

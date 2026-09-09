@@ -36,6 +36,7 @@ import (
 	"strings"
 
 	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/gitx"
 	"github.com/chrisophus/redline/internal/review"
 	"github.com/chrisophus/redline/internal/scout"
@@ -57,6 +58,10 @@ flags:
   --effort LEVEL    low|medium|high|xhigh|max (default low)
   --max-cost USD    stop looking when the next turn would exceed this (default 0.25)
   --max-turns N     turn limit (default 8)
+  --covered ROLES   comma-separated roles another provider resolves exactly,
+                    which this one will not record (for example
+                    enclosing,caller,type,sibling,history beside gorefactor)
+  --covered-scope GLOBS  the files that applies to (for example **/*.go)
   --base-url URL    endpoint, for a proxy
   --version         print the adapter version
 
@@ -87,6 +92,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		effort      = fs.String("effort", "", "effort level")
 		maxCost     = fs.Float64("max-cost", 0, "stop looking above this many dollars")
 		maxTurns    = fs.Int("max-turns", 0, "turn limit")
+		covered     = fs.String("covered", "", "roles another provider already resolves exactly")
+		coverScope  = fs.String("covered-scope", "", "globs those roles are covered for")
 		baseURL     = fs.String("base-url", "", "endpoint, for a proxy")
 		showVersion = fs.Bool("version", false, "print the adapter version")
 	)
@@ -120,18 +127,20 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	generated := generatedIn(repo, paths)
 	opts := scout.Options{
-		Root:       repo.Root,
-		Changed:    paths,
-		Generated:  generated,
-		BaseSHA:    base,
-		Diff:       diffOf(repo, base, paths, generated),
-		Graph:      resolveGraph(repo.Root, *graph),
-		Model:      *model,
-		Effort:     *effort,
-		MaxTurns:   *maxTurns,
-		MaxCostUSD: *maxCost,
-		BaseURL:    *baseURL,
-		APIKey:     os.Getenv("ANTHROPIC_API_KEY"),
+		Root:         repo.Root,
+		Changed:      paths,
+		Generated:    generated,
+		BaseSHA:      base,
+		Diff:         diffOf(repo, base, paths, generated),
+		Graph:        resolveGraph(repo.Root, *graph),
+		Model:        *model,
+		Effort:       *effort,
+		MaxTurns:     *maxTurns,
+		MaxCostUSD:   *maxCost,
+		Covered:      coveredRoles(*covered),
+		CoveredScope: commaList(*coverScope),
+		BaseURL:      *baseURL,
+		APIKey:       os.Getenv("ANTHROPIC_API_KEY"),
 	}
 	env, spend, err := scout.Run(context.Background(), opts)
 	if err != nil {
@@ -149,6 +158,29 @@ func run(args []string, stdout, stderr io.Writer) error {
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	return enc.Encode(env)
+}
+
+// coveredRoles reads the roles another provider already resolves. Naming them
+// here rather than hard-coding gorefactor keeps the scout ignorant of which
+// providers exist, the same way Redline is.
+func coveredRoles(s string) []envelope.Role {
+	var out []envelope.Role
+	for _, r := range commaList(s) {
+		out = append(out, envelope.Role(r))
+	}
+	return out
+}
+
+// commaList reads a comma-separated flag, dropping the empty entries a
+// trailing comma or an unset flag leaves behind.
+func commaList(s string) []string {
+	var out []string
+	for _, v := range strings.Split(s, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func capNote(s scout.Spend) string {
