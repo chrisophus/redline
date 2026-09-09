@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/chrisophus/redline/internal/findings"
@@ -40,6 +41,50 @@ func TestSamplesUnionAddsDisjointFindings(t *testing.T) {
 	// what was spent by a factor of Samples.
 	if res.Usage.InputTokens != 300 || res.Usage.OutputTokens != 30 {
 		t.Errorf("usage = %+v, want the three samples summed", res.Usage)
+	}
+}
+
+// Several minutes of silence for a run that is working looks the same as one
+// that has hung, and sampling multiplies the wait. Each sample says so as it
+// lands.
+func TestSamplesReportEachOneAsItLands(t *testing.T) {
+	api := serveSSE(t,
+		anthropicSSE("end_turn", 100, 10, anthropicText(0,
+			`{"overview":"a","files":[],"comments":[{"file":"a.go","line":1,"severity":"warning",`+
+				`"confidence":"high","body":"the retry loop never bounds attempts"}]}`)),
+		anthropicSSE("max_tokens", 100, 10, anthropicText(0, `{"overview":"trunc`)),
+	)
+	opts := exploreOpts(api)
+	opts.Mode = ModeOneShot
+	opts.Samples = 2
+	var mu sync.Mutex
+	var lines []string
+	opts.Progress = func(msg string) {
+		mu.Lock()
+		defer mu.Unlock()
+		lines = append(lines, msg)
+	}
+	if _, err := Run(context.Background(), exploreInput(), opts); err != nil {
+		t.Fatalf("one bad sample must not fail the review: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) != 2 {
+		t.Fatalf("got %d progress line(s), want one per sample: %v", len(lines), lines)
+	}
+	var reportedFailure bool
+	for _, l := range lines {
+		if strings.Contains(l, "failed") {
+			reportedFailure = true
+		}
+		if !strings.Contains(l, "of 2") {
+			t.Errorf("a progress line does not say how many samples there are: %q", l)
+		}
+	}
+	if !reportedFailure {
+		// A sample that failed still cost money and still thinned the union,
+		// so it is reported rather than left as a gap in the count.
+		t.Errorf("the failed sample was not reported: %v", lines)
 	}
 }
 
