@@ -185,11 +185,28 @@ func lineOf(s string) (int, bool) {
 	return n, true
 }
 
-// AddedLines returns the new-side line numbers a unified diff adds. Coverage is
-// only asked about lines this change introduced: whether the rest of the file is
-// tested is a different, older question.
-func AddedLines(diff string) []int {
-	var out []int
+// AddedLineText maps each added line's new-side number to its text.
+//
+// It shares walkAdded with AddedLines rather than reimplementing the walk,
+// because the two are used as a matched pair: a caller that has line numbers
+// from one and text from the other is pointing at the wrong code the moment
+// they disagree, and they disagreed on exactly the two cases walkAdded
+// documents.
+func AddedLineText(diff string) map[int]string {
+	out := map[int]string{}
+	walkAdded(diff, func(line int, text string) { out[line] = text })
+	return out
+}
+
+// walkAdded is the one reading of a unified diff's added lines.
+//
+// Two cases are easy to get wrong and are the reason this exists once rather
+// than at each call site. "+++" is deliberately not special-cased: file
+// headers live outside hunks (the "diff " reset below ends one), so inside a
+// hunk "+++i;" is added code, and skipping it shifts every added-line number
+// after it. And the "\" no-newline marker occupies no new line, so counting
+// it shifts everything after it the other way.
+func walkAdded(diff string, fn func(line int, text string)) {
 	newLine := 0
 	inHunk := false
 	for _, line := range strings.Split(diff, "\n") {
@@ -211,11 +228,7 @@ func AddedLines(diff string) []int {
 			// The next file's headers follow, outside any hunk.
 			inHunk = false
 		case strings.HasPrefix(line, "+"):
-			// "+++" is deliberately not special-cased here: file headers
-			// live outside hunks (the "diff " reset above ends one), so
-			// inside a hunk "+++i;" is added code, and skipping it would
-			// shift every added-line number after it.
-			out = append(out, newLine)
+			fn(newLine, line[1:])
 			newLine++
 		case strings.HasPrefix(line, "-"), strings.HasPrefix(line, `\`):
 			// Deleted content and the no-newline marker occupy no new line.
@@ -223,6 +236,14 @@ func AddedLines(diff string) []int {
 			newLine++
 		}
 	}
+}
+
+// AddedLines returns the new-side line numbers a unified diff adds. Coverage is
+// only asked about lines this change introduced: whether the rest of the file is
+// tested is a different, older question.
+func AddedLines(diff string) []int {
+	var out []int
+	walkAdded(diff, func(line int, _ string) { out = append(out, line) })
 	return out
 }
 

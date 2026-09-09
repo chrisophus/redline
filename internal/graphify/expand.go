@@ -407,8 +407,18 @@ func (w *walk) expansions() []envelope.Expansion {
 // bounded by MaxLines and by the file itself.
 func (w *walk) span(n Node, fileLines int) (start, end int) {
 	start = n.Line()
-	if start <= 0 || fileLines == 0 {
+	if fileLines == 0 {
 		return 0, 0
+	}
+	if start <= 0 {
+		// A file node records no line on some extractors. Refusing it drops
+		// the cross-kind case file nodes are admitted for in the first place:
+		// a migration whose whole content is the thing worth reading. The
+		// file starts at line one, and maxLines bounds the rest.
+		if !n.isFile() {
+			return 0, 0
+		}
+		start = 1
 	}
 	if start > fileLines {
 		// The graph is describing a file that has since been edited. Sending
@@ -593,8 +603,7 @@ func (s *sourceCache) load(key string) (string, []byte, bool) {
 		}
 		return "", nil, false
 	}
-	candidate := filepath.Join(s.root, filepath.FromSlash(key))
-	if data, err := os.ReadFile(candidate); err == nil {
+	if data, ok := s.readUnder(key); ok {
 		return key, data, true
 	}
 	// A graph built from a subdirectory carries that prefix on every path.
@@ -606,10 +615,31 @@ func (s *sourceCache) load(key string) (string, []byte, bool) {
 			return "", nil, false
 		}
 		rest = rest[i+1:]
-		if data, err := os.ReadFile(filepath.Join(s.root, filepath.FromSlash(rest))); err == nil {
+		if data, ok := s.readUnder(rest); ok {
 			return rest, data, true
 		}
 	}
+}
+
+// readUnder reads a repository-relative path, refusing anything that climbs
+// out of the tree under review.
+//
+// source_file comes from the graph, which is a file on disk that some other
+// program wrote. A path with ".." in it would otherwise be joined onto the
+// root and read, and its contents would reach the reviewer as this
+// repository's source. The absolute branch above already checks this; the
+// relative one did not.
+func (s *sourceCache) readUnder(rel string) ([]byte, bool) {
+	full := filepath.Join(s.root, filepath.FromSlash(rel))
+	inside, err := filepath.Rel(s.root, full)
+	if err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) {
+		return nil, false
+	}
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return nil, false
+	}
+	return data, true
 }
 
 func priorityFor(e Edge) int {

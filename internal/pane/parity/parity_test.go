@@ -24,7 +24,10 @@ var providerTree = []string{
 
 func run(t *testing.T, base, head []string, changed []string) pane.Result {
 	t.Helper()
-	p := &Pane{}
+	// Production reads the listing from the worktree; a test hands it the
+	// same listing its head observation carries, so Scope filters on exactly
+	// what Diff will see.
+	p := &Pane{byDir: groupByDir(head)}
 	p.Scope(changed)
 	res, err := p.Diff(&observation{Rev: "base", Files: base}, &observation{Rev: "", Files: head})
 	if err != nil {
@@ -104,11 +107,31 @@ func TestFindingsAreInfoNotGates(t *testing.T) {
 	}
 }
 
-func TestScopeSkipsTopLevelFiles(t *testing.T) {
-	p := &Pane{}
-	got := p.Scope([]string{"README.md", "internal/provider/gcp/offer.go"})
+// The union of every pane's scope is how much of the change Redline says it
+// examined, so a pane must not claim a file it will not read. Scoping on
+// directory depth claimed nearly everything and emptied the report's
+// "what could not be determined" section.
+func TestScopeClaimsOnlyFilesInAParallelSet(t *testing.T) {
+	p := &Pane{byDir: groupByDir(providerTree)}
+	got := p.Scope([]string{
+		"README.md",
+		"docs/plans/graph-context.md",
+		"internal/pane/lint/lint.go",
+		"internal/provider/gcp/offer.go",
+	})
 	if len(got) != 1 || got[0] != "internal/provider/gcp/offer.go" {
-		t.Errorf("scope = %v; a file with no parent set cannot have siblings", got)
+		t.Errorf("scope = %v; only the file in a parallel set is examined here", got)
+	}
+}
+
+func TestScopeIsEmptyForARepositoryWithNoParallelSets(t *testing.T) {
+	p := &Pane{byDir: groupByDir([]string{
+		"internal/pane/lint/lint.go",
+		"internal/pane/lint/config.go",
+		"internal/pane/migrations/migrations.go",
+	})}
+	if got := p.Scope([]string{"internal/pane/lint/lint.go"}); len(got) != 0 {
+		t.Errorf("scope = %v, want nothing: these directories share no shape", got)
 	}
 }
 
