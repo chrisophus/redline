@@ -764,3 +764,85 @@ func TestDeltaBrokenConfigWithNoBuiltinsScopesTheChange(t *testing.T) {
 		t.Fatal("observe must fail so the pane reports the parse error")
 	}
 }
+
+// fakeFailingESLint puts an eslint on PATH that always fails. Used to prove
+// scope-gating skips the tool instead of failing the pane on unrelated changes.
+func fakeFailingESLint(t *testing.T) {
+	t.Helper()
+	bin := t.TempDir()
+	script := "#!/bin/sh\necho eslint should not run >&2\nexit 2\n"
+	if err := os.WriteFile(filepath.Join(bin, "eslint"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func TestDeltaSkipsToolWhenChangeOutsideScope(t *testing.T) {
+	fakeFailingESLint(t)
+	fakeGolangci(t)
+	r := newRepo(t)
+	r.write(".eslintrc.json", `{"rules":{}}`)
+	r.write(".golangci.yml", "version: \"2\"\n")
+	r.write("ui/app.ts", "export const app = 1\n")
+	r.write("a.go", "package a\n")
+	r.write("lint-fixture.json", `{"Issues":[]}`)
+	r.commit("base")
+	r.write("a.go", "package a\n\nfunc A() {}\n")
+	r.write("lint-fixture.json", `{"Issues":[]}`)
+
+	p := &Delta{Repo: r.open()}
+	if got := p.Scope([]string{"a.go"}); len(got) != 1 || got[0] != "a.go" {
+		t.Fatalf("scope should be the go file, got %v", got)
+	}
+	if _, err := p.Observe(pane.Worktree); err != nil {
+		t.Fatalf("eslint must be skipped on a go-only change, not fail the pane: %v", err)
+	}
+}
+
+func TestFilterIntroducedKeepsErrorsAndAddedLineWarnings(t *testing.T) {
+	r := newRepo(t)
+	r.write("api/openapi.yaml", strings.Join([]string{
+		"openapi: 3.0.3",
+		"info:",
+		"  title: t",
+		"  version: 1",
+		"paths: {}",
+	}, "\n")+"\n")
+	base := r.commit("base")
+	r.write("api/openapi.yaml", strings.Join([]string{
+		"openapi: 3.0.3",
+		"info:",
+		"  title: t",
+		"  version: 1",
+		"paths: {}",
+		"components:",
+		"  schemas:",
+		"    New:",
+		"      type: object",
+	}, "\n")+"\n")
+
+	p := &Delta{Repo: r.open(), scoped: []string{"api/openapi.yaml"}}
+	introduced := []Issue{
+		{Tool: "vacuum", File: "api/openapi.yaml", Line: 2, Rule: "old-line", Severity: "warning", Message: "pre-existing"},
+		{Tool: "vacuum", File: "api/openapi.yaml", Line: 8, Rule: "new-line", Severity: "warning", Message: "on added schema"},
+		{Tool: "gorefactor", File: "a.go", Line: 0, Rule: "file-size", Severity: "error", Message: "531 lines"},
+	}
+	filtered := p.filterIntroduced(base, introduced)
+	if len(filtered) != 2 {
+		t.Fatalf("want error + added-line warning, got %+v", filtered)
+	}
+	var sawError, sawAddedWarning bool
+	for _, issue := range filtered {
+		switch issue.Rule {
+		case "file-size":
+			sawError = true
+		case "new-line":
+			sawAddedWarning = true
+		default:
+			t.Fatalf("unexpected rule kept: %+v", issue)
+		}
+	}
+	if !sawError || !sawAddedWarning {
+		t.Fatalf("want error + added-line warning, got %+v", filtered)
+	}
+}

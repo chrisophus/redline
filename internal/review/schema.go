@@ -76,7 +76,7 @@ func outputSchema() map[string]any {
 	verdict := map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"finding", "ruling", "rationale"},
+		"required":             []string{"finding", "ruling", "rationale", "fix"},
 		"properties": map[string]any{
 			"finding": map[string]any{
 				"type":        "string",

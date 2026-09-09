@@ -146,6 +146,9 @@ func (p *Delta) Observe(rev pane.Revision) (pane.Observation, error) {
 		if rev.Name == "base" && t.custom != nil && t.custom.Baseline.Mode == "file" {
 			continue
 		}
+		if !p.shouldRunTool(t) {
+			continue
+		}
 		issues, rerr := t.run(dir)
 		if rerr != nil {
 			if rev.Name != "base" {
@@ -154,9 +157,53 @@ func (p *Delta) Observe(rev pane.Revision) (pane.Observation, error) {
 			snap.Runs = append(snap.Runs, toolRun{Tool: t.name, Err: rerr.Error()})
 			continue
 		}
+		if issues != nil {
+			issues = normalizeIssues(dir, issues, toolScope(t, p.scoped))
+		}
 		snap.Runs = append(snap.Runs, toolRun{Tool: t.name, Issues: issues})
 	}
 	return snap, nil
+}
+
+// shouldRunTool limits lint runs to tools whose coverage intersects the
+// changed code paths in scope. A head failure from eslint on a Go-only PR is
+// noise; skipping the tool is the honest state.
+func (p *Delta) shouldRunTool(t tool) bool {
+	if t.isDiffer() {
+		return false
+	}
+	codePaths := p.codePathsInScope()
+	if len(codePaths) == 0 {
+		if len(p.scoped) == 0 {
+			// Observe without a prior Scope (tests, full-tree runs): run all tools.
+			return true
+		}
+		return false
+	}
+	for _, path := range codePaths {
+		if t.covers(path) {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Delta) codePathsInScope() []string {
+	var out []string
+	for _, path := range p.scoped {
+		if isLintConfig(path) || isRedlineConfig(path) {
+			continue
+		}
+		out = append(out, path)
+	}
+	return out
+}
+
+func toolScope(t tool, scoped []string) []string {
+	if t.custom != nil && len(t.custom.Scope) > 0 {
+		return t.custom.Scope
+	}
+	return scoped
 }
 
 // Diff reports the issues head has that base does not, and counts the ones
@@ -265,6 +312,8 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 		toolStatuses = append(toolStatuses, st)
 	}
 
+	introduced = p.filterIntroduced(base.Rev, introduced)
+
 	sort.SliceStable(introduced, func(i, j int) bool {
 		a, b := introduced[i], introduced[j]
 		if a.File != b.File {
@@ -335,6 +384,36 @@ func (p *Delta) issuesOnAddedLines(baseRev string, issues []Issue) []Issue {
 	return out
 }
 
+// filterIntroduced drops warning- and info-tier findings that sit on lines this
+// change did not touch. Errors (for example gorefactor file-size) stay: they
+// describe the tree as it is now, not a stylistic nit on untouched context.
+func (p *Delta) filterIntroduced(baseRev string, introduced []Issue) []Issue {
+	if len(introduced) == 0 {
+		return introduced
+	}
+	changedFiles := map[string]bool{}
+	for _, path := range p.codePathsInScope() {
+		changedFiles[path] = true
+	}
+	var out []Issue
+	for _, issue := range introduced {
+		if issue.Severity == "error" {
+			out = append(out, issue)
+			continue
+		}
+		if issue.Line <= 0 {
+			if changedFiles[issue.File] {
+				out = append(out, issue)
+			}
+			continue
+		}
+		if len(p.issuesOnAddedLines(baseRev, []Issue{issue})) > 0 {
+			out = append(out, issue)
+		}
+	}
+	return out
+}
+
 // baselineIssues parses a baseline-file tool's committed artifact — the same
 // output shape the tool always produces — into the issue set treated as
 // already present.
@@ -343,7 +422,11 @@ func (p *Delta) baselineIssues(cfg ToolConfig) ([]Issue, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("baseline file %q is empty or missing", cfg.Baseline.File)
 	}
-	return parseToolOutput(raw, cfg)
+	issues, err := parseToolOutput(raw, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeIssues(p.Repo.Root, issues, cfg.Scope), nil
 }
 
 // differFiles is the scoped changed files a differ tool covers.
@@ -410,7 +493,7 @@ func (p *Delta) runDiffer(cfg ToolConfig, baseRev string, files []string) ([]Iss
 		if err != nil {
 			return nil, nil, err
 		}
-		all = append(all, issues...)
+		all = append(all, normalizeIssues(p.Repo.Root, issues, cfg.Scope)...)
 	}
 	return all, unknowns, nil
 }
