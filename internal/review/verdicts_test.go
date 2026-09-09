@@ -159,7 +159,16 @@ func TestTheCoverageSectionIsBoundedAndSaysWhatItCut(t *testing.T) {
 	if !strings.Contains(got, "more line(s)") {
 		t.Errorf("the lines it cut are not counted:\n%s", got)
 	}
-	first := strings.SplitN(got[strings.Index(got, "- internal/pkg0"):], "\n", 2)[0]
+	var first string
+	for _, line := range strings.Split(got, "\n") {
+		if strings.HasPrefix(line, "- internal/pkg0") {
+			first = line
+			break
+		}
+	}
+	if first == "" {
+		t.Fatalf("the first file is not in the section:\n%s", got)
+	}
 	if n := strings.Count(first, ","); n > maxCoverageRanges {
 		t.Errorf("a file listed %d ranges, want at most %d:\n%s", n+1, maxCoverageRanges, first)
 	}

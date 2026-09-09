@@ -78,7 +78,10 @@ jobs:
     # Advisory: records numbers in the log, never fails the build. A
     # regression here is something a human reads, not a gate — the same
     # posture Redline's own coverage pane takes toward a number with no
-    # threshold attached.
+    # threshold attached. continue-on-error is what makes that true; the
+    # comment claimed it before anything enforced it.
+    continue-on-error: true
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -89,9 +92,22 @@ jobs:
 
   mutate:
     # Advisory, diff-scoped, pull_request only: mutation-tests only the
-    # lines a PR touched against its base, so this stays fast regardless of
-    # module size. See `make mutate` for the same command locally.
+    # lines a PR touched against its base. See `make mutate` for the same
+    # command locally.
+    #
+    # continue-on-error sits on the job rather than the step. On the step it
+    # covers a step that fails and not a step that is cancelled, and cancelled
+    # is what actually happened: gremlins runs for minutes, the run ended
+    # while it was still going, and an advisory job turned every pull request
+    # red. On the job, nothing inside it can fail the build, which is what
+    # advisory was supposed to mean.
+    #
+    # The timeout is the other half. gremlins re-runs the suite once per
+    # mutant, so a large diff is genuinely slow, and without a bound a slow
+    # run is indistinguishable from a hung one.
     if: github.event_name == 'pull_request'
+    continue-on-error: true
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,4 +118,3 @@ jobs:
           go-version: "1.26"
       - run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
       - run: gremlins unleash . --diff="origin/${{ github.base_ref }}" --timeout-coefficient=10
-        continue-on-error: true

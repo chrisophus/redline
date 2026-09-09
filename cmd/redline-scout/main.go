@@ -76,7 +76,9 @@ func main() {
 func run(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("redline-scout", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.Usage = func() { fmt.Fprint(stderr, usage) }
+	// Usage cannot report a write failure to anyone, and a flag parse is
+	// already going wrong when it runs.
+	fs.Usage = func() { _, _ = fmt.Fprint(stderr, usage) }
 	var (
 		changed     = fs.String("changed", "", "merge-base revision")
 		dir         = fs.String("dir", ".", "tree under review")
@@ -92,8 +94,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if *showVersion {
-		fmt.Fprintf(stdout, "redline-scout %s\n", version)
-		return nil
+		_, err := fmt.Fprintf(stdout, "redline-scout %s\n", version)
+		return err
 	}
 	if strings.TrimSpace(*changed) == "" {
 		fs.Usage()
@@ -137,8 +139,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 	// The spend is stated on every run, not only when something goes wrong.
 	// This provider is the one that costs money, and a cost nobody sees is a
-	// cost nobody governs.
-	fmt.Fprintf(stderr, "redline-scout: %d turn(s), %d record(s), %d in / %d out tokens, %s%s\n",
+	// cost nobody governs. The error is dropped because a diagnostic line that
+	// cannot be written is not worth failing a review that already succeeded.
+	_, _ = fmt.Fprintf(stderr, "redline-scout: %d turn(s), %d record(s), %d in / %d out tokens, %s%s\n",
 		spend.Turns, spend.Records, spend.Usage.InputTokens, spend.Usage.OutputTokens,
 		review.FormatCost(spend.CostUSD, spend.CostKnown), capNote(spend))
 

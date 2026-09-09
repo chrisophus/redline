@@ -387,10 +387,13 @@ func runCmd(dir, name string, args ...string) (string, error) {
 // both file size and match count so one broad pattern cannot fill the
 // scout's context with its own search results.
 func grepTree(root string, re *regexp.Regexp, glob string, max int) (string, error) {
-	var b strings.Builder
-	matches := 0
+	// The walk collects paths and reads nothing. Reading inside the callback
+	// means acting on a path the walk resolved earlier, which is a symlink
+	// race the moment the tree is not yours alone; it is also what gosec's
+	// G122 is about. Two passes cost one slice and remove the question.
+	var candidates []string
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || matches >= max {
+		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
@@ -408,13 +411,26 @@ func grepTree(root string, re *regexp.Regexp, glob string, max int) (string, err
 		if glob != "" && !strings.Contains(rel, glob) {
 			return nil
 		}
-		info, err := d.Info()
-		if err != nil || info.Size() > 1<<20 {
+		if info, err := d.Info(); err != nil || info.Size() > 1<<20 {
 			return nil
 		}
-		data, err := os.ReadFile(path)
+		candidates = append(candidates, rel)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(candidates)
+
+	var b strings.Builder
+	matches := 0
+	for _, rel := range candidates {
+		if matches >= max {
+			break
+		}
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
-			return nil
+			continue
 		}
 		for i, line := range strings.Split(string(data), "\n") {
 			if matches >= max {
@@ -425,10 +441,6 @@ func grepTree(root string, re *regexp.Regexp, glob string, max int) (string, err
 				fmt.Fprintf(&b, "%s:%d: %s\n", rel, i+1, strings.TrimSpace(line))
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		return "", err
 	}
 	if matches == 0 {
 		return "no matches", nil

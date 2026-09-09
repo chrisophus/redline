@@ -86,8 +86,8 @@ func run(args []string, stdout io.Writer) error {
 		return err
 	}
 	if *showVersion {
-		fmt.Fprintf(stdout, "redline-graphify-context %s\n", version)
-		return nil
+		_, err := fmt.Fprintf(stdout, "redline-graphify-context %s\n", version)
+		return err
 	}
 	if strings.TrimSpace(*changed) == "" {
 		fs.Usage()

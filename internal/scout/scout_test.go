@@ -221,7 +221,7 @@ func TestTheTurnLimitIsSaidOutLoud(t *testing.T) {
 // the same thing as a provider that found nothing.
 func TestAFirstTurnFailureIsAnAbsentProvider(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"type":"error","error":{"type":"authentication_error","message":"no"}}`, 401)
+		http.Error(w, `{"type":"error","error":{"type":"authentication_error","message":"no"}}`, http.StatusUnauthorized)
 	}))
 	defer srv.Close()
 	_, _, err := Run(context.Background(), Options{
@@ -348,4 +348,42 @@ func hasNote(env *envelope.Envelope, substr string) bool {
 		}
 	}
 	return false
+}
+
+// The record cap had no test at all, which is how a surviving
+// CONDITIONALS_BOUNDARY mutant on `>=` turned up in CI. A scout that keeps
+// recording past the limit fills the reviewer's ceiling one range at a time,
+// and the refusal has to tell it to stop rather than fail silently.
+func TestTheRecordCapRefusesAndSaysToStop(t *testing.T) {
+	var responses []string
+	for i := 0; i < 4; i++ {
+		responses = append(responses, msg("tool_use", recordCall(fmt.Sprintf("tu_%d", i))))
+	}
+	responses = append(responses, msg("tool_use", toolUse("tu_done", "done", map[string]any{})))
+	api := serve(t, responses...)
+
+	env, spend, err := runScout(t, api, Options{MaxCostUSD: 10, Limits: Limits{MaxRecords: 2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The count is the assertion, not merely that a refusal happened: a cap
+	// off by one still refuses eventually, and it was an off-by-one mutant
+	// that exposed this in the first place.
+	if spend.Records != 2 {
+		t.Errorf("accepted %d records, want exactly the cap of 2", spend.Records)
+	}
+	// Each recordCall names the same range, so the cap is what bounds the
+	// records rather than the dedup that bounds the expansions.
+	if len(env.Expansions) != 1 {
+		t.Fatalf("expansions = %d, want the one distinct range", len(env.Expansions))
+	}
+	var refused bool
+	for _, req := range api.requests {
+		if strings.Contains(fmt.Sprint(req), "which is the limit; call done") {
+			refused = true
+		}
+	}
+	if !refused {
+		t.Error("the scout was never told it had hit the cap, so it would keep trying")
+	}
 }
