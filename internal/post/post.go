@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/target"
 )
@@ -521,8 +522,9 @@ func walkthroughHeading(gateVerdict string) string {
 	return "Review complete"
 }
 
-// walkthroughSection is the collapsible per-file table: every changed file, the
-// agent's one-line summary or "No notes.", and the columns body_include turns
+// walkthroughSection is the collapsible per-file table: every changed file that
+// is not test code, the agent's one-line summary or "No notes.", and the
+// columns body_include turns
 // on. coverage names the added lines a profile shows unexecuted; lint counts
 // what landed on the file by severity. Both read the report the run wrote.
 func walkthroughSection(p Payload, budget int) string {
@@ -543,7 +545,18 @@ func walkthroughSection(p Payload, budget int) string {
 	if p.rep != nil && p.rep.Agent != nil {
 		summaries = p.rep.Agent.Files
 	}
-	paths := append([]string(nil), p.changed...)
+	paths := make([]string, 0, len(p.changed))
+	testOmitted := 0
+	for _, path := range p.changed {
+		// Test files are left out of the walkthrough on purpose. Whether the
+		// tests assert enough is a coverage and mutation question, answered as
+		// findings, not a walkthrough row; a testdata doc is prose and stays.
+		if change.IsTestCode(path) {
+			testOmitted++
+			continue
+		}
+		paths = append(paths, path)
+	}
 	sort.Strings(paths)
 
 	var b strings.Builder
@@ -588,6 +601,9 @@ func walkthroughSection(p Payload, budget int) string {
 	}
 	if omitted > 0 {
 		fmt.Fprintf(&b, "\n_%d more file(s) on the full report._\n", omitted)
+	}
+	if testOmitted > 0 {
+		fmt.Fprintf(&b, "\n_%d test file(s) omitted from the walkthrough._\n", testOmitted)
 	}
 	b.WriteString("\n</details>\n\n")
 	return b.String()

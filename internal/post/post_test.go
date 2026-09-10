@@ -802,3 +802,24 @@ func TestEvidenceBodyIsUnchangedByWalkthroughCode(t *testing.T) {
 		t.Fatalf("evidence body must not render a walkthrough:\n%s", p.Body)
 	}
 }
+
+// Test files are left out of the walkthrough: their rows are noise there, and
+// whether the tests assert enough is a coverage/mutation question answered as
+// findings. A testdata doc is prose and stays.
+func TestWalkthroughOmitsTestFiles(t *testing.T) {
+	rep := &findings.Report{Agent: &findings.AgentReview{Files: map[string]string{"a.go": "real"}}}
+	rep.Finalize()
+	changed := []string{"a.go", "a_test.go", "ui/x.test.tsx", "internal/data/foo_integration_test.go"}
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changed)
+	if !strings.Contains(p.Body, "| `a.go` |") {
+		t.Fatalf("the non-test file must be in the walkthrough:\n%s", p.Body)
+	}
+	for _, f := range []string{"a_test.go", "x.test.tsx", "foo_integration_test.go"} {
+		if strings.Contains(p.Body, f) {
+			t.Fatalf("test file %q must not be in the walkthrough:\n%s", f, p.Body)
+		}
+	}
+	if !strings.Contains(p.Body, "3 test file(s) omitted") {
+		t.Fatalf("the omitted test-file count should be noted:\n%s", p.Body)
+	}
+}
