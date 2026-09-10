@@ -379,9 +379,10 @@ that gets the first by losing the second is not an improvement.
 
 ## What shipped
 
-All eight steps below are implemented. Three places where building it changed
-the design are worth recording, because each was a decision the plan got
-wrong.
+Steps 0–7 below are implemented. Step 8 (read-back statistics) is not.
+Three places where building it changed the design are worth recording,
+because each was a decision the plan got wrong. The section after this one
+is what the next field round showed the shipped steps still miss.
 
 **A finding with no answerable question is folded, not dropped.** The plan
 said drop. That would have broken a promise the report already makes, that an
@@ -419,6 +420,127 @@ Two things in the list below are not finished, and both need something this
 session did not have. Freezing the field sessions as fixtures needs the
 `.redline` directories from the runs that produced the dismissals. Rerunning
 the sampling overlap under the new identity costs model calls.
+
+## What the next field round showed
+
+The same pull request was reviewed again on the **same head SHA**, after the
+author had replied `**Not fixing (intentional).**` on every first-round
+thread and **without resolving those threads**. The second `/review-bot
+review` posted seven more inline comments.
+
+That second pass was still the **unpatched producer**: Marketplace had not
+pinned this branch. It is therefore the baseline this work is supposed to
+beat, not a failure of the stages below. It is also a list of gaps the
+stages as shipped would still leave open once the pin lands.
+
+### Where the ruling gets the context
+
+Three inputs, in order of reliability:
+
+1. **Prior threads on this PR** (`PriorReview`). `redline run --pr` fetches
+   Redline's own comments plus every reply, reaction, and resolved flag.
+   The review prompt already includes those replies whether or not the
+   thread is closed (`outcome: answered, thread still open`). It tells the
+   model not to raise them again, and to treat an explanation of intent as
+   this repository's convention for the rest of the review.
+   `feedback.Dismissed` is unused on this path. It is a helper for
+   read-back statistics, and it currently requires a reply *and* a closed
+   thread. Marketplace replies first and resolves later, so that helper
+   would mis-label those threads if stats keyed on it. The review itself
+   already has the reply text.
+
+2. **Deterministic sibling files** (`internal/precedent`). Same-directory
+   name-stem, no model. Puts `aws_account_feed.go` in front of a review of
+   `aws_offer_feed.go`. Stage one and stage three both see it. This is the
+   cheap, reliable answer for the first-round CopyFrom / row-index / race
+   comments.
+
+3. **Scout lookups** (stage two). Only runs for findings whose question is
+   answerable (`precedent`, `caller`, `rule`, `history`, `type`). The scout
+   greps and records file ranges; it does not rule. Stage three sees those
+   bytes and should mark matching claims `justified`. Cross-package
+   mirrors (`offerfeedingest` vs `accountfeedingest`) are in reach **if**
+   stage one asked a `precedent` question naming the pattern. If it asked
+   `diff` or `none`, the scout never looks, and the ruling has only the
+   envelope it was already given.
+
+So: unresolved replies are already context. The remaining miss is
+**finding the sibling that is not in the same directory**, unless the
+generator happens to ask the scout for it.
+
+### Same defect, new wording, new line
+
+Two first-round warnings came back as different comments on different
+anchors:
+
+- StageObject race: first at the pre-transaction check, then at CopyFrom
+  (UNIQUE vs ON CONFLICT). Same claim, new fingerprint.
+- Checkpoint ordinal: first at `processObjects`, then at
+  `encodeObjectOrdinal`. Same LastModified-second limitation.
+
+Stage zero would have shown the earlier threads, including the author's
+replies. `post`'s fingerprint key would not have matched, because identity
+is still file plus normalised wording and the wording moved. Question
+identity in the ruling is supposed to collapse those, **if** the ruling
+treats them as the same question. A ruling asked only "has this pull request
+heard this exact comment" can honestly say no.
+
+### Precedent next door is not precedent in the package next door
+
+Same-directory name-stem (`aws_offer_feed.go` beside `aws_account_feed.go`)
+is the case `internal/precedent` solves. The second round also flagged:
+
+- `offerfeedingest/workflow.go` vs `accountfeedingest/workflow.go`
+- `offer_feed_ingest.go` vs `account_feed_ingest.go`
+- schedule `Request{}` vs the account-feed schedule
+
+Those are **parallel packages**, same basename, not the file beside it. The
+parity pane compares missing filenames across those directories; it does
+not put the sibling's body in the envelope. gorefactor's sibling role still
+needs a shared interface. So checkpoint encoding, parse-fail skip, and
+empty schedule Request would still look novel after the pin.
+
+### Info and hedges still reach the inbox
+
+Eight of the fifteen comments were **Info**. `post` withholds only
+`source: llm` + `confidence: low`. Info is still a line comment. The merge
+gate does not block on LLM findings at all (`findingAttestMarker` skips
+them), but Marketplace still triages every inline thread.
+
+One Warning admitted it was "acceptable but worth noting" and then posted.
+The prompt already forbids "may / might / consider"; nothing in `post`
+drops a comment that says so in other words.
+
+### What would have been enough on that change
+
+After the pin, prior-thread text plus same-directory precedent should remove
+the CopyFrom / row-index / race comments. Remaining noise on this shape of
+PR, unless the items below land:
+
+1. **Already-raised across rewording**, not only exact fingerprints. Same
+   file, or same question kind + subject, on a thread that already has a
+   reply. Head SHA must not reset that for a no-diff re-review.
+2. **Parallel-package precedent**, deterministic. Same basename under
+   directories the parity pane already treats as siblings goes in the
+   envelope, so stage one does not have to ask the scout to notice
+   `accountfeedingest`. The scout remains the backstop when the generator
+   does ask `precedent`.
+3. **Do not key review behaviour on `Dismissed`.** If read-back stats use
+   it, count an attributed reply as answered even while the thread is
+   still open. Marketplace replies first and resolves in merge-gate.
+4. **LLM Info is not a line comment.** Body of the review, or the HTML
+   report. Warning/Error only on the diff, unless a team opts in.
+5. **Drop hedges at post time** if stage three did not. "acceptable",
+   "worth noting", "however if" on a Warning is the generator violating
+   its own silence rule; the ruling should have marked it unverifiable or
+   withdrawn.
+
+`redline learnings` would have drafted path-scoped rules from those
+fifteen replies. Nobody ran it between the two reviews. That is working
+as designed (a person commits the rule), and it is also why a second
+review of the same head still had nothing written down. Until Marketplace
+pins this branch **and** commits a small `review.instructions` for feed
+ingest parity, the field will keep paying for the same lesson.
 
 ## Sequencing
 
@@ -459,10 +581,29 @@ the sampling overlap under the new identity costs model calls.
 8. **Read-back statistics.** The rest of
    [review-feedback.md](review-feedback.md): outcomes per posted finding,
    the acted-on and disputed rates, per class and per ruling. **M**
+   (not done)
+9. **Already-raised across rewording.** Same-head re-review after
+   `**Not fixing (intentional).**` must not post a rewording of that thread.
+   The reply is already in the prompt; identity (question kind + subject,
+   or same file + similar claim) has to match it. If stats use
+   `Dismissed`, count a reply without waiting for `isResolved`. **S**
+10. **Parallel-package precedent.** Same basename under directories the
+    parity pane already treats as siblings (shared filenames, different
+    parent leaf) goes in the envelope, bounded like same-directory
+    name-stem, so the scout is not the only way to see
+    `accountfeedingest/workflow.go`. **S**
+11. **LLM Info is body-only; hedges do not post as Warning.** Line comments
+    are error/warning that survived the ruling. **S**
+12. **Pin + one committed instruction.** Marketplace `REDLINE_VERSION` onto
+    this branch, and a committed `review.instructions` for feed-ingest
+    parity (offer mirrors account). Learnings drafts do not apply until
+    someone commits them. **S** (Marketplace, not this repo)
 
 Steps 0 through 3 ship value on their own and none of them calls a model
 that `review` does not call today. Step 4 is the experiment that decides how
-much the stages behind it are worth.
+much the stages behind it are worth. Steps 9–11 are what the second field
+round showed the shipped stages still miss. Step 12 is how the field
+actually stops paying for the first round twice.
 
 ## What this does not do
 
