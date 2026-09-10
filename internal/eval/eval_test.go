@@ -450,6 +450,18 @@ func TestSweep(t *testing.T) {
 				Model:  model,
 				Effort: os.Getenv("REDLINE_EVAL_EFFORT"),
 			}
+			// The arm that measures the checking pass. Without it the sweep
+			// scores the producer as it was before any of this, which is the
+			// right baseline and is no longer the shipped default.
+			//
+			// No answerer is wired here, deliberately. Stage two runs the
+			// scout against a real tree, and a fixture's tree is gone: it is a
+			// frozen session, which is what makes it replayable. So this arm
+			// is the ruling with no lookups in front of it, and the number it
+			// answers is the dangerous one. A ruling that withdraws findings
+			// it could not check would show up here as lost labelled defects,
+			// and that is the failure mode worth paying to detect.
+			opts.Verify = os.Getenv("REDLINE_EVAL_VERIFY") != ""
 			// A model on another wire is an arm like any other. The key and
 			// base URL are read the same way the command reads them, so a
 			// sweep and a real review reach the same endpoint.
@@ -531,6 +543,9 @@ func TestSweep(t *testing.T) {
 	// same name, are not a comparison.
 	if os.Getenv("REDLINE_EVAL_NOCONTEXT") != "" {
 		label += " nocontext"
+	}
+	if os.Getenv("REDLINE_EVAL_VERIFY") != "" {
+		label += " verified"
 	}
 	if samples > 1 {
 		label += fmt.Sprintf(" ×%d", samples)
@@ -774,4 +789,66 @@ func TestScoreSamplesCountsHowOftenAMistakeRecurs(t *testing.T) {
 	if sc.RejectedIn["row-index"] != 2 {
 		t.Fatalf("two of three samples made it: %+v", sc.RejectedIn)
 	}
+}
+
+// What the paid sweep costs, before anyone pays it.
+//
+// Free, because it prices the request rather than sending it: Assemble is what
+// --dry-run does and calls nothing. It runs in CI with everything else, so the
+// number in front of somebody deciding whether to spend is this installation's
+// own arithmetic rather than a figure from a commit message.
+//
+// The checking pass roughly doubles a fixture's calls, and the second one is
+// mostly a cache read, so the totals are printed both ways.
+func TestWhatTheSweepWouldCost(t *testing.T) {
+	fx := load(t)
+	model := os.Getenv("REDLINE_EVAL_MODEL")
+	if model == "" {
+		model = review.DefaultModel
+	}
+	samples := 1
+	if s := os.Getenv("REDLINE_EVAL_SAMPLES"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			samples = n
+		}
+	}
+
+	var oneRound, worst float64
+	var priced int
+	t.Logf("%-32s %10s %10s %s", "fixture", "expect", "worst", "input tokens")
+	for _, f := range fx {
+		in := review.Input{
+			Report: &f.Session.Report, Change: f.Session.Change,
+			Envelopes: f.Session.Envelopes, Absent: f.Session.ContextAbsent,
+			LineCoverage: f.Session.LineCoverage,
+		}
+		res, err := review.Assemble(in, review.Options{Model: model})
+		if err != nil {
+			t.Errorf("%s: %v", f.Annotation.Name, err)
+			continue
+		}
+		if !res.CostKnown {
+			t.Logf("%-32s %10s %10s %d", f.Annotation.Name, "unpriced", "unpriced", res.InputEstimate)
+			continue
+		}
+		priced++
+		oneRound += res.CostUSD
+		worst += res.CostCeilingUSD
+		t.Logf("%-32s %10s %10s %d", f.Annotation.Name,
+			review.FormatCost(res.CostUSD, true),
+			review.FormatCost(res.CostCeilingUSD, true), res.InputEstimate)
+	}
+	if priced == 0 {
+		t.Skip("no fixture priced; the model is not in the table")
+	}
+	t.Logf("%d fixture(s) x %d sample(s): expect %s, at most %s",
+		priced, samples,
+		review.FormatCost(oneRound*float64(samples), true),
+		review.FormatCost(worst*float64(samples), true))
+	// The checking pass adds one call per fixture whose prompt is the first
+	// call's, so its input is served from cache. Priced here at the full rate
+	// anyway: a ceiling that assumed a cache hit would be a ceiling that
+	// stopped binding the first time the cache missed.
+	t.Logf("with REDLINE_EVAL_VERIFY, add up to %s for the rulings",
+		review.FormatCost(oneRound*float64(samples), true))
 }
