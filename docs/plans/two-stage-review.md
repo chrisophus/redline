@@ -123,16 +123,38 @@ money, and it now spends it in three places instead of one.
 
 A second call to the reviewer's model over the same prefix as stage one, plus
 the stage-one findings and the scout's answers. Its job is to refute. For
-each candidate it returns one of three rulings and the evidence:
+each candidate it returns one of four rulings and the evidence:
 
 - kept, with the line in the material the finding rests on
 - withdrawn, with the line that refutes it
+- justified, with the place this repository already makes the same choice on
+  purpose
 - unverifiable, when the scout found nothing either way
 
-A kept finding is posted. A withdrawn finding stays in `review.json` with its
-ruling attached, so the report can show what was raised and taken back, and
-so the eval can score the ruling stage on its own. An unverifiable finding is
-folded the way low confidence is folded now, and it is not posted.
+A kept finding is posted. A withdrawn or justified finding stays in
+`review.json` with its ruling attached, so the report can show what was
+raised and taken back, and so the eval can score the ruling stage on its own.
+An unverifiable finding is folded the way low confidence is folded now, and it
+is not posted.
+
+Justified is the ruling the field evidence asked for. Of four dismissed
+findings on one staging change, three were accurate: a hard-coded column list
+that a migration could drift from, an idempotency check outside the
+transaction that two ingesters could race, a zero-based row index. The reader
+dismissed each because the sibling file next to it, `aws_account_feed.go`,
+made the same choice and the team had accepted the risk. None is refuted, so
+withdrawn would be wrong, and none should be posted. The word the verdict
+schema already uses for a deliberate suppression is the right one here, and
+it means the same thing: true, and done on purpose. The fourth finding was
+the second one phrased differently, so the ruling stage dedupes candidates by
+their question before it rules.
+
+That example also says where the precedent lives. No rules file said to
+mirror account feed. The sibling role would not have found it, because
+gorefactor's sibling is another implementation of an interface, and the
+parity pane compares filenames across provider directories rather than within
+one. A file in the same directory sharing a name stem is a cheap deterministic
+heuristic nobody has, and a grep by the scout is its general form.
 
 The prefix is identical to stage one, so this call is mostly a cache read.
 
@@ -199,9 +221,9 @@ costing more and finding the same things.
 
 1. **Read root convention files without a model.** Extend `internal/houserules`
    to the file list the scout already uses, bounded the same way, so the
-   guideline block reaches the reviewer on every run. This alone would have
-   answered some share of the dismissals; the fixtures from step 3 will say
-   how many. **S**
+   guideline block reaches the reviewer on every run. Cheap and right on its
+   own; on the staging example above it would have removed nothing, because
+   that precedent was in code rather than in a rules file. **S**
 2. **Stop posting what the report hides.** `post` skips model findings marked
    low confidence. One condition. **S**
 3. **Label the extras and freeze the field sessions.** The `reject` list in
