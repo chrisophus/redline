@@ -164,6 +164,14 @@ type Options struct {
 	Progress func(string)
 	// DryRun assembles the prompt and prices it without calling anything.
 	DryRun bool
+	// Answer runs the lookups a finding asked for, between the review and the
+	// ruling. Nil skips stage two: the ruling still runs, over no answers, and
+	// anything that needed one comes back unverifiable rather than confirmed.
+	Answer Answerer
+	// Verify turns the whole checking pass on. Off leaves the producer exactly
+	// as it was, which is what a caller with no budget for a second call, or
+	// one comparing against the old behaviour, needs.
+	Verify bool
 }
 
 func (o Options) withDefaults() Options {
@@ -226,6 +234,11 @@ type Result struct {
 	// System is the assembled system block actually sent: the harness prompt
 	// plus every provider's language fragment.
 	System string `json:"-"`
+	// Schema is the output contract this request is constrained to. Carried on
+	// the result rather than reached for by the wire code, because the
+	// verifying pass sends the same shape of request under a different
+	// contract and both go over the same two wires.
+	Schema map[string]any `json:"-"`
 	// InputEstimate is the pre-call token estimate for the whole request.
 	InputEstimate int `json:"inputEstimate"`
 	// FixedEstimate is what the parts a review cannot do without cost: the
@@ -258,6 +271,16 @@ type Result struct {
 	// StopReason is what ended the turn. Checked rather than assumed: a
 	// refusal returns HTTP 200 and an empty-looking result.
 	StopReason string `json:"stopReason,omitempty"`
+	// Rulings is the verifying pass's answer, keyed by candidate id. Set on
+	// that pass's own result and read by Verify, which writes them onto the
+	// review.
+	Rulings map[string]findings.Ruling `json:"-"`
+	// Verified records that the verifying pass ran, and VerifyFailed why it
+	// produced nothing when it did. The difference matters to a reader: a
+	// review nobody checked and a review whose check broke are both unchecked,
+	// and only one of them looks like it worked.
+	Verified     bool   `json:"verified,omitempty"`
+	VerifyFailed string `json:"verifyFailed,omitempty"`
 }
 
 // Summary is the one line a run prints. Cost and wall time per review are
@@ -342,6 +365,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	return &Result{
 		API:            opts.API,
 		Model:          opts.Model,
+		Schema:         outputSchema(),
 		Budget:         budget,
 		Prompt:         prompt,
 		System:         system,
@@ -405,10 +429,24 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 		res.Turns = 0
 		return runExplore(ctx, in, opts, res)
 	}
+	var out *Result
 	if opts.Samples > 1 {
-		return runSamples(ctx, in, opts, res)
+		out, err = runSamples(ctx, in, opts, res)
+	} else {
+		out, err = runOnce(ctx, in, opts, res)
 	}
-	return runOnce(ctx, in, opts, res)
+	if err != nil || !opts.Verify {
+		return out, err
+	}
+	// The checking pass. It never fails the review: everything it can go
+	// wrong on leaves the findings as stage one wrote them and records that
+	// the check did not happen, because a review that posts unchecked is the
+	// behaviour this tool had all along and an empty one is worse than that.
+	if opts.Progress != nil {
+		opts.Progress(fmt.Sprintf("checking %d finding(s) against the repository",
+			len(out.Review.Comments)))
+	}
+	return Verify(ctx, in, opts, out)
 }
 
 // runOnce is one call over an already-assembled prompt. Everything above it
@@ -463,6 +501,16 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	body := c.text
 	if strings.TrimSpace(body) == "" {
 		return res, fmt.Errorf("the model returned no content (stop reason %q)", c.stopReason)
+	}
+	// Which shape came back is decided by which contract went out, so the
+	// result's own schema says how to read it. One wire, two stages.
+	if res.rulesRatherThanReviews() {
+		rulings, err := parseRulings([]byte(body))
+		if err != nil {
+			return res, err
+		}
+		res.Rulings = rulings
+		return res, nil
 	}
 	rev, err := parseReview([]byte(body))
 	if err != nil {

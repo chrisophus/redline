@@ -262,6 +262,47 @@ but that measurement compared prose, and two samples describing one defect
 never word it the same way. They ask the same question about it. The union now
 prefers that, so the measurement is worth taking again.
 
+### Checking the findings before posting them
+
+A review is one call with no tools, so it cannot check a claim about the rest
+of the repository. That is where the false positives came from in real use:
+findings that were accurate observations about code the team had deliberately
+written that way, dismissed in seconds by a reader who had the repository
+open. Two stages give the review the same view.
+
+The lookups run first. Each finding's question goes to the scout in its
+answering mode, which greps, reads, asks gorefactor for callers, or asks git
+what happened to the removed lines, and records where the answer is. It
+records locations and Redline reads the bytes, the same rule the scout has
+always followed, so an answer is the repository's own text rather than a
+model's recollection of it.
+
+Then a second call rules on every finding with the answers in front of it, over
+the same prefix as the first, which prompt caching serves at a fraction of the
+input rate. Five verdicts:
+
+- **kept** — the evidence supports it, quoted. The only one that is posted.
+- **withdrawn** — the evidence refutes it, quoted.
+- **justified** — true, and this repository does it on purpose. Precedent in
+  code counts, and so does the author saying so on an earlier review.
+- **unverifiable** — the lookup came back with nothing either way.
+- **already-raised** — this pull request has already heard it.
+
+The four that are not kept stay on the report with their reason, folded, and
+are not posted. Nothing is deleted: a reader can see what was raised and what
+became of it, which is also what makes the pass measurable.
+
+The instruction names both ways to fail. A pass that withdraws everything has
+perfect precision and no value, so withdrawing takes a line you can quote and
+"I am no longer sure" is unverifiable rather than withdrawn. Keeping everything
+is the failure that put the pass here.
+
+It degrades at every point. No key, no repository to look in, a lookup that
+errors, a ruling that comes back unparseable: each leaves the findings as the
+review wrote them and says the check did not happen. A review that posts
+unchecked is the behaviour this tool always had; an empty one would be worse.
+`--no-verify` turns it off, and a clean review never pays for the second call.
+
 Findings from `review` are advisory and marked `source: llm`. They never
 reach the merge gate, whatever severity they carry. A gate that blocks on
 something the author cannot reproduce gets bypassed inside a month.

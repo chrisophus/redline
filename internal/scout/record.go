@@ -106,6 +106,11 @@ type record struct {
 	EndLine   int
 	Symbol    string
 	FoundVia  string
+	// Answers is the id of the question this record was fetched for, when the
+	// scout was answering rather than exploring. Without it the ruling stage
+	// gets a pile of code and no way to tell which claim any of it bears on,
+	// which is most of what makes an answer an answer.
+	Answers string
 }
 
 // resolver turns records into expansions by reading the tree.
@@ -190,6 +195,9 @@ func (r *resolver) resolve(rec record, priority int) (envelope.Expansion, bool) 
 	if rec.FoundVia != "" {
 		details["foundVia"] = rec.FoundVia
 	}
+	if rec.Answers != "" {
+		details["answers"] = rec.Answers
+	}
 	if rec.FoundVia == "graph" {
 		// The graph matches by name, not by type. The tag rides along for the
 		// same reason it does in the graph provider: a name-resolved
@@ -231,7 +239,10 @@ func (r *resolver) Expansions(records []record) []envelope.Expansion {
 	out := make([]envelope.Expansion, 0, len(records))
 	seen := map[string]bool{}
 	for i, rec := range records {
-		key := fmt.Sprintf("%s:%s:%d:%d", rec.Role, rec.File, rec.StartLine, rec.EndLine)
+		// The question is part of the key. One range can genuinely answer two
+		// findings, and deduplicating those into one would leave the second
+		// looking unchecked.
+		key := fmt.Sprintf("%s:%s:%d:%d:%s", rec.Role, rec.File, rec.StartLine, rec.EndLine, rec.Answers)
 		if seen[key] {
 			continue
 		}
