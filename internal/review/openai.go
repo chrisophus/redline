@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // The OpenAI backend speaks the chat completions protocol over plain HTTP.
@@ -31,9 +32,11 @@ const DefaultOpenAIModel = "gpt-5"
 // is given. A proxy replaces it.
 const defaultOpenAIBaseURL = "https://api.openai.com/v1"
 
-// openAIHTTPClient is swapped by tests. The default client honours the
-// proxy environment the way every other outbound call in Redline does.
-var openAIHTTPClient = http.DefaultClient
+// openAIHTTPClient is swapped by tests. The default bounds a request at ten
+// minutes. A review runs two to five, so this leaves margin, while a proxy
+// that accepts the connection and then stalls fails the command instead of
+// hanging it forever, which http.DefaultClient with no timeout allowed.
+var openAIHTTPClient = &http.Client{Timeout: 10 * time.Minute}
 
 type openAIMessage struct {
 	Role    string `json:"role"`

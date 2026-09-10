@@ -166,3 +166,35 @@ func TestTheDeliveryReportNamesWhatWasLost(t *testing.T) {
 		t.Fatalf("a reader cannot check a loss they cannot name: %q", got)
 	}
 }
+
+// An empty-body comment produces no finding, so pairing findings with comments
+// by position drifts the moment one appears. A later comment's delivered status
+// then belongs to a different comment's finding, and a suppressed noise comment
+// can be reported as an interrupt on the diff.
+func TestAnEmptyBodyCommentDoesNotMisattributeADelivery(t *testing.T) {
+	rev := findings.Review{Comments: []findings.ReviewComment{{
+		File: "a.go", Line: 1, Severity: findings.SeverityWarning,
+		Confidence: findings.ConfidenceHigh,
+		Body:       "",
+	}, {
+		File: "a.go", Line: 2, Severity: findings.SeverityInfo,
+		Confidence: findings.ConfidenceLow,
+		Body:       "A low-confidence info finding nobody should have to read.",
+	}, {
+		File: "a.go", Line: 3, Severity: findings.SeverityWarning,
+		Confidence: findings.ConfidenceHigh,
+		Body:       "The lock is taken but never released on the error path.",
+		Question:   findings.Question{Kind: findings.QuestionDiff},
+	}}}
+
+	d := Deliver(rev)
+	if len(d.Interrupts) != 1 {
+		t.Fatalf("want exactly the real defect interrupting, got %+v", d.Interrupts)
+	}
+	if d.Interrupts[0].Body != rev.Comments[2].Body {
+		t.Fatalf("the interrupt is attributed to the wrong comment: %q", d.Interrupts[0].Body)
+	}
+	if d.SuppressedCount() != 1 {
+		t.Fatalf("the low-confidence info should be the only suppression: %+v", d.Suppressed)
+	}
+}

@@ -316,3 +316,27 @@ func TestAddedLinesCountsPlusPlusContent(t *testing.T) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 }
+
+// Several profile keys can end with the same repository path: a real entry and
+// a vendored copy, or the same file in two modules. blocksFor must resolve the
+// path to the same entry on every call. Returning the first match Go's
+// randomized map iteration yields made a repository report a different
+// diff-coverage number on two runs of identical input.
+func TestBlocksForIsDeterministicAcrossMapOrder(t *testing.T) {
+	ran := []block{{startLine: 1, endLine: 2, count: 1}}
+	vendored := []block{{startLine: 1, endLine: 2, count: 0}}
+	blocks := map[string][]block{
+		"github.com/x/y/a/b.go":        ran,
+		"github.com/x/y/vendor/a/b.go": vendored,
+	}
+	first := blocksFor(blocks, "a/b.go")
+	for range 200 {
+		got := blocksFor(blocks, "a/b.go")
+		if len(got) != len(first) || got[0].count != first[0].count {
+			t.Fatalf("blocksFor returned different blocks across runs: %v then %v", first, got)
+		}
+	}
+	if len(first) != 1 || first[0].count != 1 {
+		t.Fatalf("blocksFor must pick the shortest matching key github.com/x/y/a/b.go, got %v", first)
+	}
+}

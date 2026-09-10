@@ -568,7 +568,7 @@ func attachDiffCoverage(rep *findings.Report, ch *change.Set, dir, originDir str
 		}
 		goFiles++
 		changedPaths = append(changedPaths, f.Path)
-		changed = append(changed, cover.Changed{Path: f.Path, Added: cover.AddedLines(f.Diff)})
+		changed = append(changed, cover.Changed{Path: f.Path, Added: f.AddedLines})
 	}
 	rep.Coverage.CoverableFiles = goFiles
 	if goFiles == 0 {
@@ -611,7 +611,7 @@ func attachMutation(rep *findings.Report, ch *change.Set, roots harness.Roots, c
 		if filepath.Ext(f.Path) != ".go" {
 			continue
 		}
-		changed = append(changed, mutation.Changed{Path: f.Path, Added: cover.AddedLines(f.Diff)})
+		changed = append(changed, mutation.Changed{Path: f.Path, Added: f.AddedLines})
 	}
 	if len(changed) == 0 {
 		return

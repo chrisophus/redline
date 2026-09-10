@@ -339,6 +339,7 @@ func (r *Review) CommentFindings() []Finding {
 			File:            c.File,
 			Line:            c.Line,
 			StartLine:       c.StartLine,
+			Side:            normalizeSide(c.Side),
 			Rule:            rule,
 			Substrate:       "redline/review",
 			Category:        cat,
@@ -389,6 +390,22 @@ func normalizeCategory(c Category) Category {
 		return CategoryCorrelation
 	}
 	return CategoryReview
+}
+
+// normalizeSide maps a comment's diff side onto the two values GitHub accepts,
+// forgiving case and whitespace. "LEFT" is a removed line on the old file;
+// "RIGHT" is the new file. Anything else, including empty, reads as "" and the
+// post layer defaults it to RIGHT, so a comment that named no side lands on
+// the new file the way it always did.
+func normalizeSide(s string) string {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "LEFT":
+		return "LEFT"
+	case "RIGHT":
+		return "RIGHT"
+	default:
+		return ""
+	}
 }
 
 // MergeVerdicts attaches verdicts to findings by fingerprint. Call after

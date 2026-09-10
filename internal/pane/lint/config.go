@@ -98,8 +98,19 @@ func (p *Config) Diff(before, after pane.Observation) (pane.Result, error) {
 	paths := append([]string(nil), p.scoped...)
 	sort.Strings(paths)
 	for _, path := range paths {
-		baseRaw := p.Repo.File(base.Rev, path)
-		headRaw := p.Repo.File("", path)
+		baseRaw, baseErr := p.Repo.File(base.Rev, path)
+		headRaw, headErr := p.Repo.File("", path)
+		if err := firstErr(baseErr, headErr); err != nil {
+			// A read that failed is not a config that is absent. Calling it
+			// added or removed would be the invented fact this pane exists to
+			// avoid, so it is named as an unknown and the loop moves on.
+			res.Unknowns = append(res.Unknowns, findings.Unknown{
+				Substrate: ConfigSubstrate,
+				Message:   fmt.Sprintf("could not read the lint config %s to compare it against the base", path),
+				Reason:    err.Error(),
+			})
+			continue
+		}
 
 		switch {
 		case baseRaw == "" && headRaw != "":
@@ -161,6 +172,17 @@ func (p *Config) Diff(before, after pane.Observation) (pane.Result, error) {
 		Lines:   lines,
 	}
 	return res, nil
+}
+
+// firstErr returns the first non-nil error, so a caller reading a file at two
+// revisions can report whichever side failed without nesting the checks.
+func firstErr(errs ...error) error {
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func configFinding(path, rule, message, anchor string) findings.Finding {

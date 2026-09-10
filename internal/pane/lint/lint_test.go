@@ -799,50 +799,49 @@ func TestDeltaSkipsToolWhenChangeOutsideScope(t *testing.T) {
 	}
 }
 
-func TestFilterIntroducedKeepsErrorsAndAddedLineWarnings(t *testing.T) {
+// A finding present at head and absent at base is introduced by this change
+// even when it sits on a line the change did not touch: the delta is what the
+// base lacked, not which lines moved.
+func TestDeltaReportsIntroducedFindingOnUnchangedLine(t *testing.T) {
+	fakeGolangci(t)
 	r := newRepo(t)
-	r.write("api/openapi.yaml", strings.Join([]string{
-		"openapi: 3.0.3",
-		"info:",
-		"  title: t",
-		"  version: 1",
-		"paths: {}",
-	}, "\n")+"\n")
+	r.write(".golangci.yml", "linters: {}\n")
+	r.write("a.go", "package a\n\nfunc A() {}\n")
+	r.write("lint-fixture.json", golangciJSON())
 	base := r.commit("base")
-	r.write("api/openapi.yaml", strings.Join([]string{
-		"openapi: 3.0.3",
-		"info:",
-		"  title: t",
-		"  version: 1",
-		"paths: {}",
-		"components:",
-		"  schemas:",
-		"    New:",
-		"      type: object",
-	}, "\n")+"\n")
+	// Head appends a function; the linter now reports a finding on line 1,
+	// which this change did not touch.
+	r.write("a.go", "package a\n\nfunc A() {}\n\nfunc B() {}\n")
+	r.write("lint-fixture.json", golangciJSON(
+		issueJSON("a.go", 1, "govet", "shadowed variable"),
+	))
 
-	p := &Delta{Repo: r.open(), scoped: []string{"api/openapi.yaml"}}
-	introduced := []Issue{
-		{Tool: "vacuum", File: "api/openapi.yaml", Line: 2, Rule: "old-line", Severity: "warning", Message: "pre-existing"},
-		{Tool: "vacuum", File: "api/openapi.yaml", Line: 8, Rule: "new-line", Severity: "warning", Message: "on added schema"},
-		{Tool: "gorefactor", File: "a.go", Line: 0, Rule: "file-size", Severity: "error", Message: "531 lines"},
+	res := runPane(t, &Delta{Repo: r.open()}, base)
+	if len(res.Findings) != 1 {
+		t.Fatalf("a finding absent at base must be reported wherever it sits, got %v", rules(res.Findings))
 	}
-	filtered := p.filterIntroduced(base, introduced)
-	if len(filtered) != 2 {
-		t.Fatalf("want error + added-line warning, got %+v", filtered)
+	if res.Findings[0].Line != 1 || res.Findings[0].Rule != "golangci-lint/govet" {
+		t.Fatalf("introduced finding misdescribed: %+v", res.Findings[0])
 	}
-	var sawError, sawAddedWarning bool
-	for _, issue := range filtered {
-		switch issue.Rule {
-		case "file-size":
-			sawError = true
-		case "new-line":
-			sawAddedWarning = true
-		default:
-			t.Fatalf("unexpected rule kept: %+v", issue)
+}
+
+// A change touching only a lint config in a repository with no linter runs no
+// comparison at all. The empty run must read as skipped, never as a clean
+// delta the pane never computed.
+func TestDeltaZeroLintersDoesNotConfirm(t *testing.T) {
+	r := newRepo(t)
+	r.write(".eslintignore", "dist/\n")
+	base := r.commit("base")
+	r.write(".eslintignore", "dist/\nbuild/\n")
+
+	p := &Delta{Repo: r.open()}
+	if got := p.Scope([]string{".eslintignore"}); len(got) != 1 {
+		t.Fatalf("the ignore file is lint config in scope, got %v", got)
+	}
+	res := runPane(t, p, base)
+	for _, c := range res.Confirmations {
+		if c.Rule == "lint-clean-delta" {
+			t.Fatalf("no linter ran, so the pane must not confirm a clean delta: %+v", res.Confirmations)
 		}
-	}
-	if !sawError || !sawAddedWarning {
-		t.Fatalf("want error + added-line warning, got %+v", filtered)
 	}
 }

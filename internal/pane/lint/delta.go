@@ -237,6 +237,7 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 	var introduced []Issue
 	resolved := 0
 	anyDegraded := false
+	ranComparisons := 0
 	var toolNames []string
 	var toolStatuses []findings.ToolStatus
 	for _, hr := range head.Runs {
@@ -285,6 +286,7 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 		introduced = append(introduced, in...)
 		resolved += out
 		toolStatuses = append(toolStatuses, findings.ToolStatus{Name: hr.Tool, Status: "ran"})
+		ranComparisons++
 	}
 
 	// Differ tools run once here, comparing each scoped file at base and head
@@ -308,11 +310,11 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 		if len(unknowns) > 0 {
 			st.Status = "degraded"
 			st.Detail = "some scoped files had no comparable base or head side to diff"
+		} else {
+			ranComparisons++
 		}
 		toolStatuses = append(toolStatuses, st)
 	}
-
-	introduced = p.filterIntroduced(base.Rev, introduced)
 
 	sort.SliceStable(introduced, func(i, j int) bool {
 		a, b := introduced[i], introduced[j]
@@ -348,7 +350,7 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 	// A degraded tool — base run failed, baseline unreadable, a differ file
 	// it could not compare — already stated an unknown, and a confirmation
 	// beside it would claim the comparison that never ran.
-	if len(introduced) == 0 && !anyDegraded && allBaseRan(base) {
+	if len(introduced) == 0 && !anyDegraded && ranComparisons > 0 && allBaseRan(base) {
 		res.Confirmations = append(res.Confirmations, findings.Confirmation{
 			Substrate: DeltaSubstrate,
 			Rule:      "lint-clean-delta",
@@ -384,41 +386,14 @@ func (p *Delta) issuesOnAddedLines(baseRev string, issues []Issue) []Issue {
 	return out
 }
 
-// filterIntroduced drops warning- and info-tier findings that sit on lines this
-// change did not touch. Errors (for example gorefactor file-size) stay: they
-// describe the tree as it is now, not a stylistic nit on untouched context.
-func (p *Delta) filterIntroduced(baseRev string, introduced []Issue) []Issue {
-	if len(introduced) == 0 {
-		return introduced
-	}
-	changedFiles := map[string]bool{}
-	for _, path := range p.codePathsInScope() {
-		changedFiles[path] = true
-	}
-	var out []Issue
-	for _, issue := range introduced {
-		if issue.Severity == "error" {
-			out = append(out, issue)
-			continue
-		}
-		if issue.Line <= 0 {
-			if changedFiles[issue.File] {
-				out = append(out, issue)
-			}
-			continue
-		}
-		if len(p.issuesOnAddedLines(baseRev, []Issue{issue})) > 0 {
-			out = append(out, issue)
-		}
-	}
-	return out
-}
-
 // baselineIssues parses a baseline-file tool's committed artifact — the same
 // output shape the tool always produces — into the issue set treated as
 // already present.
 func (p *Delta) baselineIssues(cfg ToolConfig) ([]Issue, error) {
-	raw := p.Repo.File("", cfg.Baseline.File)
+	raw, err := p.Repo.File("", cfg.Baseline.File)
+	if err != nil {
+		return nil, fmt.Errorf("reading baseline file %q: %w", cfg.Baseline.File, err)
+	}
 	if raw == "" {
 		return nil, fmt.Errorf("baseline file %q is empty or missing", cfg.Baseline.File)
 	}
@@ -450,7 +425,15 @@ func (p *Delta) runDiffer(cfg ToolConfig, baseRev string, files []string) ([]Iss
 	var all []Issue
 	var unknowns []findings.Unknown
 	for _, path := range files {
-		baseContent := p.Repo.File(baseRev, path)
+		baseContent, err := p.Repo.File(baseRev, path)
+		if err != nil {
+			unknowns = append(unknowns, findings.Unknown{
+				Substrate: DeltaSubstrate,
+				Message:   fmt.Sprintf("%s could not compare %s: reading it at the base revision failed", cfg.Name, path),
+				Reason:    err.Error(),
+			})
+			continue
+		}
 		headPath := filepath.Join(p.Repo.Root, path)
 		if _, err := os.Stat(headPath); err != nil {
 			unknowns = append(unknowns, findings.Unknown{

@@ -380,3 +380,156 @@ func TestAReReviewOfOnlyAnsweredFindingsCostsNothing(t *testing.T) {
 		t.Fatal("an answered finding must not post again")
 	}
 }
+
+// Finding one of the outside review: a candidate the ruling never mentioned
+// was posted unchecked. After a completed pass it fails closed instead.
+func TestCombineFailsClosedOnACandidateTheRulingOmitted(t *testing.T) {
+	rev := findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "kept", findings.Question{Kind: findings.QuestionDiff}),
+		comment("b.go", "the model forgot this one", findings.Question{Kind: findings.QuestionDiff}),
+	}}
+	cands := Candidates(rev)
+	model := map[string]findings.Ruling{"c1": {Verdict: findings.VerifiedKept, Evidence: "x"}}
+	got := combineRulings(cands, cands, nil, model, "")
+	if got["c1"].Verdict != findings.VerifiedKept {
+		t.Fatalf("the ruled finding should keep its verdict: %+v", got["c1"])
+	}
+	if got["c2"].Verdict != findings.VerifiedUnverifiable {
+		t.Fatalf("a candidate with no ruling must fail closed, got %q", got["c2"].Verdict)
+	}
+	out := Apply(rev, cands, got)
+	if out.Comments[1].Confidence != findings.ConfidenceLow {
+		t.Fatal("the unruled finding must not post")
+	}
+}
+
+// The deterministic already-raised read the actual thread, so it wins over a
+// model that wanted to keep the same finding.
+func TestCombineLetsTheDeterministicMatchWin(t *testing.T) {
+	rev := findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "x", findings.Question{Kind: findings.QuestionDiff}),
+	}}
+	cands := Candidates(rev)
+	model := map[string]findings.Ruling{"c1": {Verdict: findings.VerifiedKept}}
+	settled := map[string]findings.Ruling{"c1": {Verdict: findings.VerifiedAlreadyRaised}}
+	got := combineRulings(cands, nil, settled, model, "")
+	if got["c1"].Verdict != findings.VerifiedAlreadyRaised {
+		t.Fatalf("the thread the reader answered must win, got %q", got["c1"].Verdict)
+	}
+}
+
+// A model already-raised with no earlier thread and no sibling asking the same
+// question is a finding suppressed on nothing, so it is demoted.
+func TestSanitizeDemotesAnAlreadyRaisedWithNoBacking(t *testing.T) {
+	rev := findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "x", findings.Question{Kind: findings.QuestionPrecedent, Subject: "Foo"}),
+	}}
+	got := sanitizeRulings(Candidates(rev),
+		map[string]findings.Ruling{"c1": {Verdict: findings.VerifiedAlreadyRaised}}, "")
+	if got["c1"].Verdict != findings.VerifiedUnverifiable {
+		t.Fatalf("an unbacked already-raised must not suppress, got %q", got["c1"].Verdict)
+	}
+}
+
+// Two findings asking the same question are one, so the model may rule the
+// duplicate already-raised and that is honest.
+func TestSanitizeKeepsAnAlreadyRaisedWithASameQuestionSibling(t *testing.T) {
+	q := findings.Question{Kind: findings.QuestionPrecedent, Subject: "Foo"}
+	rev := findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "one wording", q),
+		comment("a.go", "the other wording", q),
+	}}
+	got := sanitizeRulings(Candidates(rev),
+		map[string]findings.Ruling{"c2": {Verdict: findings.VerifiedAlreadyRaised}}, "")
+	if got["c2"].Verdict != findings.VerifiedAlreadyRaised {
+		t.Fatalf("a duplicate of a same-question finding is already-raised, got %q", got["c2"].Verdict)
+	}
+}
+
+// Withdrawn and justified carry a quoted line, and a quote that is nowhere in
+// the material was invented. Suppressing a finding on it is the failure this
+// pass exists to prevent.
+func TestSanitizeDemotesAWithdrawnWithInventedEvidence(t *testing.T) {
+	rev := findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "x", findings.Question{Kind: findings.QuestionDiff}),
+	}}
+	got := sanitizeRulings(Candidates(rev), map[string]findings.Ruling{
+		"c1": {Verdict: findings.VerifiedWithdrawn, Evidence: "a line that is nowhere in what the ruling saw"},
+	}, "the material shown to the ruling said nothing of the sort")
+	if got["c1"].Verdict != findings.VerifiedUnverifiable {
+		t.Fatalf("invented evidence must not withdraw a finding, got %q", got["c1"].Verdict)
+	}
+}
+
+// A withdrawn that quotes a real line in the material stands.
+func TestSanitizeKeepsAWithdrawnThatQuotesTheMaterial(t *testing.T) {
+	corpus := "func stage() {\n\tif alreadyStaged() { return nil }\n}"
+	rev := findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "x", findings.Question{Kind: findings.QuestionDiff}),
+	}}
+	got := sanitizeRulings(Candidates(rev), map[string]findings.Ruling{
+		"c1": {Verdict: findings.VerifiedWithdrawn, Evidence: "if alreadyStaged() { return nil }"},
+	}, corpus)
+	if got["c1"].Verdict != findings.VerifiedWithdrawn {
+		t.Fatalf("a quote found in the material stands, got %q", got["c1"].Verdict)
+	}
+}
+
+// The lookups cost money, so a finding this pull request already answered is
+// not sent to one. The scout is asked only about what is still open.
+func TestTheLookupsSkipFindingsAlreadyAnswered(t *testing.T) {
+	q1 := findings.Question{Kind: findings.QuestionPrecedent, Subject: "Already"}
+	q2 := findings.Question{Kind: findings.QuestionPrecedent, Subject: "Fresh"}
+	in := Input{Report: priors(), Prior: []feedback.Thread{{
+		File: "a.go", Question: q1.Key(),
+		Replies: []feedback.Reply{{Author: "someone", Body: "intentional"}},
+	}}}
+	one, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	one.Review = findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "already answered", q1),
+		comment("b.go", "still open", q2),
+	}}
+	var asked []string
+	opts := Options{Verify: true, DryRun: true, Answer: func(_ context.Context, qs []Question) (*envelope.Envelope, error) {
+		for _, q := range qs {
+			asked = append(asked, q.ID)
+		}
+		return nil, nil
+	}}
+	if _, err := Verify(context.Background(), in, opts, one); err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != 1 || asked[0] != "c2" {
+		t.Fatalf("only the open finding should be looked up, asked %v", asked)
+	}
+}
+
+// The ruling instruction rides at the tail of the user turn and the system
+// block stays byte-identical, or the prompt cache serves nothing and the
+// second call pays full price.
+func TestTheRulingInstructionRidesInTheUserTurn(t *testing.T) {
+	in := Input{Report: priors()}
+	one, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	one.Review = findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "x", findings.Question{Kind: findings.QuestionDiff}),
+	}}
+	two := one.ruleRequest(in, Options{}.withDefaults(), Candidates(one.Review), nil)
+	if two.System != one.System {
+		t.Fatal("the system block must stay byte-identical between the review and its ruling")
+	}
+	if two.CachePrefix != one.Prompt {
+		t.Fatal("the ruling's cache prefix must be the review's own prompt")
+	}
+	if !strings.HasSuffix(two.Prompt, rulePrompt) {
+		t.Fatal("the ruling instruction must be at the tail of the user turn")
+	}
+	if strings.Contains(two.System, "Now check what you found") {
+		t.Fatal("the ruling instruction must not be in the system block")
+	}
+}

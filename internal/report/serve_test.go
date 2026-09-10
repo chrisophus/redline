@@ -5,8 +5,10 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -233,5 +235,71 @@ func TestStartServeRefusesATestBinary(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if servesDir(port, dir) {
 		t.Fatal("a server started; the test binary was re-exec'd")
+	}
+}
+
+// reportServer builds a serveHandler over a directory laid out like a real
+// evidence directory: report.html, the session.json that carries the diffs,
+// and an evidence/ subtree.
+func reportServer(t *testing.T) http.Handler {
+	t.Helper()
+	dir := t.TempDir()
+	write := func(rel, body string) {
+		full := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("report.html", "<html>Redline</html>")
+	write("session.json", `{"diff":"SECRET"}`)
+	write("evidence/note.txt", "an artifact")
+	return serveHandler(dir, serverInfo{PID: 1, Port: 8765, Dir: dir}, newIdleTimer(idleTimeout))
+}
+
+func request(h http.Handler, host, path string) *http.Response {
+	req := httptest.NewRequest("GET", path, nil)
+	if host != "" {
+		req.Host = host
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Result()
+}
+
+// A page on another origin that rebinds DNS to 127.0.0.1 reaches the server
+// with its own name in the Host header. Refusing a non-loopback Host is what
+// keeps that page from reading the session the server serves.
+func TestServeRejectsForeignHost(t *testing.T) {
+	h := reportServer(t)
+	if r := request(h, "evil.example.com", "/report.html"); r.StatusCode != http.StatusForbidden {
+		t.Errorf("foreign Host got %d, want 403", r.StatusCode)
+	}
+	if r := request(h, "127.0.0.1:8765", "/report.html"); r.StatusCode != http.StatusOK {
+		t.Errorf("loopback Host got %d, want 200", r.StatusCode)
+	}
+}
+
+// session.json holds every diff and file body. Only report.html and the
+// evidence/ subtree are on the wire; nothing else in the directory is.
+func TestServeServesOnlyReportAndEvidence(t *testing.T) {
+	h := reportServer(t)
+	if r := request(h, "127.0.0.1", "/session.json"); r.StatusCode == http.StatusOK {
+		t.Errorf("session.json was served (status %d); it holds the diffs", r.StatusCode)
+	}
+	if r := request(h, "127.0.0.1", "/evidence/note.txt"); r.StatusCode != http.StatusOK {
+		t.Errorf("evidence artifact not served: status %d", r.StatusCode)
+	}
+}
+
+// A directory request must not turn into a listing of the artifacts under it.
+func TestServeDoesNotListDirectories(t *testing.T) {
+	h := reportServer(t)
+	r := request(h, "127.0.0.1", "/evidence/")
+	body, _ := io.ReadAll(r.Body)
+	if r.StatusCode == http.StatusOK && strings.Contains(string(body), "note.txt") {
+		t.Errorf("directory request listed its contents:\n%s", body)
 	}
 }

@@ -309,46 +309,80 @@ func TestPostRequiresGhForARealPost(t *testing.T) {
 	}
 }
 
-// fakeGh puts a stand-in `gh` on PATH that answers the three reads post makes
-// (files, comments, reviews) and refuses a write. commentBodies and reviewBodies
-// are what `-q .[].body` would print: one body per line.
-func fakeGh(t *testing.T, commentBodies, reviewBodies []string) {
+// ghItem is one comment or review with the login that wrote it.
+type ghItem struct {
+	login string
+	body  string
+}
+
+// fakeGh puts a stand-in `gh` on PATH that answers the reads post makes: the
+// authenticated user's login, the PR head, an empty file list, and the comment
+// and review bodies with their authors. login is who the review posts as; only
+// items by that login carry a marker post will honour. It refuses a write, so
+// an already-posted payload must never reach submitReview.
+func fakeGh(t *testing.T, login string, comments, reviews []ghItem) {
 	t.Helper()
 	bin := t.TempDir()
-	script := filepath.Join(bin, "gh")
 	// The stand-in is a shell script so the test does not need to compile a
-	// second Go binary. Arguments arrive as "$@"; the path is the last one.
+	// second Go binary. It classifies the call by scanning every argument, then
+	// answers with a shell builtin only: PATH is set to this directory alone, so
+	// no external command (not even cat) is reachable.
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\n")
 	b.WriteString("set -e\n")
-	b.WriteString("# Refuse a write: already-posted must never reach submitReview.\n")
 	b.WriteString("for a in \"$@\"; do\n")
 	b.WriteString("  case \"$a\" in POST|--method) echo 'fake gh: unexpected write' >&2; exit 2;; esac\n")
 	b.WriteString("done\n")
-	b.WriteString("path=\"\"\n")
-	b.WriteString("for a in \"$@\"; do path=\"$a\"; done\n")
-	b.WriteString("case \"$path\" in\n")
-	b.WriteString("  *'/files'*)\n")
-	// An empty page: every finding rides in the body. That is enough for the
-	// already-posted gate, which keys on markers rather than on anchors.
-	b.WriteString("    printf '%s\\n' '[[]]'\n")
-	b.WriteString("    ;;\n")
-	b.WriteString("  *'/comments'*)\n")
-	for _, body := range commentBodies {
-		fmt.Fprintf(&b, "    printf '%%s\\n' %q\n", body)
-	}
-	b.WriteString("    ;;\n")
-	b.WriteString("  *'/reviews'*)\n")
-	for _, body := range reviewBodies {
-		fmt.Fprintf(&b, "    printf '%%s\\n' %q\n", body)
-	}
-	b.WriteString("    ;;\n")
-	b.WriteString("  *) echo \"fake gh: unexpected path $path\" >&2; exit 3;;\n")
+	b.WriteString("sub=\"\"\n")
+	b.WriteString("for a in \"$@\"; do\n")
+	b.WriteString("  case \"$a\" in\n")
+	b.WriteString("    user) sub=user;;\n")
+	b.WriteString("    *'/comments'*) sub=comments;;\n")
+	b.WriteString("    *'/reviews'*) sub=reviews;;\n")
+	b.WriteString("    *'/files'*) sub=files;;\n")
+	b.WriteString("    *'/pulls/'*) [ -z \"$sub\" ] && sub=head;;\n")
+	b.WriteString("  esac\n")
+	b.WriteString("done\n")
+	b.WriteString("case \"$sub\" in\n")
+	fmt.Fprintf(&b, "  user) printf '%%s\\n' %s;;\n", shQuote(login))
+	fmt.Fprintf(&b, "  head) printf '%%s\\n' %s;;\n", shQuote(prSessionTarget().Head))
+	b.WriteString("  files) printf '%s\\n' '[[]]';;\n")
+	fmt.Fprintf(&b, "  comments) printf '%%s' %s;;\n", shQuote(ghPagesJSON(t, comments)))
+	fmt.Fprintf(&b, "  reviews) printf '%%s' %s;;\n", shQuote(ghPagesJSON(t, reviews)))
+	b.WriteString("  *) echo \"fake gh: unexpected args $*\" >&2; exit 3;;\n")
 	b.WriteString("esac\n")
-	if err := os.WriteFile(script, []byte(b.String()), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(b.String()), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin)
+}
+
+// shQuote wraps a value in single quotes for the fake gh script, so its content
+// is literal to the shell: no expansion, whatever bytes a body carries.
+func shQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// ghPagesJSON renders items as the paginated JSON gh returns for a PR
+// sub-resource: one page holding each item's author login and body.
+func ghPagesJSON(t *testing.T, items []ghItem) string {
+	t.Helper()
+	type user struct {
+		Login string `json:"login"`
+	}
+	type item struct {
+		User user   `json:"user"`
+		Body string `json:"body"`
+	}
+	page := make([]item, 0, len(items))
+	for _, it := range items {
+		page = append(page, item{User: user{Login: it.login}, Body: it.body})
+	}
+	out, err := json.Marshal([][]item{page})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
 }
 
 // A re-post against a commit Redline has already reviewed, with every finding
@@ -367,7 +401,10 @@ func TestPostSkipsWhenAlreadyReviewedWithNoNewFindings(t *testing.T) {
 	if len(payload.Comments) != 1 {
 		t.Fatalf("precondition: one line comment, got %d", len(payload.Comments))
 	}
-	fakeGh(t, []string{payload.Comments[0].Body}, []string{payload.Body})
+	const login = "redline-bot"
+	fakeGh(t, login,
+		[]ghItem{{login, payload.Comments[0].Body}},
+		[]ghItem{{login, payload.Body}})
 
 	stderr := captureStderr(t, func() {
 		err = cmdPost(opts{out: dir, pr: "7", port: 41100, noOpen: true})
@@ -476,5 +513,100 @@ func TestReviewDryRunPrintsTheSystemBlockAndTheUserTurn(t *testing.T) {
 	}
 	if !strings.Contains(prompt, "## The change") {
 		t.Fatalf("the user turn must still be printed after the system block:\n%s", out)
+	}
+}
+
+// A comment carrying side LEFT must post LEFT. Every comment used to go up
+// RIGHT, which lands a remark about a removed line on the new-file line of the
+// same number: different code.
+func TestReviewRequestHonorsCommentSide(t *testing.T) {
+	p := post.Payload{Comments: []post.Comment{
+		{Path: "a.go", Line: 3, Side: "LEFT", Body: "the removed guard mattered"},
+		{Path: "b.go", Line: 5, Body: "new code"},
+	}}
+	req := reviewRequest(p)
+	if len(req.Comments) != 2 {
+		t.Fatalf("want two comments: %+v", req.Comments)
+	}
+	if req.Comments[0].Side != "LEFT" {
+		t.Fatalf("a LEFT comment posted %q", req.Comments[0].Side)
+	}
+	if req.Comments[1].Side != "RIGHT" {
+		t.Fatalf("an unnamed side must default to RIGHT, got %q", req.Comments[1].Side)
+	}
+}
+
+// A suppression marker is a hidden HTML comment anyone who can comment on a
+// public PR could paste. Only the posting login's own comments carry a marker
+// Redline honours, so a marker from another author must not suppress a finding.
+func TestSuppressionMarkersFromOtherAuthorsAreIgnored(t *testing.T) {
+	rep := findings.Report{Findings: []findings.Finding{{
+		File: "a.go", Line: 12, Rule: "migration-modified-after-merge", Substrate: "migrations",
+		Category: findings.CategorySchema, Severity: findings.SeverityError, Message: "merged migration edited",
+	}}}
+	rep.Finalize()
+	p := post.Build(&rep, prSessionTarget(), "", map[string]map[int]bool{"a.go": {12: true}})
+	if len(p.Comments) != 1 {
+		t.Fatalf("precondition: one comment carrying a marker, got %d", len(p.Comments))
+	}
+	body := p.Comments[0].Body
+	const me = "redline-bot"
+
+	fromOther := trustedBodies([]ghAuthoredBody{{Login: "mallory", Body: body}}, me)
+	if got := post.Fingerprints(fromOther); len(got) != 0 {
+		t.Fatalf("a marker from another author was honoured: %v", got)
+	}
+	fromMe := trustedBodies([]ghAuthoredBody{{Login: me, Body: body}}, me)
+	if got := post.Fingerprints(fromMe); len(got) != 1 {
+		t.Fatalf("the posting login's own marker must be honoured, got %d", len(got))
+	}
+}
+
+// The review anchors to the session head, so its line comments have to be
+// validated against that head's diff, not the pull request's current one.
+// Commentable lines come from the session's own recorded diff: a finding on a
+// line the session diff shows becomes a comment, one that is not rides in the
+// body, even offline with no PR diff fetched.
+func TestPostAnchorsCommentsToTheSessionDiff(t *testing.T) {
+	t.Setenv("PATH", "")
+	dir := reportDir(t)
+	rep := findings.Report{
+		BaseRef: "origin/main", BaseSHA: "abc123",
+		Findings: []findings.Finding{
+			{File: "a.go", Line: 12, Rule: "r1", Substrate: "s", Category: findings.CategorySchema,
+				Severity: findings.SeverityError, Message: "in the session diff"},
+			{File: "a.go", Line: 99, Rule: "r2", Substrate: "s", Category: findings.CategorySchema,
+				Severity: findings.SeverityError, Message: "not in the session diff"},
+		},
+		Substrates: []findings.SubstrateStatus{{Name: "s", State: findings.SubstrateRan}},
+	}
+	rep.Finalize()
+	diff := "@@ -10,3 +12,3 @@\n ctx 12\n ctx 13\n ctx 14\n"
+	res := &run.Result{
+		Report: rep,
+		Change: &change.Set{
+			Target: prSessionTarget(),
+			Files:  []change.File{{Path: "a.go", Status: "modified", Diff: diff}},
+		},
+	}
+	if err := run.SaveSession(dir, res); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	out := captureStdout(t, func() {
+		err = cmdPost(opts{out: dir, pr: "7", dryRun: true, port: 40900, noOpen: true})
+	})
+	if err != nil {
+		t.Fatalf("dry run should succeed offline: %v", err)
+	}
+	var req ghReviewRequest
+	if e := json.Unmarshal([]byte(out), &req); e != nil {
+		t.Fatalf("dry run JSON: %v\n%s", e, out)
+	}
+	if len(req.Comments) != 1 || req.Comments[0].Line != 12 {
+		t.Fatalf("only the line in the session diff is a comment: %+v", req.Comments)
+	}
+	if !strings.Contains(req.Body, "not in the session diff") {
+		t.Fatalf("the off-diff finding should ride in the body:\n%s", req.Body)
 	}
 }

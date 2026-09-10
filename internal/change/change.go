@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/chrisophus/redline/internal/cover"
 	"github.com/chrisophus/redline/internal/gitx"
 	"github.com/chrisophus/redline/internal/target"
 )
@@ -97,6 +98,11 @@ type File struct {
 	Added   int    `json:"added"`
 	Removed int    `json:"removed"`
 	Diff    string `json:"diff,omitempty"`
+	// AddedLines is the new-side line numbers the diff adds, read from the
+	// full diff before Diff is truncated for display. Coverage and mutation
+	// count against these, so a line past the display cut stays in the
+	// denominator instead of silently dropping out of the number.
+	AddedLines []int `json:"addedLines,omitempty"`
 	// Head is the file's whole content at the revision under review, for
 	// files small enough to carry. Empty for a large or deleted file, where
 	// the diff and the resolved expansions have to stand on their own.
@@ -129,6 +135,10 @@ func Build(repo *gitx.Repo, tgt *target.Target, baseSHA string, changed []string
 			Areas:    Areas(path),
 		}
 		diff := repo.DiffPath(baseSHA, path)
+		// Added lines come from the full diff. Truncating the diff for display
+		// must not shrink the coverage or mutation denominator: a line past
+		// the cut is still a line this change added.
+		f.AddedLines = cover.AddedLines(diff)
 		if len(diff) > maxDiffBytes {
 			diff = diff[:maxDiffBytes] + "\n... diff truncated; read the file directly\n"
 		}
@@ -138,8 +148,8 @@ func Build(repo *gitx.Repo, tgt *target.Target, baseSHA string, changed []string
 			f.Status = status(diff)
 		}
 		if f.Status != "deleted" {
-			if head := repo.File(tgt.Head, path); head != "" &&
-				strings.Count(head, "\n") < maxHeadLines {
+			if head, err := repo.File(tgt.Head, path); err == nil && head != "" &&
+				!isBinary(head) && strings.Count(head, "\n") < maxHeadLines {
 				f.Head = head
 			}
 		}
@@ -176,6 +186,18 @@ func status(diff string) string {
 	default:
 		return "modified"
 	}
+}
+
+// isBinary reports whether content is binary the way git decides it: a NUL
+// byte within the first block. A binary file is not carried whole into the
+// session, so a multi-megabyte blob with few newlines does not land in
+// session.json and the prompt on a newline count alone.
+func isBinary(content string) bool {
+	const block = 8000
+	if len(content) > block {
+		content = content[:block]
+	}
+	return strings.IndexByte(content, 0) >= 0
 }
 
 // fileStatus is presence in the base tree vs the worktree, not a parse of

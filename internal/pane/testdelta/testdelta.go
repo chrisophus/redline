@@ -174,8 +174,8 @@ func (p *Pane) skipsAdded(baseRev string, res *pane.Result, lines *[]string) {
 		if len(added) == 0 {
 			continue
 		}
-		content := p.Repo.File("", f)
-		if content == "" {
+		content, err := p.Repo.File("", f)
+		if err != nil || content == "" {
 			continue
 		}
 		for n, line := range strings.Split(content, "\n") {

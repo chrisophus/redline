@@ -47,6 +47,13 @@ type Entry struct {
 	// reviews and record as one line.
 	Samples       int `json:"samples,omitempty"`
 	SamplesFailed int `json:"samplesFailed,omitempty"`
+	// RulingOutputTokens is what the verifying pass wrote, and ScoutCostUSD
+	// what stage two's lookups cost. Kept apart from Usage and named on their
+	// own so a run that checked its findings can be told from one that did
+	// not, and so the review's own output median is not inflated by the
+	// ruling's handful of objects.
+	RulingOutputTokens int64   `json:"rulingOutputTokens,omitempty"`
+	ScoutCostUSD       float64 `json:"scoutCostUSD,omitempty"`
 }
 
 // Record appends one review to the ledger in dir. Failing to write it is not
@@ -63,6 +70,7 @@ func Record(dir string, r *Result, effort string) error {
 		Seconds: r.Duration.Seconds(), Findings: len(r.Review.Comments),
 		Ceiling: r.Ceiling, InputEstimate: r.InputEstimate, OverCeiling: r.OverCeiling,
 		Samples: r.Samples, SamplesFailed: r.SamplesFailed,
+		RulingOutputTokens: r.RulingOutputTokens, ScoutCostUSD: r.ScoutCostUSD,
 	}
 	buf, err := json.Marshal(e)
 	if err != nil {

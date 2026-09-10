@@ -46,15 +46,30 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 	}
 	client := anthropic.NewClient(clientOpts...)
 
+	// The system block and the shared run of the user turn carry a cache
+	// breakpoint, so the ruling call that follows a review is served from the
+	// prompt cache instead of paying the full input rate for the whole prefix
+	// again. res.CachePrefix names the run identical between the two calls;
+	// empty means cache the whole prompt, which is what a review's own call
+	// does to write the entry the ruling reads.
+	user := []anthropic.ContentBlockParamUnion{}
+	if res.CachePrefix != "" && strings.HasPrefix(res.Prompt, res.CachePrefix) {
+		prefix := anthropic.NewTextBlock(res.CachePrefix)
+		prefix.OfText.CacheControl = anthropic.NewCacheControlEphemeralParam()
+		user = append(user, prefix, anthropic.NewTextBlock(res.Prompt[len(res.CachePrefix):]))
+	} else {
+		whole := anthropic.NewTextBlock(res.Prompt)
+		whole.OfText.CacheControl = anthropic.NewCacheControlEphemeralParam()
+		user = append(user, whole)
+	}
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(opts.Model),
 		MaxTokens: opts.MaxTokens,
 		System: []anthropic.TextBlockParam{{
-			Text: res.System,
+			Text:         res.System,
+			CacheControl: anthropic.NewCacheControlEphemeralParam(),
 		}},
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(res.Prompt)),
-		},
+		Messages: []anthropic.MessageParam{anthropic.NewUserMessage(user...)},
 		OutputConfig: anthropic.OutputConfigParam{
 			Format: anthropic.JSONOutputFormatParam{Schema: res.Schema},
 		},

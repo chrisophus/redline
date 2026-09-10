@@ -338,3 +338,54 @@ func TestRequestBodyNowRequiredIsBreaking(t *testing.T) {
 		t.Errorf("severity = %q, want error", f.Severity)
 	}
 }
+
+// Most real specs factor parameters and schemas behind $ref, which this pane
+// does not resolve. A spec that uses one must never be confirmed as
+// non-breaking, because an input made mandatory behind a $ref is exactly what
+// it cannot see.
+func TestRefSpecIsNotConfirmedAsNonBreaking(t *testing.T) {
+	const refSpec = `openapi: 3.0.0
+info:
+  title: pets
+  version: 1.0.0
+paths:
+  /pets:
+    get:
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        "200":
+          description: ok
+components:
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      required: true
+      schema:
+        type: integer
+`
+	r := newRepo(t)
+	r.write("api/openapi.yaml", refSpec)
+	base := r.commit("spec")
+	// A non-breaking addition: one more response code.
+	r.write("api/openapi.yaml", strings.Replace(refSpec,
+		"        \"200\":\n          description: ok",
+		"        \"200\":\n          description: ok\n        \"404\":\n          description: missing", 1))
+
+	res := r.diff(base)
+	for _, c := range res.Confirmations {
+		if c.Rule == "api-no-breaking-change" {
+			t.Fatalf("a $ref spec was not fully checked, so it must not confirm as non-breaking: %+v", res.Confirmations)
+		}
+	}
+	var stated bool
+	for _, u := range res.Unknowns {
+		if strings.Contains(u.Message, "$ref") {
+			stated = true
+		}
+	}
+	if !stated {
+		t.Fatalf("the pane must state that $ref was not followed: %+v", res.Unknowns)
+	}
+}

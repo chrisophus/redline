@@ -59,20 +59,9 @@ func Serve(outDir string, port int) error {
 	}
 
 	idle := newIdleTimer(idleTimeout)
-	mux := http.NewServeMux()
-	files := http.FileServer(http.Dir(abs))
 	info := serverInfo{PID: os.Getpid(), Port: port, Dir: abs}
-	mux.HandleFunc(idPath, func(w http.ResponseWriter, r *http.Request) {
-		idle.touch()
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(info)
-	})
-	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		idle.touch()
-		files.ServeHTTP(w, r)
-	}))
 
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: serveHandler(abs, info, idle), ReadHeaderTimeout: 5 * time.Second}
 	writePID(abs, info)
 	defer clearPID(abs, info)
 
@@ -86,6 +75,79 @@ func Serve(outDir string, port int) error {
 		return err
 	}
 	return nil
+}
+
+// serveHandler routes the report server. It serves only report.html and the
+// evidence/ subtree, with directory listing off, so serve.json and the
+// session it records stay off the wire. Every request is refused unless its
+// Host is loopback: session.json carries every diff and file body, and a page
+// on another origin that rebinds DNS to 127.0.0.1 would otherwise become
+// same-origin and read it.
+func serveHandler(abs string, info serverInfo, idle *idleTimer) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc(idPath, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(info)
+	})
+	report := func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join(abs, "report.html"))
+	}
+	mux.HandleFunc("/report.html", report)
+	mux.Handle("/evidence/", http.StripPrefix("/evidence",
+		http.FileServer(noListDir{http.Dir(filepath.Join(abs, "evidence"))})))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		report(w, r)
+	})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !loopbackHost(r.Host) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		idle.touch()
+		mux.ServeHTTP(w, r)
+	})
+}
+
+// loopbackHost reports whether a request's Host header names this machine.
+// The listener is bound to 127.0.0.1, so the only legitimate names are the
+// loopback ones; anything else is a request routed here by a DNS name that
+// points at 127.0.0.1, which is the rebinding attack.
+func loopbackHost(host string) bool {
+	h := host
+	if hostOnly, _, err := net.SplitHostPort(host); err == nil {
+		h = hostOnly
+	}
+	switch h {
+	case "localhost", "127.0.0.1", "::1", "[::1]":
+		return true
+	}
+	return false
+}
+
+// noListDir wraps an http.FileSystem so a request that resolves to a
+// directory reads as absent. http.FileServer would otherwise render a
+// directory listing, exposing the names of every evidence artifact.
+type noListDir struct{ fs http.FileSystem }
+
+func (d noListDir) Open(name string) (http.File, error) {
+	f, err := d.fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	if info.IsDir() {
+		_ = f.Close()
+		return nil, os.ErrNotExist
+	}
+	return f, nil
 }
 
 // Stop shuts down the server recorded for outDir. A missing or stale record

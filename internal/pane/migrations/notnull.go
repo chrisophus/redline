@@ -37,9 +37,10 @@ var (
 	// alterTable captures the table name of an ALTER TABLE statement,
 	// tolerating IF EXISTS, ONLY, and a schema qualifier.
 	alterTable = regexp.MustCompile(`(?is)^\s*ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?([^\s(]+)`)
-	// addColumn captures each ADD COLUMN clause's column name. COLUMN is
-	// optional in Postgres and MySQL alike.
-	addColumn = regexp.MustCompile(`(?is)\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?([^\s(,]+)([^,]*)`)
+	// addColumn splits an ADD clause into its optional COLUMN keyword, the
+	// first token (a column name or a table-level constraint keyword), and
+	// the rest of the clause. COLUMN is optional in Postgres and MySQL alike.
+	addColumn = regexp.MustCompile(`(?is)\bADD\s+(COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?([^\s(]+)(.*)`)
 	notNull   = regexp.MustCompile(`(?is)\bNOT\s+NULL\b`)
 	hasParts  = regexp.MustCompile(`(?is)\b(DEFAULT|GENERATED|IDENTITY|SERIAL)\b`)
 )
@@ -64,9 +65,21 @@ func scanNotNull(sql string) []NotNullColumn {
 			continue
 		}
 		table := unquote(m[1])
-		for _, c := range addColumn.FindAllStringSubmatch(stmt, -1) {
-			clause := strings.TrimSpace(c[0])
-			rest := c[2]
+		// An ALTER TABLE carries several actions separated by top-level
+		// commas; a comma inside a type such as numeric(10,2) is not one, so
+		// the split respects parentheses before each ADD clause is read.
+		for _, seg := range splitTopLevel(stmt) {
+			c := addColumn.FindStringSubmatch(seg)
+			if c == nil {
+				continue
+			}
+			// ADD without COLUMN can begin a table-level constraint
+			// (CONSTRAINT, CHECK, PRIMARY KEY, ...), whose body may contain
+			// "NOT NULL" without being a column.
+			if c[1] == "" && isConstraintKeyword(c[2]) {
+				continue
+			}
+			rest := c[3]
 			if !notNull.MatchString(rest) {
 				continue
 			}
@@ -77,12 +90,45 @@ func scanNotNull(sql string) []NotNullColumn {
 			}
 			out = append(out, NotNullColumn{
 				Table:  table,
-				Column: unquote(c[1]),
-				Clause: collapse(clause),
+				Column: unquote(c[2]),
+				Clause: collapse(strings.TrimSpace(c[0])),
 			})
 		}
 	}
 	return out
+}
+
+// splitTopLevel splits s at commas that sit outside parentheses, so a comma
+// inside a type such as numeric(10,2) does not end a column clause.
+func splitTopLevel(s string) []string {
+	var parts []string
+	depth, start := 0, 0
+	for i, r := range s {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				parts = append(parts, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	return append(parts, s[start:])
+}
+
+// isConstraintKeyword reports whether an ADD clause without the COLUMN keyword
+// begins a table-level constraint rather than a column definition.
+func isConstraintKeyword(tok string) bool {
+	switch strings.ToUpper(unquote(tok)) {
+	case "CONSTRAINT", "CHECK", "PRIMARY", "FOREIGN", "UNIQUE", "EXCLUDE":
+		return true
+	}
+	return false
 }
 
 // unquote strips identifier quoting. Every quote character is removed rather

@@ -350,6 +350,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   </div>
   {{if .Evidence}}<pre class="diff">{{.Evidence}}</pre>{{end}}
   {{if .Context}}<blockquote>{{.Context}}</blockquote>{{end}}
+  {{if .Suggestion}}<div class="sug"><div class="sug-label">Suggested fix</div><pre class="suggestion">{{.Suggestion}}</pre></div>{{end}}
   {{with .Related}}
   <div class="rel">builds on {{range $i, $r := .}}{{if $i}}, {{end}}<code>{{$r.Rule}}</code>{{if $r.Location}} at {{$r.Location}}{{end}}{{if $r.ID}} <span class="id">{{$r.ID}}</span>{{end}}{{end}}</div>
   {{end}}

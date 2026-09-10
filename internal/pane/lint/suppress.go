@@ -111,8 +111,8 @@ func (p *Suppressions) Diff(before, after pane.Observation) (pane.Result, error)
 		if len(added) == 0 {
 			continue
 		}
-		content := p.Repo.File("", path)
-		if content == "" {
+		content, err := p.Repo.File("", path)
+		if err != nil || content == "" {
 			continue
 		}
 		for n, line := range strings.Split(content, "\n") {

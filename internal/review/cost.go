@@ -85,11 +85,11 @@ func (u Usage) Cost(model string) (usd float64, ok bool) {
 		return 0, false
 	}
 	const million = 1_000_000.0
-	// Cache writes bill above base input and reads far below it. Neither is
-	// used by default here (a pre-push tool firing a few times a day pays
-	// every write and reads none of them), so the multipliers are stated
-	// rather than assumed away. The OpenAI backend reports cache reads at
-	// the same tenth and never a write, so the same arithmetic serves it.
+	// Cache writes bill above base input and reads far below it. The review's
+	// own call writes its prefix and the ruling that follows reads it, so both
+	// multipliers are live now rather than only stated against a future that
+	// used them. The OpenAI backend reports cache reads at the same tenth and
+	// never a write, so the same arithmetic serves it.
 	in := float64(u.InputTokens)/million*p.InPerM +
 		float64(u.CacheWriteTokens)/million*p.InPerM*1.25 +
 		float64(u.CacheReadTokens)/million*p.InPerM*0.1

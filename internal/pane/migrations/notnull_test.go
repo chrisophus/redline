@@ -71,6 +71,25 @@ func TestScanIsCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestScanFindsParenthesizedTypeWithComma(t *testing.T) {
+	got := scanNotNull(`ALTER TABLE orders ADD COLUMN price numeric(10,2) NOT NULL;`)
+	if len(got) != 1 {
+		t.Fatalf("a comma inside the type must not hide the NOT NULL, got %v", got)
+	}
+	if got[0].Table != "orders" || got[0].Column != "price" {
+		t.Fatalf("table.column = %s.%s, want orders.price", got[0].Table, got[0].Column)
+	}
+}
+
+func TestScanIgnoresTableLevelCheckConstraint(t *testing.T) {
+	if got := scanNotNull(`ALTER TABLE users ADD CONSTRAINT chk CHECK (email IS NOT NULL);`); len(got) != 0 {
+		t.Fatalf("a table-level CHECK constraint is not an added column, got %v", got)
+	}
+	if got := scanNotNull(`ALTER TABLE users ADD CHECK (email IS NOT NULL);`); len(got) != 0 {
+		t.Fatalf("an anonymous CHECK constraint is not an added column, got %v", got)
+	}
+}
+
 func TestCheckReportsOnlyAddedUpMigrations(t *testing.T) {
 	p := &Pane{}
 	base := &Set{Files: map[string]string{

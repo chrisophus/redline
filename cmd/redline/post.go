@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/post"
 	"github.com/chrisophus/redline/internal/run"
 	"github.com/chrisophus/redline/internal/target"
@@ -46,13 +47,24 @@ func cmdPost(o opts) error {
 	}
 	num := tgt.PR.Number
 
-	// The set of lines GitHub will accept a comment on. A finding pointing off
-	// the diff must ride in the body, not as a line comment: the review API is
-	// all-or-nothing, so one out-of-diff comment 422s the whole submission.
-	commentable, err := prCommentable(o.dryRun, owner, repo, num)
-	if err != nil {
-		return err
+	// A real post needs gh for its credentials, the pull request head and the
+	// review bodies it already left. Fail before opening a connection rather
+	// than part way through.
+	if !o.dryRun {
+		if _, err := exec.LookPath("gh"); err != nil {
+			return fmt.Errorf("posting a review needs the gh CLI on PATH: %w", err)
+		}
 	}
+	// The set of lines GitHub will accept a comment on, taken from the diff the
+	// session recorded against its own head. The review anchors to that head
+	// (payload.CommitID) and GitHub validates a comment's line against the
+	// commit the review names, so the check is against the session's diff, not
+	// the pull request's current diff: after a push the two differ and a line
+	// valid on the new head can be one GitHub rejects on the commit this review
+	// is for. A finding pointing off the diff rides in the body, not as a line
+	// comment: the review API is all-or-nothing, so one out-of-diff comment
+	// 422s the whole submission.
+	commentable := sessionCommentable(res.Change)
 	var prof *post.Profile
 	if o.profile != "" {
 		var perr error
@@ -88,27 +100,35 @@ func cmdPost(o opts) error {
 		return emitJSON(reviewRequest(payload))
 	}
 
-	// Read what Redline already said on this PR so a re-post neither duplicates a
-	// line comment nor re-reviews a commit it has already reviewed. Bodies are
-	// scanned as one blob: fingerprint and head-SHA markers survive regardless of
-	// how the newlines in each body fall.
-	commentBlob, err := ghAPIField(owner, repo, num, "comments")
+	// Read what Redline already said on this PR so a re-post neither duplicates
+	// a line comment nor re-reviews a commit it has already reviewed. Only the
+	// posting login's own comments count. The suppression markers are hidden
+	// HTML comments, and anyone who can comment on a public pull request could
+	// paste one; honouring a marker from another author would let them silence
+	// a finding. The trusted author is the authenticated gh user this posts as.
+	me, err := ghLogin()
 	if err != nil {
 		return err
 	}
-	reviewBlob, err := ghAPIField(owner, repo, num, "reviews")
+	comments, err := ghAuthoredField(owner, repo, num, "comments")
 	if err != nil {
 		return err
 	}
-	// Both blobs, not just the comments: a finding with no line, or one off the
-	// diff, was marked in the review body it rode in, and reading only the
-	// comment bodies would offer it again on every re-post.
-	posted := post.Fingerprints([]string{commentBlob, reviewBlob})
+	reviews, err := ghAuthoredField(owner, repo, num, "reviews")
+	if err != nil {
+		return err
+	}
+	commentBodies := trustedBodies(comments, me)
+	reviewBodies := trustedBodies(reviews, me)
+	// Both kinds of body, not just the comments: a finding with no line, or one
+	// off the diff, was marked in the review body it rode in, and reading only
+	// the comment bodies would offer it again on every re-post.
+	posted := post.Fingerprints(append(append([]string{}, commentBodies...), reviewBodies...))
 	payload = payload.Unposted(posted)
-	alreadyReviewed := post.ReviewedAt([]string{reviewBlob}, tgt.Head)
+	alreadyReviewed := post.ReviewedAt(reviewBodies, tgt.Head)
 	attestSame := true
 	if prof != nil {
-		prev := post.AttestedVerdict([]string{reviewBlob}, prof.ReviewMarker, tgt.Head)
+		prev := post.AttestedVerdict(reviewBodies, prof.ReviewMarker, tgt.Head)
 		attestSame = prev == payload.GateVerdict
 	}
 
@@ -219,12 +239,18 @@ type ghReviewRequest struct {
 func reviewRequest(p post.Payload) ghReviewRequest {
 	req := ghReviewRequest{CommitID: p.CommitID, Body: p.Body, Event: post.Event}
 	for _, c := range p.Comments {
+		// Empty means the new file, which is where all but a comment on a
+		// removed line belongs.
+		side := c.Side
+		if side == "" {
+			side = "RIGHT"
+		}
 		gc := ghReviewComment{
-			Path: c.Path, Line: c.Line, Side: "RIGHT", Body: c.Body,
+			Path: c.Path, Line: c.Line, Side: side, Body: c.Body,
 		}
 		if c.StartLine > 0 && c.StartLine <= c.Line {
 			gc.StartLine = c.StartLine
-			gc.StartSide = "RIGHT"
+			gc.StartSide = side
 		}
 		req.Comments = append(req.Comments, gc)
 	}
@@ -247,37 +273,41 @@ func submitReview(owner, repo string, num int, p post.Payload) error {
 	return nil
 }
 
-// prCommentable resolves the lines GitHub will accept comments on for this PR.
-// A real post requires gh and the PR's file list; a dry-run degrades to nil (no
-// filtering) when gh is absent or the fetch fails, so a payload can still be
-// previewed offline.
-func prCommentable(dryRun bool, owner, repo string, num int) (map[string]map[int]bool, error) {
-	if _, err := exec.LookPath("gh"); err != nil {
-		if dryRun {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("posting a review needs the gh CLI on PATH: %w", err)
+// sessionCommentable resolves the lines a review comment may anchor to from the
+// diff the session recorded against its own head. That diff is what the review
+// is posted against, so a line it shows is one GitHub accepts on the commit the
+// review names. A file with no recorded diff contributes nothing, so its
+// findings ride in the body; a session that recorded no diff at all resolves to
+// nil, which the payload builder reads as "do not filter", the same as an
+// offline preview.
+func sessionCommentable(ch *change.Set) map[string]map[int]bool {
+	if ch == nil || len(ch.Files) == 0 {
+		return nil
 	}
-	patches, err := ghPullFiles(owner, repo, num)
-	if err != nil {
-		if dryRun {
-			fmt.Fprintf(os.Stderr, "redline: could not fetch the PR diff (%v); previewing without diff filtering\n", err)
-			return nil, nil
+	patches := make(map[string]string, len(ch.Files))
+	for _, f := range ch.Files {
+		if f.Diff != "" {
+			patches[f.Path] = f.Diff
 		}
-		return nil, err
 	}
-	return post.CommentableLines(patches), nil
+	if len(patches) == 0 {
+		return nil
+	}
+	return post.CommentableLines(patches)
 }
 
-// ghPullFiles returns the unified-diff patch for each file in the PR, keyed by
-// path. A file with no patch (binary, or too large for GitHub to return) is
-// omitted, so its findings fall to the body rather than risk an invalid comment.
-//
-// Every page is read. Stopping at the first hundred was safe, because an
-// unlisted file's findings ride in the body and that never 422s, but on a large
-// pull request it demoted findings that GitHub would have accepted inline.
-func ghPullFiles(owner, repo string, num int) (map[string]string, error) {
-	path := fmt.Sprintf("repos/%s/%s/pulls/%d/files?per_page=100", owner, repo, num)
+// ghAuthoredBody is one comment or review with the login that wrote it, so the
+// caller can keep only the ones the posting login left.
+type ghAuthoredBody struct {
+	Login string
+	Body  string
+}
+
+// ghAuthoredField returns every item's author login and body under a PR
+// sub-resource (comments or reviews), paginated. The author travels with the
+// body because the caller trusts a suppression marker only from its own login.
+func ghAuthoredField(owner, repo string, num int, sub string) ([]ghAuthoredBody, error) {
+	path := fmt.Sprintf("repos/%s/%s/pulls/%d/%s", owner, repo, num, sub)
 	// --paginate with --slurp returns one array across all pages. Without
 	// --slurp gh concatenates a separate array per page, which is not valid JSON.
 	cmd := exec.Command("gh", "api", "--paginate", "--slurp", path)
@@ -285,41 +315,37 @@ func ghPullFiles(owner, repo string, num int) (map[string]string, error) {
 	if err != nil {
 		return nil, ghError(path, err)
 	}
-	// Each element is one page's array of files.
+	// Each element is one page's array of items.
 	var pages [][]struct {
-		Filename string `json:"filename"`
-		Patch    string `json:"patch"`
+		User struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		Body string `json:"body"`
 	}
 	if err := json.Unmarshal(out, &pages); err != nil {
 		return nil, err
 	}
-	var raw []struct {
-		Filename string `json:"filename"`
-		Patch    string `json:"patch"`
-	}
+	var items []ghAuthoredBody
 	for _, page := range pages {
-		raw = append(raw, page...)
-	}
-	m := make(map[string]string, len(raw))
-	for _, f := range raw {
-		if f.Patch != "" {
-			m[f.Filename] = f.Patch
+		for _, it := range page {
+			items = append(items, ghAuthoredBody{Login: it.User.Login, Body: it.Body})
 		}
 	}
-	return m, nil
+	return items, nil
 }
 
-// ghAPIField returns the concatenated `body` fields of every item under a PR
-// sub-resource (comments or reviews), paginated. Bodies are joined into one
-// string because the caller only scans them for markers.
-func ghAPIField(owner, repo string, num int, sub string) (string, error) {
-	path := fmt.Sprintf("repos/%s/%s/pulls/%d/%s", owner, repo, num, sub)
-	cmd := exec.Command("gh", "api", "--paginate", "-q", ".[].body", path)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", ghError(path, err)
+// trustedBodies keeps only the bodies authored by the posting login. The
+// suppression markers Redline reads back are hidden comments anyone could
+// paste, so a marker is honoured only when the tool itself wrote the comment
+// carrying it.
+func trustedBodies(items []ghAuthoredBody, login string) []string {
+	var out []string
+	for _, it := range items {
+		if it.Login == login {
+			out = append(out, it.Body)
+		}
 	}
-	return string(out), nil
+	return out
 }
 
 // ghError explains a failed `gh api` call. gh writes its diagnosis to stderr,

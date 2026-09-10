@@ -374,19 +374,31 @@ func (p *Profile) LineCoverage(file string) map[int]bool {
 }
 
 // blocksFor matches a repository path against the import-qualified names a Go
-// profile uses, by longest suffix. `github.com/x/y/internal/a/b.go` is the entry
-// for `internal/a/b.go`.
+// profile uses. `github.com/x/y/internal/a/b.go` is the entry for
+// `internal/a/b.go`. Several keys can share a path suffix (two files with the
+// same trailing path in different modules or a vendored copy), so the match is
+// chosen deterministically: the shortest qualifying key, where the requested
+// path is the largest part of the name, with the name itself breaking ties.
+// Returning the first key map iteration yields would report a different
+// coverage number on two runs of identical input.
 func blocksFor(blocks map[string][]block, path string) []block {
 	if b, ok := blocks[path]; ok {
 		return b
 	}
 	want := "/" + filepath.ToSlash(path)
-	for name, b := range blocks {
-		if strings.HasSuffix(name, want) {
-			return b
+	best := ""
+	for name := range blocks {
+		if !strings.HasSuffix(name, want) {
+			continue
+		}
+		if best == "" || len(name) < len(best) || (len(name) == len(best) && name < best) {
+			best = name
 		}
 	}
-	return nil
+	if best == "" {
+		return nil
+	}
+	return blocks[best]
 }
 
 // lineState reports whether a line is inside a counted block, and whether any

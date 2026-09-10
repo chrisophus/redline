@@ -74,8 +74,11 @@ func cmdReview(o opts) error {
 	if o.verify {
 		ropts.Verify = true
 	}
+	// The scout's spend is accumulated here so a cost paid inside the verify
+	// pass reaches the ledger and not only its own log line.
+	tally := scoutTally{known: true}
 	if ropts.Verify {
-		ropts.Answer = scoutAnswerer(res, o, ropts)
+		ropts.Answer = scoutAnswerer(res, o, ropts, &tally)
 	}
 	if o.api == review.APIOpenAI {
 		// The Anthropic SDK reads its own environment. The OpenAI backend is
@@ -110,6 +113,15 @@ func cmdReview(o opts) error {
 	}
 
 	out, err := review.Run(context.Background(), in, ropts)
+	if out != nil && tally.ran {
+		// The lookups were a separate call on a separate model. Their cost is
+		// recorded apart and folded into the total, so --stats and the ledger
+		// count what the review actually cost end to end.
+		out.ScoutCostUSD = tally.cost
+		if out.CostKnown && tally.known {
+			out.CostUSD += tally.cost
+		}
+	}
 	if out != nil {
 		if s := out.Budget.Summary(); s != "" {
 			fmt.Fprintln(os.Stderr, "redline:", s)
@@ -242,6 +254,14 @@ func describeSession(res *run.Result) string {
 	return res.Target.Describe()
 }
 
+// scoutTally accumulates what the answering scout spent, so a cost paid inside
+// the verify pass reaches the ledger rather than staying on a log line.
+type scoutTally struct {
+	ran   bool
+	cost  float64
+	known bool
+}
+
 // scoutAnswerer runs the lookups a review asked for, as the scout in its
 // answering mode.
 //
@@ -252,7 +272,7 @@ func describeSession(res *run.Result) string {
 // money is the caller's business, and everything below degrades to nil rather
 // than failing, so a checkout with no key still gets a ruling over the
 // answers it has.
-func scoutAnswerer(res *run.Result, o opts, ropts review.Options) review.Answerer {
+func scoutAnswerer(res *run.Result, o opts, ropts review.Options, tally *scoutTally) review.Answerer {
 	root := ""
 	if res.Target != nil {
 		root = res.Target.Dir
@@ -264,7 +284,21 @@ func scoutAnswerer(res *run.Result, o opts, ropts review.Options) review.Answere
 	if root == "" || !isDir(root) {
 		return nil
 	}
-	if os.Getenv("ANTHROPIC_API_KEY") == "" && ropts.APIKey == "" && ropts.BaseURL == "" {
+	// The scout speaks to Anthropic whichever wire the review used, so it
+	// takes Anthropic credentials and never the OpenAI gateway's. Handing the
+	// gateway's URL and key to an Anthropic client is why verification always
+	// failed on the --api openai path.
+	baseURL, apiKey := "", ""
+	if ropts.API != review.APIOpenAI {
+		// The Anthropic wire. Stage one already authenticated through the
+		// SDK's credential chain, an `ant auth login` profile included, so
+		// these carry any explicit override and empty falls back to that
+		// chain.
+		baseURL, apiKey = ropts.BaseURL, ropts.APIKey
+	} else if os.Getenv("ANTHROPIC_API_KEY") == "" && os.Getenv("ANTHROPIC_AUTH_TOKEN") == "" {
+		// The review ran on the OpenAI key and the environment carries no
+		// Anthropic credential for the scout, so running it would only fail.
+		// The ruling still runs, over no answers.
 		return nil
 	}
 	return func(ctx context.Context, qs []review.Question) (*envelope.Envelope, error) {
@@ -281,12 +315,17 @@ func scoutAnswerer(res *run.Result, o opts, ropts review.Options) review.Answere
 			Diff:      diffOf(res),
 			BaseSHA:   res.Report.BaseSHA,
 			Questions: out,
-			BaseURL:   ropts.BaseURL,
-			APIKey:    ropts.APIKey,
+			BaseURL:   baseURL,
+			APIKey:    apiKey,
 		})
 		if spend.Turns > 0 {
 			fmt.Fprintf(os.Stderr, "redline: lookups took %d turn(s), %d record(s), %s\n",
 				spend.Turns, spend.Records, review.FormatCost(spend.CostUSD, spend.CostKnown))
+		}
+		if tally != nil {
+			tally.ran = true
+			tally.cost += spend.CostUSD
+			tally.known = tally.known && spend.CostKnown
 		}
 		return env, err
 	}
