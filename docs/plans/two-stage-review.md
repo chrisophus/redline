@@ -1,10 +1,12 @@
 # A review that checks its own findings
 
-What to do about a reviewer whose findings the reader dismisses. Nothing here
-is committed. The design doc leaves open whether the review producer should
-run more than one wave; this is the case for a review that verifies before it
-posts, worked out far enough to decide with, and checked against what the
-other review tools do about the same problem.
+What to do about a reviewer whose findings the reader dismisses. The design
+doc leaves open whether the review producer should run more than one wave;
+this is the case for a review that verifies before it posts, checked against
+what the other review tools do about the same problem.
+
+It shipped. What is below is the argument as it was written, with a section
+near the end recording where building it changed the design.
 
 ## The evidence
 
@@ -374,6 +376,49 @@ The target is stated so it can be missed. Disputed under one in ten posted
 findings, which is the low end of what the tools above report for
 themselves, while the labelled-defect bar in the eval holds. A configuration
 that gets the first by losing the second is not an improvement.
+
+## What shipped
+
+All eight steps below are implemented. Three places where building it changed
+the design are worth recording, because each was a decision the plan got
+wrong.
+
+**A finding with no answerable question is folded, not dropped.** The plan
+said drop. That would have broken a promise the report already makes, that an
+uncertain finding costs the reader nothing and a withheld one costs them the
+finding. So `none` became a fifth question kind meaning the author's own
+account of a finding as speculation, and it forces low confidence, which the
+report already folds and `post` now withholds. Nothing is deleted, and the
+precision is the same.
+
+**`diff` is a question kind, and it is the strongest one.** The plan's set was
+all lookups, which left no honest answer for a finding the material already
+settles: a swallowed error visible in the hunk needs nothing fetched and is
+not speculation. Without it, every self-evident finding would have had to
+claim a lookup it did not need.
+
+**Nothing new was built to carry a withdrawn finding.** The plan had it living
+in `review.json` with the report learning to render a new class. Low confidence
+already means folded on the report and withheld from the pull request, and
+`Context` already renders as a quote under a finding in both renderers. So a
+ruling sets confidence and writes its reason into `Context`, and one rule
+governs what reaches an author instead of two that can disagree.
+
+The ruling has five verdicts rather than four: `already-raised` earned its own
+word instead of being folded into `justified`, because they are different
+facts about a finding and a reader of the report wants to know which.
+
+Running the branch's own review over itself also turned up a defect nobody had
+noticed. `IsTest` reads anything under `testdata` as test material, which is
+right for the composition table and wrong for deciding which bodies to hold
+back from a review. This repository's fixture README reached one labelled a
+test file that had "moved", with the review told to judge the code it tests.
+`IsTestCode` is the narrower predicate the review uses now.
+
+Two things in the list below are not finished, and both need something this
+session did not have. Freezing the field sessions as fixtures needs the
+`.redline` directories from the runs that produced the dismissals. Rerunning
+the sampling overlap under the new identity costs model calls.
 
 ## Sequencing
 
