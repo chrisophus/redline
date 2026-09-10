@@ -194,14 +194,20 @@ func ruleSchema() map[string]any {
 	}
 }
 
-// ruleWire is what comes back.
+// rulingItem is one ruling as it comes off the wire.
+type rulingItem struct {
+	Finding  string `json:"finding"`
+	Verdict  string `json:"verdict"`
+	Evidence string `json:"evidence"`
+	Why      string `json:"why"`
+}
+
+// ruleWire is what comes back. rulings is a RawMessage because a gateway that
+// serves one vendor's model over another's protocol does not always honour the
+// json_schema, and returns the array wrapped in a JSON string rather than as
+// the array itself. parseRulings reads both shapes.
 type ruleWire struct {
-	Rulings []struct {
-		Finding  string `json:"finding"`
-		Verdict  string `json:"verdict"`
-		Evidence string `json:"evidence"`
-		Why      string `json:"why"`
-	} `json:"rulings"`
+	Rulings json.RawMessage `json:"rulings"`
 }
 
 // candidatesSection puts the findings in front of the pass that must rule on
@@ -611,8 +617,12 @@ func parseRulings(body []byte) (map[string]findings.Ruling, error) {
 	if err := json.Unmarshal(body, &w); err != nil {
 		return nil, fmt.Errorf("the verifying pass's response did not parse: %w", err)
 	}
-	out := make(map[string]findings.Ruling, len(w.Rulings))
-	for _, r := range w.Rulings {
+	items, err := decodeRulingItems(w.Rulings)
+	if err != nil {
+		return nil, fmt.Errorf("the verifying pass's response did not parse: %w", err)
+	}
+	out := make(map[string]findings.Ruling, len(items))
+	for _, r := range items {
 		id := strings.Trim(strings.TrimSpace(r.Finding), "[]")
 		if id == "" {
 			continue
@@ -627,6 +637,32 @@ func parseRulings(body []byte) (map[string]findings.Ruling, error) {
 		}
 	}
 	return out, nil
+}
+
+// decodeRulingItems reads the rulings array, tolerating a proxy that returned
+// it as a JSON string wrapping the array. The Marketplace gateway serves
+// claude over the OpenAI protocol and does not enforce the json_schema, so a
+// stringified array is a shape that comes back; unwrapping it once recovers
+// the ruling rather than failing the whole pass open.
+func decodeRulingItems(raw json.RawMessage) ([]rulingItem, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var items []rulingItem
+	if err := json.Unmarshal(raw, &items); err == nil {
+		return items, nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(s) == "" {
+		return nil, nil
+	}
+	if err := json.Unmarshal([]byte(s), &items); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 // alreadyRaised matches candidates against what this pull request has already
