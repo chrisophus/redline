@@ -284,22 +284,29 @@ func scoutAnswerer(res *run.Result, o opts, ropts review.Options, tally *scoutTa
 	if root == "" || !isDir(root) {
 		return nil
 	}
-	// The scout speaks to Anthropic whichever wire the review used, so it
-	// takes Anthropic credentials and never the OpenAI gateway's. Handing the
-	// gateway's URL and key to an Anthropic client is why verification always
-	// failed on the --api openai path.
+	// The scout speaks only to Anthropic, whichever wire the review used, so
+	// it takes Anthropic credentials and never the OpenAI gateway's. Handing
+	// the gateway's URL and key to an Anthropic client is why verification
+	// always failed on the --api openai path.
 	baseURL, apiKey := "", ""
-	if ropts.API != review.APIOpenAI {
+	if ropts.API == review.APIOpenAI {
+		// The review is going out over the OpenAI wire, so stage one used the
+		// OpenAI key. The scout needs an Anthropic credential of its own, and
+		// with only OpenAI credentials there is none: running it would spend a
+		// call only to fail. It is skipped and said so, the ruling still runs
+		// over no answers, and a finding that needed a lookup comes back
+		// unverifiable rather than confirmed.
+		if os.Getenv("ANTHROPIC_API_KEY") == "" && os.Getenv("ANTHROPIC_AUTH_TOKEN") == "" {
+			fmt.Fprintln(os.Stderr, "redline: the checking pass has no Anthropic credential for its lookups "+
+				"on the OpenAI wire, so they are skipped; findings that need one are marked unverifiable")
+			return nil
+		}
+	} else {
 		// The Anthropic wire. Stage one already authenticated through the
 		// SDK's credential chain, an `ant auth login` profile included, so
 		// these carry any explicit override and empty falls back to that
 		// chain.
 		baseURL, apiKey = ropts.BaseURL, ropts.APIKey
-	} else if os.Getenv("ANTHROPIC_API_KEY") == "" && os.Getenv("ANTHROPIC_AUTH_TOKEN") == "" {
-		// The review ran on the OpenAI key and the environment carries no
-		// Anthropic credential for the scout, so running it would only fail.
-		// The ruling still runs, over no answers.
-		return nil
 	}
 	return func(ctx context.Context, qs []review.Question) (*envelope.Envelope, error) {
 		out := make([]scout.Question, 0, len(qs))
