@@ -372,6 +372,19 @@ number with its provenance, and how many changed files any pane examined. A
 pane that applied and did not run is named there in bold, which is what
 makes the review's scope verifiable from the pull request alone.
 
+When a review has been written — by `redline review` or by hand into
+`review.json` — the body also carries the agent's account of the change: what
+it does, and a collapsed table of one line per file. That is what makes the
+pull request readable without opening the report, and it is the part a
+reviewer orients on before reading a single finding.
+
+Both are labelled as the agent's words. Redline writes no prose itself, so a
+run with no review has no such section rather than a heading with nothing
+under it, and the file table lists only files someone actually wrote a
+sentence about — GitHub's own Files tab already lists the paths and their
+line counts. The prose is bounded so that it can never be the reason a
+finding or a gate marker falls off the end of a body GitHub would reject.
+
 A finding becomes a line-anchored comment only when its `file:line` is on a
 changed line in the PR's diff; findings off the diff (or with no line) go in
 the review body, so one stray line can never make GitHub reject the whole
