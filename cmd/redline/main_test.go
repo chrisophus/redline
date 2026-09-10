@@ -14,6 +14,7 @@ import (
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/post"
 	"github.com/chrisophus/redline/internal/report"
+	"github.com/chrisophus/redline/internal/review"
 	"github.com/chrisophus/redline/internal/run"
 	"github.com/chrisophus/redline/internal/target"
 )
@@ -608,5 +609,22 @@ func TestPostAnchorsCommentsToTheSessionDiff(t *testing.T) {
 	}
 	if !strings.Contains(req.Body, "not in the session diff") {
 		t.Fatalf("the off-diff finding should ride in the body:\n%s", req.Body)
+	}
+}
+
+// The scout speaks only to Anthropic. When the review runs on the OpenAI wire
+// and the environment carries no Anthropic credential, the lookups must be
+// skipped rather than run a call that can only fail; the ruling still runs
+// over no answers.
+func TestScoutSkipsWithoutAnthropicCredentialsOnTheOpenAIWire(t *testing.T) {
+	res := &run.Result{Target: &target.Target{Dir: t.TempDir()}}
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
+	if scoutAnswerer(res, opts{}, review.Options{API: review.APIOpenAI}, nil) != nil {
+		t.Fatal("the scout must not run with only OpenAI credentials")
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-present")
+	if scoutAnswerer(res, opts{}, review.Options{API: review.APIOpenAI}, nil) == nil {
+		t.Fatal("with an Anthropic key present the lookups should be available")
 	}
 }
