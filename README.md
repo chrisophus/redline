@@ -305,10 +305,32 @@ what the team wrote. The rules are told to the model as binding, and
 explicitly not as a checklist to audit the change against, because a change
 that follows the rules deserves no comment saying so.
 
-`redline-scout` also looks for `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`
-and their neighbours, including ones sitting next to the changed files. That
-search needs a model to judge which of them bear on the change, which is why
-it costs money and is off by default. These two paths are free.
+`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and their neighbours are read the
+same way, at the root and in every directory on the way down to a changed
+file. A rule at `internal/feed/AGENTS.md` governs a change under
+`internal/feed` and reaches no other review, which is what `applyTo` says
+explicitly and what the location says for a file whose author never wrote
+one. The repository-wide ones are sent first, so a nested rule reads as the
+narrowing it is. Six is the bound and the ones nearest the change are kept,
+because those are the ones with something specific to say; what is dropped is
+counted in the notes.
+
+This is not a small gap being closed. Redline's own rules live in `AGENTS.md`
+and it has no `copilot-instructions.md`, so before this every review of this
+repository carried none of them.
+
+The file beside a changed one is read too, under the `sibling` role. Two files
+in a directory whose names share enough of their parts are usually doing the
+same kind of work, and the older one is the convention the newer one follows.
+That convention is often written down nowhere: it is in the code, one
+directory listing away. The match is a guess from a filename, the expansion
+says so, and the model is told to read it as what this repository already does
+rather than as a rule. A directory whose naming singles nothing out, twenty
+files sharing one word, produces nothing at all.
+
+`redline-scout` looks for all of these too, and judges which of them bear on
+the change, which needs a model and is why it costs money and is off by
+default. These paths are free.
 
 Two providers ship here. `redline-scout` is the one that costs money: a cheap
 model reads the diff, works out what this change in particular needs, and uses

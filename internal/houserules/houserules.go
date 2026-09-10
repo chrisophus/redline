@@ -4,22 +4,37 @@
 // A review that contradicts the house rules is wrong twice: the finding is
 // wrong, and it is evidence the tool did not read what the team wrote down.
 // The scout already looks for these files, but the scout calls a model and is
-// off by default, so on most runs nothing read them. These particular files do
-// not need a model to find: GitHub's convention fixes their location, which
-// makes them free and deterministic to resolve, and `redline run` costing
-// nothing is a property worth keeping.
+// off by default, so on most runs nothing read them. None of them needs a
+// model to find: convention fixes where they live, which makes them free and
+// deterministic to resolve, and `redline run` costing nothing is a property
+// worth keeping.
 //
-// Two shapes are read, both GitHub's:
+// Three shapes are read. The first two are GitHub's:
 //
 //   - .github/copilot-instructions.md, which governs the whole repository.
 //   - .github/instructions/*.md, each carrying an `applyTo` frontmatter glob
 //     that says which files it governs. A change that touches none of them
 //     does not carry the rule, which is the point of the field.
+//
+// The third is the convention file by name: AGENTS.md, CLAUDE.md,
+// CONTRIBUTING.md and the rest, at the repository root and in the directories
+// the change touches. These are a convention rather than a specification, and
+// the scout has read them since it shipped. But the scout calls a model and is
+// off by default, so on a repository whose rules live in CLAUDE.md the review
+// never saw them, and field use produced findings dismissed for contradicting
+// exactly those rules. A name in a fixed set of places needs no model to find,
+// which is what lets every run carry them.
+//
+// A nested file is scoped by where it sits: internal/foo/AGENTS.md governs
+// changes under internal/foo and is not carried for a change that touches
+// nothing there. That is the same rule applyTo states explicitly, read from
+// the location instead, and it is the convention every agent already follows.
 package houserules
 
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -46,6 +61,35 @@ const rootInstructions = ".github/copilot-instructions.md"
 // instructionsDir holds the path-scoped instruction files.
 const instructionsDir = ".github/instructions"
 
+// conventionNames are what a repository calls the file it writes its own rules
+// in. Looked for at the root and in the directories the change touches.
+//
+// A list of names rather than a search: these are a convention, and a
+// repository that keeps its rules somewhere else is not served by guessing.
+// The scout's own list, because a rule that reaches the review with the scout
+// on and vanishes with it off is worse than either.
+var conventionNames = []string{
+	"AGENTS.md",
+	"CLAUDE.md",
+	"CONTRIBUTING.md",
+	"CONVENTIONS.md",
+	"STYLE.md",
+	"STYLEGUIDE.md",
+	".cursorrules",
+}
+
+// rootOnlyConventions sit at fixed paths and govern the whole repository.
+var rootOnlyConventions = []string{
+	".github/CONTRIBUTING.md",
+	"docs/CONTRIBUTING.md",
+}
+
+// maxConventionFiles bounds how many of these one review carries. A monorepo
+// where every package has an AGENTS.md would otherwise spend the whole
+// guideline budget on a wide change, and the ones nearest the change are the
+// ones with something specific to say. What is cut is counted, not hidden.
+const maxConventionFiles = 6
+
 // priority keeps a rule from being the first thing dropped when the budget
 // binds. Guideline is unranked, so it sorts against other unranked roles on
 // priority alone, and a graph adjacency would otherwise win on record order. A
@@ -63,7 +107,7 @@ const maxLines = 400
 // instruction files returns a nil envelope and no error: nothing to say is a
 // legitimate answer, and it is not the same as a failure to look.
 func Resolve(root string, changed []string) (*envelope.Envelope, error) {
-	files, err := applicable(root, changed)
+	files, omitted, err := applicable(root, changed)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +135,13 @@ func Resolve(root string, changed []string) (*envelope.Envelope, error) {
 		}
 		env.Expansions = append(env.Expansions, x)
 	}
+	if omitted > 0 {
+		// A rule that was found and dropped is not the same as one that does
+		// not exist, and only the note can tell the reader which this was.
+		env.Notes = append(env.Notes, fmt.Sprintf(
+			"%d further convention file(s) apply to this change and are not carried; "+
+				"the ones nearest the changed files were kept", omitted))
+	}
 	return env, nil
 }
 
@@ -98,14 +149,18 @@ func Resolve(root string, changed []string) (*envelope.Envelope, error) {
 // header names an unranked role and leaves the gloss to the provider that
 // invented it, so this is where the words have to be.
 const promptFragment = `The context tagged instructions is what this repository
-wrote down about itself, read from the files GitHub's convention puts them in.
-It is not code and it is not part of the change.
+wrote down about itself, read from the files a team keeps its rules in: the
+ones GitHub's convention names, and AGENTS.md, CLAUDE.md, CONTRIBUTING.md and
+their kin at the root and beside the changed code. It is not code and it is
+not part of the change.
 
 Expansions in the guideline role are rules, conventions and decisions the team
 recorded. Treat them as binding on the review: a finding that contradicts one
 is wrong twice, because it is also evidence the review did not read what the
 team wrote. A rule scoped to particular paths is only carried here when this
-change touches them.
+change touches them, and a block whose scope names a directory was written
+about that directory: it is the nearest word on the code it governs, and it
+narrows anything the repository-wide blocks say.
 
 They are not a checklist to audit the change against, and a change that
 follows them deserves no comment saying so.
@@ -119,23 +174,59 @@ type rule struct {
 	content   string
 	lines     int
 	truncated bool
+	// depth is how far the file sits from the repository root. Zero is
+	// repository-wide. It orders the block, and it decides what is dropped
+	// first when there are more convention files than one review carries: a
+	// file beside the changed code has something specific to say and the root
+	// one has already been read a hundred times.
+	depth int
 }
 
-// applicable finds the instruction files that govern the changed paths.
-func applicable(root string, changed []string) ([]rule, error) {
+// applicable finds the instruction files that govern the changed paths, and
+// reports how many were found and not carried.
+func applicable(root string, changed []string) ([]rule, int, error) {
 	var out []rule
 	if r, ok, err := read(root, rootInstructions, nil); err != nil {
-		return nil, err
+		return nil, 0, err
 	} else if ok {
 		out = append(out, r)
 	}
+	conv, omitted, err := conventions(root, changed)
+	if err != nil {
+		return nil, 0, err
+	}
+	out = append(out, conv...)
+	scoped, err := scopedInstructions(root, changed)
+	if err != nil {
+		return nil, 0, err
+	}
+	out = append(out, scoped...)
+	// Deterministic order, outermost first: a repository-wide rule is the
+	// frame a nested one narrows, so reading it second reads as a correction
+	// to something already stated rather than as the statement itself.
+	sort.SliceStable(out, func(i, j int) bool {
+		if (out[i].path == rootInstructions) != (out[j].path == rootInstructions) {
+			return out[i].path == rootInstructions
+		}
+		if out[i].depth != out[j].depth {
+			return out[i].depth < out[j].depth
+		}
+		return out[i].path < out[j].path
+	})
+	return out, omitted, nil
+}
+
+// scopedInstructions reads .github/instructions/*.md, keeping the ones whose
+// applyTo covers a changed path.
+func scopedInstructions(root string, changed []string) ([]rule, error) {
 	entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(instructionsDir)))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return out, nil
+			return nil, nil
 		}
 		return nil, fmt.Errorf("reading %s: %w", instructionsDir, err)
 	}
+	var out []rule
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".md") {
 			continue
@@ -149,15 +240,94 @@ func applicable(root string, changed []string) ([]rule, error) {
 			out = append(out, r)
 		}
 	}
-	// Deterministic order, and the repository-wide file first: it is the one
-	// that always applies, so it reads as the frame for the scoped ones.
-	sort.SliceStable(out, func(i, j int) bool {
-		if (out[i].path == rootInstructions) != (out[j].path == rootInstructions) {
-			return out[i].path == rootInstructions
-		}
-		return out[i].path < out[j].path
-	})
 	return out, nil
+}
+
+// conventions finds the rule files a repository writes by name: at the root,
+// and in every directory on the path from the root to a changed file.
+//
+// The walk is what makes a nested file worth reading. A package with its own
+// AGENTS.md has said something specific about that package, and it is the
+// thing a review of that package is most likely to contradict. The same walk
+// is what scopes it: a rule found at internal/foo governs internal/foo, so a
+// change that touches nothing there never sees it.
+func conventions(root string, changed []string) ([]rule, int, error) {
+	dirs := map[string]bool{".": true}
+	for _, p := range changed {
+		d := path.Dir(normPath(p))
+		for d != "." && d != "/" && d != "" {
+			dirs[d] = true
+			d = path.Dir(d)
+		}
+	}
+	ordered := make([]string, 0, len(dirs))
+	for d := range dirs {
+		ordered = append(ordered, d)
+	}
+	// Nearest last, so the deepest rule reads as the final word, and stable
+	// within a depth so two runs of the same change agree.
+	sort.Slice(ordered, func(i, j int) bool {
+		di, dj := depthOf(ordered[i]), depthOf(ordered[j])
+		if di != dj {
+			return di < dj
+		}
+		return ordered[i] < ordered[j]
+	})
+
+	var out []rule
+	seen := map[string]bool{}
+	add := func(rel string, depth int) error {
+		if seen[rel] {
+			return nil
+		}
+		seen[rel] = true
+		// changed is nil: location has already decided the scope, so an
+		// applyTo in one of these would be re-deciding it against a file
+		// whose author never wrote one.
+		r, ok, err := read(root, rel, nil)
+		if err != nil || !ok {
+			return err
+		}
+		r.depth = depth
+		if depth > 0 {
+			r.scope = path.Dir(rel) + "/**"
+		}
+		out = append(out, r)
+		return nil
+	}
+	for _, rel := range rootOnlyConventions {
+		if err := add(rel, 0); err != nil {
+			return nil, 0, err
+		}
+	}
+	for _, d := range ordered {
+		depth := depthOf(d)
+		for _, name := range conventionNames {
+			rel := name
+			if d != "." {
+				rel = d + "/" + name
+			}
+			if err := add(rel, depth); err != nil {
+				return nil, 0, err
+			}
+		}
+	}
+	if len(out) <= maxConventionFiles {
+		return out, 0, nil
+	}
+	// Keep the deepest, which are the ones nearest the change. The root file
+	// is the one most likely to be general advice the review does not need
+	// spelled out, and it is also the one a reader would think to look at.
+	sort.SliceStable(out, func(i, j int) bool { return out[i].depth > out[j].depth })
+	kept := out[:maxConventionFiles]
+	return kept, len(out) - maxConventionFiles, nil
+}
+
+func depthOf(dir string) int {
+	if dir == "." || dir == "" {
+		return 0
+	}
+	return strings.Count(dir, "/") + 1
 }
 
 // read loads one instruction file and decides whether it governs the change.
