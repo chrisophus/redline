@@ -161,3 +161,128 @@ func TestALongRuleIsBoundedAndSaysSo(t *testing.T) {
 		t.Errorf("a truncated rule does not say so: %v", x.Details)
 	}
 }
+
+// The failure this was built for. Field use produced findings the author
+// dismissed for contradicting rules the team had written in CLAUDE.md, and
+// nothing read that file unless the scout was on, which it is not by default.
+func TestTheConventionFileAtTheRootIsCarried(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "CLAUDE.md", "# House rules\n\nBulk ingest uses CopyFrom with an explicit column list.\n")
+
+	found, content := find(t, root, []string{"internal/feed/offer.go"}, "CLAUDE.md")
+	if !found {
+		t.Fatal("a root CLAUDE.md governs every change and was not carried")
+	}
+	if !strings.Contains(content, "CopyFrom") {
+		t.Fatalf("the rule's own words have to reach the reviewer: %q", content)
+	}
+}
+
+// A rule beside the changed code is the one a review of that code is most
+// likely to contradict, and it is the one a reviewer reading only the root
+// file will never know about.
+func TestANestedConventionFileIsScopedToItsDirectory(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "internal/feed/AGENTS.md", "# Feed\n\nrow_index is zero-based here.\n")
+
+	if found, _ := find(t, root, []string{"internal/feed/offer.go"}, "internal/feed/AGENTS.md"); !found {
+		t.Fatal("a change inside the directory must carry its rule")
+	}
+	if found, _ := find(t, root, []string{"cmd/main.go"}, "internal/feed/AGENTS.md"); found {
+		t.Fatal("a change elsewhere must not; the rule was written about that directory")
+	}
+}
+
+// The scope reaches the reader, because a block that says "this is the rule
+// for internal/feed" is a different claim from one that governs everything.
+func TestANestedRuleSaysWhatItGoverns(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "internal/feed/AGENTS.md", "# Feed\n\nzero-based\n")
+	env, err := Resolve(root, []string{"internal/feed/offer.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range env.Expansions {
+		if x.File == "internal/feed/AGENTS.md" {
+			if x.Details["scope"] != "internal/feed/**" {
+				t.Fatalf("scope = %q, want the directory it was written about", x.Details["scope"])
+			}
+			return
+		}
+	}
+	t.Fatal("the nested rule was not carried")
+}
+
+// A rule on the way from the root to the changed file governs it. An agent
+// walking up from a file reads every one of these, and a reviewer that read
+// only the two ends would miss the middle.
+func TestConventionsOnTheWalkUpAreAllCarried(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "AGENTS.md", "# Root\n\nno em dashes\n")
+	write(t, root, "internal/AGENTS.md", "# Internal\n\npackages own their errors\n")
+	write(t, root, "internal/feed/AGENTS.md", "# Feed\n\nzero-based row_index\n")
+
+	env, err := Resolve(root, []string{"internal/feed/offer.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, x := range env.Expansions {
+		got = append(got, x.File)
+	}
+	want := []string{"AGENTS.md", "internal/AGENTS.md", "internal/feed/AGENTS.md"}
+	if len(got) != len(want) {
+		t.Fatalf("carried %v, want all three", got)
+	}
+	// Outermost first: the repository-wide rule is the frame a nested one
+	// narrows, so a reader meets the general statement before its exception.
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("order = %v, want outermost first %v", got, want)
+		}
+	}
+}
+
+// A monorepo where every package writes rules would otherwise spend the whole
+// guideline budget on a wide change. What is cut is counted, because a rule
+// that was found and dropped is not the same as one that does not exist.
+func TestTooManyConventionFilesKeepsTheNearestAndSaysSo(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "AGENTS.md", "# Root\n\ngeneral\n")
+	var changed []string
+	for _, pkg := range []string{"a", "b", "c", "d", "e", "f", "g"} {
+		write(t, root, "internal/"+pkg+"/AGENTS.md", "# "+pkg+"\n\nrule for "+pkg+"\n")
+		changed = append(changed, "internal/"+pkg+"/x.go")
+	}
+
+	env, err := Resolve(root, changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Expansions) != maxConventionFiles {
+		t.Fatalf("carried %d rules, want the bound of %d", len(env.Expansions), maxConventionFiles)
+	}
+	for _, x := range env.Expansions {
+		if x.File == "AGENTS.md" {
+			t.Fatal("the root file is the one to drop; the nearest have something specific to say")
+		}
+	}
+	if len(env.Notes) == 0 || !strings.Contains(env.Notes[0], "not carried") {
+		t.Fatalf("the drop has to be visible: %v", env.Notes)
+	}
+}
+
+// One file reached from two changed paths is one rule. Carrying it twice
+// would spend the budget on a copy and read as two rules that agree.
+func TestOneConventionFileIsCarriedOnce(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "internal/feed/AGENTS.md", "# Feed\n\nzero-based\n")
+
+	env, err := Resolve(root, []string{"internal/feed/a.go", "internal/feed/b.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Expansions) != 1 {
+		t.Fatalf("carried %d copies of one rule", len(env.Expansions))
+	}
+}

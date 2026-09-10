@@ -21,6 +21,7 @@ import (
 	"github.com/chrisophus/redline/internal/pane/openapi"
 	"github.com/chrisophus/redline/internal/pane/parity"
 	"github.com/chrisophus/redline/internal/pane/testdelta"
+	"github.com/chrisophus/redline/internal/precedent"
 	"github.com/chrisophus/redline/internal/provider"
 	"github.com/chrisophus/redline/internal/target"
 )
@@ -391,6 +392,20 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
 			Substrate: "redline/context",
 			Message:   "this repository's instruction files could not be read, so the review does not carry its rules",
+			Reason:    err.Error(),
+		})
+	} else if env != nil {
+		envs = append(envs, env)
+	}
+	// The file beside a changed one, matched by name. A convention a team
+	// never wrote down still governs the review, and it lives in the code
+	// rather than in any rules file: the directory listing is where it can be
+	// read, and reading one costs nothing.
+	if env, err := precedent.Resolve(observeRoot, changed); err != nil {
+		absent = append(absent, fmt.Sprintf("%s (context): %v", precedent.ProviderName, err))
+		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+			Substrate: "redline/context",
+			Message:   "the files beside the changed ones could not be listed, so the review does not carry what this repository already does",
 			Reason:    err.Error(),
 		})
 	} else if env != nil {
