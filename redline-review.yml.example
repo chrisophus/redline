@@ -18,3 +18,22 @@ require_head: true
 # A pane that applied to the change but did not run is fail, even with no
 # findings. A missing check must not read as pass.
 fail_closed_pane: true
+
+# Body layout on the posted review. "evidence" (default) is the one-line-per-
+# pane body. "walkthrough" reads like the author-published Copilot/Bugbot
+# reviews: reviewed-by and commit, the PR's stated intent, what the change
+# does, a collapsible walkthrough of every changed file, then evidence folded
+# away and the findings.
+body_style: evidence
+
+# Walkthrough add-ons, all opt-in, so you decide how much of the report reaches
+# the pull request. Ignored in evidence mode.
+#   coverage      per-file uncovered-added-lines column
+#   lint          per-file finding counts by severity
+#   confirmations the checks that ran clean, folded in collapsed
+#   unknowns      what could not be determined, folded in collapsed
+# body_include:
+#   - coverage
+#   - lint
+#   - confirmations
+#   - unknowns

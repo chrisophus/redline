@@ -553,12 +553,13 @@ A finding becomes a line-anchored comment only when its `file:line` is on a
 changed line in the PR's diff; findings off the diff (or with no line) go in
 the review body, so one stray line can never make GitHub reject the whole
 review. It refuses unless the loaded session is that same PR. Posting is
-idempotent per `(PR, head SHA)`: every finding carries a hidden marker
-naming the commit it was said for, so a re-post never duplicates one and a
-re-run with no new findings on an already-reviewed commit posts nothing,
-while a new push still gets comments for findings that are still live. `gh`
-supplies the credentials; Redline never handles a token. `--report-url`
-links the full report (e.g. a CI artifact) from the review body.
+idempotent by finding across the pull request: every comment carries a hidden
+fingerprint marker, and a finding already said on the PR is not said again on
+any later commit, so a push never repeats it. A new finding still posts, and
+the review body restates the verdict and evidence for the current commit, so a
+still-live finding does not read as fixed rather than being said twice. `gh`
+supplies the credentials; Redline never handles a token. `--report-url` links
+the full report (e.g. a CI artifact) from the review body.
 
 `--profile PATH` is how a repo's merge gate reads the review. The YAML names
 the hidden markers, which severities fail (default: error and warning), and
@@ -568,6 +569,15 @@ missing check must not read as pass. `post` still uses event `COMMENT` and
 never approves. A `pass` review with no blocking findings still posts, so a
 later HEAD can clear a previous `fail`. Info findings stay visible but do
 not get the gate's finding marker. See `redline-review.yml.example`.
+
+`body_style` chooses the layout. `evidence` (the default) is the body above.
+`walkthrough` reads like the author-published Copilot and Bugbot reviews:
+reviewed-by and commit, the pull request's stated intent, what the change
+does, then a collapsible walkthrough of every changed file with the agent's
+one-line summary or "No notes." `body_include` decides how much of the report
+rides along: `coverage` and `lint` add per-file columns, `confirmations` and
+`unknowns` fold in the report sections the body otherwise drops. All of it
+comes from the session `run` already wrote, so posting still observes nothing.
 
 ## The report server
 

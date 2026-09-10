@@ -76,7 +76,14 @@ func cmdPost(o opts) error {
 			return err
 		}
 	}
-	payload := post.BuildAttest(&res.Report, tgt, o.reportURL, commentable, prof)
+	payload := post.BuildAttest(&res.Report, tgt, o.reportURL, commentable, prof, changedPaths(res.Change))
+	if prof != nil && prof.BodyStyle == post.BodyWalkthrough {
+		// The walkthrough body opens with who reviewed and the author's stated
+		// intent, both from gh. Each degrades to empty offline, where the body
+		// simply omits the line rather than rendering a broken one.
+		reviewedBy, _ := ghLogin()
+		payload = payload.WithMeta(statedIntent(owner, repo, num), reviewedBy)
+	}
 
 	// A session outlives the head it observed, so a review can be posted
 	// against a commit that is no longer the tip. require_head refuses that,
@@ -329,6 +336,69 @@ func sessionCommentable(ch *change.Set) map[string]map[int]bool {
 		return nil
 	}
 	return post.CommentableLines(patches)
+}
+
+// changedPaths is every path in the change, for the walkthrough table. It
+// comes from the session the run wrote, the same file list the report's own
+// walkthrough uses, so the posted body observes nothing.
+func changedPaths(ch *change.Set) []string {
+	if ch == nil {
+		return nil
+	}
+	out := make([]string, 0, len(ch.Files))
+	for _, f := range ch.Files {
+		out = append(out, f.Path)
+	}
+	return out
+}
+
+// maxIntent bounds the stated-intent block so a long PR description does not
+// crowd out the findings. The full body is on the pull request itself.
+const maxIntent = 2000
+
+// statedIntent is the PR title and sanitized body, for the walkthrough body's
+// "Stated intent". Empty when gh cannot be reached, which the body renders as
+// no intent line rather than a broken one.
+func statedIntent(owner, repo string, num int) string {
+	out, err := exec.Command("gh", "pr", "view", fmt.Sprintf("%d", num),
+		"--repo", owner+"/"+repo, "--json", "title,body").Output()
+	if err != nil {
+		return ""
+	}
+	var v struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+	if json.Unmarshal(out, &v) != nil {
+		return ""
+	}
+	intent := strings.TrimSpace(v.Title)
+	if body := sanitizeIntent(v.Body); body != "" {
+		intent += "\n\n" + body
+	}
+	if len(intent) > maxIntent {
+		intent = intent[:maxIntent] + "…"
+	}
+	return intent
+}
+
+// sanitizeIntent drops the marker lines a PR body might carry, so a description
+// that quotes a fake mct-agent-review or redline marker cannot smuggle one into
+// the review body Redline signs. Whole HTML-comment lines go too.
+func sanitizeIntent(body string) string {
+	var out []string
+	for _, line := range strings.Split(body, "\n") {
+		l := strings.TrimSpace(line)
+		if strings.Contains(l, "<!--") || strings.Contains(l, "-->") {
+			continue
+		}
+		if strings.Contains(l, "mct-agent-review") || strings.Contains(l, "mct-agent-finding") ||
+			strings.Contains(l, "redline:") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
 // ghAuthoredBody is one comment or review with the login that wrote it, so the

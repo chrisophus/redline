@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrisophus/redline/internal/cover"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/target"
 )
@@ -52,7 +53,7 @@ func TestBuildSplitsLocatedFromBodyFindings(t *testing.T) {
 	if c.Fingerprint == "" || !strings.Contains(c.Body, fpMarkerPrefix) {
 		t.Fatalf("comment must carry its fingerprint marker: %q", c.Body)
 	}
-	if !Fingerprints([]string{c.Body})[postedKey("deadbeef", c.Fingerprint)] {
+	if !Fingerprints([]string{c.Body})[c.Fingerprint] {
 		t.Fatalf("the marker must decode back to this comment's fingerprint: %q", c.Body)
 	}
 	// The unlocated finding rides in the body, not as a comment.
@@ -291,7 +292,7 @@ func TestUnpostedDropsAlreadyPostedComments(t *testing.T) {
 	}
 	// Already posted for this head: the comment is filtered, so a re-post never
 	// duplicates it.
-	got := p.Unposted(map[string]bool{postedKey("deadbeef", fp): true})
+	got := p.Unposted(map[string]bool{fp: true})
 	if len(got.Comments) != 0 {
 		t.Fatalf("already-posted comment must be dropped: %+v", got.Comments)
 	}
@@ -301,17 +302,16 @@ func TestUnpostedDropsAlreadyPostedComments(t *testing.T) {
 	}
 }
 
-// The posted set is keyed on the commit as well as the finding. A comment left
-// on an earlier commit must not suppress the one this commit needs: the finding
-// is still live, GitHub collapses the old comment as outdated, and the reviewer
-// would see nothing.
-func TestUnpostedKeepsCommentWhenOnlyAnEarlierCommitHasIt(t *testing.T) {
+// Idempotency is by fingerprint across the whole pull request, not per commit:
+// a finding posted on any earlier commit is not said again. Posting once and
+// letting GitHub keep the thread is quieter than re-anchoring on every push,
+// and it is what stops the "this change skips a test" pane finding the field
+// posted and dismissed across two versions from returning.
+func TestUnpostedSuppressesRegardlessOfCommit(t *testing.T) {
 	p := Build(sampleReport(), prTarget(), "", nil)
 	fp := p.Comments[0].Fingerprint
-
-	posted := map[string]bool{postedKey("0ldc0mm1t", fp): true}
-	if got := p.Unposted(posted); len(got.Comments) != 1 {
-		t.Fatalf("a comment on a superseded commit must not suppress this one: %+v", got.Comments)
+	if got := p.Unposted(map[string]bool{fp: true}); len(got.Comments) != 0 {
+		t.Fatalf("a finding already said on the PR must not be repeated: %+v", got.Comments)
 	}
 }
 
@@ -330,7 +330,7 @@ func TestBodyFindingCarriesFingerprintMarker(t *testing.T) {
 	if bodyFP == "" {
 		t.Fatal("precondition: the sample report has an unlocated finding")
 	}
-	if !Fingerprints([]string{p.Body})[postedKey("deadbeef", bodyFP)] {
+	if !Fingerprints([]string{p.Body})[bodyFP] {
 		t.Fatalf("the body finding needs a marker recoverable from the body:\n%s", p.Body)
 	}
 	if p.NothingNew() {
@@ -361,7 +361,7 @@ func TestFingerprintsRoundTripFromBodies(t *testing.T) {
 	p := Build(sampleReport(), prTarget(), "", nil)
 	bodies := []string{p.Comments[0].Body, "an unrelated human comment"}
 	got := Fingerprints(bodies)
-	if !got[postedKey("deadbeef", p.Comments[0].Fingerprint)] {
+	if !got[p.Comments[0].Fingerprint] {
 		t.Fatalf("fingerprint should be recovered from the comment body: %v", got)
 	}
 	if len(got) != 1 {
@@ -432,7 +432,7 @@ func TestBuildAttestStampsFailMarkers(t *testing.T) {
 		FindingMarker: "mct-agent-finding:v1",
 		Blocking:      []findings.Severity{findings.SeverityError, findings.SeverityWarning},
 	}
-	p := BuildAttest(sampleReport(), prTarget(), "", nil, prof)
+	p := BuildAttest(sampleReport(), prTarget(), "", nil, prof, nil)
 	if p.GateVerdict != "fail" {
 		t.Fatalf("error and warning should fail, got %q", p.GateVerdict)
 	}
@@ -457,7 +457,7 @@ func TestBuildAttestPassHasNoFindingMarkers(t *testing.T) {
 		File: "a.go", Line: 1, Rule: "note", Severity: findings.SeverityInfo, Message: "coverage unknown",
 	}}}
 	rep.Finalize()
-	p := BuildAttest(rep, prTarget(), "", nil, prof)
+	p := BuildAttest(rep, prTarget(), "", nil, prof, nil)
 	if p.GateVerdict != "pass" {
 		t.Fatalf("info-only should pass, got %q", p.GateVerdict)
 	}
@@ -712,5 +712,93 @@ func TestAHedgeQuotedInContextDoesNotWithhold(t *testing.T) {
 	}
 	if !Reaches(f) {
 		t.Fatal("the kept finding should still reach the author")
+	}
+}
+
+func walkthroughProfile(include ...string) *Profile {
+	inc := map[string]bool{}
+	for _, s := range include {
+		inc[s] = true
+	}
+	return &Profile{
+		ReviewMarker:  "mct-agent-review:v1",
+		FindingMarker: "mct-agent-finding:v1",
+		Blocking:      []findings.Severity{findings.SeverityError, findings.SeverityWarning},
+		BodyStyle:     BodyWalkthrough,
+		BodyInclude:   inc,
+	}
+}
+
+// The walkthrough body reads like the author-published reviews: reviewed-by and
+// commit, stated intent, what it does, a walkthrough of every changed file
+// (agent summary or "No notes."), evidence folded, and the opted-in coverage,
+// lint, confirmations and unknowns from the report the run already wrote.
+func TestWalkthroughBodyMatchesCopilotOrder(t *testing.T) {
+	rep := &findings.Report{
+		Substrates: []findings.SubstrateStatus{{Name: "lint", State: findings.SubstrateRan}},
+		Findings: []findings.Finding{
+			{File: "a.go", Line: 5, Rule: "x", Substrate: "redline/lint",
+				Severity: findings.SeverityWarning, Message: "a warning"},
+		},
+		Confirmations: []findings.Confirmation{
+			{Substrate: "redline/sql", Rule: "immutable", Message: "migrations byte-identical"},
+		},
+		Unknowns: []findings.Unknown{
+			{Substrate: "openapi", Message: "spec uses $ref", Reason: "inline only"},
+		},
+		Coverage: findings.Coverage{CoverableFiles: 1, Diff: &cover.Result{
+			Uncovered: []cover.FileGap{{Path: "a.go", Lines: []int{5, 6}}},
+		}},
+		Agent: &findings.AgentReview{Overview: "Adds a feed.", Files: map[string]string{"a.go": "Staging."}},
+	}
+	rep.Finalize()
+	prof := walkthroughProfile("coverage", "lint", "confirmations", "unknowns")
+	p := BuildAttest(rep, prTarget(), "", nil, prof, []string{"a.go", "b.go"}).
+		WithMeta("MKT-1: do a thing", "bot[bot]")
+	for _, want := range []string{
+		"### Review findings",
+		"**Reviewed by.** bot[bot] on `deadbeef`.",
+		"**Stated intent.** MKT-1: do a thing",
+		"**What it does.** Adds a feed.",
+		"<summary>Walkthrough</summary>",
+		"| `a.go` | Staging. |",
+		"| `b.go` | No notes. |",
+		"2 line(s) uncovered",
+		"1 warning",
+		"<summary>Evidence</summary>",
+		"Checks that passed (1)",
+		"Could not determine (1)",
+	} {
+		if !strings.Contains(p.Body, want) {
+			t.Fatalf("walkthrough body missing %q:\n%s", want, p.Body)
+		}
+	}
+}
+
+// The extra columns and sections are opt-in: a lean walkthrough is file plus
+// summary, and nothing else, so a repository dials in only what it wants.
+func TestWalkthroughLeanByDefault(t *testing.T) {
+	rep := &findings.Report{
+		Confirmations: []findings.Confirmation{{Message: "a passed check"}},
+		Agent:         &findings.AgentReview{Files: map[string]string{"a.go": "x"}},
+	}
+	rep.Finalize()
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), []string{"a.go"})
+	if !strings.Contains(p.Body, "<summary>Walkthrough</summary>") {
+		t.Fatal("the walkthrough table is always present in walkthrough mode")
+	}
+	if strings.Contains(p.Body, "Coverage |") {
+		t.Fatalf("coverage is opt-in:\n%s", p.Body)
+	}
+	if strings.Contains(p.Body, "Checks that passed") {
+		t.Fatalf("confirmations are opt-in:\n%s", p.Body)
+	}
+}
+
+// The default post body (no profile, or body_style evidence) is unchanged.
+func TestEvidenceBodyIsUnchangedByWalkthroughCode(t *testing.T) {
+	p := Build(sampleReport(), prTarget(), "", nil)
+	if !strings.HasPrefix(p.Body, "### ") || strings.Contains(p.Body, "<summary>Walkthrough</summary>") {
+		t.Fatalf("evidence body must not render a walkthrough:\n%s", p.Body)
 	}
 }
