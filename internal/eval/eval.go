@@ -75,6 +75,36 @@ type Quiet struct {
 	MatchesWithoutCorrelation []string `json:"matches_without_correlation"`
 }
 
+// Reject is a particular wrong finding, labelled after a review made it.
+//
+// Quiet is a topic a review should stay off, written in advance by whoever
+// wrote the fixture. Reject is the other direction: a comment a review
+// actually produced, read afterwards, and judged wrong. It is the shape of
+// Expectation on purpose, because it is scored the same way and written from
+// the same evidence, and the two lists together are what make a comment
+// classifiable at all.
+//
+// This is what closes the hole the field found. Everything unmatched used to
+// land in Extra, which is documented as not wrong, so a reviewer could double
+// its output with invention and score identically. A false positive nobody
+// wrote down is a false positive nobody can tune against.
+type Reject struct {
+	Key  string `json:"key"`
+	What string `json:"what"`
+	// Why the finding is wrong, in the words of whoever judged it. A reader
+	// deciding whether to trust this label needs the reason, not the verdict.
+	Why string `json:"why"`
+	// Source says who judged it: "author" for a reader of a posted review,
+	// "fixture" for the fixture's own author reading a dumped sample. An
+	// author's dismissal is evidence about the reviewer and it is not ground
+	// truth, so the label records which kind it is rather than flattening
+	// them.
+	Source string   `json:"source"`
+	File   string   `json:"file"`
+	AnyOf  []string `json:"any_of"`
+	AllOf  []string `json:"all_of"`
+}
+
 // Annotation is the hand-written half of a fixture.
 type Annotation struct {
 	Name    string `json:"name"`
@@ -87,6 +117,7 @@ type Annotation struct {
 	WhyThisFixtureExists string        `json:"why_this_fixture_exists"`
 	Expect               []Expectation `json:"expect"`
 	Quiet                []Quiet       `json:"quiet"`
+	Reject               []Reject      `json:"reject"`
 }
 
 // Fixture is one frozen change with its annotation.
@@ -151,9 +182,15 @@ type Scorecard struct {
 	// QuietViolations are the false positives that matter most: a reviewer
 	// saying the thing the annotation says it should not.
 	QuietViolations []string
-	// Extra counts comments that matched no expectation and violated no
-	// quiet rule. Not scored as wrong. A review may legitimately find
-	// something the annotation's author did not.
+	// Rejected holds the keys of labelled wrong findings this review made
+	// again. Counted with QuietViolations as a false positive; kept apart so
+	// a reviewer straying onto a forbidden topic can be told from one
+	// repeating a specific mistake somebody already read and judged.
+	Rejected []string
+	// Extra counts comments that matched no expectation, violated no quiet
+	// rule and matched no reject. Not scored as wrong. A review may
+	// legitimately find something the annotation's author did not, and until
+	// somebody reads one it is unlabelled rather than wrong.
 	Extra int
 	// CleanHeld is meaningful for a clean fixture: it stayed silent.
 	CleanHeld bool
@@ -172,6 +209,11 @@ type Scorecard struct {
 	// the rate, which is the number to compare configurations on.
 	Samples  int
 	CaughtIn map[string]int
+	// RejectedIn is the same rate for the labelled wrong findings. Precision
+	// varies across samples exactly as recall does, and the union reports a
+	// mistake one sample in three made as though every sample made it, which
+	// overstates a rare invention and understates a reliable one.
+	RejectedIn map[string]int
 }
 
 // Score compares one review against one annotation.
@@ -219,6 +261,21 @@ func Score(f Fixture, rev findings.Review) Scorecard {
 			}
 		}
 	}
+	// After the expectations, so a comment that satisfies one is not also
+	// counted as a mistake: a reject written loosely enough to overlap a real
+	// defect is a bad label, and the labels test is where that is caught.
+	for i, c := range rev.Comments {
+		if matched[i] {
+			continue
+		}
+		for _, r := range f.Annotation.Reject {
+			if rejectMatches(r, c) {
+				sc.Rejected = append(sc.Rejected, r.Key)
+				matched[i] = true
+				break
+			}
+		}
+	}
 	for i := range rev.Comments {
 		if !matched[i] {
 			sc.Extra++
@@ -245,17 +302,22 @@ func ScoreSamples(f Fixture, revs []findings.Review) Scorecard {
 		return Scorecard{Fixture: f.Annotation.Name, Clean: f.Annotation.Clean}
 	}
 	caughtIn := map[string]int{}
+	rejectedIn := map[string]int{}
 	cleanHeld := true
 	for _, rev := range revs {
 		one := Score(f, rev)
 		for _, key := range one.Caught {
 			caughtIn[key]++
 		}
+		for _, key := range one.Rejected {
+			rejectedIn[key]++
+		}
 		cleanHeld = cleanHeld && one.CleanHeld
 	}
 	sc := Score(f, unionOf(revs))
 	sc.Samples = len(revs)
 	sc.CaughtIn = caughtIn
+	sc.RejectedIn = rejectedIn
 	sc.CleanHeld = cleanHeld
 	return sc
 }
@@ -336,6 +398,36 @@ func referencesRules(rules []string, c findings.ReviewComment, prior *findings.R
 	return true
 }
 
+// rejectMatches reports whether a comment is the labelled wrong finding.
+//
+// A correlation is not exempt, unlike a quiet rule. Quiet names a topic, and a
+// correlation that uses the topic's vocabulary is doing the job it exists for;
+// reject names a claim, and a claim does not become true because it arrived
+// with references attached.
+func rejectMatches(r Reject, c findings.ReviewComment) bool {
+	if r.File != "" && c.File != r.File {
+		return false
+	}
+	body := strings.ToLower(c.Body)
+	for _, want := range r.AllOf {
+		if !strings.Contains(body, strings.ToLower(want)) {
+			return false
+		}
+	}
+	if len(r.AnyOf) == 0 {
+		// AllOf alone is a complete label. With neither, the entry would
+		// match every comment on the file, which is a labelling mistake
+		// rather than a review that got everything wrong.
+		return len(r.AllOf) > 0
+	}
+	for _, want := range r.AnyOf {
+		if strings.Contains(body, strings.ToLower(want)) {
+			return true
+		}
+	}
+	return false
+}
+
 func quietViolated(q Quiet, c findings.ReviewComment) bool {
 	if c.Category == findings.CategoryCorrelation {
 		return false
@@ -357,6 +449,7 @@ type Totals struct {
 	Missed          int
 	KnownGaps       int
 	QuietViolations int
+	Rejected        int
 	Extra           int
 	CleanFixtures   int
 	CleanHeld       int
@@ -368,6 +461,13 @@ type Totals struct {
 	Samples          int
 	CaughtSampleHits int
 }
+
+// FalsePositives is what a configuration got wrong: a topic the annotation
+// forbade, plus a specific finding somebody read and judged wrong. Both are
+// mistakes, they are counted together because a reader of the table wants one
+// number, and Totals keeps them apart because a reader diagnosing a
+// regression wants two.
+func (t Totals) FalsePositives() int { return t.QuietViolations + t.Rejected }
 
 // Sum aggregates. Expected counts the whole expectation set, optional ones
 // included whether or not they were caught: a caught optional lands in Caught
@@ -384,6 +484,7 @@ func Sum(cards []Scorecard) Totals {
 		t.Missed += len(c.Missed)
 		t.KnownGaps += len(c.KnownGaps)
 		t.QuietViolations += len(c.QuietViolations)
+		t.Rejected += len(c.Rejected)
 		t.Extra += c.Extra
 		if c.Clean {
 			t.CleanFixtures++
@@ -428,10 +529,18 @@ func Table(label string, medianCostUSD float64, t Totals) string {
 	if math.IsNaN(medianCostUSD) {
 		cost = "unpriced"
 	}
-	return fmt.Sprintf("| %s | %s | %d/%d | %s | %d | %d | %s |",
-		label, cost, t.Caught, t.Expected, rate, t.QuietViolations, t.Extra, clean)
+	// False positives and unlabelled extras are different claims and the
+	// table has to show both. A configuration that halves the extras by
+	// inventing labelled-wrong findings instead is worse, and one number
+	// cannot say so.
+	fp := fmt.Sprintf("%d", t.FalsePositives())
+	if t.Rejected > 0 && t.QuietViolations > 0 {
+		fp = fmt.Sprintf("%d (%d quiet, %d rejected)", t.FalsePositives(), t.QuietViolations, t.Rejected)
+	}
+	return fmt.Sprintf("| %s | %s | %d/%d | %s | %s | %d | %s |",
+		label, cost, t.Caught, t.Expected, rate, fp, t.Extra, clean)
 }
 
 // TableHeader is the header for Table's rows.
-const TableHeader = "| Config | Median cost | Caught (union) | Caught rate | False positives | Extra | Clean held |\n" +
+const TableHeader = "| Config | Median cost | Caught (union) | Caught rate | False positives | Unlabelled | Clean held |\n" +
 	"|---|---|---|---|---|---|---|"

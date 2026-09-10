@@ -101,7 +101,11 @@ func Scoreboard(label string, meanCostUSD float64, r Rates, t Totals) string {
 	fmt.Fprintf(&b, "| Comments per speaking review | %.1f | %.1f |\n",
 		r.CommentRate(), CopilotCommentRate)
 	fmt.Fprintf(&b, "| Annotated findings caught | %d/%d | not published |\n", t.Caught, t.Expected)
-	fmt.Fprintf(&b, "| False positives | %d | not published |\n", t.QuietViolations)
+	fmt.Fprintf(&b, "| False positives | %d | not published |\n", t.FalsePositives())
+	// Unlabelled is the number to shrink by reading, not by tuning. Every
+	// comment in it is one nobody has judged, so it is neither a catch nor a
+	// mistake, and a configuration cannot be compared on it until it is.
+	fmt.Fprintf(&b, "| Comments nobody has labelled | %d | |\n", t.Extra)
 	if t.KnownGaps > 0 {
 		fmt.Fprintf(&b, "| Misses that nothing ships to catch yet | %d | |\n", t.KnownGaps)
 	}

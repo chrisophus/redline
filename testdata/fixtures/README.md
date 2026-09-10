@@ -17,8 +17,9 @@ underneath the score, and rewriting the commit it came from would break it.
 Freezing also keeps the set usable when a second provider arrives: the
 envelope in the file is the one the review was scored against.
 
-`annotation.json` carries `expect` (what a good review says) and `quiet` (what
-it must not say). Scoring is keyword and location matching. That is crude, and
+`annotation.json` carries `expect` (what a good review says), `quiet` (a topic
+it must stay off) and `reject` (a particular finding somebody read and judged
+wrong). Scoring is keyword and location matching. That is crude, and
 it is crude on purpose: it costs nothing, runs offline, and gives the same
 answer twice. A model judging another model's review costs money on every eval
 run and makes the measuring stick as noisy as the thing being measured. Write
@@ -49,6 +50,42 @@ cp /tmp/fx/session.json testdata/fixtures/<name>/
 
 Then write `annotation.json`. Say what the change is, whether it is clean, and
 for each expectation the words a correct finding would plausibly use.
+
+## Recording a false positive
+
+`expect` and `quiet` are both written before a review runs, which is why the
+set was blind to the failure the field found: everything a review said that
+nobody had predicted landed in `Extra`, and `Extra` is not scored as wrong. So
+a reviewer could double its output with invention and score the same.
+
+`reject` is written afterwards, from a review that actually ran. Dump the
+samples, read the unmatched comments, and give each wrong one an entry:
+
+```json
+{
+  "key": "column-list-drift",
+  "what": "claims a hard-coded CopyFrom column list will silently mis-stage",
+  "why": "mirrors aws_account_feed.go; named columns ignore order, and the
+          drift risk is the same one the team accepted there",
+  "source": "author",
+  "file": "internal/feed/offer_feed.go",
+  "any_of": ["column list", "awsOfferFeedRawColumns"]
+}
+```
+
+`source` says who judged it. `fixture` is the fixture's own author reading a
+dumped sample. `author` is the reader of a posted review on a real change, and
+that one is evidence about the reviewer rather than ground truth: a person
+dismissing a finding about their own code has a stake in the answer, and a
+dismissal that is itself wrong teaches the next review to stay quiet about a
+real defect. Keep the reason in `why` so a later reader can check the label
+rather than inherit it.
+
+Write the words tightly. An entry with no `any_of` or `all_of` would match
+every comment on its file, so a review that found the real defect there would
+score as having repeated a known mistake. `TestRejectLabelsAreSpecificEnoughToMeasure`
+fails on that, and an expectation always wins over a reject on the same
+comment, but neither guard can save a label whose words are merely too broad.
 
 `make-synthetic.sh` builds the three fixtures this repository's own history
 does not contain: a migration to correlate against the code, a generated file
