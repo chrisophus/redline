@@ -8,6 +8,7 @@ import (
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
+	"github.com/chrisophus/redline/internal/feedback"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/pane"
 )
@@ -32,6 +33,11 @@ type session struct {
 	// was recorded against.
 	Envelopes     []*envelope.Envelope `json:"envelopes,omitempty"`
 	ContextAbsent []string             `json:"contextAbsent,omitempty"`
+	// PriorReview is what this pull request already heard, saved for the same
+	// reason: `review` is a pure function of the session, so the conversation
+	// it was shown has to be in the file rather than fetched again at review
+	// time, where a reply posted in between would change a frozen input.
+	PriorReview []feedback.Thread `json:"priorReview,omitempty"`
 }
 
 // SaveSession writes the run so post can work from it without re-observing.
@@ -41,7 +47,8 @@ func SaveSession(dir string, res *Result) error {
 	}
 	s := session{Report: res.Report, Change: res.Change, Renders: res.Renders,
 		Evidence: res.Evidence, LineCoverage: res.LineCoverage,
-		Envelopes: res.Envelopes, ContextAbsent: res.ContextAbsent}
+		Envelopes: res.Envelopes, ContextAbsent: res.ContextAbsent,
+		PriorReview: res.PriorReview}
 	buf, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
@@ -62,7 +69,8 @@ func LoadSession(dir string) (*Result, error) {
 	}
 	res := &Result{Report: s.Report, Change: s.Change, Renders: s.Renders,
 		Evidence: s.Evidence, LineCoverage: s.LineCoverage,
-		Envelopes: s.Envelopes, ContextAbsent: s.ContextAbsent}
+		Envelopes: s.Envelopes, ContextAbsent: s.ContextAbsent,
+		PriorReview: s.PriorReview}
 	if res.Evidence == nil {
 		res.Evidence = map[string]pane.Artifact{}
 	}

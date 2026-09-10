@@ -9,6 +9,7 @@ package target
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -427,6 +428,28 @@ func (t *Target) describeSelf() string {
 		return string(t.Kind) + " " + t.Label
 	}
 	return string(t.Kind)
+}
+
+// OwnerRepo reads the owner and repository out of the pull request's own URL.
+//
+// It lives here because two callers need it and the URL is the target's, not
+// either caller's: `post` addresses the GitHub API with it, and `run` reads
+// the pull request's own review threads back with it. A second copy of this
+// parse is a second thing to keep in step with whatever GitHub Enterprise
+// path a user turns out to have.
+func (p *PullRequest) OwnerRepo() (owner, repo string, err error) {
+	if p == nil {
+		return "", "", fmt.Errorf("no pull request metadata")
+	}
+	u, err := url.Parse(strings.TrimSpace(p.URL))
+	if err != nil || u.Path == "" {
+		return "", "", fmt.Errorf("cannot read owner/repo from PR URL %q", p.URL)
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("cannot read owner/repo from PR URL %q", p.URL)
+	}
+	return parts[0], parts[1], nil
 }
 
 // samePR accepts the number or any URL ending in it, matching what gh takes.

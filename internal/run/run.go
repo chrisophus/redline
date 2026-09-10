@@ -10,6 +10,7 @@ import (
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/cover"
 	"github.com/chrisophus/redline/internal/envelope"
+	"github.com/chrisophus/redline/internal/feedback"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/gitx"
 	"github.com/chrisophus/redline/internal/harness"
@@ -76,6 +77,15 @@ type Result struct {
 	// provider that errors degrades to a missing input rather than blocking
 	// anything, and the eval needs to tell a genuine miss from a gap.
 	ContextAbsent []string
+
+	// PriorReview is what this pull request already heard from Redline and
+	// what people said back. Present for a PR target only: there is nowhere
+	// else a conversation could have happened.
+	//
+	// Observed here rather than fetched by `review`, so the review stays a
+	// pure function of a saved session and a fixture carries the conversation
+	// it was reviewed against.
+	PriorReview []feedback.Thread `json:"priorReview,omitempty"`
 }
 
 // Run executes every applicable pane. Applicability is computed from the diff,
@@ -309,6 +319,14 @@ func Run(opts Options) (*Result, error) {
 	findings.Sort(res.Report.Findings)
 
 	res.Envelopes, res.ContextAbsent = resolveContext(&res.Report, configRoot, tgt.Dir, baseSHA, changed)
+	// What this pull request already heard, and what people said back. Read
+	// in the observing wave, not by `review`, for the reason every other input
+	// is: `review` stays a pure function of the session, and a fixture frozen
+	// from a real pull request carries the conversation it was reviewed
+	// against. It is not a context envelope, so it does not go through the
+	// provider path: nothing resolved it from the code and it speaks for no
+	// files.
+	res.PriorReview, res.ContextAbsent = priorReview(&res.Report, tgt, res.ContextAbsent)
 	covDir := originCoverageDir(opts.Dir, tgt)
 	attachDiffCoverage(&res.Report, res.Change, tgt.Dir, covDir, cfg)
 	res.LineCoverage = lineCoverageOverlay(tgt.Dir, covDir, res.Change)
@@ -911,3 +929,35 @@ func ReapplyReview(res *Result, rev *findings.Review) {
 // reviewSubstrate is the name every finding that came from a reviewer rather
 // than a pane carries.
 const reviewSubstrate = "redline/review"
+
+// priorReview reads the threads Redline already left on this pull request.
+//
+// Only for a PR target: nowhere else is there a conversation to have had. A
+// working tree has no threads, and a commit or a branch has none either, so
+// the absence there is not worth a word.
+//
+// A read that fails is named rather than swallowed. A review that could not
+// see what the author already answered is a review about to repeat it, and
+// that is the failure this whole path exists to prevent, so the reader has to
+// be able to tell it happened.
+func priorReview(rep *findings.Report, tgt *target.Target, absent []string) ([]feedback.Thread, []string) {
+	if tgt == nil || tgt.Kind != target.KindPR || tgt.PR == nil {
+		return nil, absent
+	}
+	owner, name, err := tgt.PR.OwnerRepo()
+	if err == nil {
+		var threads []feedback.Thread
+		threads, err = feedback.Resolve(owner, name, tgt.PR.Number)
+		if err == nil {
+			return threads, absent
+		}
+	}
+	absent = append(absent, fmt.Sprintf("prior review (context): %v", err))
+	rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+		Substrate: "redline/context",
+		Message: "what this pull request already heard could not be read, so the review " +
+			"may repeat a finding its author has already answered",
+		Reason: err.Error(),
+	})
+	return nil, absent
+}

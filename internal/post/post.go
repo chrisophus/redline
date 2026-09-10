@@ -508,3 +508,52 @@ func severityLabel(s findings.Severity) string {
 		return string(s)
 	}
 }
+
+// FindingFingerprint reads the finding a posted comment was about, from the
+// hidden marker commentBody wrote into it.
+//
+// The marker is how anything downstream knows which finding a thread is about,
+// and the format belongs here because this is where it is written. A second
+// reader with its own copy of the regex is a reader that goes stale the first
+// time the marker changes.
+//
+// The head SHA in the marker is deliberately ignored. Idempotency needs it,
+// because a finding still live after a push must be said again for the new
+// commit; reading a conversation back does not, because what an author said
+// about a finding is still what they think of it after they push.
+func FindingFingerprint(body string) (string, bool) {
+	m := fpMarkerRe.FindStringSubmatch(body)
+	if m == nil {
+		return "", false
+	}
+	raw, err := hex.DecodeString(m[2])
+	if err != nil {
+		return "", false
+	}
+	return string(raw), true
+}
+
+// StripMarkers removes the hidden HTML comments from a body, leaving the prose
+// a person would have read. Nothing downstream should be shown a marker: it is
+// bookkeeping between two runs of this tool, and putting it in front of a
+// model invites the model to write one.
+func StripMarkers(body string) string {
+	var b strings.Builder
+	rest := body
+	for {
+		i := strings.Index(rest, "<!--")
+		if i < 0 {
+			b.WriteString(rest)
+			break
+		}
+		b.WriteString(rest[:i])
+		j := strings.Index(rest[i:], "-->")
+		if j < 0 {
+			// An unterminated comment is the rest of the body. Keeping it
+			// would put a half-marker in front of a reader.
+			break
+		}
+		rest = rest[i+j+len("-->"):]
+	}
+	return strings.TrimSpace(b.String())
+}

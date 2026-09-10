@@ -28,6 +28,7 @@ import (
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
+	"github.com/chrisophus/redline/internal/feedback"
 	"github.com/chrisophus/redline/internal/findings"
 )
 
@@ -88,6 +89,14 @@ type Input struct {
 	// executed by the suite. Empty when no profile was found, which is the
 	// common case and not an error.
 	LineCoverage map[string]map[int]bool
+	// Prior is what this pull request already heard from Redline and what
+	// people replied. Empty for every target but a pull request, and for the
+	// first review of one.
+	//
+	// It is an input like any other, read by `run` and frozen into the
+	// session, so a review that is shown the conversation is still a pure
+	// function of what it was given.
+	Prior []feedback.Thread
 }
 
 // Options configures one call.
