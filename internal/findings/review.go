@@ -61,6 +61,10 @@ type ReviewComment struct {
 	// Question is what would confirm or refute this comment. See question.go
 	// for why a finding has to carry one.
 	Question Question `json:"question,omitempty"`
+	// Ruling is what the verifying pass decided, when one ran. Zero means it
+	// did not, and the comment is treated exactly as it was before the pass
+	// existed.
+	Ruling Ruling `json:"ruling,omitempty"`
 }
 
 // reviewWire is the on-disk shape before aliases and flexible fields normalize.
@@ -88,6 +92,7 @@ type reviewCommentWire struct {
 	Confidence      string   `json:"confidence"`
 	Category        string   `json:"category"`
 	Question        Question `json:"question"`
+	Ruling          Ruling   `json:"ruling"`
 }
 
 type reviewFileEntry struct {
@@ -249,6 +254,15 @@ func parseReviewComments(commentsRaw, findingsRaw json.RawMessage) ([]ReviewComm
 			// is left alone.
 			conf = ConfidenceLow
 		}
+		ruling := w.Ruling
+		ruling.Verdict = NormalizeVerdict(ruling.Verdict)
+		if ruling.Verdict != "" && !ruling.Posts() {
+			// A finding the verifying pass did not keep is recorded and not
+			// posted, and low confidence is how the report and post already
+			// spell that. Reusing it means one rule about what reaches an
+			// author rather than two that can disagree.
+			conf = ConfidenceLow
+		}
 		out = append(out, ReviewComment{
 			File:            file,
 			Line:            w.Line,
@@ -260,6 +274,7 @@ func parseReviewComments(commentsRaw, findingsRaw json.RawMessage) ([]ReviewComm
 			Confidence:      conf,
 			Category:        normalizeCategory(Category(w.Category)),
 			Question:        q,
+			Ruling:          ruling,
 		})
 	}
 	return out, nil
@@ -282,6 +297,11 @@ func (r *Review) CommentFindings() []Finding {
 		if c.Category == CategoryCorrelation {
 			cat, rule = CategoryCorrelation, "correlation"
 		}
+		// The ruling reaches the page through Context, which the report and
+		// the markdown already render as a quote under the finding. A reader
+		// looking at a folded finding needs to know it was checked and what
+		// came back, or the fold reads as the reviewer merely hedging.
+		ctx := rulingContext(c.Ruling)
 		sev := c.Severity
 		if strings.TrimSpace(string(sev)) == "" {
 			sev = cat.DefaultSeverity()
@@ -295,6 +315,7 @@ func (r *Review) CommentFindings() []Finding {
 			Category:        cat,
 			Severity:        normalizeSeverityFor(sev, cat),
 			Message:         c.Body,
+			Context:         ctx,
 			Source:          SourceLLM,
 			RelatedFindings: c.RelatedFindings,
 			Confidence:      NormalizeConfidence(c.Confidence),
@@ -354,4 +375,33 @@ func (r *Report) MergeVerdicts(verdicts map[string]Verdict) {
 			r.Findings[i].Verdict = &vv
 		}
 	}
+}
+
+// rulingContext renders a ruling as the sentence a reader needs under the
+// finding. Empty when no verifying pass ran, so a review from before this
+// existed renders exactly as it used to.
+func rulingContext(r Ruling) string {
+	if r.Verdict == "" {
+		return ""
+	}
+	var b strings.Builder
+	switch r.Verdict {
+	case VerifiedKept:
+		b.WriteString("Checked and kept")
+	case VerifiedWithdrawn:
+		b.WriteString("Withdrawn: the evidence says otherwise")
+	case VerifiedJustified:
+		b.WriteString("True, and this repository does it on purpose")
+	case VerifiedAlreadyRaised:
+		b.WriteString("Already raised on this pull request")
+	default:
+		b.WriteString("Nothing available could settle this either way")
+	}
+	if r.Why != "" {
+		b.WriteString(". " + r.Why)
+	}
+	if r.Evidence != "" {
+		b.WriteString(" (" + r.Evidence + ")")
+	}
+	return b.String()
 }

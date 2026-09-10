@@ -56,7 +56,7 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 			anthropic.NewUserMessage(anthropic.NewTextBlock(res.Prompt)),
 		},
 		OutputConfig: anthropic.OutputConfigParam{
-			Format: anthropic.JSONOutputFormatParam{Schema: outputSchema()},
+			Format: anthropic.JSONOutputFormatParam{Schema: res.Schema},
 		},
 	}
 	if opts.Effort != "" {

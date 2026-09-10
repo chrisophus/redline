@@ -118,3 +118,66 @@ func NormalizeQuestionKind(k QuestionKind) QuestionKind {
 	}
 	return ""
 }
+
+// Verdict words the verifying pass uses. Distinct from the three the report
+// already has for ruling on a pane's finding, because these answer a different
+// question: not "is this check right about my code" but "should this claim
+// reach the author at all".
+const (
+	// VerifiedKept is a finding the evidence supports. The only one that is
+	// posted.
+	VerifiedKept = "kept"
+	// VerifiedWithdrawn is a finding the evidence refutes.
+	VerifiedWithdrawn = "withdrawn"
+	// VerifiedJustified is a finding that is true and that this repository
+	// does on purpose, established by precedent or by the author saying so on
+	// an earlier review.
+	//
+	// The word the field evidence asked for. Of four dismissed findings on one
+	// staging change, three were accurate observations the team had already
+	// accepted because the file next door made the same choice. Withdrawn
+	// would have been a lie and posting would have been noise.
+	VerifiedJustified = "justified"
+	// VerifiedUnverifiable is a finding nothing could settle either way.
+	VerifiedUnverifiable = "unverifiable"
+	// VerifiedAlreadyRaised is a finding this pull request has already heard.
+	VerifiedAlreadyRaised = "already-raised"
+)
+
+// Ruling is what the verifying pass decided about one comment.
+type Ruling struct {
+	Verdict string `json:"verdict"`
+	// Evidence is the line the decision rests on, quoted from the material.
+	// A ruling with no evidence is an opinion about an opinion, which is what
+	// this stage exists to replace.
+	Evidence string `json:"evidence,omitempty"`
+	Why      string `json:"why,omitempty"`
+}
+
+// Posts reports whether a comment carrying this ruling should reach the
+// author. Only a kept finding does. An unruled comment posts too: a review
+// that never went through the verifying pass is the old behaviour, and it must
+// not be silently emptied by a stage that did not run.
+func (r Ruling) Posts() bool {
+	return r.Verdict == "" || r.Verdict == VerifiedKept
+}
+
+// NormalizeVerdict maps whatever was written onto the closed set, forgiving
+// case and whitespace. An unknown verdict reads as unverifiable rather than as
+// kept: a ruling nobody can read must not be the one that lets a finding
+// through.
+func NormalizeVerdict(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "":
+		return ""
+	case VerifiedKept:
+		return VerifiedKept
+	case VerifiedWithdrawn:
+		return VerifiedWithdrawn
+	case VerifiedJustified:
+		return VerifiedJustified
+	case VerifiedAlreadyRaised, "already raised", "duplicate":
+		return VerifiedAlreadyRaised
+	}
+	return VerifiedUnverifiable
+}

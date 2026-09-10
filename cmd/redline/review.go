@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/review"
 	"github.com/chrisophus/redline/internal/run"
+	"github.com/chrisophus/redline/internal/scout"
 )
 
 // cmdReview is the one command in Redline that calls a model.
@@ -61,6 +64,18 @@ func cmdReview(o opts) error {
 		Samples:        o.samples,
 		ExpectedOutput: expected,
 		DryRun:         o.dryRun,
+	}
+	// The checking pass is on unless it is turned off. A review that posts
+	// what it cannot point at is the failure this producer was measured
+	// against in the field, so the safe default is the one that checks, and
+	// --no-verify is there for a caller comparing against the old behaviour
+	// or paying for one call rather than two.
+	ropts.Verify = !o.noVerify && o.mode != review.ModeExplore
+	if o.verify {
+		ropts.Verify = true
+	}
+	if ropts.Verify {
+		ropts.Answer = scoutAnswerer(res, o, ropts)
 	}
 	if o.api == review.APIOpenAI {
 		// The Anthropic SDK reads its own environment. The OpenAI backend is
@@ -161,6 +176,18 @@ func cmdReview(o opts) error {
 		return nil
 	}
 	fmt.Fprintln(os.Stderr, "redline: review", out.Summary())
+	if out.Verified {
+		// What was checked and what survived, because a reader told a review
+		// found nine things and shown two needs to know the other seven were
+		// ruled on rather than lost.
+		kept, ruled := review.Kept(out.Review)
+		fmt.Fprintf(os.Stderr, "redline: checked %d finding(s), kept %d\n", ruled, kept)
+		if out.VerifyFailed != "" {
+			fmt.Fprintf(os.Stderr,
+				"redline: the checking pass did not complete (%s), so the findings below are "+
+					"as the review wrote them and none of them was checked\n", out.VerifyFailed)
+		}
+	}
 	// Turns counts samples too, so this line has to name the mode it is
 	// about: a three-sample one-shot review has no turns and fetched
 	// nothing.
@@ -213,4 +240,76 @@ func describeSession(res *run.Result) string {
 		return "the last run"
 	}
 	return res.Target.Describe()
+}
+
+// scoutAnswerer runs the lookups a review asked for, as the scout in its
+// answering mode.
+//
+// This is where the two halves meet. `internal/scout` imports
+// `internal/review` for its pricing, so the review producer cannot import the
+// scout back, and the composition happens here in the command rather than in
+// either package. That is also the honest place for it: whether a lookup costs
+// money is the caller's business, and everything below degrades to nil rather
+// than failing, so a checkout with no key still gets a ruling over the
+// answers it has.
+func scoutAnswerer(res *run.Result, o opts, ropts review.Options) review.Answerer {
+	root := ""
+	if res.Target != nil {
+		root = res.Target.Dir
+	}
+	// A session outlives the tree it was written from. A fixture copied
+	// elsewhere, or a worktree since reclaimed, has no repository to look
+	// anything up in, and looking it up in the wrong one would be worse than
+	// not looking.
+	if root == "" || !isDir(root) {
+		return nil
+	}
+	if os.Getenv("ANTHROPIC_API_KEY") == "" && ropts.APIKey == "" && ropts.BaseURL == "" {
+		return nil
+	}
+	return func(ctx context.Context, qs []review.Question) (*envelope.Envelope, error) {
+		out := make([]scout.Question, 0, len(qs))
+		for _, q := range qs {
+			out = append(out, scout.Question{
+				ID: q.ID, Kind: q.Kind, Ask: q.Ask, Subject: q.Subject,
+				Claim: q.Claim, File: q.File, Line: q.Line,
+			})
+		}
+		fmt.Fprintf(os.Stderr, "redline: looking up %d question(s) the review asked\n", len(out))
+		env, spend, err := scout.Run(ctx, scout.Options{
+			Root:      root,
+			Diff:      diffOf(res),
+			BaseSHA:   res.Report.BaseSHA,
+			Questions: out,
+			BaseURL:   ropts.BaseURL,
+			APIKey:    ropts.APIKey,
+		})
+		if spend.Turns > 0 {
+			fmt.Fprintf(os.Stderr, "redline: lookups took %d turn(s), %d record(s), %s\n",
+				spend.Turns, spend.Records, review.FormatCost(spend.CostUSD, spend.CostKnown))
+		}
+		return env, err
+	}
+}
+
+func isDir(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
+}
+
+// diffOf is the change as the review saw it, which is what the lookups are
+// about. Rebuilt from the session rather than from git, so a frozen session
+// asks its questions against the diff it was reviewed from.
+func diffOf(res *run.Result) string {
+	if res.Change == nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, f := range res.Change.Files {
+		if f.Diff == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "--- %s\n%s\n", f.Path, strings.TrimRight(f.Diff, "\n"))
+	}
+	return b.String()
 }

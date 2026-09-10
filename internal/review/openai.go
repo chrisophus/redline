@@ -107,7 +107,7 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 			"json_schema": map[string]any{
 				"name":   "review",
 				"strict": true,
-				"schema": outputSchema(),
+				"schema": res.Schema,
 			},
 		},
 		ReasoningEffort: opts.Effort,

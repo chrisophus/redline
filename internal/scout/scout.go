@@ -95,6 +95,15 @@ type Options struct {
 	// CoveredScope are the globs Covered applies to. Empty means everywhere.
 	CoveredScope []string
 
+	// Questions turn the scout from an explorer into a checker. When they are
+	// set it stops guessing what a reviewer will need and answers what one
+	// actually asked, which is the better job: the guess is made before
+	// anything has been reviewed, and these arrive after.
+	//
+	// Everything else is shared. Same loop, same tools, same governor, same
+	// rule that the model records a location and this program reads the bytes.
+	Questions []Question
+
 	Model      string
 	Effort     string
 	MaxTurns   int
@@ -161,10 +170,10 @@ func Run(ctx context.Context, opts Options) (*envelope.Envelope, Spend, error) {
 		Model:     anthropic.Model(opts.Model),
 		MaxTokens: opts.MaxTokens,
 		System: []anthropic.TextBlockParam{{
-			Text: systemPrompt(ts.Names()),
+			Text: promptFor(opts, ts.Names()),
 		}},
 		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(brief(opts))),
+			anthropic.NewUserMessage(anthropic.NewTextBlock(briefFor(opts))),
 		},
 		Tools:        ts.params(),
 		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffort(opts.Effort)},
@@ -303,7 +312,17 @@ func build(opts Options, ts *toolset) *envelope.Envelope {
 	expansions := res.Expansions(ts.records)
 	notes := append(append([]string{}, ts.notes...), res.Notes()...)
 	if len(ts.records) == 0 {
-		notes = append(notes, "the search found nothing worth putting in front of the reviewer beyond the diff itself")
+		if len(opts.Questions) > 0 {
+			// A different fact from an unproductive scout, and the ruling
+			// stage acts on the difference: every finding it is about to rule
+			// on was checked and nothing came back, so none of them is
+			// verified by anything here.
+			notes = append(notes, fmt.Sprintf(
+				"none of the %d question(s) turned up anything to put in front of the ruling",
+				len(opts.Questions)))
+		} else {
+			notes = append(notes, "the search found nothing worth putting in front of the reviewer beyond the diff itself")
+		}
 	}
 	return &envelope.Envelope{
 		SchemaVersion: envelope.SchemaVersion,
@@ -317,7 +336,7 @@ func build(opts Options, ts *toolset) *envelope.Envelope {
 		BaseSHA:        opts.BaseSHA,
 		Files:          manifest(opts.Changed, opts.Generated),
 		Expansions:     expansions,
-		PromptFragment: promptFragment,
+		PromptFragment: fragmentFor(opts),
 		Notes:          notes,
 	}
 }

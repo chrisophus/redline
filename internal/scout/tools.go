@@ -287,6 +287,7 @@ func (ts *toolset) record() tool {
 			"end_line":   num("last line, inclusive"),
 			"symbol":     str("what this is, for the header the reviewer sees"),
 			"found_via":  str("how you found it: diff, grep, gorefactor, graph, read, history or docs"),
+			"answers":    str("when you were given questions, the id in brackets of the one this answers"),
 		}, "role", "file", "start_line", "end_line", "symbol"),
 		run: func(input json.RawMessage) (string, error) {
 			var in struct {
@@ -296,6 +297,7 @@ func (ts *toolset) record() tool {
 				EndLine   int    `json:"end_line"`
 				Symbol    string `json:"symbol"`
 				FoundVia  string `json:"found_via"`
+				Answers   string `json:"answers"`
 			}
 			if err := json.Unmarshal(input, &in); err != nil {
 				return "", fmt.Errorf("bad arguments: %v", err)
@@ -310,6 +312,7 @@ func (ts *toolset) record() tool {
 				EndLine:   in.EndLine,
 				Symbol:    strings.TrimSpace(in.Symbol),
 				FoundVia:  strings.ToLower(strings.TrimSpace(in.FoundVia)),
+				Answers:   strings.Trim(strings.TrimSpace(in.Answers), "[]"),
 			}
 			if err := ts.res.validate(rec); err != nil {
 				return "", err

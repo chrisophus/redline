@@ -85,6 +85,11 @@ flags:
                     (default 1). Samples do not overlap, so recall rises with
                     N and cost rises with it too; the calls go out together,
                     so wall time does not.
+  --verify          with review: look up what each finding said would settle
+                    it, then rule on every finding with the answers in hand.
+                    Only findings the ruling keeps are posted; the rest stay
+                    on the report with the reason. On by default when a key
+                    is present; --no-verify turns it off.
   --ceiling N       with review: token ceiling for the whole request
                     (default 250000). A tail bound, not a per-review budget:
                     a change whose diff and findings alone exceed it is
@@ -128,7 +133,7 @@ type opts struct {
 	reportURL, profile, olderThan                                     string
 	model, effort, mode, api, baseURL, apiUser                        string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
-	stats                                                             bool
+	stats, verify, noVerify                                           bool
 	port, ceiling, maxTokens, maxTurns, samples                       int
 	maxCost                                                           float64
 }
@@ -173,6 +178,8 @@ func runMain(args []string) error {
 	fs.StringVar(&o.mode, "mode", "", "with review: oneshot or explore")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "with review --mode explore: turn limit")
 	fs.IntVar(&o.samples, "samples", 0, "with review: independent reviews to union")
+	fs.BoolVar(&o.verify, "verify", false, "with review: check each finding against the repository before posting it")
+	fs.BoolVar(&o.noVerify, "no-verify", false, "with review: skip the checking pass")
 	fs.IntVar(&o.ceiling, "ceiling", 0, "with review: token ceiling for the whole request")
 	fs.IntVar(&o.maxTokens, "max-tokens", 0, "with review: cap on the response")
 	fs.Float64Var(&o.maxCost, "max-cost", 0, "with review: refuse a request estimated above this many dollars")
