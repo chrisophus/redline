@@ -483,8 +483,9 @@ func TestSweep(t *testing.T) {
 		sc := ScoreSamples(f, revs)
 		cards = append(cards, sc)
 		costs = append(costs, cost)
-		t.Logf("%s: caught=%v caughtIn=%v missed=%v quiet=%v extra=%d",
-			f.Annotation.Name, sc.Caught, sc.CaughtIn, sc.Missed, sc.QuietViolations, sc.Extra)
+		t.Logf("%s: caught=%v caughtIn=%v missed=%v quiet=%v rejected=%v extra=%d",
+			f.Annotation.Name, sc.Caught, sc.CaughtIn, sc.Missed, sc.QuietViolations,
+			sc.Rejected, sc.Extra)
 		// An arm's score says how many extras it wrote and never what they
 		// were, so precision work has nothing to read. Keeping the reviews
 		// makes the unmatched comments inspectable after the money is spent,
@@ -652,5 +653,116 @@ func TestHistorySurvivesDeduplicationOnTheRevertFixture(t *testing.T) {
 	if !strings.Contains(got.Prompt, "panicked in production") {
 		t.Fatal("the commit explaining the deleted guard did not reach the prompt; " +
 			"without it this change reads as an ordinary simplification")
+	}
+}
+
+// A reject label is a measuring instrument like an expectation, and a loose
+// one is worse than none: an entry with no keywords matches every comment on
+// its file, so a review that found the real defect there would score as
+// having repeated a known mistake. Both failure modes are structural and
+// catchable without spending anything.
+func TestRejectLabelsAreSpecificEnoughToMeasure(t *testing.T) {
+	for _, f := range load(t) {
+		seen := map[string]bool{}
+		for _, r := range f.Annotation.Reject {
+			switch {
+			case r.Key == "":
+				t.Errorf("%s: a reject entry has no key, so a scorecard cannot name it", f.Annotation.Name)
+			case seen[r.Key]:
+				t.Errorf("%s: two reject entries share the key %q", f.Annotation.Name, r.Key)
+			}
+			seen[r.Key] = true
+			if len(r.AnyOf) == 0 && len(r.AllOf) == 0 {
+				t.Errorf("%s: reject %q names no words, so it would match every comment",
+					f.Annotation.Name, r.Key)
+			}
+			if r.Why == "" {
+				t.Errorf("%s: reject %q gives no reason; a label nobody can check is not evidence",
+					f.Annotation.Name, r.Key)
+			}
+			switch r.Source {
+			case "author", "fixture":
+			default:
+				t.Errorf("%s: reject %q has source %q, want author or fixture",
+					f.Annotation.Name, r.Key, r.Source)
+			}
+		}
+	}
+}
+
+// The comment that is scored is classified once. A comment matching both an
+// expectation and a reject is a contradiction in the annotation, and the
+// expectation has to win, or a correct finding would be counted as a mistake.
+func TestExpectationBeatsRejectOnTheSameComment(t *testing.T) {
+	f := Fixture{Annotation: Annotation{
+		Name:   "contrived",
+		Expect: []Expectation{{Key: "real", AnyOf: []string{"races"}}},
+		Reject: []Reject{{Key: "wrong", Source: "fixture", Why: "contrived", AnyOf: []string{"races"}}},
+	}}
+	sc := Score(f, findings.Review{Comments: []findings.ReviewComment{
+		{File: "a.go", Body: "this races with the other ingester"},
+	}})
+	if len(sc.Caught) != 1 {
+		t.Fatalf("the expectation should have claimed the comment: %+v", sc)
+	}
+	if len(sc.Rejected) != 0 {
+		t.Fatalf("one comment must not be both caught and rejected: %+v", sc)
+	}
+	if sc.Extra != 0 {
+		t.Fatalf("a classified comment is not extra: %+v", sc)
+	}
+}
+
+// A labelled wrong finding is a false positive, and it must not read as an
+// unlabelled extra. That difference is the whole point of the list: before
+// it, every invention Redline made scored as neutral.
+func TestRejectedCommentScoresAsAFalsePositiveNotAnExtra(t *testing.T) {
+	f := Fixture{Annotation: Annotation{
+		Name: "contrived",
+		Reject: []Reject{{
+			Key: "column-list-drift", Source: "author", File: "feed.go",
+			Why:   "mirrors aws_account_feed.go; the drift risk is accepted",
+			AnyOf: []string{"column list"},
+		}},
+	}}
+	rev := findings.Review{Comments: []findings.ReviewComment{
+		{File: "feed.go", Body: "The hard-coded column list will silently mis-stage after a migration."},
+		{File: "feed.go", Body: "Something nobody has judged yet."},
+	}}
+	sc := Score(f, rev)
+	if len(sc.Rejected) != 1 || sc.Rejected[0] != "column-list-drift" {
+		t.Fatalf("the labelled mistake should be counted: %+v", sc)
+	}
+	if sc.Extra != 1 {
+		t.Fatalf("only the unjudged comment is extra: %+v", sc)
+	}
+	tot := Sum([]Scorecard{sc})
+	if tot.FalsePositives() != 1 {
+		t.Fatalf("a rejected finding is a false positive: %+v", tot)
+	}
+	if !strings.Contains(Table("arm", 0.1, tot), "| 1 |") {
+		t.Fatalf("the table should carry it: %q", Table("arm", 0.1, tot))
+	}
+}
+
+// Precision varies across samples the way recall does, so the rate is kept
+// beside the union for the same reason CaughtIn is: a mistake one sample in
+// three makes is not the equal of one every sample makes.
+func TestScoreSamplesCountsHowOftenAMistakeRecurs(t *testing.T) {
+	f := Fixture{Annotation: Annotation{
+		Name: "contrived",
+		Reject: []Reject{{
+			Key: "row-index", Source: "author", Why: "0-based matches the sibling parsers",
+			AnyOf: []string{"off by one"},
+		}},
+	}}
+	revs := []findings.Review{
+		{Comments: []findings.ReviewComment{{File: "a.go", Body: "this is off by one"}}},
+		{Comments: []findings.ReviewComment{{File: "a.go", Body: "nothing labelled here"}}},
+		{Comments: []findings.ReviewComment{{File: "a.go", Body: "row_index is off by one"}}},
+	}
+	sc := ScoreSamples(f, revs)
+	if sc.RejectedIn["row-index"] != 2 {
+		t.Fatalf("two of three samples made it: %+v", sc.RejectedIn)
 	}
 }
