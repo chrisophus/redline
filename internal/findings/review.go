@@ -91,6 +91,44 @@ type reviewFileEntry struct {
 	Summary string `json:"summary"`
 }
 
+// StampReview records the change a review was written against, in place.
+//
+// The staleness guard can only refuse a review that says which change it is
+// about, and the documented way for an agent or a person to write one is to
+// put a file in `.redline/` by hand, which says nothing. That left the guard
+// covering only the reviews `redline review` wrote itself: a hand-written
+// review of one change was merged into the report of every later change,
+// silently, which is the failure the guard exists to prevent and the one it
+// could not see. Stamping the file the first time it is merged is what makes
+// the second run able to refuse.
+//
+// The file is rewritten through a raw map so a field this version of Redline
+// does not know is preserved: the file belongs to whoever wrote it, and this
+// is adding one key to it, not taking it over.
+func StampReview(path, revision string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw == nil {
+		raw = map[string]json.RawMessage{}
+	}
+	stamp, err := json.Marshal(revision)
+	if err != nil {
+		return err
+	}
+	raw["revision"] = stamp
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(out, '\n'), 0o644)
+}
+
 // LoadReview reads a review file. A missing file is not an error: most runs have
 // no review yet. Every verdict and comment reads as source "llm" regardless of
 // what the file claims: Redline attributes the reading, the file does not.
