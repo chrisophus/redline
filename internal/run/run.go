@@ -268,9 +268,31 @@ func Run(opts Options) (*Result, error) {
 		// review of the previous target is exactly what is sitting there
 		// when the next run writes over the session: one pull request's
 		// review rendered onto another here, and `post` would have put it
-		// on the wrong pull request. An unstamped review is merged, because
-		// writing one by hand is the documented path and predates the stamp.
-		if id := change.ReviewIdentity(res.Report.BaseSHA, res.Change); review.Revision != "" && review.Revision != id {
+		// on the wrong pull request.
+		id := change.ReviewIdentity(res.Report.BaseSHA, res.Change)
+		switch {
+		case review.Revision == "":
+			// Written by hand, which is the documented path and the one the
+			// skill tells an agent to use, so it says nothing about which
+			// change it is about. Taking it at its word once is right: it is
+			// sitting in this run's own directory. Stamping it is what stops
+			// the next run of a different change from doing the same, which
+			// is the hole this guard had — every hand-written review was
+			// exempt from it, and a review of one change rendered onto every
+			// later one with nothing said.
+			path := filepath.Join(opts.Out, "review.json")
+			if err := findings.StampReview(path, id); err != nil {
+				// Not fatal: this review is legitimately this change's, and
+				// the run is not the place to fail over a file permission.
+				// Said out loud, because the next run cannot refuse what
+				// this one could not stamp.
+				res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
+					Substrate: "redline/review",
+					Message:   "review.json was merged but could not be stamped with this change, so a later run cannot tell whether it is stale",
+					Reason:    err.Error(),
+				})
+			}
+		case review.Revision != id:
 			res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
 				Substrate: "redline/review",
 				Message: fmt.Sprintf("review.json was written against %s and this change is %s, so no agent review was merged",

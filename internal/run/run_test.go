@@ -887,6 +887,79 @@ func TestAnUnstampedReviewIsStillMerged(t *testing.T) {
 	}
 }
 
+// The hole the stamp had. Writing a review by hand is the documented path and
+// the one the skill tells an agent to use, so it says nothing about which
+// change it is about, and the guard exempted exactly those: a review of one
+// change was merged into the report of every later change, silently. Reported
+// from the field, and reproduced here — a review about the commit that added
+// b.go rendered as the review of the commit that added c.go.
+//
+// Taking an unstamped review at its word once is right; it is sitting in this
+// run's own directory. Stamping it on the way through is what lets the second
+// run tell.
+func TestAHandWrittenReviewIsStampedSoALaterChangeRefusesIt(t *testing.T) {
+	r := newRepo(t)
+	r.write("a.go", "package a\n")
+	r.commit("base")
+	r.write("b.go", "package a\n\nfunc B() {}\n")
+	r.commit("adds b")
+	out := filepath.Join(r.dir, ".redline")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(out, "review.json")
+	data, err := json.Marshal(findings.Review{
+		Overview: "about the commit that added b.go",
+		Comments: []findings.ReviewComment{{File: "b.go", Line: 3, Body: "a remark about B"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The change it was written about: merged, and stamped on the way.
+	rep := r.run(run.Options{Commit: "HEAD", Out: out}).Report
+	if rep.Agent == nil {
+		t.Fatal("the review was refused on the change it was written for")
+	}
+	stamped, err := findings.LoadReview(path)
+	if err != nil || stamped == nil {
+		t.Fatalf("review.json unreadable after the run: %v", err)
+	}
+	if stamped.Revision == "" {
+		t.Fatal("a merged review was left unstamped, so no later run can tell whether it is stale")
+	}
+	// The stamp must not cost the file anything else it carried.
+	if stamped.Overview != "about the commit that added b.go" || len(stamped.Comments) != 1 {
+		t.Errorf("stamping rewrote the review: %+v", stamped)
+	}
+
+	// A different change: refused, and the report says why rather than
+	// rendering another change's reading as this one's.
+	r.write("c.go", "package a\n\nfunc C() {}\n")
+	r.commit("adds c")
+	rep = r.run(run.Options{Commit: "HEAD", Out: out}).Report
+	if rep.Agent != nil {
+		t.Error("a review of another change was merged into this one")
+	}
+	var said bool
+	for _, u := range rep.Unknowns {
+		if u.Substrate == "redline/review" && strings.Contains(u.Message, "no agent review was merged") {
+			said = true
+		}
+	}
+	if !said {
+		t.Error("a refused review left nothing on the report, so the absence reads as a change nobody reviewed")
+	}
+	for _, f := range rep.Findings {
+		if f.Source == findings.SourceLLM {
+			t.Errorf("a stale review's comment reached the findings: %+v", f)
+		}
+	}
+}
+
 // The stamp `redline review` writes has to match what the next run computes,
 // or every real review reads as stale. Same session, same identity, twice.
 func TestTheStampMatchesTheChangeItWasWrittenFor(t *testing.T) {
