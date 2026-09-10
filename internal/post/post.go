@@ -34,11 +34,12 @@ const Event = "COMMENT"
 // already said and not say it twice. The rendered form is
 // "redline:fp:<head sha>:<hex fingerprint>".
 //
-// The SHA is part of the key because findings.Fingerprint is file, rule and
-// normalized message with no commit in it, while GitHub keeps every comment ever
-// left on the pull request. Keyed on the fingerprint alone, a finding that is
-// still live after a new push looks already-posted against a comment attached to
-// a superseded commit, so it gets no comment on the new head and reads as fixed.
+// The head SHA is recorded for context, but idempotency is by fingerprint
+// alone across the whole pull request: a finding is posted once and never
+// repeated on a later commit. GitHub keeps the thread, collapsed as outdated
+// once its line moves, and the review body re-states the verdict and evidence
+// per commit, so a still-live finding does not read as fixed without being
+// said twice.
 //
 // The fingerprint itself is a human-readable string with NUL separators, so it
 // is hex-encoded rather than embedded raw, where a "-->" in a message could
@@ -77,13 +78,6 @@ var (
 	qMarkerRe      = regexp.MustCompile(regexp.QuoteMeta(qMarkerPrefix) + `([0-9a-fA-F]+)`)
 )
 
-// postedKey is the identity a re-post checks against: a finding is already said
-// for this commit, or it is not. Keys from Fingerprints and lookups from
-// Unposted must be built the same way, so both go through here.
-func postedKey(head, fingerprint string) string {
-	return head + "\x00" + fingerprint
-}
-
 // Comment is one line-anchored review comment. Body already carries the
 // fingerprint marker; Fingerprint is kept alongside for filtering.
 type Comment struct {
@@ -121,6 +115,14 @@ type Payload struct {
 	// tuning the thing wants to know which one they have.
 	withheld int
 	hedged   int
+	// changed is every path in the change, for the walkthrough table. Kept so
+	// the body can list files the agent did not summarize; empty in evidence
+	// mode, where the walkthrough is not rendered.
+	changed []string
+	// intent and reviewedBy are the PR metadata the walkthrough body opens
+	// with, set by the command from gh once it is known. Empty renders nothing.
+	intent     string
+	reviewedBy string
 }
 
 // NothingNew reports that this payload has no finding Redline has not already
@@ -142,13 +144,13 @@ func (p Payload) NothingNew() bool {
 // nil commentable means "do not filter" — used offline, where there is no diff
 // to check against and the payload is only being previewed.
 func Build(rep *findings.Report, tgt *target.Target, reportURL string, commentable map[string]map[int]bool) Payload {
-	return BuildAttest(rep, tgt, reportURL, commentable, nil)
+	return BuildAttest(rep, tgt, reportURL, commentable, nil, nil)
 }
 
 // BuildAttest is Build with a merge-gate profile. A nil profile is identical
 // to Build. When set, the body and blocking comments carry the profile's
 // hidden markers, and GateVerdict is pass or fail.
-func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, commentable map[string]map[int]bool, prof *Profile) Payload {
+func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, commentable map[string]map[int]bool, prof *Profile, changed []string) Payload {
 	head := ""
 	if tgt != nil {
 		head = tgt.Head
@@ -194,7 +196,8 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 	p.rep = rep
 	p.reportURL = reportURL
 	p.bodyFindings = inBody
-	p.Body = buildBody(rep, head, reportURL, inBody, prof, p.GateVerdict, p.withheld, p.hedged)
+	p.changed = changed
+	p.Body = p.renderBody()
 	return p
 }
 
@@ -414,15 +417,17 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.F
 		head0.WriteString(s)
 	}
 
-	// The tail: the withheld note, the report link, and the markers a merge
-	// gate reads. These carry the tool's own bookkeeping and must survive
-	// however long the findings list runs, so they are measured before the
-	// not-shown list is fitted to what is left.
+	tail := bodyTail(reportURL, head, prof, gateVerdict, withheld, hedged)
+	middle := notShownSection(inBody, head, prof, maxBody-head0.Len()-len(tail))
+	return head0.String() + middle + tail
+}
+
+// bodyTail is the review's own bookkeeping that must survive however long the
+// findings list runs: the withheld note, the report link, and the markers a
+// merge gate reads. Shared by both layouts and measured before the not-shown
+// list is fitted to what is left of the budget.
+func bodyTail(reportURL, head string, prof *Profile, gateVerdict string, withheld, hedged int) string {
 	var tail strings.Builder
-	// Named rather than dropped silently, the bargain generated files and test
-	// bodies already get on the review request. A reader who is not told these
-	// exist cannot tell a reviewer that held something back from one that had
-	// nothing to say.
 	if withheld > 0 || hedged > 0 {
 		var parts []string
 		if withheld > 0 {
@@ -442,9 +447,252 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.F
 		tail.WriteByte('\n')
 		tail.WriteString(m)
 	}
+	return tail.String()
+}
 
-	middle := notShownSection(inBody, head, prof, maxBody-head0.Len()-tail.Len())
-	return head0.String() + middle + tail.String()
+// renderBody assembles the review body in whichever layout the profile asked
+// for. Evidence is the default one-line-per-pane body; walkthrough is the
+// Copilot-style body a profile opts into with body_style.
+func (p Payload) renderBody() string {
+	if p.profile != nil && p.profile.BodyStyle == BodyWalkthrough {
+		return buildBodyWalkthrough(p)
+	}
+	return buildBody(p.rep, p.CommitID, p.reportURL, p.bodyFindings, p.profile, p.GateVerdict, p.withheld, p.hedged)
+}
+
+// WithMeta stamps the PR metadata the walkthrough body opens with and
+// re-renders. The command fills these from gh once the login and the pull
+// request title are known; an evidence body ignores them.
+func (p Payload) WithMeta(intent, reviewedBy string) Payload {
+	p.intent = intent
+	p.reviewedBy = reviewedBy
+	p.Body = p.renderBody()
+	return p
+}
+
+// buildBodyWalkthrough is the Copilot-style body: who reviewed and which
+// commit, the author's stated intent, what the change does, a collapsible
+// walkthrough of every changed file, then evidence folded away and the
+// findings that could not be anchored to a line. body_include decides how much
+// of the report rides along, and every part of it comes from the session the
+// run already wrote, so this observes nothing.
+func buildBodyWalkthrough(p Payload) string {
+	var head0 strings.Builder
+	fmt.Fprintf(&head0, "### %s\n\n", walkthroughHeading(p.GateVerdict))
+	if p.reviewedBy != "" {
+		fmt.Fprintf(&head0, "**Reviewed by.** %s on `%s`.\n\n", p.reviewedBy, shortSHA12(p.CommitID))
+	}
+	if p.intent != "" {
+		fmt.Fprintf(&head0, "**Stated intent.** %s\n\n", p.intent)
+	}
+	if p.rep != nil && p.rep.Agent != nil {
+		if ov := strings.TrimSpace(p.rep.Agent.Overview); ov != "" {
+			if len(ov) > maxNarrative {
+				ov = ov[:maxNarrative] + "\n\n_(truncated; the full overview is on the report)_"
+			}
+			fmt.Fprintf(&head0, "**What it does.** %s\n\n", ov)
+		}
+	}
+	if s := walkthroughSection(p, maxNarrative); s != "" {
+		head0.WriteString(s)
+	}
+	if table := evidenceTable(p.rep); table != "" {
+		head0.WriteString("<details>\n<summary>Evidence</summary>\n\n")
+		head0.WriteString(table)
+		head0.WriteString("\n</details>\n\n")
+	}
+	if p.profile.includes("confirmations") {
+		head0.WriteString(confirmationsSection(p.rep))
+	}
+	if p.profile.includes("unknowns") {
+		head0.WriteString(unknownsSection(p.rep))
+	}
+	tail := bodyTail(p.reportURL, p.CommitID, p.profile, p.GateVerdict, p.withheld, p.hedged)
+	middle := notShownSection(p.bodyFindings, p.CommitID, p.profile, maxBody-head0.Len()-len(tail))
+	return head0.String() + middle + tail
+}
+
+// walkthroughHeading matches the author-published reviews: a failing gate reads
+// "Review findings", anything else "Review complete".
+func walkthroughHeading(gateVerdict string) string {
+	if gateVerdict == "fail" {
+		return "Review findings"
+	}
+	return "Review complete"
+}
+
+// walkthroughSection is the collapsible per-file table: every changed file, the
+// agent's one-line summary or "No notes.", and the columns body_include turns
+// on. coverage names the added lines a profile shows unexecuted; lint counts
+// what landed on the file by severity. Both read the report the run wrote.
+func walkthroughSection(p Payload, budget int) string {
+	if len(p.changed) == 0 {
+		return ""
+	}
+	withCoverage := p.profile.includes("coverage") && p.rep != nil && p.rep.Coverage.Diff != nil
+	withLint := p.profile.includes("lint")
+	var uncovered map[string]int
+	if withCoverage {
+		uncovered = uncoveredByFile(p.rep)
+	}
+	var counts map[string]string
+	if withLint {
+		counts = findingCountsByFile(p.rep)
+	}
+	summaries := map[string]string{}
+	if p.rep != nil && p.rep.Agent != nil {
+		summaries = p.rep.Agent.Files
+	}
+	paths := append([]string(nil), p.changed...)
+	sort.Strings(paths)
+
+	var b strings.Builder
+	b.WriteString("<details>\n<summary>Walkthrough</summary>\n\n")
+	header, sep := "| File | What changed |", "|---|---|"
+	if withCoverage {
+		header += " Coverage |"
+		sep += "---|"
+	}
+	if withLint {
+		header += " Findings |"
+		sep += "---|"
+	}
+	b.WriteString(header + "\n" + sep + "\n")
+	var omitted int
+	for _, path := range paths {
+		note := "No notes."
+		if s := strings.TrimSpace(summaries[path]); s != "" {
+			note = s
+		}
+		row := fmt.Sprintf("| `%s` | %s |", escapeCell(path), escapeCell(note))
+		if withCoverage {
+			cell := "—"
+			if n := uncovered[path]; n > 0 {
+				cell = fmt.Sprintf("%d line(s) uncovered", n)
+			}
+			row += " " + cell + " |"
+		}
+		if withLint {
+			cell := "—"
+			if s := counts[path]; s != "" {
+				cell = escapeCell(s)
+			}
+			row += " " + cell + " |"
+		}
+		row += "\n"
+		if b.Len()+len(row) > budget {
+			omitted++
+			continue
+		}
+		b.WriteString(row)
+	}
+	if omitted > 0 {
+		fmt.Fprintf(&b, "\n_%d more file(s) on the full report._\n", omitted)
+	}
+	b.WriteString("\n</details>\n\n")
+	return b.String()
+}
+
+// uncoveredByFile counts, per file, the added lines a coverage profile shows
+// unexecuted, from the run's own diff-coverage result.
+func uncoveredByFile(rep *findings.Report) map[string]int {
+	out := map[string]int{}
+	if rep == nil || rep.Coverage.Diff == nil {
+		return out
+	}
+	for _, g := range rep.Coverage.Diff.Uncovered {
+		out[g.Path] = len(g.Lines)
+	}
+	return out
+}
+
+// findingCountsByFile summarises, per file, how many findings landed on it by
+// severity, so the walkthrough shows where the issues are without repeating the
+// message each inline comment already carries.
+func findingCountsByFile(rep *findings.Report) map[string]string {
+	if rep == nil {
+		return nil
+	}
+	type counts struct{ err, warn, info int }
+	by := map[string]*counts{}
+	for _, f := range rep.Findings {
+		if f.File == "" {
+			continue
+		}
+		c := by[f.File]
+		if c == nil {
+			c = &counts{}
+			by[f.File] = c
+		}
+		switch f.Severity {
+		case findings.SeverityError:
+			c.err++
+		case findings.SeverityWarning:
+			c.warn++
+		default:
+			c.info++
+		}
+	}
+	out := map[string]string{}
+	for file, c := range by {
+		var parts []string
+		if c.err > 0 {
+			parts = append(parts, fmt.Sprintf("%d error", c.err))
+		}
+		if c.warn > 0 {
+			parts = append(parts, fmt.Sprintf("%d warning", c.warn))
+		}
+		if c.info > 0 {
+			parts = append(parts, fmt.Sprintf("%d info", c.info))
+		}
+		out[file] = strings.Join(parts, ", ")
+	}
+	return out
+}
+
+// confirmationsSection folds the checks that ran clean into the body. They are
+// the report's deliverable, each a question the reviewer no longer has to ask,
+// and a repository that wants them on the pull request opts in.
+func confirmationsSection(rep *findings.Report) string {
+	if rep == nil || len(rep.Confirmations) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "<details>\n<summary>Checks that passed (%d)</summary>\n\n", len(rep.Confirmations))
+	for _, c := range rep.Confirmations {
+		fmt.Fprintf(&b, "- %s\n", escapeCell(c.Message))
+	}
+	b.WriteString("\n</details>\n\n")
+	return b.String()
+}
+
+// unknownsSection folds what could not be determined into the body. A gap
+// nobody names reads exactly like a gap that is not there, which is the one
+// thing this tool refuses to let a review do.
+func unknownsSection(rep *findings.Report) string {
+	if rep == nil || len(rep.Unknowns) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "<details>\n<summary>Could not determine (%d)</summary>\n\n", len(rep.Unknowns))
+	for _, u := range rep.Unknowns {
+		line := u.Message
+		if u.Reason != "" {
+			line += " — " + u.Reason
+		}
+		fmt.Fprintf(&b, "- %s\n", escapeCell(line))
+	}
+	b.WriteString("\n</details>\n\n")
+	return b.String()
+}
+
+// shortSHA12 is the twelve-character commit the author-published reviews name,
+// so a reader comparing the two sees the same identifier.
+func shortSHA12(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
 }
 
 // maxBody is GitHub's hard limit on a review body. The whole assembled body,
@@ -625,10 +873,10 @@ func escapeCell(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// Unposted drops everything Redline has already said for this payload's commit,
+// Unposted drops every finding Redline has already said on this pull request,
 // both the line comments and the findings that ride in the body. posted comes
-// from Fingerprints and is keyed on (head SHA, fingerprint), so a finding said
-// against an earlier commit does not suppress what this commit needs.
+// from Fingerprints and is keyed on the fingerprint alone, so a finding said
+// against any earlier commit is not said again.
 //
 // The body is rendered again afterwards. A body finding that was already
 // reported would otherwise reappear in full on every re-post, which is the same
@@ -637,25 +885,25 @@ func (p Payload) Unposted(posted map[string]bool) Payload {
 	out := p
 	out.Comments = nil
 	for _, c := range p.Comments {
-		if posted[postedKey(p.CommitID, c.Fingerprint)] {
+		if posted[c.Fingerprint] {
 			continue
 		}
 		out.Comments = append(out.Comments, c)
 	}
 	out.bodyFindings = nil
 	for _, f := range p.bodyFindings {
-		if posted[postedKey(p.CommitID, f.Fingerprint)] {
+		if posted[f.Fingerprint] {
 			continue
 		}
 		out.bodyFindings = append(out.bodyFindings, f)
 	}
-	out.Body = buildBody(out.rep, out.CommitID, out.reportURL, out.bodyFindings, out.profile, out.GateVerdict, out.withheld, out.hedged)
+	out.Body = out.renderBody()
 	return out
 }
 
 // Fingerprints extracts what Redline has already said from a set of existing
-// comment and review bodies fetched from GitHub. Keys are (head SHA, finding
-// fingerprint) as built by postedKey; feed the result to Unposted.
+// comment and review bodies fetched from GitHub. Keys are the finding
+// fingerprints, head-independent, so feed the result to Unposted.
 //
 // Review bodies matter as much as comment bodies: a finding that could not be
 // anchored to a line is marked in the body it rode in, and reading only the
@@ -668,7 +916,7 @@ func Fingerprints(bodies []string) map[string]bool {
 			if err != nil {
 				continue
 			}
-			out[postedKey(m[1], string(raw))] = true
+			out[string(raw)] = true
 		}
 	}
 	return out

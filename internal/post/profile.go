@@ -25,6 +25,15 @@ type Profile struct {
 	// into fail, even when no findings were produced. A missing check must not
 	// read as pass.
 	FailClosedPane bool
+	// BodyStyle selects the review body layout: "evidence" (default, the
+	// one-line-per-pane body) or "walkthrough" (a Copilot-style body with
+	// stated intent, a per-file walkthrough, and evidence folded away).
+	BodyStyle string
+	// BodyInclude names the optional walkthrough sections, so a repository
+	// decides how much of the report reaches the pull request. Empty is the
+	// lean walkthrough (file plus summary); the keys are coverage, lint,
+	// confirmations, unknowns.
+	BodyInclude map[string]bool
 }
 
 type profileFile struct {
@@ -34,6 +43,24 @@ type profileFile struct {
 	AuthorOnly     *bool    `yaml:"author_only"`
 	RequireHead    *bool    `yaml:"require_head"`
 	FailClosedPane *bool    `yaml:"fail_closed_pane"`
+	BodyStyle      string   `yaml:"body_style"`
+	BodyInclude    []string `yaml:"body_include"`
+}
+
+// BodyStyle values.
+const (
+	BodyEvidence    = "evidence"
+	BodyWalkthrough = "walkthrough"
+)
+
+// bodySections are the optional walkthrough add-ons body_include may name.
+var bodySections = map[string]bool{
+	"coverage": true, "lint": true, "confirmations": true, "unknowns": true,
+}
+
+// includes reports whether a walkthrough body carries an optional section.
+func (p *Profile) includes(section string) bool {
+	return p != nil && p.BodyInclude[section]
 }
 
 // LoadProfile reads a YAML profile. Missing optional fields default to the
@@ -76,6 +103,23 @@ func LoadProfile(path string) (*Profile, error) {
 				return nil, fmt.Errorf("profile %s: %w", path, err)
 			}
 			p.Blocking = append(p.Blocking, sev)
+		}
+	}
+	p.BodyStyle = strings.ToLower(strings.TrimSpace(f.BodyStyle))
+	if p.BodyStyle == "" {
+		p.BodyStyle = BodyEvidence
+	}
+	if p.BodyStyle != BodyEvidence && p.BodyStyle != BodyWalkthrough {
+		return nil, fmt.Errorf("profile %s: body_style %q is not %s or %s", path, p.BodyStyle, BodyEvidence, BodyWalkthrough)
+	}
+	if len(f.BodyInclude) > 0 {
+		p.BodyInclude = map[string]bool{}
+		for _, s := range f.BodyInclude {
+			key := strings.ToLower(strings.TrimSpace(s))
+			if !bodySections[key] {
+				return nil, fmt.Errorf("profile %s: body_include %q is not one of coverage, lint, confirmations, unknowns", path, s)
+			}
+			p.BodyInclude[key] = true
 		}
 	}
 	return p, nil
