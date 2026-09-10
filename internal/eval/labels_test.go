@@ -12,6 +12,7 @@ package eval
 // that called the widening sensible.
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/chrisophus/redline/internal/findings"
@@ -52,6 +53,10 @@ func TestNilRulesLabelsMatchACorrectReviewAndNothingElse(t *testing.T) {
 		c(walkTest, "Nothing asserts the issue's file field, so the reported path:line location is unverified."),
 		c(walkTest, "No test assigns a slice literal or a map literal, so the composite literal branch is uncovered."),
 		c(guard, "No test exercises a caller-side x != nil conjunct, so enclosingNonNilGuard is never run."),
+		// The two labels whose evidence is outside the diff. A reviewer can
+		// only write these having read files this change does not touch.
+		c(facts, "The len-combo check reports the same defect as staticcheck S1009, which .golangci.yml already enables, so doctor counts one line twice."),
+		c(guard, "argProvenNonNil rejects anything that is not a bare identifier, and every guarded helper in this repository is called with a selector, so the widened proofs are inert here and the rule fires nowhere in the tree."),
 	}}
 
 	sc := Score(*target, rev)
@@ -69,7 +74,48 @@ func TestNilRulesLabelsMatchACorrectReviewAndNothingElse(t *testing.T) {
 		c(walk, "This adds a new lint rule that walks each function and tracks whether a value was constructed non-nil, then reports checks that cannot fire. The tests cover the main shapes."),
 		c(guard, "The guard rule now understands || chains and && conjuncts, which is a sensible widening, and the caller-side proofs look correct."),
 	}}
+
 	if sc := Score(*target, vague); len(sc.Caught) > 0 {
 		t.Errorf("approving prose scored as catching %v", sc.Caught)
 	}
+}
+
+// A with/without-context comparison is only meaningful if some label cannot be
+// reached from the diff. The first twelve labels here were authored by reading
+// the changed files, so not one of them names an unchanged file, and the arms
+// run against them measured the cost of context without ever offering it
+// anything to earn. That is a property of the label set, not a finding about
+// providers, and it is invisible unless something asserts it.
+//
+// Labels keyed `needs-unchanged-file` are the ones whose decisive evidence is
+// in a file the change does not touch. This fails if that class is emptied.
+func TestSomeLabelsCannotBeReachedFromTheDiffAlone(t *testing.T) {
+	fx := load(t)
+	for _, f := range fx {
+		if f.Annotation.Name != "gorefactor-nil-rules" {
+			continue
+		}
+		changed := map[string]bool{}
+		for _, cf := range f.Session.Change.Files {
+			changed[cf.Path] = true
+		}
+		var beyond int
+		for _, e := range f.Annotation.Expect {
+			if strings.Contains(e.Key, "needs-unchanged-file") {
+				beyond++
+				// Such a label must not be pinned to a changed file, or the
+				// match is decided by the diff after all.
+				if e.File != "" && changed[e.File] {
+					t.Errorf("%s claims evidence outside the diff but is pinned to changed file %s",
+						e.Key, e.File)
+				}
+			}
+		}
+		if beyond == 0 {
+			t.Error("no label needs a file outside the diff, so a context arm scored here " +
+				"can only measure what context costs, never what it is worth")
+		}
+		return
+	}
+	t.Fatal("fixture gorefactor-nil-rules did not load")
 }

@@ -2,7 +2,7 @@
   "name": "gorefactor-nil-rules",
   "origin": "gorefactor 20629f3 (lint: add unnecessary-nil-check rule, widen redundant-nil-guard)",
   "summary": "gorefactor gains a second nil-analysis lint rule and widens the first. `unnecessary-nil-check` walks each function with go/parser and no type information, carrying per-scope facts about which values were constructed non-nil or already guarded, and reports checks it believes cannot fire. `redundant-nil-guard` grows a prologue scan that tolerates earlier guards and caller-side proofs that accept `||` chains and `&&` conjuncts. 9 files, 1329 insertions.",
-  "why_this_fixture_exists": "Every other fixture with enough labels to measure recall is a change that adds new files, where the context provider's expansions are the diff itself: gorefactor-changectx sends 8 of 168, so context is 4.8% informative there and a with-context/without-context comparison is measuring nothing. This change modifies existing code, so the provider carries callers, siblings and history that the diff does not contain: 31 of 118 expansions survive deduplication, 26.3% informative, across caller/history/sibling. It is the fixture a context arm can actually be run on.\n\nIt is also a change where the defects are unusually consequential and unusually checkable. A false positive from either rule is advice to delete a nil guard, so following it introduces a nil dereference, and every label below was reproduced by building gorefactor at this revision and running the rule on a constructed snippet rather than argued from reading.",
+  "why_this_fixture_exists": "This change modifies existing code rather than adding files, so the context provider carries callers, siblings and history the diff does not contain: 31 of 118 expansions survive deduplication, 26.3% informative, against 4.8% for gorefactor-changectx. That is why it was chosen.\n\nIt is also a change whose defects are unusually checkable. A false positive from either rule is advice to delete a nil guard, so following it introduces a nil dereference, and every label was reproduced by building gorefactor at 20629f3 and running the rule on a constructed snippet rather than argued from reading.\n\nCORRECTION. This fixture was originally described as the one a context arm could be run on. That was wrong, and the first context arm run against it (2/12 with context, 4/12 without) does not mean what it appears to. Every one of the first twelve labels is findable from the diff alone: none names an unchanged file, because all twelve were authored by reading the changed files. A label set built that way cannot reward a reviewer for reading beyond the diff; it can only charge one for the tokens spent. Supplying more novel context does not fix that, because the demand was zero.\n\nThe two labels keyed `needs-unchanged-file` are the beginning of the class that was missing. Their decisive evidence is in files this commit never touches, so a diff-only reviewer cannot reach them, and a with/without-context comparison scored on them measures what context is for. Two is not enough to run that comparison on; the honest state is that the instrument is still being built. Note what the search cost: two independent readings of the whole repository produced five candidates of this class and only these two survived verification.",
   "clean": false,
   "expect": [
     {
@@ -172,6 +172,37 @@
       "all_of": [
         "test"
       ]
+    },
+    {
+      "key": "duplicates-staticcheck-s1009-needs-unchanged-file",
+      "what": "The rule's len-combo facet reports `x != nil && len(x) > 0`, which is exactly staticcheck's S1009. The repository already enables staticcheck in .golangci.yml -- a file this commit does not touch -- and that same file states the policy this breaks in its own comments: \"cyclop/funlen/dupl are intentionally NOT enabled: gorefactor owns the size/shape sensors and their autofixes. Running both double-counts the same defects in doctor --report.\" cmd_lint_golangci.go turns each golangci finding into its own lintIssue, and doctor/score.go exempts neither rule, so one line yields two findings at full weight in the merged report and the health score. Reproduced: on `if xs != nil && len(xs) > 0`, gorefactor at this revision says \"`xs != nil` (line 4) is redundant -- len(nil) == 0\" and staticcheck says \"S1009: should omit nil check\". Both scouts that read the repository found this independently. A reviewer with only the nine changed files cannot reach it: the new rule is unobjectionable in isolation and wrong only against an unchanged config file and the policy written in it.",
+      "any_of": [
+        "s1009",
+        "staticcheck",
+        "golangci",
+        "double-count",
+        "double count",
+        "twice",
+        "duplicate"
+      ],
+      "file": "",
+      "all_of": []
+    },
+    {
+      "key": "widened-caller-proof-is-inert-needs-unchanged-file",
+      "what": "The widening exists to prove a callee's entry guard redundant from its call sites, but argProvenNonNil takes `id, ok := arg.(*ast.Ident); if !ok { return false }`, so any argument that is not a bare identifier is rejected before the new proofs run. In this repository the real guarded helpers are called with selector expressions: analyzer/cross_file_helpers.go:107 `func countStatements(block *ast.BlockStmt) int { if block == nil { return 0 } }` is called at analyzer/cross_file_analyzer.go:157 as `countStatements(fn.Body)`, and the same shape holds for parser/parser.go:184 parseFieldList, orchestrator/op_helpers.go:109 extractOldName and refactor/changesig/calls.go:184 interfaceConflicts. None of those files is in this commit. Confirmed by running the rules over the whole tree at this revision: both fire zero times on 4,758 nodes, so 1,329 added lines change no output here. The diff shows the proofs getting wider and cannot show that every argument they would meet is a selector.",
+      "any_of": [
+        "selector",
+        "ast.ident",
+        "bare identifier",
+        "inert",
+        "never fires",
+        "fires zero",
+        "no findings",
+        "dead in practice"
+      ],
+      "file": "",
+      "all_of": []
     }
   ]
 }
