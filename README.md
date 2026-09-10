@@ -385,6 +385,14 @@ sentence about — GitHub's own Files tab already lists the paths and their
 line counts. The prose is bounded so that it can never be the reason a
 finding or a gate marker falls off the end of a body GitHub would reject.
 
+A reviewer finding that said it was unsure is not posted. The report folds
+those away behind a fold, and the pull request used to carry them as ordinary
+comments, so a guess the page hid arrived on the change looking like a
+measurement. The two readers now agree, and the body says how many were held
+back so a reviewer that withheld something can be told from one that had
+nothing to say. Only the reviewer's own findings: a pane's finding carries no
+confidence at all, so this can never withhold something that was measured.
+
 A finding becomes a line-anchored comment only when its `file:line` is on a
 changed line in the PR's diff; findings off the diff (or with no line) go in
 the review body, so one stray line can never make GitHub reject the whole
