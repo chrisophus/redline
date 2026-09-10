@@ -18,29 +18,41 @@ import (
 	"github.com/chrisophus/redline/internal/findings"
 )
 
-func TestNilRulesLabelsMatchACorrectReviewAndNothingElse(t *testing.T) {
-	fx := load(t)
-	var target *Fixture
-	for i := range fx {
-		if fx[i].Annotation.Name == "gorefactor-nil-rules" {
-			target = &fx[i]
+// The files this fixture's change touches, named once because three tests
+// write reviews against them.
+const (
+	nilWalk     = "cmd/gorefactor/cmd_lint_unnecessary_nil_check.go"
+	nilFacts    = "cmd/gorefactor/cmd_lint_unnecessary_nil_check_facts.go"
+	nilGuard    = "cmd/gorefactor/cmd_lint_redundant_nil_guard.go"
+	nilWalkTest = "cmd/gorefactor/cmd_lint_unnecessary_nil_check_test.go"
+)
+
+func nilRulesFixture(t *testing.T) Fixture {
+	t.Helper()
+	for _, f := range load(t) {
+		if f.Annotation.Name == "gorefactor-nil-rules" {
+			return f
 		}
 	}
-	if target == nil {
-		t.Fatal("fixture gorefactor-nil-rules did not load")
-	}
+	t.Fatal("fixture gorefactor-nil-rules did not load")
+	return Fixture{}
+}
 
-	c := func(file, body string) findings.ReviewComment {
-		return findings.ReviewComment{File: file, Line: 1, Body: body, Severity: "warning"}
-	}
-	const walk = "cmd/gorefactor/cmd_lint_unnecessary_nil_check.go"
-	const facts = "cmd/gorefactor/cmd_lint_unnecessary_nil_check_facts.go"
-	const guard = "cmd/gorefactor/cmd_lint_redundant_nil_guard.go"
-	const walkTest = "cmd/gorefactor/cmd_lint_unnecessary_nil_check_test.go"
+func nilComment(file, body string) findings.ReviewComment {
+	return findings.ReviewComment{File: file, Line: 1, Body: body, Severity: "warning"}
+}
 
-	// One comment per defect, written as a reviewer would write it rather than
-	// by copying the label's own words.
-	rev := findings.Review{Comments: []findings.ReviewComment{
+// nilRulesCorrectReview is what a reviewer that found every labelled defect
+// would have written: one comment per defect, in a reviewer's own words rather
+// than the label's.
+//
+// Shared, because it is the only review in this repository known to be
+// entirely correct, which makes it the control for anything that claims to
+// remove noise. A suppression that touches one of these is removing signal.
+func nilRulesCorrectReview() findings.Review {
+	c := nilComment
+	walk, facts, guard, walkTest := nilWalk, nilFacts, nilGuard, nilWalkTest
+	return findings.Review{Comments: []findings.ReviewComment{
 		c(facts, "checkExpr uses ast.Inspect, which walks into a function literal's body, and the statement walk never registers the literal's parameters. A closure parameter that shadows an outer guarded name is judged against the outer fact, so a mandatory check is reported as impossible."),
 		c(walk, "The condition is checked and only then invalidated: checkExpr runs before invalidateNilFacts, so a mutating call in the left conjunct is ignored and the report is emitted against a fact the condition destroys."),
 		c(guard, "The prologue scan now continues past an AssignStmt, so hasEntryNilGuard accepts a guard on a parameter that was rebind by an earlier statement; the guarded value is no longer the caller's argument."),
@@ -58,6 +70,14 @@ func TestNilRulesLabelsMatchACorrectReviewAndNothingElse(t *testing.T) {
 		c(facts, "The len-combo check reports the same defect as staticcheck S1009, which .golangci.yml already enables, so doctor counts one line twice."),
 		c(guard, "argProvenNonNil rejects anything that is not a bare identifier, and every guarded helper in this repository is called with a selector, so the widened proofs are inert here and the rule fires nowhere in the tree."),
 	}}
+}
+
+func TestNilRulesLabelsMatchACorrectReviewAndNothingElse(t *testing.T) {
+	fixture := nilRulesFixture(t)
+	target := &fixture
+	c := nilComment
+	walk, guard := nilWalk, nilGuard
+	rev := nilRulesCorrectReview()
 
 	sc := Score(*target, rev)
 	if len(sc.Missed) > 0 {

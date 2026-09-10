@@ -192,6 +192,27 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 	return p
 }
 
+// Reaches reports whether a finding would reach the author at all: as a line
+// comment, or in the review body.
+//
+// The three gates below decide that between them, and every one of them is a
+// rule about the reviewer's own findings rather than about measurements. It is
+// exported because the eval has to score the review a reader receives rather
+// than the one a model wrote. Those were the same thing until this pass
+// existed; now a configuration can look worse on paper and be better in an
+// inbox, and a scoring function with its own copy of these rules would report
+// whichever of the two it happened to implement.
+func Reaches(f findings.Finding) bool {
+	return !lowConfidence(f) && !hedged(f)
+}
+
+// Interrupts reports whether a finding would open a thread on the diff. A
+// finding can reach the author without interrupting them: the reviewer's info
+// rides in the body, read once by whoever is reading the review.
+func Interrupts(f findings.Finding) bool {
+	return Reaches(f) && lineOnDiff(f) && f.File != "" && f.Line > 0
+}
+
 // lowConfidence reports whether a finding is one the reviewer itself said it
 // was unsure of.
 //
