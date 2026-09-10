@@ -17,7 +17,7 @@ func outputSchema() map[string]any {
 		"additionalProperties": false,
 		"required": []string{
 			"file", "line", "severity", "confidence", "category",
-			"relatedFindings", "body",
+			"relatedFindings", "body", "question",
 		},
 		"properties": map[string]any{
 			"file": map[string]any{
@@ -52,6 +52,39 @@ func outputSchema() map[string]any {
 			"body": map[string]any{
 				"type":        "string",
 				"description": "The remark itself. One or two sentences, specific, no preamble.",
+			},
+			// Required, and required is the point. A model that has to say how
+			// its claim could be checked writes fewer claims that cannot be,
+			// and a schema enforces that where a prompt line asks for it and
+			// is forgotten by the tenth comment.
+			"question": map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"required":             []string{"kind", "ask", "subject"},
+				"properties": map[string]any{
+					"kind": map[string]any{
+						"type": "string",
+						"enum": []string{"diff", "precedent", "caller", "rule", "history", "type", "none"},
+						"description": "What would settle this finding. " +
+							"diff: what you were already shown settles it, nothing needs looking up. " +
+							"precedent: whether this repository already does the same thing elsewhere. " +
+							"caller: what calls or reads what changed. " +
+							"rule: whether the team wrote a rule about this. " +
+							"history: why the removed code was there. " +
+							"type: what a type can represent. " +
+							"none: nothing available would settle it, which means you are speculating.",
+					},
+					"ask": map[string]any{
+						"type": "string",
+						"description": "The question in one sentence, as you would ask a colleague " +
+							"with the repository open.",
+					},
+					"subject": map[string]any{
+						"type": "string",
+						"description": "The one thing to look up: a symbol, a path, or a pattern. " +
+							"Empty only when kind is diff or none.",
+					},
+				},
 			},
 		},
 	}

@@ -241,6 +241,27 @@ return clean. The clean rate is the harder target. `go test ./internal/eval`
 holds the fixture set to both halves, and the paid sweep prints them beside
 Copilot's.
 
+Every comment carries a question: the one check that would confirm or refute
+it, from a closed set of what can actually be looked up. Is this pattern used
+elsewhere unchanged, what calls this, is there a written rule, why was the
+removed code there, what can this type represent, or `diff` when what the
+reviewer was already shown settles it. The set is closed because a later stage
+has to run the lookup, and an open field collects questions nothing can
+answer.
+
+Requiring it does work on its own. A model that has to say how its claim could
+be falsified writes fewer claims that cannot be, and a schema enforces that
+where a prompt line is forgotten by the tenth comment. `none` is the honest
+answer when nothing would settle a finding, and a comment carrying it is
+folded away and never posted: that is the reviewer's own account of it as
+speculation.
+
+The question is also what makes two samples' comments one finding. Sampling
+measured no overlap at all, which ruled out treating agreement as confidence,
+but that measurement compared prose, and two samples describing one defect
+never word it the same way. They ask the same question about it. The union now
+prefers that, so the measurement is worth taking again.
+
 Findings from `review` are advisory and marked `source: llm`. They never
 reach the merge gate, whatever severity they carry. A gate that blocks on
 something the author cannot reproduce gets bypassed inside a month.

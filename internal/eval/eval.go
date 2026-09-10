@@ -31,6 +31,7 @@ import (
 	"strings"
 
 	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/review"
 	"github.com/chrisophus/redline/internal/run"
 )
 
@@ -333,8 +334,10 @@ func unionOf(revs []findings.Review) findings.Review {
 			out.Overview = rev.Overview
 		}
 		for _, c := range rev.Comments {
-			key := strings.ToLower(strings.TrimSpace(c.File)) + "\x00" +
-				findings.NormalizeMessage(strings.ToLower(strings.TrimSpace(c.Body)))
+			// The producer's own key, not a copy of it. The score has to be of
+			// the review a reader is handed, and two implementations of "these
+			// are the same finding" would make it a score of something else.
+			key := review.UnionKey(c)
 			if seen[key] {
 				continue
 			}

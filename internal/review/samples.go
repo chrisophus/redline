@@ -24,6 +24,16 @@ import (
 // samples agreed was the first design here and it is unimplementable: with no
 // overlap every finding scores one out of k, so the report's low-confidence
 // fold would hide all of them. Confidence stays the model's own claim.
+//
+// That second conclusion is narrower than it reads, and the narrowing is worth
+// stating because other reviewers do vote across passes and report it works.
+// The measurement was taken against an identity that was the finding's own
+// prose. Two samples describing one defect in different words counted as two
+// findings under it, so total disagreement is what it had to find whether or
+// not the samples agreed about anything. UnionKey now prefers the question a
+// finding asks, which is the same sentence from both samples where the prose
+// never is, and the measurement is worth taking again under it. Until it is,
+// the conclusion above stands as what was actually observed.
 
 // runSamples takes Samples independent reviews and unions them. The calls go
 // out together: they share no state, so the wall clock is one review's and
@@ -138,7 +148,7 @@ func unionReviews(samples []*Result) findings.Review {
 			}
 		}
 		for _, c := range rev.Comments {
-			key := unionKey(c)
+			key := UnionKey(c)
 			if i, ok := byKey[key]; ok {
 				if len(c.Body) > len(out.Comments[i].Body) {
 					out.Comments[i].Body = c.Body
@@ -155,7 +165,28 @@ func unionReviews(samples []*Result) findings.Review {
 	return out
 }
 
-func unionKey(c findings.ReviewComment) string {
-	return strings.ToLower(strings.TrimSpace(c.File)) + "\x00" +
+// UnionKey is what makes two samples' comments one finding.
+//
+// The question first, when it distinguishes anything. Two samples that found
+// one defect describe it differently and ask the same thing about it: "does
+// this repository already do this, look up awsOfferFeedRawColumns" is the same
+// sentence from both, where the prose never is. That is also why the
+// zero-overlap measurement recorded above is worth taking again under this
+// key: it was made against prose, so it could only ever have found what prose
+// can match.
+//
+// The prose remains the fallback, for a comment whose question is absent, is
+// "none", or names no subject to compare. A hand-written review has no
+// question at all and must keep merging the way it always did.
+//
+// Exported because the eval unions samples too, to score the review a reader
+// would actually be handed. Two implementations of this would be two different
+// reviews, one measured and one shipped.
+func UnionKey(c findings.ReviewComment) string {
+	file := strings.ToLower(strings.TrimSpace(c.File))
+	if k := c.Question.Key(); k != "" {
+		return file + "\x00q\x00" + k
+	}
+	return file + "\x00" +
 		findings.NormalizeMessage(strings.ToLower(strings.TrimSpace(c.Body)))
 }
