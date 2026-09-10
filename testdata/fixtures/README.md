@@ -122,3 +122,24 @@ output too.
 
 Eight is a starting set, not the target. The plan calls for twenty, drawn from
 real pull requests across the repositories this tool is used on.
+
+## Scoring what a reader receives
+
+Since the review gained a verifying pass, what a model writes and what a person
+reads are two different reviews. A comment can be written and never delivered:
+its author said it was unsure, or its own wording disqualified it, or the
+ruling withdrew it, or this pull request had already heard it and somebody
+answered.
+
+`ScoreDelivered` scores both and reports the difference. It runs the review
+through `post`'s own predicates rather than a copy of them, so the number is
+what an inbox receives rather than what a scoring function believes about it.
+
+The number that matters is the third return value: labelled defects the gates
+suppressed. That is the bar the whole verifying pass has to clear, and it is
+the one a precision-only measurement cannot see. A pass that suppresses
+everything has perfect precision and costs the author every real defect, and
+`TestTheGatesRemoveTheNoiseAndKeepEveryLabelledDefect` fails in both
+directions: a gate that keeps nothing loses fourteen labelled defects, and one
+that keeps everything suppresses none of the four noise comments modelled on
+what the field actually sent.

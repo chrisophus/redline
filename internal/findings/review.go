@@ -244,26 +244,9 @@ func parseReviewComments(commentsRaw, findingsRaw json.RawMessage) ([]ReviewComm
 		q := w.Question
 		q.Kind = NormalizeQuestionKind(q.Kind)
 		q.Ask, q.Subject = strings.TrimSpace(q.Ask), strings.TrimSpace(q.Subject)
-		conf := Confidence(strings.TrimSpace(w.Confidence))
-		if q.Kind == QuestionNone {
-			// The reviewer said nothing available would settle this, which is
-			// its own account of the finding as speculation. The report folds
-			// low confidence away and post withholds it, so saying so here is
-			// what makes that account bind. Only an explicit "none" does this:
-			// a hand-written review with no question field states nothing and
-			// is left alone.
-			conf = ConfidenceLow
-		}
 		ruling := w.Ruling
 		ruling.Verdict = NormalizeVerdict(ruling.Verdict)
-		if ruling.Verdict != "" && !ruling.Posts() {
-			// A finding the verifying pass did not keep is recorded and not
-			// posted, and low confidence is how the report and post already
-			// spell that. Reusing it means one rule about what reaches an
-			// author rather than two that can disagree.
-			conf = ConfidenceLow
-		}
-		out = append(out, ReviewComment{
+		c := ReviewComment{
 			File:            file,
 			Line:            w.Line,
 			StartLine:       w.StartLine,
@@ -271,11 +254,18 @@ func parseReviewComments(commentsRaw, findingsRaw json.RawMessage) ([]ReviewComm
 			Severity:        Severity(strings.TrimSpace(w.Severity)),
 			Body:            w.Body,
 			RelatedFindings: related,
-			Confidence:      conf,
+			Confidence:      Confidence(strings.TrimSpace(w.Confidence)),
 			Category:        normalizeCategory(Category(w.Category)),
 			Question:        q,
 			Ruling:          ruling,
-		})
+		}
+		// Written down as it will be read, through the same rule
+		// CommentFindings applies. review.json is a file a person opens, and
+		// one that recorded a finding as certain while every consumer treated
+		// it as unsure would be lying to the only reader who cannot see the
+		// consumers.
+		c.Confidence = effectiveConfidence(c)
+		out = append(out, c)
 	}
 	return out, nil
 }
@@ -306,6 +296,7 @@ func (r *Review) CommentFindings() []Finding {
 		if strings.TrimSpace(string(sev)) == "" {
 			sev = cat.DefaultSeverity()
 		}
+		conf := effectiveConfidence(c)
 		out = append(out, Finding{
 			File:            c.File,
 			Line:            c.Line,
@@ -319,7 +310,7 @@ func (r *Review) CommentFindings() []Finding {
 			Question:        c.Question,
 			Source:          SourceLLM,
 			RelatedFindings: c.RelatedFindings,
-			Confidence:      NormalizeConfidence(c.Confidence),
+			Confidence:      conf,
 		})
 	}
 	return out
@@ -405,4 +396,29 @@ func rulingContext(r Ruling) string {
 		b.WriteString(" (" + r.Evidence + ")")
 	}
 	return b.String()
+}
+
+// effectiveConfidence is how sure a comment is once its own account of itself
+// is taken into account.
+//
+// Two things override what the reviewer typed in the confidence field. A
+// ruling that did not keep the finding, and a question of "none", which is the
+// reviewer saying nothing available would settle its own claim. Both mean the
+// finding must not reach an author, and low confidence is how the report and
+// post already spell that.
+//
+// It lives here, at the conversion every consumer goes through, rather than in
+// the deserializer where it started. The measurement is what moved it: a
+// Review built in memory rather than read from disk skipped both rules, so a
+// scoring harness could have reported a suppression that the product performs
+// and the harness does not, or the reverse. A rule about what reaches an
+// author has to hold however the review was built.
+func effectiveConfidence(c ReviewComment) Confidence {
+	if c.Ruling.Verdict != "" && !c.Ruling.Posts() {
+		return ConfidenceLow
+	}
+	if c.Question.Kind == QuestionNone {
+		return ConfidenceLow
+	}
+	return NormalizeConfidence(c.Confidence)
 }

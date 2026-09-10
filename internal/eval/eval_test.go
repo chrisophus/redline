@@ -482,6 +482,15 @@ func TestSweep(t *testing.T) {
 		}
 		sc := ScoreSamples(f, revs)
 		cards = append(cards, sc)
+		// What a reader would actually have received, beside what the model
+		// wrote. Since the gates exist, those are different reviews, and the
+		// first is the one the tool is judged on. A labelled defect the gates
+		// suppressed is named rather than counted, because it is the number
+		// that decides whether the suppression was worth having.
+		for _, rev := range revs {
+			_, _, lost := ScoreDelivered(f, rev)
+			t.Log(DeliveryReport(f.Annotation.Name, Deliver(rev), lost))
+		}
 		costs = append(costs, cost)
 		t.Logf("%s: caught=%v caughtIn=%v missed=%v quiet=%v rejected=%v extra=%d",
 			f.Annotation.Name, sc.Caught, sc.CaughtIn, sc.Missed, sc.QuietViolations,
