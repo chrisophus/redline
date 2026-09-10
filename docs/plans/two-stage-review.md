@@ -597,6 +597,40 @@ path-scoped rules from those fifteen replies and nobody ran it, which is
 working as designed and is also why the second review had nothing written
 down to read.
 
+## The bar, and what it caught
+
+The plan said the labelled-defect bar had to be in the eval before the ruling
+stage could be trusted. The ruling shipped without it; it is there now, and
+it is the only thing in this document that measures whether any of the rest
+worked.
+
+`ScoreDelivered` scores the review a reader receives rather than the one a
+model wrote. Those were the same review until the gates existed. It runs the
+comments through `post`'s own predicates, exported for the purpose rather
+than copied, and returns three things: what was delivered, what was written,
+and the labelled defects the difference cost.
+
+The control is the fourteen-defect hand-written review, the one review here
+known to be entirely correct, with four comments mixed into it modelled on
+what the field actually sent. All fourteen have to survive and all four have
+to be stopped. Verified in both directions by breaking the gate each way: a
+gate that keeps nothing loses all fourteen, and one that keeps everything
+suppresses none of the four. Both fail the test, which is what makes the
+passing result mean something.
+
+Writing it found a real defect in the shipped code. The rules that demote a
+`none` question and a non-keeping ruling to low confidence lived in the
+deserializer and in `Apply`, so a `Review` constructed any other way bypassed
+both. Production happened to go through one of those two paths, so nothing
+was broken in the field, but the invariant was not intrinsic and the harness
+itself tripped over it on the first run. It now lives at the conversion every
+consumer uses.
+
+What this still does not measure is the model half. Whether stage three
+withdraws the right findings on a real change needs the paid sweep, which now
+prints the delivered numbers per sample, and it needs the field sessions the
+plan has been waiting on since step 2.
+
 ## Sequencing
 
 0. **Read the pull request back before reviewing it.** Reuse the fetch in
