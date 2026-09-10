@@ -89,3 +89,36 @@ func TestCompositionEmptyInput(t *testing.T) {
 		t.Errorf("expected no rows for no files, got %+v", rows)
 	}
 }
+
+// Holding test bodies back from a review is a bargain with a reason: coverage
+// and mutation already answer whether the tests assert enough. None of that
+// touches a Markdown file that happens to live under testdata, and this
+// repository's own fixture README reached a review labelled as a test file
+// that had "moved", with the review told to judge the code it tests.
+func TestDocsUnderTestdataAreNotTestCode(t *testing.T) {
+	const doc = "testdata/fixtures/README.md"
+	if !IsTest(doc) {
+		t.Fatal("the composition table still counts it as test material, by where it lives")
+	}
+	if IsTestCode(doc) {
+		t.Fatal("prose is what a reviewer should read; it must not be held back as a test body")
+	}
+	if kind(doc) != KindTest {
+		t.Fatalf("kind = %q; the table's own reading is unchanged", kind(doc))
+	}
+}
+
+// The narrowing is only about prose. Real test code stays held back, which is
+// the whole point of the exclusion.
+func TestRealTestCodeIsStillHeldBack(t *testing.T) {
+	for _, p := range []string{
+		"internal/review/review_test.go",
+		"testdata/fixtures/golden.json",
+		"ui/src/app.spec.ts",
+		"tests/e2e/login.py",
+	} {
+		if !IsTestCode(p) {
+			t.Errorf("%s should still be held back from the review request", p)
+		}
+	}
+}
