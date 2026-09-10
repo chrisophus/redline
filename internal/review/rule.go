@@ -1,6 +1,7 @@
 package review
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -407,6 +408,9 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 			FormatCost(res.CostCeilingUSD, true), FormatCost(opts.MaxCostUSD, true))
 		return stageOne, nil
 	}
+	if opts.Progress != nil {
+		opts.Progress(fmt.Sprintf("ruling on %d finding(s)", len(pending)))
+	}
 	out, err := runOnce(ctx, in, opts, res)
 	// The pass was paid for whichever way it ended, so its usage folds into
 	// the review's before anything else happens. The ruling's output is kept
@@ -639,12 +643,17 @@ func parseRulings(body []byte) (map[string]findings.Ruling, error) {
 	return out, nil
 }
 
-// decodeRulingItems reads the rulings array, tolerating a proxy that returned
-// it as a JSON string wrapping the array. The Marketplace gateway serves
-// claude over the OpenAI protocol and does not enforce the json_schema, so a
-// stringified array is a shape that comes back; unwrapping it once recovers
-// the ruling rather than failing the whole pass open.
+// decodeRulingItems reads the rulings out of whatever shape the wire returned.
+//
+// The forced tool call on the OpenAI wire fixed this at the source, but the
+// review still posts over gateways that drop the schema, so the parse stays
+// tolerant. The array is the shape the schema names. A gateway that dropped
+// the schema has been seen to stringify the whole value, and to return an
+// object instead of an array: one ruling on its own, or a map keyed by the
+// finding id. Each of those carries the same rulings, so they are read out
+// rather than failing the pass open.
 func decodeRulingItems(raw json.RawMessage) ([]rulingItem, error) {
+	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 {
 		return nil, nil
 	}
@@ -652,17 +661,52 @@ func decodeRulingItems(raw json.RawMessage) ([]rulingItem, error) {
 	if err := json.Unmarshal(raw, &items); err == nil {
 		return items, nil
 	}
+	// Stringified: unwrap once and read whatever the string held.
 	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return nil, err
+	if err := json.Unmarshal(raw, &s); err == nil {
+		if strings.TrimSpace(s) == "" {
+			return nil, nil
+		}
+		return decodeRulingItems(json.RawMessage(s))
 	}
-	if strings.TrimSpace(s) == "" {
-		return nil, nil
+	if raw[0] == '{' {
+		if items, ok := rulingItemsFromObject(raw); ok {
+			return items, nil
+		}
 	}
-	if err := json.Unmarshal([]byte(s), &items); err != nil {
-		return nil, err
+	return nil, fmt.Errorf("rulings is neither an array nor an object of rulings: %s", snippet(raw))
+}
+
+// rulingItemsFromObject reads the two object shapes a schema-dropping gateway
+// returns: a single ruling, or a map from finding id to the rest of it.
+func rulingItemsFromObject(raw json.RawMessage) ([]rulingItem, bool) {
+	var one rulingItem
+	if json.Unmarshal(raw, &one) == nil && (one.Finding != "" || one.Verdict != "") {
+		return []rulingItem{one}, true
 	}
-	return items, nil
+	var m map[string]rulingItem
+	if json.Unmarshal(raw, &m) == nil && len(m) > 0 {
+		out := make([]rulingItem, 0, len(m))
+		for id, it := range m {
+			if it.Finding == "" {
+				it.Finding = id
+			}
+			out = append(out, it)
+		}
+		return out, true
+	}
+	return nil, false
+}
+
+// snippet bounds a raw body for an error message, so a parse failure shows the
+// shape that broke it without pasting a whole response into the log.
+func snippet(raw []byte) string {
+	const max = 200
+	s := strings.TrimSpace(string(raw))
+	if len(s) > max {
+		return s[:max] + "…"
+	}
+	return s
 }
 
 // alreadyRaised matches candidates against what this pull request has already

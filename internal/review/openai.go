@@ -1,7 +1,6 @@
 package review
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -20,9 +19,9 @@ import (
 // reachable from where the review runs, exposes that gateway as an
 // OpenAI-compatible endpoint whatever sits behind it. So this is written to
 // the protocol rather than to the vendor, with no SDK: the request is one
-// JSON body, the response is one event stream, and the parts a review needs
-// from each are small enough to read by hand. Nothing here decides what the
-// review sees; that is settled by Assemble before the wire is chosen.
+// JSON body, the response is one JSON body, and the parts a review needs from
+// each are small enough to read by hand. Nothing here decides what the review
+// sees; that is settled by Assemble before the wire is chosen.
 
 // DefaultOpenAIModel is the model used when --api openai names none.
 // A proxy may alias this to anything; the ledger records what was asked for.
@@ -48,24 +47,47 @@ type openAIRequest struct {
 	Messages []openAIMessage `json:"messages"`
 	// MaxCompletionTokens is the current name for the output cap; the older
 	// max_tokens is rejected by reasoning models.
-	MaxCompletionTokens int64           `json:"max_completion_tokens"`
-	Stream              bool            `json:"stream"`
-	StreamOptions       map[string]bool `json:"stream_options"`
-	// ResponseFormat pins the reply to the review schema. strict is what
-	// makes the schema a constraint rather than a hint, and the schema
-	// already meets its rules: every property required, no extras.
-	ResponseFormat  map[string]any `json:"response_format"`
-	ReasoningEffort string         `json:"reasoning_effort,omitempty"`
+	MaxCompletionTokens int64 `json:"max_completion_tokens"`
+	// Tools carries the schema as a single function, and ToolChoice forces the
+	// model to call it. This is asked for instead of response_format because a
+	// gateway that serves one vendor's model over another's protocol does not
+	// enforce response_format: on this repository's own Marketplace gateway
+	// one review in four came back with the schema's array as a JSON string or
+	// an object, and the checking pass failed open on the parse. Function
+	// calling is honoured where the schema is not, because the same gateway
+	// drives the scout's tool loop reliably.
+	Tools           []openAITool `json:"tools,omitempty"`
+	ToolChoice      any          `json:"tool_choice,omitempty"`
+	ReasoningEffort string       `json:"reasoning_effort,omitempty"`
 }
 
-// openAIChunk is one streamed event. Only the fields a review reads are
-// named; a proxy may add more and they are ignored.
-type openAIChunk struct {
+type openAITool struct {
+	Type     string         `json:"type"`
+	Function openAIFunction `json:"function"`
+}
+
+type openAIFunction struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Parameters  any    `json:"parameters"`
+}
+
+// openAIResponse is the non-streamed reply. Only the fields a review reads are
+// named; a proxy may add more and they are ignored. The structured body is the
+// forced tool call's arguments; content is read only when a proxy ignored the
+// tool call and answered in prose instead.
+type openAIResponse struct {
 	Choices []struct {
-		Delta struct {
-			Content string `json:"content"`
-			Refusal string `json:"refusal"`
-		} `json:"delta"`
+		Message struct {
+			Content   string `json:"content"`
+			Refusal   string `json:"refusal"`
+			ToolCalls []struct {
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage *struct {
@@ -83,7 +105,10 @@ type openAIError struct {
 	Type    string `json:"type"`
 }
 
-// completeOpenAI sends the assembled request and reads the stream back.
+// completeOpenAI sends the assembled request as one forced tool call and reads
+// the reply. Non-streaming for the same reason the scout is: a tool call is
+// read off a finished turn, and streaming its arguments back would buy nothing
+// but reassembly.
 func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion, error) {
 	base := strings.TrimRight(opts.BaseURL, "/")
 	if base == "" {
@@ -96,6 +121,12 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 		return completion{}, errors.New("OPENAI_API_KEY is not set")
 	}
 
+	// The function is named for what it returns, so a debug log reads which
+	// stage this is; the schema it carries is the same one Assemble priced.
+	fn := "review"
+	if res.rulesRatherThanReviews() {
+		fn = "rulings"
+	}
 	body := openAIRequest{
 		Model: opts.Model,
 		Messages: []openAIMessage{
@@ -103,15 +134,17 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 			{Role: "user", Content: res.Prompt},
 		},
 		MaxCompletionTokens: opts.MaxTokens,
-		Stream:              true,
-		StreamOptions:       map[string]bool{"include_usage": true},
-		ResponseFormat: map[string]any{
-			"type": "json_schema",
-			"json_schema": map[string]any{
-				"name":   "review",
-				"strict": true,
-				"schema": res.Schema,
+		Tools: []openAITool{{
+			Type: "function",
+			Function: openAIFunction{
+				Name:        fn,
+				Description: "Return the structured object this schema defines. Call this and nothing else.",
+				Parameters:  res.Schema,
 			},
+		}},
+		ToolChoice: map[string]any{
+			"type":     "function",
+			"function": map[string]any{"name": fn},
 		},
 		ReasoningEffort: opts.Effort,
 	}
@@ -124,7 +157,7 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 		return completion{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Accept", "application/json")
 	if token := bearerToken(opts); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -137,7 +170,11 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 	if resp.StatusCode != http.StatusOK {
 		return completion{}, openAIStatusError(resp)
 	}
-	return readOpenAIStream(resp.Body)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return completion{}, err
+	}
+	return readOpenAIResponse(raw)
 }
 
 // bearerToken is what follows "Bearer" in the Authorization header. A
@@ -167,68 +204,51 @@ func openAIStatusError(resp *http.Response) error {
 	return errors.New(resp.Status)
 }
 
-// readOpenAIStream accumulates the event stream into one completion. Usage
-// rides on the last chunk when the endpoint sends it at all, and a stream
-// that reports none leaves it zero for Run to estimate.
-func readOpenAIStream(r io.Reader) (completion, error) {
-	var (
-		c       completion
-		text    strings.Builder
-		refusal strings.Builder
-		done    bool
-	)
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
-	for sc.Scan() {
-		line := sc.Text()
-		if !strings.HasPrefix(line, "data:") {
-			continue
+// readOpenAIResponse turns the reply into a completion. The structured body is
+// the forced tool call's arguments; a gateway that ignored tool_choice and
+// answered in content is still read, fenced or not, so a dropped constraint
+// degrades to prose in the body rather than an empty review.
+func readOpenAIResponse(raw []byte) (completion, error) {
+	var r openAIResponse
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return completion{}, fmt.Errorf("unreadable response: %w", err)
+	}
+	if r.Error != nil && strings.TrimSpace(r.Error.Message) != "" {
+		return completion{}, fmt.Errorf("response error: %s", r.Error.Message)
+	}
+	var c completion
+	if r.Usage != nil {
+		// The vendor counts cached tokens inside prompt_tokens; Usage keeps
+		// them apart so they price at the cached rate.
+		cached := r.Usage.PromptTokensDetails.CachedTokens
+		c.usage = Usage{
+			InputTokens:     r.Usage.PromptTokens - cached,
+			OutputTokens:    r.Usage.CompletionTokens,
+			CacheReadTokens: cached,
 		}
-		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if data == "[DONE]" {
-			done = true
+	}
+	if len(r.Choices) == 0 {
+		return c, errors.New("the response carried no choices")
+	}
+	ch := r.Choices[0]
+	c.stopReason = ch.FinishReason
+	for _, tc := range ch.Message.ToolCalls {
+		if strings.TrimSpace(tc.Function.Arguments) != "" {
+			c.text = tc.Function.Arguments
 			break
 		}
-		var chunk openAIChunk
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			return c, fmt.Errorf("unreadable stream event: %w", err)
-		}
-		if chunk.Error != nil {
-			return c, fmt.Errorf("stream error: %s", chunk.Error.Message)
-		}
-		if chunk.Usage != nil {
-			cached := chunk.Usage.PromptTokensDetails.CachedTokens
-			// The vendor counts cached tokens inside prompt_tokens; Usage
-			// keeps them apart so they price at the cached rate.
-			c.usage = Usage{
-				InputTokens:     chunk.Usage.PromptTokens - cached,
-				OutputTokens:    chunk.Usage.CompletionTokens,
-				CacheReadTokens: cached,
-			}
-		}
-		for _, ch := range chunk.Choices {
-			text.WriteString(ch.Delta.Content)
-			refusal.WriteString(ch.Delta.Refusal)
-			if ch.FinishReason != "" {
-				c.stopReason = ch.FinishReason
-			}
-		}
 	}
-	if err := sc.Err(); err != nil {
-		return c, err
+	if c.text == "" {
+		c.text = stripFences(ch.Message.Content)
 	}
-	if !done && c.stopReason == "" {
-		return c, errors.New("the stream ended before the response did")
-	}
-	c.text = stripFences(text.String())
 	switch {
-	case refusal.Len() > 0:
+	case strings.TrimSpace(ch.Message.Refusal) != "":
 		c.refused = true
-		c.detail = strings.TrimSpace(refusal.String())
-	case c.stopReason == "content_filter":
+		c.detail = strings.TrimSpace(ch.Message.Refusal)
+	case ch.FinishReason == "content_filter":
 		c.refused = true
 		c.detail = "content filter"
-	case c.stopReason == "length":
+	case ch.FinishReason == "length":
 		c.truncated = true
 	}
 	return c, nil

@@ -557,3 +557,34 @@ func TestParseRulingsToleratesAStringifiedArray(t *testing.T) {
 		t.Fatalf("the array shape must still parse: %+v", got)
 	}
 }
+
+// A schema-dropping gateway has also returned rulings as an object instead of
+// an array: one ruling on its own, or a map keyed by the finding id. Both
+// carry the same rulings, and the pass reads them rather than failing open,
+// which is the failure that left findings unchecked in the field.
+func TestParseRulingsToleratesObjectShapes(t *testing.T) {
+	single := []byte(`{"rulings":{"finding":"c1","verdict":"withdrawn","evidence":"e","why":"w"}}`)
+	got, err := parseRulings(single)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got["c1"].Verdict != findings.VerifiedWithdrawn {
+		t.Fatalf("a single ruling object must parse: %+v", got)
+	}
+
+	keyed := []byte(`{"rulings":{"c1":{"verdict":"kept","evidence":"e","why":"w"},` +
+		`"c2":{"verdict":"withdrawn","evidence":"e2","why":"w2"}}}`)
+	got, err = parseRulings(keyed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["c1"].Verdict != findings.VerifiedKept || got["c2"].Verdict != findings.VerifiedWithdrawn {
+		t.Fatalf("a map keyed by finding id must fill the finding from the key: %+v", got)
+	}
+
+	// A body that is no ruling shape at all still fails the pass rather than
+	// inventing one, and names what it saw.
+	if _, err := parseRulings([]byte(`{"rulings":42}`)); err == nil {
+		t.Fatal("a rulings value that is neither array nor object must error")
+	}
+}

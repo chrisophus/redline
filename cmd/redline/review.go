@@ -91,6 +91,15 @@ func cmdReview(o opts) error {
 	// The scout's spend is accumulated here so a cost paid inside the verify
 	// pass reaches the ledger and not only its own log line.
 	tally := scoutTally{known: true}
+	if !o.dryRun {
+		// Progress and debug are wired before the answerer is, because it
+		// captures ropts and threads both into the lookup loop. Without this
+		// the scout would run silent even with --debug on.
+		ropts.Progress = func(msg string) { fmt.Fprintln(os.Stderr, "redline:", msg) }
+		if o.debug || os.Getenv("REDLINE_DEBUG") != "" {
+			ropts.Debug = func(msg string) { fmt.Fprintln(os.Stderr, "redline debug:", msg) }
+		}
+	}
 	if ropts.Verify {
 		ropts.Answer = scoutAnswerer(res, ropts, &tally)
 	}
@@ -107,9 +116,6 @@ func cmdReview(o opts) error {
 				describeSession(res), est.Model, est.API, est.InputEstimate,
 				review.FormatCost(est.CostUSD, est.CostKnown),
 				review.FormatCost(est.CostCeilingUSD, est.CostKnown))
-		}
-		ropts.Progress = func(msg string) {
-			fmt.Fprintln(os.Stderr, "redline:", msg)
 		}
 	}
 
@@ -307,6 +313,8 @@ func scoutAnswerer(res *run.Result, ropts review.Options, tally *scoutTally) rev
 			BaseURL:   ropts.BaseURL,
 			APIKey:    ropts.APIKey,
 			APIUser:   ropts.APIUser,
+			Progress:  ropts.Progress,
+			Debug:     ropts.Debug,
 		})
 		if spend.Turns > 0 {
 			fmt.Fprintf(os.Stderr, "redline: lookups took %d turn(s), %d record(s), %s\n",

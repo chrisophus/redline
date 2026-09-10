@@ -135,7 +135,7 @@ type opts struct {
 	reportURL, profile, olderThan                                     string
 	model, effort, mode, api, baseURL, apiUser                        string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
-	stats, verify, noVerify                                           bool
+	stats, verify, noVerify, debug                                    bool
 	port, ceiling, maxTokens, maxTurns, samples                       int
 	maxCost                                                           float64
 }
@@ -182,6 +182,7 @@ func runMain(args []string) error {
 	fs.IntVar(&o.samples, "samples", 0, "with review: independent reviews to union")
 	fs.BoolVar(&o.verify, "verify", false, "with review: check each finding against the repository before posting it")
 	fs.BoolVar(&o.noVerify, "no-verify", false, "with review: skip the checking pass")
+	fs.BoolVar(&o.debug, "debug", false, "with review: log each model request, response, and scout tool call to stderr")
 	fs.IntVar(&o.ceiling, "ceiling", 0, "with review: token ceiling for the whole request")
 	fs.IntVar(&o.maxTokens, "max-tokens", 0, "with review: cap on the response")
 	fs.Float64Var(&o.maxCost, "max-cost", 0, "with review: refuse a request estimated above this many dollars")
