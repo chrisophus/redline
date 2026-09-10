@@ -322,7 +322,10 @@ func (r *resolver) read(path string) ([]string, error) {
 
 // inTree resolves a repository-relative path and refuses anything that climbs
 // out of the tree under review. The scout names these paths, and a model that
-// names ../../etc/passwd should get an error rather than a file.
+// names ../../etc/passwd should get an error rather than a file. Lexical
+// checks are not enough: a symlink added by the change can point a relative
+// path at a file outside the tree, so the real path is resolved and checked
+// too before its bytes reach an envelope.
 func (r *resolver) inTree(rel string) (string, error) {
 	if filepath.IsAbs(rel) {
 		return "", fmt.Errorf("path must be relative to the repository root")
@@ -330,6 +333,24 @@ func (r *resolver) inTree(rel string) (string, error) {
 	full := filepath.Join(r.root, filepath.FromSlash(rel))
 	inside, err := filepath.Rel(r.root, full)
 	if err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path is outside the tree under review")
+	}
+	// A path that does not exist yet is not a symlink escape; let the
+	// caller report it missing. Anything that does resolve must land inside
+	// the tree's own real path.
+	resolved, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return full, nil
+		}
+		return "", fmt.Errorf("path is outside the tree under review")
+	}
+	root, err := filepath.EvalSymlinks(r.root)
+	if err != nil {
+		root = r.root
+	}
+	realInside, err := filepath.Rel(root, resolved)
+	if err != nil || realInside == ".." || strings.HasPrefix(realInside, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("path is outside the tree under review")
 	}
 	return full, nil

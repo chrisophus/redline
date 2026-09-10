@@ -143,7 +143,11 @@ func (p *Pane) Observe(rev pane.Revision) (pane.Observation, error) {
 	}
 	set.Content = map[string]string{}
 	for path := range set.Files {
-		if sql := p.Repo.File(rev.Rev, path); sql != "" {
+		sql, err := p.Repo.File(rev.Rev, path)
+		if err != nil {
+			return nil, fmt.Errorf("reading migration %s at %s: %w", path, rev.Rev, err)
+		}
+		if sql != "" {
 			set.Content[path] = sql
 		}
 	}

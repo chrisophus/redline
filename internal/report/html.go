@@ -236,11 +236,13 @@ func buildView(in HTMLInput) view {
 	for _, f := range rep.Findings {
 		v.Counts[string(f.Severity)]++
 		fv := findingView{Finding: f}
+		var ev strings.Builder
 		for _, id := range f.Evidence {
 			if a, ok := in.Evidence[id]; ok && a.Content != "" && len(a.Content) < maxInlineEvidence {
-				fv.Evidence = template.HTML(highlightDiff(a.Content))
+				ev.WriteString(highlightDiff(a.Content))
 			}
 		}
+		fv.Evidence = template.HTML(ev.String())
 		fv.Related = relatedRefs(rep, f)
 		if f.Confidence == findings.ConfidenceLow {
 			v.LowConfidence = append(v.LowConfidence, fv)

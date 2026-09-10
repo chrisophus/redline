@@ -81,7 +81,14 @@ func (o *Observation) ID() string { return Name + "@" + o.Side }
 func (p *Pane) Observe(rev pane.Revision) (pane.Observation, error) {
 	obs := &Observation{Side: rev.Name, Rev: rev.Rev, Specs: map[string]*spec{}}
 	for _, path := range p.Paths {
-		raw := p.Repo.File(rev.Rev, path)
+		raw, err := p.Repo.File(rev.Rev, path)
+		if err != nil {
+			// A failed read is not an absent spec. Recording the error on the
+			// spec makes Diff name it unknown rather than read the missing side
+			// as an added or deleted document.
+			obs.Specs[path] = &spec{Err: err}
+			continue
+		}
 		if strings.TrimSpace(raw) == "" {
 			continue
 		}
@@ -102,6 +109,10 @@ func (p *Pane) Observe(rev pane.Revision) (pane.Observation, error) {
 type spec struct {
 	Ops map[string]*operation
 	Err error
+	// UsesRef is set when the paths section references a definition with
+	// $ref. This pane reads inline operations only and does not follow one,
+	// so a spec that uses $ref cannot be confirmed as non-breaking.
+	UsesRef bool
 }
 
 // operation is one method on one path, reduced to the things whose change
@@ -122,13 +133,17 @@ var methods = []string{"get", "put", "post", "delete", "options", "head", "patch
 // parse reads the operations out of a spec. JSON documents parse too: JSON is
 // valid YAML, so one path handles both.
 func parse(raw string) (*spec, error) {
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(raw), &root); err != nil {
+		return nil, err
+	}
 	var doc struct {
 		Paths map[string]map[string]yaml.Node `yaml:"paths"`
 	}
-	if err := yaml.Unmarshal([]byte(raw), &doc); err != nil {
+	if err := root.Decode(&doc); err != nil {
 		return nil, err
 	}
-	s := &spec{Ops: map[string]*operation{}}
+	s := &spec{Ops: map[string]*operation{}, UsesRef: containsRef(mapValue(&root, "paths"))}
 	for path, item := range doc.Paths {
 		for method, node := range item {
 			lower := strings.ToLower(method)
@@ -145,6 +160,52 @@ func parse(raw string) (*spec, error) {
 		}
 	}
 	return s, nil
+}
+
+// mapValue returns the value node for key in a mapping, unwrapping a document
+// node first. It returns nil when the node is not a mapping or lacks the key.
+func mapValue(n *yaml.Node, key string) *yaml.Node {
+	if n == nil {
+		return nil
+	}
+	if n.Kind == yaml.DocumentNode && len(n.Content) > 0 {
+		return mapValue(n.Content[0], key)
+	}
+	if n.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if n.Content[i].Value == key {
+			return n.Content[i+1]
+		}
+	}
+	return nil
+}
+
+// containsRef reports whether the subtree has a $ref mapping key anywhere.
+// A $ref points at a definition this pane does not resolve, so its presence
+// means an operation, input, or response may be hidden from the diff.
+func containsRef(n *yaml.Node) bool {
+	if n == nil {
+		return false
+	}
+	if n.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			if n.Content[i].Value == "$ref" {
+				return true
+			}
+			if containsRef(n.Content[i+1]) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, c := range n.Content {
+		if containsRef(c) {
+			return true
+		}
+	}
+	return false
 }
 
 func isMethod(s string) bool {
@@ -282,10 +343,18 @@ func (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {
 		}
 
 		if len(removed) == 0 && breakingCount(changed) == 0 {
-			res.Confirmations = append(res.Confirmations, findings.Confirmation{
-				Substrate: Name, Rule: "api-no-breaking-change",
-				Message: fmt.Sprintf("%s changed, and nothing a caller depends on was removed or made mandatory (%d operation(s) added)", path, len(added)),
-			})
+			if b.UsesRef || h.UsesRef {
+				res.Unknowns = append(res.Unknowns, findings.Unknown{
+					Substrate: Name,
+					Message:   fmt.Sprintf("%s uses $ref, and this pane reads inline schemas only, so whether an input was made mandatory or a response dropped behind a $ref was not checked", path),
+					Reason:    "spec uses $ref; inline schemas only",
+				})
+			} else {
+				res.Confirmations = append(res.Confirmations, findings.Confirmation{
+					Substrate: Name, Rule: "api-no-breaking-change",
+					Message: fmt.Sprintf("%s changed, and nothing a caller depends on was removed or made mandatory (%d operation(s) added)", path, len(added)),
+				})
+			}
 		}
 	}
 

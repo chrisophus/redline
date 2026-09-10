@@ -63,13 +63,14 @@ func (r *Repo) Exists(rev string) bool {
 	return err == nil
 }
 
-// MergeBase returns the merge base of rev and HEAD. If the two have no common
-// ancestor, rev itself is returned — the diff is then the whole history, which
-// is the honest answer rather than an error.
+// MergeBase returns the merge base of rev and HEAD. A shallow clone, or two
+// histories with no common ancestor, has none: that is reported as an error,
+// not as rev itself, so a run never diffs against a base that is not a base
+// and a shallow clone does not masquerade as having one.
 func (r *Repo) MergeBase(rev string) (string, error) {
 	out, err := r.git("merge-base", rev, "HEAD")
 	if err != nil {
-		return r.Resolve(rev)
+		return "", fmt.Errorf("no merge base for %q and HEAD: a shallow clone or unrelated history has none", rev)
 	}
 	return strings.TrimSpace(out), nil
 }
@@ -119,38 +120,100 @@ func (r *Repo) WorktreeBlobs() (map[string]string, error) {
 	return hashes, nil
 }
 
-// hashObjects hashes files on disk in one batch. git hash-object
-// --stdin-paths emits one hash per line, in input order. Paths that have
-// disappeared (deleted but still in the index) are dropped first rather than
-// failing the whole run.
+// hashObjects hashes worktree entries in the object format a tree listing
+// uses, so the two compare. A regular file is hashed by content. A symlink is
+// hashed as the blob git stores for it, the link text rather than the file it
+// resolves to, so a tracked symlink does not read as changed on every run and
+// a link to a directory does not read as deleted. A submodule (gitlink) is
+// reported at the commit it is checked out at, so it reads as changed only
+// when its pointer moved, never as a deleted regular file. A path that has
+// disappeared is dropped rather than failing the whole run.
 func (r *Repo) hashObjects(paths []string) (map[string]string, error) {
-	var live []string
+	out := map[string]string{}
+	var regular []string
 	for _, p := range paths {
-		if st, err := os.Stat(filepath.Join(r.Root, p)); err == nil && st.Mode().IsRegular() {
-			live = append(live, p)
+		fi, err := os.Lstat(filepath.Join(r.Root, p))
+		if err != nil {
+			continue // deleted but still in the index
+		}
+		switch {
+		case fi.Mode()&os.ModeSymlink != 0:
+			sha, err := r.hashSymlink(filepath.Join(r.Root, p))
+			if err != nil {
+				return nil, err
+			}
+			out[p] = sha
+		case fi.IsDir():
+			// A tracked directory is a submodule: git records a gitlink at the
+			// commit it is checked out at. An uninitialized submodule has no
+			// checkout to read, so it is left out rather than read as deleted.
+			if sha, ok := r.gitlinkSHA(p); ok {
+				out[p] = sha
+			}
+		case fi.Mode().IsRegular():
+			regular = append(regular, p)
 		}
 	}
-	if len(live) == 0 {
-		return map[string]string{}, nil
+	if err := r.hashRegular(regular, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// hashRegular batches regular files through git hash-object --stdin-paths,
+// which emits one hash per line in input order, and records them in out.
+func (r *Repo) hashRegular(paths []string, out map[string]string) error {
+	if len(paths) == 0 {
+		return nil
 	}
 	cmd := exec.Command("git", "hash-object", "--stdin-paths")
 	cmd.Dir = r.Root
-	cmd.Stdin = strings.NewReader(strings.Join(live, "\n") + "\n")
+	cmd.Stdin = strings.NewReader(strings.Join(paths, "\n") + "\n")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("git hash-object: %s", strings.TrimSpace(stderr.String()))
+		return fmt.Errorf("git hash-object: %s", strings.TrimSpace(stderr.String()))
 	}
 	lines := strings.Fields(stdout.String())
-	if len(lines) != len(live) {
-		return nil, fmt.Errorf("git hash-object: got %d hashes for %d paths", len(lines), len(live))
+	if len(lines) != len(paths) {
+		return fmt.Errorf("git hash-object: got %d hashes for %d paths", len(lines), len(paths))
 	}
-	out := make(map[string]string, len(live))
-	for i, p := range live {
+	for i, p := range paths {
 		out[p] = lines[i]
 	}
-	return out, nil
+	return nil
+}
+
+// hashSymlink returns the blob SHA git stores for a symlink: the hash of the
+// link text, which is what ls-tree records. Hashing the target the link
+// resolves to instead is what made every tracked symlink read as changed.
+func (r *Repo) hashSymlink(full string) (string, error) {
+	target, err := os.Readlink(full)
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.Command("git", "hash-object", "-t", "blob", "--stdin")
+	cmd.Dir = r.Root
+	cmd.Stdin = strings.NewReader(target)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git hash-object: %s", strings.TrimSpace(stderr.String()))
+	}
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// gitlinkSHA returns the commit a submodule is checked out at, which is the
+// gitlink a tree records for it. Absent when the path is not an initialized
+// git checkout.
+func (r *Repo) gitlinkSHA(path string) (string, bool) {
+	out, err := run(filepath.Join(r.Root, path), "rev-parse", "HEAD")
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(out), true
 }
 
 // Fetch records a remote ref locally. It does not update the current branch.
@@ -499,26 +562,44 @@ func (r *Repo) diffNoIndex(path string) (string, error) {
 	return "", fmt.Errorf("git diff --no-index: %s", msg)
 }
 
-// File returns one path's contents at a revision. The empty revision, or the
-// Worktree sentinel a pane passes for the head side, reads from disk instead —
-// uncommitted work is part of the change Redline reviews.
+// File returns one path's contents at a revision, and whether reading it
+// failed. The empty revision, or the Worktree sentinel a pane passes for the
+// head side, reads from disk: uncommitted work is part of the change Redline
+// reviews.
 //
-// A missing path is not an error: a spec that does not exist at the base is
-// exactly how an added spec looks, and the caller distinguishes the two by the
-// empty result.
-func (r *Repo) File(rev, path string) string {
+// A path simply not present at the revision is not an error and comes back as
+// "" with a nil error: an added spec is exactly a file absent at the base, and
+// the caller tells the two apart by the empty result. A git command that fails
+// for any other reason returns the error, so a pane does not read a broken
+// lookup as a file this change added.
+func (r *Repo) File(rev, path string) (string, error) {
 	if rev == "" {
 		buf, err := os.ReadFile(filepath.Join(r.Root, path))
-		if err != nil {
-			return ""
+		if os.IsNotExist(err) {
+			return "", nil
 		}
-		return string(buf)
+		if err != nil {
+			return "", err
+		}
+		return string(buf), nil
 	}
 	out, err := r.git("show", rev+":"+path)
 	if err != nil {
-		return ""
+		if missingAtRev(err) {
+			return "", nil
+		}
+		return "", err
 	}
-	return out
+	return out, nil
+}
+
+// missingAtRev reports whether a `git show` failure is the path simply not
+// being present at the revision. Git says so in two ways depending on whether
+// the path exists in the worktree, and both mean absent rather than broken.
+func missingAtRev(err error) bool {
+	s := err.Error()
+	return strings.Contains(s, "does not exist in") ||
+		strings.Contains(s, "exists on disk, but not in")
 }
 
 // AttrSet returns the paths for which a git attribute is explicitly set.

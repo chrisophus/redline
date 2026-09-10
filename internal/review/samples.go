@@ -123,6 +123,8 @@ func (r *Result) clone() *Result {
 	c.StopReason = ""
 	c.Duration = 0
 	c.Turns = 0
+	c.RulingOutputTokens = 0
+	c.ScoutCostUSD = 0
 	return &c
 }
 

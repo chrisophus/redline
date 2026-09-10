@@ -62,11 +62,20 @@ func (d Delivered) SuppressedCount() int {
 func Deliver(rev findings.Review) Delivered {
 	d := Delivered{Suppressed: map[string][]findings.ReviewComment{}}
 	fs := rev.CommentFindings()
-	for i, f := range fs {
-		if i >= len(rev.Comments) {
+	// CommentFindings drops empty-body comments, so it yields one finding per
+	// non-empty comment in order. Walk the comments and advance the finding
+	// cursor only when a comment produced one, or the two lists drift the
+	// moment any body is empty and a real defect is filed under the wrong gate.
+	fi := 0
+	for _, c := range rev.Comments {
+		if c.Body == "" {
+			continue
+		}
+		if fi >= len(fs) {
 			break
 		}
-		c := rev.Comments[i]
+		f := fs[fi]
+		fi++
 		switch {
 		case !post.Reaches(f):
 			d.Suppressed[suppressionReason(c)] = append(d.Suppressed[suppressionReason(c)], c)

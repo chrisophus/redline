@@ -281,6 +281,19 @@ type Result struct {
 	// and only one of them looks like it worked.
 	Verified     bool   `json:"verified,omitempty"`
 	VerifyFailed string `json:"verifyFailed,omitempty"`
+	// RulingOutputTokens is what the verifying pass wrote. Kept out of Usage
+	// so the ledger's output median stays a claim about reviews and not
+	// rulings, and added into CostUSD directly because it was billed.
+	RulingOutputTokens int64 `json:"rulingOutputTokens,omitempty"`
+	// ScoutCostUSD is what stage two's lookups cost. The command that runs
+	// them folds it into CostUSD and records it apart, because it is a
+	// separate call on a separate model under its own governor.
+	ScoutCostUSD float64 `json:"scoutCostUSD,omitempty"`
+	// CachePrefix is the run of Prompt that is identical to another request
+	// sharing this one's prefix, marked for the prompt cache. Empty caches the
+	// whole prompt, which is what a review's own call does so the ruling that
+	// follows can be served from it.
+	CachePrefix string `json:"-"`
 }
 
 // Summary is the one line a run prints. Cost and wall time per review are
@@ -394,13 +407,16 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 		return nil, err
 	}
 	// The tripwire measures the worst case, not the expected one. Its whole
-	// job is the run where the model does spend its entire allowance.
-	if res.CostKnown && res.CostCeilingUSD > opts.MaxCostUSD {
+	// job is the run where the model does spend its entire allowance, and with
+	// --samples that run happens N times: the samples go out together over the
+	// same prompt, so the worst case is N full-price calls, not one.
+	worst := res.CostCeilingUSD * float64(opts.Samples)
+	if res.CostKnown && worst > opts.MaxCostUSD {
 		return res, fmt.Errorf(
-			"worst-case cost %s exceeds the %s tripwire (expected %s): %d input tokens against a %d-token ceiling. "+
+			"worst-case cost %s across %d sample(s) exceeds the %s tripwire (expected %s): %d input tokens against a %d-token ceiling. "+
 				"Raise --max-cost to proceed, or lower --ceiling",
-			FormatCost(res.CostCeilingUSD, true), FormatCost(opts.MaxCostUSD, true),
-			FormatCost(res.CostUSD, true), res.InputEstimate, opts.Ceiling)
+			FormatCost(worst, true), opts.Samples, FormatCost(opts.MaxCostUSD, true),
+			FormatCost(res.CostUSD*float64(opts.Samples), true), res.InputEstimate, opts.Ceiling)
 	}
 	if opts.DryRun {
 		return res, nil

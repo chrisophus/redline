@@ -55,6 +55,7 @@ command that does. Everything else is unchanged. The agent's review still
 reaches the report through a file it writes (`review.json`), the reviewer's
 requests still reach the agent through a payload a person copies out of the
 page, and a repository with no API key still gets the whole report.
+The import boundary follows: `cmd/redline` may import `internal/scout` because `review` runs the answering scout for stage two of the verify pass, while `run` must not import it and so still calls no model.
 
 ## What was cut, and what came back
 

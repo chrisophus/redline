@@ -62,3 +62,33 @@ func TestLoadReviewFallsBackOnAnUnknownCategory(t *testing.T) {
 		t.Fatalf("category = %q", r.Comments[0].Category)
 	}
 }
+
+// A comment on a removed line carries side LEFT, and CommentFindings has to
+// carry it onto the finding: the post layer reads it there to anchor the
+// comment on the old file rather than the new-file line of the same number.
+// Case is forgiven, and an unnamed side reads as empty so the post layer can
+// default it to the new file.
+func TestCommentFindingsCarriesSide(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "review.json")
+	data := `{"comments": [
+  {"file": "a.go", "line": 3, "side": "left", "body": "this deleted guard mattered"},
+  {"file": "b.go", "line": 4, "body": "on the new file"}
+]}`
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := findings.LoadReview(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs := r.CommentFindings()
+	if len(fs) != 2 {
+		t.Fatalf("want two findings, got %d", len(fs))
+	}
+	if fs[0].Side != "LEFT" {
+		t.Fatalf("left side lost or not normalized: %q", fs[0].Side)
+	}
+	if fs[1].Side != "" {
+		t.Fatalf("an unnamed side must stay empty, got %q", fs[1].Side)
+	}
+}

@@ -224,7 +224,7 @@ func (ts *toolset) gorefactorContext() tool {
 			if err := json.Unmarshal(input, &in); err != nil {
 				return "", fmt.Errorf("bad arguments: %v", err)
 			}
-			return runCmd(ts.root, "gorefactor", "context", in.Symbol, "--json")
+			return runCmd(ts.root, "gorefactor", "context", "--json", "--", in.Symbol)
 		},
 	}
 }
@@ -248,8 +248,8 @@ func (ts *toolset) graphAffected() tool {
 			if in.Depth < 1 || in.Depth > 2 {
 				in.Depth = 1
 			}
-			return runCmd(ts.root, "graphify", "affected", in.Label,
-				"--depth", fmt.Sprint(in.Depth), "--graph", ts.graph)
+			return runCmd(ts.root, "graphify", "affected",
+				"--depth", fmt.Sprint(in.Depth), "--graph", ts.graph, "--", in.Label)
 		},
 	}
 }
@@ -270,7 +270,7 @@ func (ts *toolset) graphPath() tool {
 			if err := json.Unmarshal(input, &in); err != nil {
 				return "", fmt.Errorf("bad arguments: %v", err)
 			}
-			return runCmd(ts.root, "graphify", "path", in.From, in.To, "--graph", ts.graph)
+			return runCmd(ts.root, "graphify", "path", "--graph", ts.graph, "--", in.From, in.To)
 		},
 	}
 }
@@ -394,8 +394,12 @@ func grepTree(root string, re *regexp.Regexp, glob string, max int) (string, err
 	// means acting on a path the walk resolved earlier, which is a symlink
 	// race the moment the tree is not yours alone; it is also what gosec's
 	// G122 is about. Two passes cost one slice and remove the question.
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		realRoot = root
+	}
 	var candidates []string
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -416,6 +420,19 @@ func grepTree(root string, re *regexp.Regexp, glob string, max int) (string, err
 		}
 		if info, err := d.Info(); err != nil || info.Size() > 1<<20 {
 			return nil
+		}
+		// A symlink can point a walked path at a file outside the tree.
+		// Resolve it and skip anything whose real path escapes the root,
+		// so its bytes never reach the envelope.
+		if d.Type()&os.ModeSymlink != 0 {
+			resolved, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				return nil
+			}
+			out, err := filepath.Rel(realRoot, resolved)
+			if err != nil || out == ".." || strings.HasPrefix(out, ".."+string(filepath.Separator)) {
+				return nil
+			}
 		}
 		candidates = append(candidates, rel)
 		return nil

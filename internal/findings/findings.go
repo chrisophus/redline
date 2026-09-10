@@ -128,7 +128,13 @@ type Finding struct {
 	Line int    `json:"line,omitempty"`
 	// StartLine is the first line of a ranged comment. Zero means the comment
 	// anchors on Line alone. When set it must be less than or equal to Line.
-	StartLine   int      `json:"startLine,omitempty"`
+	StartLine int `json:"startLine,omitempty"`
+	// Side is the diff side the comment anchors to: "RIGHT" for the new file
+	// (the default) or "LEFT" for a removed line on the old file. Empty means
+	// RIGHT. A reviewer's comment on a deleted line carries LEFT, and a post
+	// that always sent RIGHT put it on the wrong code. Redline's own findings
+	// are about the new file and leave this empty.
+	Side        string   `json:"side,omitempty"`
 	Rule        string   `json:"rule"`
 	Substrate   string   `json:"substrate"`
 	Category    Category `json:"category"`

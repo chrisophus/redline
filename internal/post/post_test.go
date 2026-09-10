@@ -648,3 +648,69 @@ func TestAPanesOwnWordingIsNotReadAsAHedge(t *testing.T) {
 		t.Fatalf("a pane's finding is not the reviewer hedging: %+v", p.Comments)
 	}
 }
+
+// The findings that could not be anchored ride in the body, and a lint-heavy
+// change can list more of them than GitHub's 65536-character body allows. The
+// list must truncate with a visible count rather than take the whole review
+// down with it: the evidence table, the report link and the gate marker all
+// sit after the list and have to survive.
+func TestBuildBodyBoundsTheNotShownListSoTheReviewPosts(t *testing.T) {
+	rep := &findings.Report{
+		Substrates: []findings.SubstrateStatus{{Name: "lint", State: findings.SubstrateRan}},
+	}
+	for i := range 400 {
+		rep.Findings = append(rep.Findings, findings.Finding{
+			Rule: "line-too-long", Substrate: "redline/lint", Severity: findings.SeverityWarning,
+			Message: fmt.Sprintf("finding %03d: %s", i, strings.Repeat("a wordy account of this one line. ", 20)),
+		})
+	}
+	rep.Finalize()
+	p := Build(rep, prTarget(), "", nil)
+	if len(p.Body) > 65536 {
+		t.Fatalf("body is %d characters, which GitHub rejects", len(p.Body))
+	}
+	if !strings.Contains(p.Body, "truncated to fit") {
+		t.Fatalf("a truncated list must say so")
+	}
+	if !strings.Contains(p.Body, reviewMarkerPrefix+"deadbeef") {
+		t.Fatalf("the review marker must survive truncation")
+	}
+}
+
+// A reviewer's comment on a removed line carries side LEFT. It must reach the
+// payload as LEFT: posting it RIGHT lands the thread on the new-file line of
+// the same number, which is different code.
+func TestBuildCarriesTheCommentSide(t *testing.T) {
+	rep := &findings.Report{Findings: []findings.Finding{{
+		File: "a.go", Line: 3, Side: "LEFT", Rule: "agent-comment", Substrate: "redline/review",
+		Category: findings.CategoryReview, Severity: findings.SeverityWarning,
+		Message: "this deleted guard was load-bearing", Source: findings.SourceLLM,
+	}}}
+	rep.Finalize()
+	p := Build(rep, prTarget(), "", map[string]map[int]bool{"a.go": {3: true}})
+	if len(p.Comments) != 1 {
+		t.Fatalf("want one line comment: %+v", p.Comments)
+	}
+	if p.Comments[0].Side != "LEFT" {
+		t.Fatalf("the LEFT side was dropped: %q", p.Comments[0].Side)
+	}
+}
+
+// For a verified finding Context is the ruling's quoted repository evidence.
+// A hedge word in the code a kept finding quotes must not withhold it: only the
+// reviewer's own Message is the reviewer's writing.
+func TestAHedgeQuotedInContextDoesNotWithhold(t *testing.T) {
+	f := findings.Finding{
+		File: "a.go", Line: 3, Rule: "agent-comment", Substrate: "redline/review",
+		Category: findings.CategoryReview, Severity: findings.SeverityWarning,
+		Message: "this comparison can never be true because the types differ",
+		Context: "Checked and kept. (quoted from the diff: // nit: probably fine)",
+		Source:  findings.SourceLLM,
+	}
+	if hedged(f) {
+		t.Fatal("a hedge quoted in Context must not read as the reviewer hedging")
+	}
+	if !Reaches(f) {
+		t.Fatal("the kept finding should still reach the author")
+	}
+}

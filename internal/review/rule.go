@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/feedback"
@@ -73,8 +74,14 @@ type Answerer func(ctx context.Context, qs []Question) (*envelope.Envelope, erro
 // QuestionsFor is the answerable half of a review's questions. A finding the
 // diff already settles needs no lookup, and one nothing can settle gets none.
 func QuestionsFor(rev findings.Review) []Question {
+	return questionsFor(Candidates(rev))
+}
+
+// questionsFor is QuestionsFor over an explicit candidate set, so the verifying
+// pass can look up only the findings it has not already settled.
+func questionsFor(cands []Candidate) []Question {
 	var out []Question
-	for _, c := range Candidates(rev) {
+	for _, c := range cands {
 		q := c.Comment.Question
 		if !q.Answerable() {
 			continue
@@ -338,9 +345,29 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 		return stageOne, nil
 	}
 
+	// Matched before anything is looked up or sent. A finding this pull
+	// request has already heard and had answered needs neither a lookup nor a
+	// ruling, and settling that first is what stops the scout spending its
+	// loop on a question whose finding is about to be discarded.
+	settled := alreadyRaised(cands, in.Prior)
+	pending := make([]Candidate, 0, len(cands))
+	for _, c := range cands {
+		if _, done := settled[c.ID]; !done {
+			pending = append(pending, c)
+		}
+	}
+	if len(pending) == 0 {
+		// Every finding on this change has already been raised and answered.
+		// There is nothing left for a ruling to decide, and paying for a call
+		// to be told so is the exact waste the second field round paid for.
+		stageOne.Verified = true
+		stageOne.Review = Apply(stageOne.Review, cands, settled)
+		return stageOne, nil
+	}
+
 	var answers *envelope.Envelope
 	if opts.Answer != nil {
-		qs := QuestionsFor(stageOne.Review)
+		qs := questionsFor(pending)
 		if len(qs) > 0 {
 			env, err := opts.Answer(ctx, qs)
 			if err != nil {
@@ -357,44 +384,49 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 		}
 	}
 
-	// Matched before the call, not by it. A model asked whether the pull
-	// request has heard a claim can answer honestly about the wording it was
-	// shown and miss the claim underneath; the question is the same sentence
-	// either way, so this is arithmetic rather than judgement.
-	settled := alreadyRaised(cands, in.Prior)
-
-	res := stageOne.ruleRequest(in, opts, cands, answers)
+	res := stageOne.ruleRequest(in, opts, pending, answers)
 	if opts.DryRun {
 		return res, nil
 	}
-	if len(settled) == len(cands) {
-		// Every finding on this change has already been raised and answered.
-		// There is nothing left for a ruling to decide, and paying for a call
-		// to be told so is the exact waste the second field round paid for.
+	// The tripwire measures the ruling call too, not only stage one. The
+	// ruling shares stage one's prefix but adds every answer the scout
+	// recorded, and a scout envelope is the one input here a small change
+	// cannot keep small. A ruling whose worst case is over the cap is not
+	// sent, and the review is left checked-but-unruled rather than billed for
+	// a call nobody agreed to.
+	if res.CostKnown && res.CostCeilingUSD > opts.MaxCostUSD {
 		stageOne.Verified = true
-		stageOne.Review = Apply(stageOne.Review, cands, settled)
+		stageOne.VerifyFailed = fmt.Sprintf(
+			"the ruling's worst-case cost %s is over the %s tripwire, so the findings below are as the review wrote them",
+			FormatCost(res.CostCeilingUSD, true), FormatCost(opts.MaxCostUSD, true))
 		return stageOne, nil
 	}
 	out, err := runOnce(ctx, in, opts, res)
 	// The pass was paid for whichever way it ended, so its usage folds into
-	// the review's before anything else happens.
+	// the review's before anything else happens. The ruling's output is kept
+	// out of the review's own count: it is a handful of short objects, and
+	// folding it into the output the ledger takes a median of would inflate
+	// the estimate every later review is priced against. Its cost is added
+	// back on, because it was billed all the same.
 	stageOne.Usage.InputTokens += out.Usage.InputTokens
-	stageOne.Usage.OutputTokens += out.Usage.OutputTokens
 	stageOne.Usage.CacheReadTokens += out.Usage.CacheReadTokens
 	stageOne.Usage.CacheWriteTokens += out.Usage.CacheWriteTokens
+	stageOne.RulingOutputTokens += out.Usage.OutputTokens
+	stageOne.Duration += out.Duration
 	stageOne.CostUSD, stageOne.CostKnown = stageOne.Usage.Cost(opts.Model)
+	if rc, ok := (Usage{OutputTokens: stageOne.RulingOutputTokens}).Cost(opts.Model); ok && stageOne.CostKnown {
+		stageOne.CostUSD += rc
+	}
 	stageOne.Verified = true
 	if err != nil {
 		stageOne.VerifyFailed = err.Error()
 		return stageOne, nil
 	}
-	// The deterministic match wins over the model's. It is the one that read
-	// the actual thread, and a ruling that decided a re-raised finding was
-	// worth keeping is exactly the failure this pass is for.
-	for id, r := range settled {
-		out.Rulings[id] = r
-	}
-	stageOne.Review = Apply(stageOne.Review, cands, out.Rulings)
+	// The pass completed, so from here a finding is posted only if a ruling
+	// kept it.
+	rulings := combineRulings(cands, pending, settled, out.Rulings,
+		verifyCorpus(stageOne.Prompt, answers))
+	stageOne.Review = Apply(stageOne.Review, cands, rulings)
 	return stageOne, nil
 }
 
@@ -403,13 +435,151 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 // findings are byte-identical, so the endpoint serves them from cache.
 func (r *Result) ruleRequest(in Input, opts Options, cands []Candidate, answers *envelope.Envelope) *Result {
 	out := r.clone()
-	out.System = r.System + rulePrompt
-	out.Prompt = r.Prompt + "\n" + candidatesSection(cands) + answersSection(answers)
+	// The system block is left byte-identical to stage one, and the ruling
+	// instruction goes at the tail of the user turn instead. The prefix a
+	// prompt cache serves is the longest identical run of system plus user, so
+	// appending the instruction to the system block, as this once did, moved
+	// the boundary and turned every ruling into a full-price call.
+	out.System = r.System
+	out.CachePrefix = r.Prompt
+	out.Prompt = r.Prompt + "\n" + candidatesSection(cands) +
+		boundAnswers(answersSection(answers)) + rulePrompt
 	out.Schema = ruleSchema()
 	out.InputEstimate = envelope.EstimateTokens(out.System) + envelope.EstimateTokens(out.Prompt)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedRulingTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)
 	return out
+}
+
+// maxAnswersBytes bounds the scout's answers where they are stitched into the
+// ruling prompt. The scout runs under its own token governor, but a governor
+// on turns is not a bound on bytes, and the answers are the one input to the
+// ruling that a small change cannot keep small. Past this the tripwire in
+// Verify would refuse the call anyway; truncating here keeps a large but
+// payable ruling from carrying a tail nobody will read.
+const maxAnswersBytes = 200_000
+
+func boundAnswers(s string) string {
+	if len(s) <= maxAnswersBytes {
+		return s
+	}
+	// Cut on a rune boundary so the prompt stays valid UTF-8.
+	cut := maxAnswersBytes
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "\n\n… the answers were truncated here to stay within budget; " +
+		"a finding whose evidence fell past this point reads as unverifiable.\n\n"
+}
+
+// combineRulings is the ruling map Apply writes after a completed pass. The
+// model's rulings are sanitized against the evidence; a pending candidate the
+// model left out fails closed to unverifiable, so a truncated or lazy response
+// cannot post a finding nobody checked; and the deterministic already-raised
+// wins over the model's, because it read the actual thread rather than guessed
+// from wording.
+func combineRulings(cands, pending []Candidate, settled, model map[string]findings.Ruling, corpus string) map[string]findings.Ruling {
+	rulings := sanitizeRulings(cands, model, corpus)
+	for _, c := range pending {
+		if _, ok := rulings[c.ID]; !ok {
+			rulings[c.ID] = unverifiable(
+				"the checking pass returned no ruling for this finding, so it stays unverified and is not posted")
+		}
+	}
+	for id, r := range settled {
+		rulings[id] = r
+	}
+	return rulings
+}
+
+// sanitizeRulings holds the model's rulings to the evidence standard the
+// prompt sets but the schema cannot. A ruling that suppresses a finding has a
+// burden of proof, and a model under pressure to be decisive will meet it in
+// words rather than in the material. Both checks demote to unverifiable, which
+// folds the finding rather than posting it or claiming it settled:
+//
+//   - already-raised is a claim about history. The deterministic matcher owns
+//     the real ones; the only honest model already-raised left is a duplicate
+//     of another finding that asks the same question, which the prompt asks it
+//     to collapse. Anything else suppresses a finding on a thread nobody can
+//     find.
+//   - withdrawn and justified rest on a quoted line. If no run of that quote
+//     is in what the ruling was shown, the quote was invented, and a finding
+//     withdrawn or excused on invented evidence is the exact failure this pass
+//     exists to prevent.
+func sanitizeRulings(cands []Candidate, rulings map[string]findings.Ruling, corpus string) map[string]findings.Ruling {
+	byID := make(map[string]Candidate, len(cands))
+	shared := map[string]int{}
+	for _, c := range cands {
+		byID[c.ID] = c
+		if k := c.Comment.Question.Key(); k != "" {
+			shared[k]++
+		}
+	}
+	out := make(map[string]findings.Ruling, len(rulings))
+	for id, r := range rulings {
+		r.Verdict = findings.NormalizeVerdict(r.Verdict)
+		switch r.Verdict {
+		case findings.VerifiedAlreadyRaised:
+			c, ok := byID[id]
+			if !ok || c.Comment.Question.Key() == "" || shared[c.Comment.Question.Key()] < 2 {
+				r = unverifiable("the checking pass called this already raised, but this pull request " +
+					"carries no earlier thread for it and no other finding asks the same question")
+			}
+		case findings.VerifiedWithdrawn, findings.VerifiedJustified:
+			if !groundedEvidence(r.Evidence, corpus) {
+				r = unverifiable("the checking pass gave evidence that is not in the material it was shown, " +
+					"so the verdict rests on nothing checkable")
+			}
+		}
+		out[id] = r
+	}
+	return out
+}
+
+func unverifiable(why string) findings.Ruling {
+	return findings.Ruling{Verdict: findings.VerifiedUnverifiable, Why: why}
+}
+
+// minEvidenceRun is the shortest quote taken as real. Long enough that a run
+// of it turning up in the material is a line the ruling read rather than a
+// coincidence, short enough that one quoted statement clears it.
+const minEvidenceRun = 24
+
+// groundedEvidence reports whether a run of the quoted evidence appears in the
+// material the ruling was shown. Case and whitespace are forgiven, because a
+// model requotes a line reflowed and recapitalised; nothing else is, because
+// the point is that the words were there to quote.
+func groundedEvidence(evidence, corpus string) bool {
+	e := collapseSpace(strings.ToLower(evidence))
+	if e == "" {
+		return false
+	}
+	c := collapseSpace(strings.ToLower(corpus))
+	if len(e) <= minEvidenceRun {
+		return strings.Contains(c, e)
+	}
+	for i := 0; i+minEvidenceRun <= len(e); i++ {
+		if strings.Contains(c, e[i:i+minEvidenceRun]) {
+			return true
+		}
+	}
+	return false
+}
+
+// collapseSpace reduces every run of whitespace to one space, so a quote that
+// was reflowed still matches the source it came from.
+func collapseSpace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// verifyCorpus is everything the ruling was shown that could carry evidence:
+// the review's own prompt, which holds the diff, the priors and the pull
+// request history, and the answers the scout recorded. The candidates section
+// is left out on purpose, so a finding cannot count its own wording as the
+// evidence that clears it.
+func verifyCorpus(prompt string, answers *envelope.Envelope) string {
+	return prompt + "\n" + answersSection(answers)
 }
 
 // ExpectedRulingTokens prices the second call. A ruling is a handful of short

@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -63,6 +64,33 @@ func TestRecordsOutsideTheTreeAreRefused(t *testing.T) {
 		if err == nil {
 			t.Errorf("%s was accepted; a path the model names must not escape the tree", path)
 		}
+	}
+}
+
+// A symlink added inside the tree can point a relative path at a file
+// outside it. Both the read_lines path and grepTree resolve the link and
+// refuse the escape, so a secret never reaches an envelope.
+func TestSymlinkEscapeIsRefused(t *testing.T) {
+	secret := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(secret, []byte("TOP-SECRET-TOKEN\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := tree(t)
+	if err := os.Symlink(secret, filepath.Join(root, "leak")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	r := newResolver(root, Limits{})
+	if _, err := r.read("leak"); err == nil {
+		t.Error("read_lines followed a symlink out of the tree")
+	}
+
+	out, err := grepTree(root, regexp.MustCompile("TOP-SECRET-TOKEN"), "", 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "TOP-SECRET-TOKEN") {
+		t.Errorf("grepTree read through a symlink out of the tree:\n%s", out)
 	}
 }
 

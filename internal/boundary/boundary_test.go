@@ -118,6 +118,9 @@ var providerOnlyPackages = map[string][]string{
 	},
 	"github.com/chrisophus/redline/internal/scout": {
 		"github.com/chrisophus/redline/cmd/redline-scout",
+		// review runs the answering scout for stage two of the verify pass;
+		// run still never calls a model by any route.
+		"github.com/chrisophus/redline/cmd/redline",
 	},
 }
 

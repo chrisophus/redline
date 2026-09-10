@@ -87,9 +87,14 @@ func postedKey(head, fingerprint string) string {
 // Comment is one line-anchored review comment. Body already carries the
 // fingerprint marker; Fingerprint is kept alongside for filtering.
 type Comment struct {
-	Path        string
-	Line        int
-	StartLine   int // zero means Line alone; otherwise the range start
+	Path      string
+	Line      int
+	StartLine int // zero means Line alone; otherwise the range start
+	// Side is the diff side the comment anchors to: "LEFT" for a removed line
+	// on the old file, "RIGHT" (or empty) for the new file. Carried from the
+	// finding so a comment on a deleted line posts LEFT rather than landing on
+	// the new-file line of the same number.
+	Side        string
 	Body        string
 	Fingerprint string
 }
@@ -177,6 +182,7 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 				Path:        f.File,
 				Line:        f.Line,
 				StartLine:   start,
+				Side:        f.Side,
 				Body:        commentBody(f, head, prof),
 				Fingerprint: f.Fingerprint,
 			})
@@ -275,11 +281,16 @@ var hedges = []string{
 // Its own findings only. A pane's message is fixed text written by whoever
 // wrote the pane, and a rule that read it for hedging would be reading the
 // wrong author's prose.
+//
+// Only the reviewer's own Message is scanned, never Context: for a verified
+// finding Context is the ruling's quoted repository evidence, so a hedge word
+// in the code that a kept finding quotes ("nit:", "probably fine") is not the
+// reviewer hedging and must not withhold the finding.
 func hedged(f findings.Finding) bool {
 	if f.Source != findings.SourceLLM {
 		return false
 	}
-	body := strings.ToLower(f.Message + " " + f.Context)
+	body := strings.ToLower(f.Message)
 	for _, h := range hedges {
 		if strings.Contains(body, h) {
 			return true
@@ -288,15 +299,29 @@ func hedged(f findings.Finding) bool {
 	return false
 }
 
-// verdictFor is the review's headline, derived from finding severities alone.
+// verdictFor is the review's headline, derived from the findings that actually
+// reach the author. A finding withheld for low confidence or hedging is not
+// posted, so counting it here made the headline say "Changes recommended" over
+// a body that then reported the same finding as held back.
 func verdictFor(rep *findings.Report) string {
-	if rep == nil || len(rep.Findings) == 0 {
+	if rep == nil {
 		return "No findings"
 	}
+	posted, changes := 0, false
 	for _, f := range rep.Findings {
-		if f.Severity == findings.SeverityError || f.Severity == findings.SeverityWarning {
-			return "Changes recommended"
+		if !Reaches(f) {
+			continue
 		}
+		posted++
+		if f.Severity == findings.SeverityError || f.Severity == findings.SeverityWarning {
+			changes = true
+		}
+	}
+	if posted == 0 {
+		return "No findings"
+	}
+	if changes {
+		return "Changes recommended"
 	}
 	return "Comments"
 }
@@ -360,19 +385,25 @@ func fpMarker(head, fingerprint string) string {
 // buildBody is the review body a reviewer reads first: the verdict, the
 // evidence table — one line per pane, plus the coverage rows — then any finding
 // that could not be anchored to a line, and the report link.
+//
+// The whole assembled body is bounded against GitHub's limit, not just the
+// agent's prose. The verdict, the evidence table and the file summary are
+// written first and kept whole; the not-shown list is what grows without
+// bound with the findings, so it is the part that truncates when the body
+// would otherwise be rejected.
 func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.Finding, prof *Profile, gateVerdict string, withheld, hedged int) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "### %s\n\n", verdictFor(rep))
+	var head0 strings.Builder
+	fmt.Fprintf(&head0, "### %s\n\n", verdictFor(rep))
 	// The agent's own account of the change, when there is one. Redline never
 	// writes prose: an overview is present only because a review was run or a
 	// human wrote one into review.json, so it is attributed rather than shown
 	// as the tool's own conclusion.
 	if s := overviewSection(rep); s != "" {
-		b.WriteString(s)
+		head0.WriteString(s)
 	}
 	if table := evidenceTable(rep); table != "" {
-		b.WriteString(table)
-		b.WriteString("\n")
+		head0.WriteString(table)
+		head0.WriteString("\n")
 	}
 	// One row per file the agent described. Deliberately not a list of every
 	// changed path with its line counts: GitHub's own Files tab already says
@@ -380,22 +411,14 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.F
 	// see. A file reaches this table because someone wrote a sentence about
 	// it.
 	if s := fileSummarySection(rep); s != "" {
-		b.WriteString(s)
+		head0.WriteString(s)
 	}
-	if len(inBody) > 0 {
-		b.WriteString("### Findings not shown inline\n\n")
-		for _, f := range inBody {
-			if m := findingAttestMarker(prof, f); m != "" {
-				fmt.Fprintf(&b, "%s\n", m)
-			}
-			fmt.Fprintf(&b, "- **%s** — %s", findingLabel(f), f.Message)
-			if loc := bodyLocation(f); loc != "" {
-				fmt.Fprintf(&b, " _(%s)_", loc)
-			}
-			fmt.Fprintf(&b, " %s\n", fpMarker(head, f.Fingerprint))
-		}
-		b.WriteString("\n")
-	}
+
+	// The tail: the withheld note, the report link, and the markers a merge
+	// gate reads. These carry the tool's own bookkeeping and must survive
+	// however long the findings list runs, so they are measured before the
+	// not-shown list is fitted to what is left.
+	var tail strings.Builder
 	// Named rather than dropped silently, the bargain generated files and test
 	// bodies already get on the review request. A reader who is not told these
 	// exist cannot tell a reviewer that held something back from one that had
@@ -408,18 +431,82 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.F
 		if hedged > 0 {
 			parts = append(parts, fmt.Sprintf("%d hedged", hedged))
 		}
-		fmt.Fprintf(&b, "_%d further finding(s) from the reviewer are on the report "+
+		fmt.Fprintf(&tail, "_%d further finding(s) from the reviewer are on the report "+
 			"rather than here: %s._\n\n", withheld+hedged, strings.Join(parts, ", "))
 	}
 	if reportURL != "" {
-		fmt.Fprintf(&b, "[Full report](%s)\n\n", reportURL)
+		fmt.Fprintf(&tail, "[Full report](%s)\n\n", reportURL)
 	}
-	b.WriteString(marker(reviewMarkerPrefix + head))
+	tail.WriteString(marker(reviewMarkerPrefix + head))
 	if m := reviewAttestMarker(prof, gateVerdict, head); m != "" {
-		b.WriteByte('\n')
-		b.WriteString(m)
+		tail.WriteByte('\n')
+		tail.WriteString(m)
 	}
+
+	middle := notShownSection(inBody, head, prof, maxBody-head0.Len()-tail.Len())
+	return head0.String() + middle + tail.String()
+}
+
+// maxBody is GitHub's hard limit on a review body. The whole assembled body,
+// not just the agent's prose, must stay under it: the not-shown list grows
+// with the findings and, left unbounded, a lint-heavy change would 422 the
+// entire review, comments and gate marker included.
+const maxBody = 65536
+
+// notShownSection renders the findings that could not be anchored to a line,
+// bounded to what is left of the body budget. Entries that do not fit are
+// dropped and replaced by a visible count, so the review always posts rather
+// than the whole submission being rejected for length.
+func notShownSection(inBody []findings.Finding, head string, prof *Profile, budget int) string {
+	if len(inBody) == 0 {
+		return ""
+	}
+	const heading = "### Findings not shown inline\n\n"
+	// Room kept for the truncation note (worst case: every finding dropped)
+	// and the trailing blank line, so appending them can never push the body
+	// back over the limit.
+	reserve := len(truncatedNote(len(inBody))) + len("\n")
+	if len(heading)+reserve > budget {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(heading)
+	shown := 0
+	for _, f := range inBody {
+		entry := bodyFindingLine(f, head, prof)
+		if b.Len()+len(entry)+reserve > budget {
+			break
+		}
+		b.WriteString(entry)
+		shown++
+	}
+	if shown < len(inBody) {
+		b.WriteString(truncatedNote(len(inBody) - shown))
+	}
+	b.WriteString("\n")
 	return b.String()
+}
+
+// bodyFindingLine renders one not-shown finding: its optional attest marker,
+// the finding itself, where it sits, and the hidden fingerprint marker a
+// re-post skips it by.
+func bodyFindingLine(f findings.Finding, head string, prof *Profile) string {
+	var b strings.Builder
+	if m := findingAttestMarker(prof, f); m != "" {
+		fmt.Fprintf(&b, "%s\n", m)
+	}
+	fmt.Fprintf(&b, "- **%s** — %s", findingLabel(f), f.Message)
+	if loc := bodyLocation(f); loc != "" {
+		fmt.Fprintf(&b, " _(%s)_", loc)
+	}
+	fmt.Fprintf(&b, " %s\n", fpMarker(head, f.Fingerprint))
+	return b.String()
+}
+
+// truncatedNote is the visible marker left where the not-shown list was cut
+// for length, so a reader knows findings were dropped and where to read them.
+func truncatedNote(n int) string {
+	return fmt.Sprintf("_%d more finding(s) truncated to fit GitHub's review size limit; see the full report._\n", n)
 }
 
 // maxNarrative bounds what the agent's prose may take of the review body.

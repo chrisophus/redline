@@ -233,3 +233,83 @@ func TestCachedWorktreesListAndRemove(t *testing.T) {
 		t.Fatalf("cache must be empty after remove, got %v err %v", got, err)
 	}
 }
+
+// A tracked symlink is stored by git as a blob of its link text. Hashing the
+// file it resolves to instead made every symlink read as changed on every run,
+// and a symlink to a directory read as deleted. The worktree view of a clean
+// checkout must show no changes.
+func TestChangedPathsIgnoresUnchangedSymlinks(t *testing.T) {
+	r := newRepo(t)
+	r.write("target.txt", "hello\n")
+	if err := os.Symlink("target.txt", filepath.Join(r.dir, "flink")); err != nil {
+		t.Fatal(err)
+	}
+	r.write("d/inner.txt", "x\n")
+	if err := os.Symlink("d", filepath.Join(r.dir, "dlink")); err != nil {
+		t.Fatal(err)
+	}
+	r.commit("init")
+
+	repo := r.open()
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed, err := repo.ChangedPaths(head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changed) != 0 {
+		t.Fatalf("a clean checkout with symlinks must report no changes, got %v", changed)
+	}
+}
+
+// A submodule is a gitlink: git records the commit it is checked out at, not a
+// blob hashed from disk. Treating its directory as a vanished regular file made
+// it read as deleted on every run.
+func TestChangedPathsDoesNotDeleteSubmodule(t *testing.T) {
+	sub := newRepo(t)
+	sub.write("s.txt", "sub\n")
+	sub.commit("sub init")
+
+	r := newRepo(t)
+	r.write("a.txt", "a\n")
+	r.commit("init")
+	add := exec.Command("git", "-c", "protocol.file.allow=always", "submodule", "add", sub.dir, "mod")
+	add.Dir = r.dir
+	if out, err := add.CombinedOutput(); err != nil {
+		t.Skipf("submodule add is unsupported in this environment: %v\n%s", err, out)
+	}
+	r.commit("add submodule")
+
+	repo := r.open()
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed, err := repo.ChangedPaths(head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range changed {
+		if p == "mod" {
+			t.Fatalf("a submodule must not read as changed or deleted, got %v", changed)
+		}
+	}
+}
+
+// Two histories with no common ancestor, as on a shallow clone, have no merge
+// base. That is reported as an error, never as the ref itself, so a run does
+// not diff against a base that is not one.
+func TestMergeBaseErrsWithoutCommonAncestor(t *testing.T) {
+	r := newRepo(t)
+	r.write("a.txt", "a\n")
+	r.commit("main root")
+	r.git("checkout", "--orphan", "other")
+	r.write("b.txt", "b\n")
+	r.commit("other root")
+
+	if _, err := r.open().MergeBase("main"); err == nil {
+		t.Fatal("MergeBase must error when rev and HEAD share no ancestor, not fall back to the ref")
+	}
+}
