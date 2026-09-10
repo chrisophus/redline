@@ -82,7 +82,45 @@ expensive model, resending the conversation each turn.
 Split the review into three stages, each a pure function of what the stage
 before it wrote into the session. The expensive model is called twice over the
 same prefix; the cheap model runs once under its existing cap; `redline run`
-stays free.
+stays free. On a pull request, a read of what was already said comes first.
+
+### Stage zero: what this pull request already heard
+
+Two runs of the same review on the same pull request post the same defect
+twice, worded differently. Today nothing stops that. `post` skips a finding
+it has already posted, keyed on head SHA plus fingerprint, and a model
+finding's fingerprint is its file plus its normalised wording. That key is
+right for a deterministic finding, which should post again when it is still
+live after a push. For a model finding it never matches: the second run words
+the defect differently, and a push changes the SHA anyway. `review` reads
+nothing from the pull request at all. `Merge` replaces the comments on every
+run, and the prompt keeps a previous reviewer's remarks out of the priors on
+purpose, so an old guess is not presented as an established fact.
+
+So before stage one, on a `--pr` target, fetch what Redline already said on
+this pull request and what came back. The fetch already exists in `post`: the
+comment and review bodies, with Redline's own comments identified by their
+markers. What it does not read yet is the thread under each one, the replies
+and the resolved state, which is the same read the read-back plan needs and
+one more field on the same call.
+
+That goes into the prompt as its own section, framed as what it is: already
+raised, and answered. Not as fact. The instruction is that a finding already
+raised is not raised again; that an author's stated reason is this
+repository's convention for the purpose of this review; and that a finding on
+lines the change has since touched may be reported as resolved or as still
+standing, with the line that shows which. The reply "same pre-transaction
+idempotency check as account feed staging" is exactly the text the next
+review of that pull request needs to see.
+
+The section is written into the session, so the review stays replayable and a
+fixture carries the pull request history it was reviewed against.
+
+A reply can be wrong. An author dismissing a real bug teaches the next review
+to stay quiet about it, which is the failure the read-back plan warns about.
+So the prior response is shown to the reviewer as the author's position, and
+the ruling stage says which side it took and why, rather than the response
+suppressing the finding on its own.
 
 ### Stage one: findings with questions
 
@@ -122,8 +160,14 @@ money, and it now spends it in three places instead of one.
 ### Stage three: the ruling
 
 A second call to the reviewer's model over the same prefix as stage one, plus
-the stage-one findings and the scout's answers. Its job is to refute. For
-each candidate it returns one of four rulings and the evidence:
+the stage-one findings, the scout's answers, and what stage zero read from
+the pull request. Its job is to refute. It dedupes first: two candidates with
+the same question are one finding, and a candidate that matches a finding
+already posted is ruled already raised, which is justified when the author's
+reply accepted the tradeoff. Identity for model findings lives here rather
+than in `post`, because a fingerprint on wording cannot say two comments are
+one defect and a model can. For each remaining candidate it returns one of
+four rulings and the evidence:
 
 - kept, with the line in the material the finding rests on
 - withdrawn, with the line that refutes it
@@ -219,6 +263,13 @@ costing more and finding the same things.
 
 ## Sequencing
 
+0. **Read the pull request back before reviewing it.** Reuse the fetch in
+   `post`, add the thread replies and resolved state, write the section into
+   the session, and tell the reviewer what was already raised and answered.
+   This removes the cross-run duplicate on its own, before any stage behind
+   it exists, and it is the first half of
+   [review-feedback.md](review-feedback.md) built for a different reader.
+   **S**
 1. **Read root convention files without a model.** Extend `internal/houserules`
    to the file list the scout already uses, bounded the same way, so the
    guideline block reaches the reviewer on every run. Cheap and right on its
