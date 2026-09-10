@@ -92,6 +92,9 @@ type Payload struct {
 	reportURL    string
 	bodyFindings []findings.Finding
 	profile      *Profile
+	// withheld counts the reviewer's own findings this payload did not post
+	// because they said they were unsure. See lowConfidence.
+	withheld int
 }
 
 // NothingNew reports that this payload has no finding Redline has not already
@@ -133,6 +136,10 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 		findingsList = rep.Findings
 	}
 	for _, f := range findingsList {
+		if lowConfidence(f) {
+			p.withheld++
+			continue
+		}
 		if f.File != "" && f.Line > 0 && lineCommentable(commentable, f.File, f.Line) {
 			start := f.StartLine
 			if start > 0 && (start > f.Line || !lineCommentable(commentable, f.File, start)) {
@@ -155,8 +162,22 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 	p.rep = rep
 	p.reportURL = reportURL
 	p.bodyFindings = inBody
-	p.Body = buildBody(rep, head, reportURL, inBody, prof, p.GateVerdict)
+	p.Body = buildBody(rep, head, reportURL, inBody, prof, p.GateVerdict, p.withheld)
 	return p
+}
+
+// lowConfidence reports whether a finding is one the reviewer itself said it
+// was unsure of.
+//
+// The report folds these away and the pull request did not, so a guess the
+// page hid arrived on the change with the weight of a measurement. The two
+// readers now agree: what the report will not show without being asked is not
+// worth a reviewer's inbox.
+//
+// Only the reviewer's own findings. A pane's finding carries no confidence at
+// all, by Finalize, so this can never withhold a measurement.
+func lowConfidence(f findings.Finding) bool {
+	return f.Source == findings.SourceLLM && f.Confidence == findings.ConfidenceLow
 }
 
 // verdictFor is the review's headline, derived from finding severities alone.
@@ -217,7 +238,7 @@ func fpMarker(head, fingerprint string) string {
 // buildBody is the review body a reviewer reads first: the verdict, the
 // evidence table — one line per pane, plus the coverage rows — then any finding
 // that could not be anchored to a line, and the report link.
-func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.Finding, prof *Profile, gateVerdict string) string {
+func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.Finding, prof *Profile, gateVerdict string, withheld int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "### %s\n\n", verdictFor(rep))
 	// The agent's own account of the change, when there is one. Redline never
@@ -252,6 +273,14 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.F
 			fmt.Fprintf(&b, " %s\n", fpMarker(head, f.Fingerprint))
 		}
 		b.WriteString("\n")
+	}
+	// Named rather than dropped silently, the bargain generated files and test
+	// bodies already get on the review request. A reader who is not told these
+	// exist cannot tell a reviewer that held something back from one that had
+	// nothing to say.
+	if withheld > 0 {
+		fmt.Fprintf(&b, "_%d further finding(s) from the reviewer said they were "+
+			"uncertain and are on the report rather than here._\n\n", withheld)
 	}
 	if reportURL != "" {
 		fmt.Fprintf(&b, "[Full report](%s)\n\n", reportURL)
@@ -404,7 +433,7 @@ func (p Payload) Unposted(posted map[string]bool) Payload {
 		}
 		out.bodyFindings = append(out.bodyFindings, f)
 	}
-	out.Body = buildBody(out.rep, out.CommitID, out.reportURL, out.bodyFindings, out.profile, out.GateVerdict)
+	out.Body = buildBody(out.rep, out.CommitID, out.reportURL, out.bodyFindings, out.profile, out.GateVerdict, out.withheld)
 	return out
 }
 

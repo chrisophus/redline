@@ -505,3 +505,61 @@ func TestFindingLabelNamesTheAgent(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// A guess the report folds away must not reach the pull request. The report
+// hides a low-confidence reviewer finding behind a fold and post used to send
+// the same finding as an ordinary line comment, so the two readers disagreed
+// about what Redline was willing to stand behind.
+func TestBuildWithholdsLowConfidenceReviewerFindings(t *testing.T) {
+	rep := &findings.Report{
+		Findings: []findings.Finding{
+			{File: "a.go", Line: 3, Rule: "agent-comment", Substrate: "redline/review",
+				Severity: findings.SeverityWarning, Source: findings.SourceLLM,
+				Confidence: findings.ConfidenceLow, Message: "this might race"},
+			{File: "a.go", Line: 4, Rule: "agent-comment", Substrate: "redline/review",
+				Severity: findings.SeverityWarning, Source: findings.SourceLLM,
+				Confidence: findings.ConfidenceHigh, Message: "this leaks a file handle"},
+		},
+	}
+	rep.Finalize()
+
+	p := Build(rep, prTarget(), "", nil)
+
+	if len(p.Comments) != 1 {
+		t.Fatalf("only the confident finding posts: %+v", p.Comments)
+	}
+	if !strings.Contains(p.Comments[0].Body, "leaks a file handle") {
+		t.Fatalf("the wrong finding survived: %q", p.Comments[0].Body)
+	}
+	if strings.Contains(p.Body, "might race") {
+		t.Fatal("the withheld finding must not fall through into the body either")
+	}
+	// Counted, not hidden. A reader who is not told it exists cannot tell a
+	// reviewer that held something back from one that had nothing to say.
+	if !strings.Contains(p.Body, "1 further finding(s)") {
+		t.Fatalf("the body should say what was withheld:\n%s", p.Body)
+	}
+}
+
+// Confidence is the reviewer's own word about its own finding. A pane's
+// finding has none, and Finalize clears any a review file tried to smuggle
+// onto one, so this path can never withhold a measurement.
+func TestBuildPostsMeasurementsWhateverConfidenceWasWritten(t *testing.T) {
+	rep := &findings.Report{
+		Findings: []findings.Finding{
+			{File: "a.go", Line: 3, Rule: "migration-modified-after-merge", Substrate: "migrations",
+				Severity: findings.SeverityError, Confidence: findings.ConfidenceLow,
+				Message: "merged migration edited"},
+		},
+	}
+	rep.Finalize()
+
+	p := Build(rep, prTarget(), "", nil)
+
+	if len(p.Comments) != 1 {
+		t.Fatalf("a measurement posts regardless: %+v", p.Comments)
+	}
+	if strings.Contains(p.Body, "further finding(s)") {
+		t.Fatal("nothing was withheld, so the body must not say anything was")
+	}
+}
