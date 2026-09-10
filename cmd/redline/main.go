@@ -38,6 +38,8 @@ const usage = `redline — observe a change and report the evidence
 usage:
   redline run     [flags]   observe the change and report (the entry point)
   redline review  [flags]   review the last run with a model and merge the result
+  redline learnings [flags] draft review rules from what people said about
+                            earlier findings on this pull request
   redline post    [flags]   post the session's findings as one PR review (--pr)
   redline open    [flags]   serve and open the last report (--file opens it from disk, no server)
   redline serve   [flags]   serve .redline over http (blocks; --stop ends it)
@@ -195,6 +197,8 @@ func runMain(args []string) error {
 		return cmdReview(o)
 	case "post":
 		return cmdPost(o)
+	case "learnings":
+		return cmdLearnings(o)
 	case "open":
 		if o.file {
 			return openFile(o.out, true)

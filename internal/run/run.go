@@ -15,6 +15,7 @@ import (
 	"github.com/chrisophus/redline/internal/gitx"
 	"github.com/chrisophus/redline/internal/harness"
 	"github.com/chrisophus/redline/internal/houserules"
+	"github.com/chrisophus/redline/internal/instructions"
 	"github.com/chrisophus/redline/internal/mutation"
 	"github.com/chrisophus/redline/internal/pane"
 	"github.com/chrisophus/redline/internal/pane/lint"
@@ -410,6 +411,20 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
 			Substrate: "redline/context",
 			Message:   "this repository's instruction files could not be read, so the review does not carry its rules",
+			Reason:    err.Error(),
+		})
+	} else if env != nil {
+		envs = append(envs, env)
+	}
+	// What the repository told its reviewer in its own configuration: the
+	// rules a team wrote for particular paths, and the ones it learned from
+	// having findings dismissed. Free, like the two above, and read from a
+	// file the team commits and reviews.
+	if env, err := instructions.Resolve(configRoot, changed); err != nil {
+		absent = append(absent, fmt.Sprintf("%s (context): %v", instructions.ProviderName, err))
+		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
+			Substrate: "redline/context",
+			Message:   "the review rules in .redline.yml could not be read, so the review does not carry them",
 			Reason:    err.Error(),
 		})
 	} else if env != nil {

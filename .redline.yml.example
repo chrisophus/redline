@@ -208,3 +208,31 @@ tools:
 #   scope        globs this provider speaks for; a changed file outside every
 #                provider's scope is reported as uncovered by the context layer
 #   okExitCodes  exit codes that mean the provider ran (default [0])
+
+# What this repository tells its reviewer, beyond what the code says.
+#
+# Two kinds. A written rule is what the team decided a reviewer should watch
+# for in particular paths. A learned rule is one somebody stated in a reply to
+# a finding, saying it was deliberate; those are conventions that exist nowhere
+# else, and `redline learnings` drafts them from the threads a `--pr` run
+# already read back. It writes nothing: you read each draft, cut what is wrong,
+# and commit the rest like any other code.
+#
+# learned_from is what makes a rule a learning rather than a decision. A
+# learned rule ranks below a written one, is dropped first when the budget
+# binds, and can never overrule what the team wrote in a file. That ordering is
+# the guard: a list that grows from moments when somebody was defending their
+# own change will eventually acquire a line that is simply wrong.
+#
+# review:
+#   instructions:
+#     - scope: ["internal/api/**"]
+#       text: |
+#         Handlers validate input at the boundary. A handler that trusts its
+#         caller is worth a finding even when nothing crashes today.
+#     - scope: ["internal/feed/**"]
+#       text: |
+#         Bulk ingest uses CopyFrom with an explicit column list, mirroring
+#         aws_account_feed.go, and checks idempotency before the transaction.
+#         The drift and race risks are both accepted.
+#       learned_from: "https://github.com/o/r/pull/412#discussion_r1"

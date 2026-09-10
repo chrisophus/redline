@@ -410,6 +410,39 @@ files sharing one word, produces nothing at all.
 the change, which needs a model and is why it costs money and is off by
 default. These paths are free.
 
+### Rules a team states, and rules it learns
+
+`.redline.yml` carries review rules of its own, scoped to paths:
+
+```yaml
+review:
+  instructions:
+    - scope: ["internal/api/**"]
+      text: Handlers validate input at the boundary.
+    - scope: ["internal/feed/**"]
+      text: Bulk ingest mirrors aws_account_feed.go; the drift risk is accepted.
+      learned_from: "https://github.com/o/r/pull/412#discussion_r1"
+```
+
+The second kind is the interesting one. When somebody replies to a finding to
+say the thing is deliberate, they have stated a convention written down
+nowhere else, and the next review needs it. `redline learnings` drafts those
+entries from the threads a `--pr` run already read back, as YAML you paste
+under `review:`.
+
+It writes nothing itself. A list that grows from moments when somebody was
+defending their own change will eventually acquire a line that is simply
+wrong, and the finding people most want to ignore is sometimes the one they
+most need. So a person reads each draft, cuts what is wrong, and commits the
+rest like any other code.
+
+`learned_from` is what marks a rule as a learning rather than a decision, and
+three things follow from it. A learned rule ranks below one the team wrote, so
+it is dropped first when the budget binds. The review is told the difference,
+and told that a learned rule never outranks a file and never outranks the
+diff. And it suppresses nothing by itself: it arrives as context, and a ruling
+made on the strength of one has to say so.
+
 Two providers ship here. `redline-scout` is the one that costs money: a cheap
 model reads the diff, works out what this change in particular needs, and uses
 a handful of tools to find it. A deleted guard pulls the history of those
