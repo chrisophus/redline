@@ -23,6 +23,16 @@
 // It is worth making because the guess is cheap, deterministic, and right
 // often enough that the reviewer stops inventing a convention the repository
 // already has.
+//
+// A second field round showed the same failure one directory further out. A
+// review of offerfeedingest/workflow.go flagged its checkpoint encoding, its
+// parse-fail skip and its empty schedule request as novel, and every one of
+// them was answered by accountfeedingest/workflow.go: the same filename in the
+// package next door, which is not the file beside it and which nothing carried.
+// So there are two strategies. Beside it is the stronger claim and is tried
+// first; the same name one package over is the fallback, and it fires only
+// when the two directories share enough filenames to be the same thing built
+// twice, which is the parity pane's own test.
 package precedent
 
 import (
@@ -35,6 +45,7 @@ import (
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
+	"github.com/chrisophus/redline/internal/pane/parity"
 )
 
 // ProviderName is what the report and the prompt call this context.
@@ -78,14 +89,25 @@ func Resolve(root string, changed []string) (*envelope.Envelope, error) {
 
 	var found []sibling
 	seen := map[string]bool{}
+	dirs := newDirCache(root)
 	for _, p := range changed {
 		rel := normPath(p)
 		if !worthAsking(rel) {
 			continue
 		}
-		s, ok, err := nearest(root, rel, inChange)
+		// Beside it first, then the same name one package over. The first is
+		// the stronger claim: two files in one directory whose names rhyme
+		// are doing the same job by the author's own arrangement, where a
+		// parallel package is an inference from two directory listings.
+		s, ok, err := nearest(dirs, rel, inChange)
 		if err != nil {
 			return nil, err
+		}
+		if !ok {
+			s, ok, err = parallel(dirs, rel, inChange)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if !ok || seen[s.path] {
 			continue
@@ -123,10 +145,17 @@ func Resolve(root string, changed []string) (*envelope.Envelope, error) {
 		if strings.TrimSpace(content) == "" {
 			continue
 		}
+		symbol := fmt.Sprintf("%s, the file beside %s", path.Base(s.path), path.Base(s.forFile))
+		found := "name"
+		if s.parallel {
+			symbol = fmt.Sprintf("%s, the same file in the package beside %s",
+				s.path, path.Dir(s.forFile))
+			found = "parallel-package"
+		}
 		x := envelope.Expansion{
 			Role:      envelope.RoleSibling,
 			Priority:  priority,
-			Symbol:    fmt.Sprintf("%s, the file beside %s", path.Base(s.path), path.Base(s.forFile)),
+			Symbol:    symbol,
 			File:      s.path,
 			StartLine: 1,
 			EndLine:   lines,
@@ -135,7 +164,7 @@ func Resolve(root string, changed []string) (*envelope.Envelope, error) {
 				// Provenance the reader can check. A block that says it was
 				// resolved is a different claim from one that says it was
 				// guessed at from a filename, and this is the second.
-				"found_via": "name",
+				"found_via": found,
 				"beside":    s.forFile,
 			},
 		}
@@ -163,11 +192,13 @@ const priority = 40
 // promptFragment says what this context is and, more importantly, what it is
 // not. A block of real source under a role reads as established fact, and
 // half of what makes this block relevant is a guess about a filename.
-const promptFragment = `The context tagged precedent is the file sitting beside
-a changed one in the same directory, chosen because their names share enough
-parts that they are probably doing the same kind of work. The code is real,
-copied from the repository at the revision under review. The claim that it is
-related is a guess from the filename and nothing more.
+const promptFragment = `The context tagged precedent is code this repository
+already has that looks like the code being changed. Either the file sitting
+beside a changed one, whose name shares enough parts with it, or the same
+filename in a package next door that is built the same way. The block says
+which. The code is real, copied from the repository at the revision under
+review. The claim that it is related is a guess from a filename and nothing
+more.
 
 Read it as what this repository already does. When the change makes the same
 choice its neighbour made, that choice is this team's convention, whether or
@@ -186,6 +217,10 @@ type sibling struct {
 	path    string
 	forFile string
 	shared  int
+	// parallel records that this came from the directory next door rather
+	// than from beside the changed file. The reader is told which, because
+	// the two are different strengths of claim.
+	parallel bool
 }
 
 // worthAsking reports whether a changed file is one a precedent would help
@@ -200,7 +235,7 @@ func worthAsking(rel string) bool {
 
 // nearest finds the one file in the same directory that best matches a
 // changed file's name, or reports that the directory does not single one out.
-func nearest(root, rel string, inChange map[string]bool) (sibling, bool, error) {
+func nearest(dirs *dirCache, rel string, inChange map[string]bool) (sibling, bool, error) {
 	dir := path.Dir(rel)
 	base := path.Base(rel)
 	ext := path.Ext(base)
@@ -209,20 +244,17 @@ func nearest(root, rel string, inChange map[string]bool) (sibling, bool, error) 
 		return sibling{}, false, nil
 	}
 
-	entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(dir)))
+	entries, err := dirs.files(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return sibling{}, false, nil
-		}
-		return sibling{}, false, fmt.Errorf("reading %s: %w", dir, err)
+		return sibling{}, false, err
 	}
 
 	var cands []sibling
-	for _, e := range entries {
-		if e.IsDir() || e.Name() == base || path.Ext(e.Name()) != ext {
+	for _, name := range entries {
+		if name == base || path.Ext(name) != ext {
 			continue
 		}
-		other := tokens(e.Name())
+		other := tokens(name)
 		if len(other) < minTokens {
 			continue
 		}
@@ -230,9 +262,9 @@ func nearest(root, rel string, inChange map[string]bool) (sibling, bool, error) 
 		if n < required(len(want), len(other)) {
 			continue
 		}
-		p := e.Name()
+		p := name
 		if dir != "." {
-			p = dir + "/" + e.Name()
+			p = dir + "/" + name
 		}
 		if change.IsTest(p) {
 			continue
@@ -333,4 +365,136 @@ func read(root, rel string) (content string, lines int, truncated bool, err erro
 
 func normPath(p string) string {
 	return strings.TrimPrefix(filepath.ToSlash(p), "./")
+}
+
+// dirCache lists a directory once. Both strategies read the same handful of
+// directories repeatedly on a wide change, and a parallel-package lookup reads
+// every sibling of a parent to decide which ones are siblings at all.
+type dirCache struct {
+	root  string
+	byDir map[string][]string
+}
+
+func newDirCache(root string) *dirCache {
+	return &dirCache{root: root, byDir: map[string][]string{}}
+}
+
+// files lists a directory's file names, without its subdirectories. A missing
+// directory is empty rather than an error: git lists paths the tree may not
+// hold, and a review must not fail because one of them has gone.
+func (d *dirCache) files(dir string) ([]string, error) {
+	if got, ok := d.byDir[dir]; ok {
+		return got, nil
+	}
+	entries, err := os.ReadDir(filepath.Join(d.root, filepath.FromSlash(dir)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			d.byDir[dir] = nil
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading %s: %w", dir, err)
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			out = append(out, e.Name())
+		}
+	}
+	d.byDir[dir] = out
+	return out, nil
+}
+
+// dirs lists a directory's subdirectories.
+func (d *dirCache) dirs(dir string) ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(d.root, filepath.FromSlash(dir)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading %s: %w", dir, err)
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() {
+			out = append(out, e.Name())
+		}
+	}
+	return out, nil
+}
+
+// parallel finds the same file one package over.
+//
+// The second field round is what this is for. A review of
+// offerfeedingest/workflow.go flagged its checkpoint encoding, its parse-fail
+// skip and its empty schedule request as though each were novel, and
+// accountfeedingest/workflow.go had answered all three. Those are not the file
+// beside it: they are the same name in the directory next door, which nothing
+// shipping put in front of a reviewer. The parity pane knows those two
+// directories are parallel, and reports the file one of them is missing; it
+// does not carry the sibling's body. gorefactor still needs a shared
+// interface. The scout could find it, but only if the generator happened to
+// ask a precedent question naming the pattern, and on that change it did not.
+//
+// Two directories are parallel when they sit under one parent and share
+// filenames, which is the parity pane's own test and its own threshold. Two
+// packages that merely sit side by side share nothing, so a change to one says
+// nothing about the other and this stays quiet.
+func parallel(dirs *dirCache, rel string, inChange map[string]bool) (sibling, bool, error) {
+	dir := path.Dir(rel)
+	base := path.Base(rel)
+	parent := path.Dir(dir)
+	if dir == "." || parent == "." || parent == dir {
+		// A file at the root, or one whose directory is the root's own child,
+		// has no parent to hold parallel implementations.
+		return sibling{}, false, nil
+	}
+	mine, err := dirs.files(dir)
+	if err != nil {
+		return sibling{}, false, err
+	}
+	names := make(map[string]bool, len(mine))
+	for _, n := range mine {
+		names[n] = true
+	}
+
+	kids, err := dirs.dirs(parent)
+	if err != nil {
+		return sibling{}, false, err
+	}
+	var best sibling
+	var found bool
+	for _, kid := range kids {
+		other := parent + "/" + kid
+		if other == dir {
+			continue
+		}
+		theirs, err := dirs.files(other)
+		if err != nil {
+			return sibling{}, false, err
+		}
+		var shared int
+		var hasBase bool
+		for _, n := range theirs {
+			if names[n] {
+				shared++
+			}
+			if n == base {
+				hasBase = true
+			}
+		}
+		// The same name has to be there, and the two directories have to look
+		// like the same thing built twice. Either alone is a coincidence: a
+		// doc.go in every package, or two packages that share a utils.go.
+		if !hasBase || shared < parity.MinShared {
+			continue
+		}
+		p := other + "/" + base
+		if inChange[p] || change.IsTest(p) {
+			continue
+		}
+		if !found || shared > best.shared || (shared == best.shared && p < best.path) {
+			best, found = sibling{path: p, forFile: rel, shared: shared, parallel: true}, true
+		}
+	}
+	return best, found, nil
 }

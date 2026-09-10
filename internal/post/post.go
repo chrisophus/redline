@@ -45,6 +45,23 @@ const Event = "COMMENT"
 // close the comment early.
 const fpMarkerPrefix = "redline:fp:"
 
+// qMarkerPrefix tags a comment with the question its finding asked, so a later
+// review can recognise the same claim in different words.
+//
+// Deliberately without the head SHA that fpMarkerPrefix carries, and the
+// difference is the point. Idempotency needs the SHA, because a finding still
+// live after a push has to be said again for the new commit. Recognising that
+// a claim has already been made and answered must not reset on a push, and
+// must not reset on a re-review of the same commit either: the second field
+// round posted seven fresh comments on an unchanged head, two of them
+// rewordings of threads the author had already replied to.
+//
+// The question is what survives rewording. A fingerprint is file plus
+// normalised message, and the message is the thing that moves; "checks before
+// the transaction" and "CopyFrom cannot ON CONFLICT" are one claim about one
+// race with no words in common. The question both would ask is the same.
+const qMarkerPrefix = "redline:q:"
+
 // reviewMarkerPrefix tags the review body with the head SHA it was posted for,
 // so a re-post against the same commit can tell "already reviewed this commit"
 // from "reviewing a new push."
@@ -57,6 +74,7 @@ var (
 	// against the current head rather than being read as posted for it.
 	fpMarkerRe     = regexp.MustCompile(regexp.QuoteMeta(fpMarkerPrefix) + `([0-9a-fA-F]+):([0-9a-fA-F]+)`)
 	reviewMarkerRe = regexp.MustCompile(regexp.QuoteMeta(reviewMarkerPrefix) + `([0-9a-fA-F]+)`)
+	qMarkerRe      = regexp.MustCompile(regexp.QuoteMeta(qMarkerPrefix) + `([0-9a-fA-F]+)`)
 )
 
 // postedKey is the identity a re-post checks against: a finding is already said
@@ -93,8 +111,11 @@ type Payload struct {
 	bodyFindings []findings.Finding
 	profile      *Profile
 	// withheld counts the reviewer's own findings this payload did not post
-	// because they said they were unsure. See lowConfidence.
+	// because they said they were unsure, and hedged those it withheld for
+	// hedging. Kept apart because they are different failures and a reader
+	// tuning the thing wants to know which one they have.
 	withheld int
+	hedged   int
 }
 
 // NothingNew reports that this payload has no finding Redline has not already
@@ -140,7 +161,12 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 			p.withheld++
 			continue
 		}
-		if f.File != "" && f.Line > 0 && lineCommentable(commentable, f.File, f.Line) {
+		if hedged(f) {
+			p.hedged++
+			continue
+		}
+		if f.File != "" && f.Line > 0 && lineOnDiff(f) &&
+			lineCommentable(commentable, f.File, f.Line) {
 			start := f.StartLine
 			if start > 0 && (start > f.Line || !lineCommentable(commentable, f.File, start)) {
 				// A start line outside the diff, or past the end line, would
@@ -162,7 +188,7 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 	p.rep = rep
 	p.reportURL = reportURL
 	p.bodyFindings = inBody
-	p.Body = buildBody(rep, head, reportURL, inBody, prof, p.GateVerdict, p.withheld)
+	p.Body = buildBody(rep, head, reportURL, inBody, prof, p.GateVerdict, p.withheld, p.hedged)
 	return p
 }
 
@@ -178,6 +204,67 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 // all, by Finalize, so this can never withhold a measurement.
 func lowConfidence(f findings.Finding) bool {
 	return f.Source == findings.SourceLLM && f.Confidence == findings.ConfidenceLow
+}
+
+// lineOnDiff reports whether a finding has earned a line comment.
+//
+// A line comment is an interruption. It lands in an inbox, it opens a thread
+// somebody has to close, and it sits on the code until they do. A measurement
+// earns that at any severity, because it is a fact about the change and the
+// line is where the fact is. A reviewer's info does not: the second field
+// round posted fifteen comments of which eight were info, and every one of
+// them was a thread the team had to triage to learn that nothing was wrong.
+//
+// Nothing is lost. An info finding rides in the review body, where it is read
+// once by whoever is reading the review, and it is on the report in full.
+func lineOnDiff(f findings.Finding) bool {
+	return f.Source != findings.SourceLLM || f.Severity != findings.SeverityInfo
+}
+
+// hedges are the phrases a finding uses when it has nothing to say.
+//
+// The prompt already forbids raising anything qualified with "may", "might" or
+// "could potentially" and not followed by a consequence, and the ruling stage
+// is supposed to mark what is left unverifiable. Both are a model's judgement
+// about its own writing, and the field round produced a warning that called
+// itself "acceptable but worth noting" and posted anyway. This is the backstop
+// that costs nothing: a finding that says out loud it is not sure it matters
+// is a finding whose author has told you not to interrupt anyone with it.
+//
+// Whole phrases rather than words. "Consider" alone appears in real findings
+// about code that considers something, and a list that fires on it would
+// withhold them.
+var hedges = []string{
+	"acceptable but",
+	"but worth noting",
+	"worth noting that",
+	"not necessarily a problem",
+	"probably fine",
+	"may want to consider",
+	"might want to consider",
+	"you may wish to",
+	"could potentially",
+	"is fine, but",
+	"is not a problem, but",
+	"nit:",
+}
+
+// hedged reports whether a reviewer's finding disqualified itself.
+//
+// Its own findings only. A pane's message is fixed text written by whoever
+// wrote the pane, and a rule that read it for hedging would be reading the
+// wrong author's prose.
+func hedged(f findings.Finding) bool {
+	if f.Source != findings.SourceLLM {
+		return false
+	}
+	body := strings.ToLower(f.Message + " " + f.Context)
+	for _, h := range hedges {
+		if strings.Contains(body, h) {
+			return true
+		}
+	}
+	return false
 }
 
 // verdictFor is the review's headline, derived from finding severities alone.
@@ -226,7 +313,21 @@ func commentBody(f findings.Finding, head string, prof *Profile) string {
 	}
 	b.WriteString("\n")
 	b.WriteString(fpMarker(head, f.Fingerprint))
+	if m := qMarker(f); m != "" {
+		b.WriteString(m)
+	}
 	return b.String()
+}
+
+// qMarker renders the question a finding asked, when it asked one. Hex-encoded
+// for the reason the fingerprint is: a subject containing "-->" would close
+// the HTML comment early and put the rest of it on the page.
+func qMarker(f findings.Finding) string {
+	key := f.Question.Key()
+	if key == "" {
+		return ""
+	}
+	return marker(qMarkerPrefix + hex.EncodeToString([]byte(key)))
 }
 
 // fpMarker renders the hidden marker that identifies one finding as said for one
@@ -238,7 +339,7 @@ func fpMarker(head, fingerprint string) string {
 // buildBody is the review body a reviewer reads first: the verdict, the
 // evidence table — one line per pane, plus the coverage rows — then any finding
 // that could not be anchored to a line, and the report link.
-func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.Finding, prof *Profile, gateVerdict string, withheld int) string {
+func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.Finding, prof *Profile, gateVerdict string, withheld, hedged int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "### %s\n\n", verdictFor(rep))
 	// The agent's own account of the change, when there is one. Redline never
@@ -278,9 +379,16 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.F
 	// bodies already get on the review request. A reader who is not told these
 	// exist cannot tell a reviewer that held something back from one that had
 	// nothing to say.
-	if withheld > 0 {
-		fmt.Fprintf(&b, "_%d further finding(s) from the reviewer said they were "+
-			"uncertain and are on the report rather than here._\n\n", withheld)
+	if withheld > 0 || hedged > 0 {
+		var parts []string
+		if withheld > 0 {
+			parts = append(parts, fmt.Sprintf("%d said they were uncertain", withheld))
+		}
+		if hedged > 0 {
+			parts = append(parts, fmt.Sprintf("%d hedged", hedged))
+		}
+		fmt.Fprintf(&b, "_%d further finding(s) from the reviewer are on the report "+
+			"rather than here: %s._\n\n", withheld+hedged, strings.Join(parts, ", "))
 	}
 	if reportURL != "" {
 		fmt.Fprintf(&b, "[Full report](%s)\n\n", reportURL)
@@ -433,7 +541,7 @@ func (p Payload) Unposted(posted map[string]bool) Payload {
 		}
 		out.bodyFindings = append(out.bodyFindings, f)
 	}
-	out.Body = buildBody(out.rep, out.CommitID, out.reportURL, out.bodyFindings, out.profile, out.GateVerdict, out.withheld)
+	out.Body = buildBody(out.rep, out.CommitID, out.reportURL, out.bodyFindings, out.profile, out.GateVerdict, out.withheld, out.hedged)
 	return out
 }
 
@@ -531,6 +639,21 @@ func FindingFingerprint(body string) (string, bool) {
 		return "", false
 	}
 	return string(raw), true
+}
+
+// QuestionIn reads the question a posted comment's finding asked, from the
+// marker commentBody wrote. Empty when the comment predates the marker, or
+// when the finding asked nothing a lookup could settle.
+func QuestionIn(body string) string {
+	m := qMarkerRe.FindStringSubmatch(body)
+	if m == nil {
+		return ""
+	}
+	raw, err := hex.DecodeString(m[1])
+	if err != nil {
+		return ""
+	}
+	return string(raw)
 }
 
 // StripMarkers removes the hidden HTML comments from a body, leaving the prose

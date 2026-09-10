@@ -563,3 +563,88 @@ func TestBuildPostsMeasurementsWhateverConfidenceWasWritten(t *testing.T) {
 		t.Fatal("nothing was withheld, so the body must not say anything was")
 	}
 }
+
+// A line comment is an interruption: it opens a thread somebody has to close.
+// The second field round posted fifteen comments of which eight were the
+// reviewer's info, and every one was a thread the team triaged to learn that
+// nothing was wrong. Those ride in the body now.
+func TestReviewerInfoRidesInTheBodyNotOnTheDiff(t *testing.T) {
+	rep := &findings.Report{
+		Findings: []findings.Finding{
+			{File: "a.go", Line: 3, Rule: "agent-comment", Substrate: "redline/review",
+				Severity: findings.SeverityInfo, Source: findings.SourceLLM,
+				Confidence: findings.ConfidenceHigh, Message: "row_index is zero-based here"},
+			{File: "a.go", Line: 4, Rule: "agent-comment", Substrate: "redline/review",
+				Severity: findings.SeverityWarning, Source: findings.SourceLLM,
+				Confidence: findings.ConfidenceHigh, Message: "this leaks a file handle"},
+		},
+	}
+	rep.Finalize()
+	p := Build(rep, prTarget(), "", nil)
+
+	if len(p.Comments) != 1 || !strings.Contains(p.Comments[0].Body, "leaks a file handle") {
+		t.Fatalf("only the warning belongs on the diff: %+v", p.Comments)
+	}
+	// Nothing is lost. It is read once, by whoever is reading the review.
+	if !strings.Contains(p.Body, "zero-based") {
+		t.Fatalf("the info finding fell off the review entirely:\n%s", p.Body)
+	}
+}
+
+// A measurement earns a line at any severity: it is a fact about the change
+// and the line is where the fact is.
+func TestAPanesInfoStillGetsItsLine(t *testing.T) {
+	rep := &findings.Report{
+		Findings: []findings.Finding{
+			{File: "a.go", Line: 3, Rule: "test-skip-added", Substrate: "redline/test-delta",
+				Severity: findings.SeverityInfo, Message: "a skip was added here"},
+		},
+	}
+	rep.Finalize()
+	if p := Build(rep, prTarget(), "", nil); len(p.Comments) != 1 {
+		t.Fatalf("a measurement is not a reviewer's opinion: %+v", p.Comments)
+	}
+}
+
+// The prompt forbids hedging and the ruling is meant to catch what is left.
+// Both are a model judging its own writing, and the field produced a warning
+// that called itself "acceptable but worth noting" and posted anyway.
+func TestAHedgedFindingDoesNotPost(t *testing.T) {
+	rep := &findings.Report{
+		Findings: []findings.Finding{
+			{File: "a.go", Line: 3, Rule: "agent-comment", Substrate: "redline/review",
+				Severity: findings.SeverityWarning, Source: findings.SourceLLM,
+				Confidence: findings.ConfidenceHigh,
+				Message:    "Acceptable but worth noting: the ordinal is second-resolution."},
+		},
+	}
+	rep.Finalize()
+	p := Build(rep, prTarget(), "", nil)
+
+	if len(p.Comments) != 0 {
+		t.Fatalf("a finding that says it might not matter must not interrupt anyone: %+v", p.Comments)
+	}
+	if strings.Contains(p.Body, "second-resolution") {
+		t.Fatal("a hedge is withheld, not demoted to the body")
+	}
+	if !strings.Contains(p.Body, "1 hedged") {
+		t.Fatalf("what was withheld has to be counted: %s", p.Body)
+	}
+}
+
+// A pane's message is fixed text written by whoever wrote the pane, so reading
+// it for hedging would be reading the wrong author's prose. The test-delta
+// pane's own wording says exactly this.
+func TestAPanesOwnWordingIsNotReadAsAHedge(t *testing.T) {
+	rep := &findings.Report{
+		Findings: []findings.Finding{
+			{File: "a.go", Line: 3, Rule: "package-untested", Substrate: "redline/test-delta",
+				Severity: findings.SeverityInfo,
+				Message:  "Not necessarily a problem: an existing test may already cover the change."},
+		},
+	}
+	rep.Finalize()
+	if p := Build(rep, prTarget(), "", nil); len(p.Comments) != 1 {
+		t.Fatalf("a pane's finding is not the reviewer hedging: %+v", p.Comments)
+	}
+}

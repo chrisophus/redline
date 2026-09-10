@@ -126,7 +126,7 @@ func TestReactionsAreCounted(t *testing.T) {
 	if !got[0].Outdated {
 		t.Fatal("the lines moved and the parse lost it")
 	}
-	if !got[0].Dismissed() {
+	if !got[0].Disputed() {
 		t.Fatal("more thumbs down than up is the shape of a finding nobody wanted")
 	}
 }
@@ -160,3 +160,65 @@ func TestAnEmptyPullRequestParsesToNothing(t *testing.T) {
 		t.Fatalf("want nothing, got %+v", got)
 	}
 }
+
+// The predicate the second field round corrected. That team replies "Not
+// fixing (intentional)" on every thread and leaves it open for the merge gate
+// to close later, so a rule that waited for resolution would have counted a
+// wall of replies as silence.
+func TestAReplyIsAnAnswerWhetherOrNotTheThreadIsClosed(t *testing.T) {
+	open := Thread{Replies: []Reply{{Author: "chrisophus", Body: "Not fixing (intentional)."}}}
+	if !open.Answered() {
+		t.Fatal("an open thread with a reply is answered; the reply is the answer")
+	}
+	if open.Disputed() {
+		t.Fatal("a reply is not a thumbs down; read the text to know which it was")
+	}
+	if (Thread{Resolved: true}).Answered() {
+		t.Fatal("a click with no words is not an answer")
+	}
+}
+
+// The question survives rewording where the fingerprint does not, so it is
+// what a later review matches on.
+func TestTheQuestionTravelsWithThePostedComment(t *testing.T) {
+	q := "precedent\x00awsofferfeedrawcolumns"
+	raw := response(`{
+      "isResolved": false, "isOutdated": false, "path": "feed.go", "line": 1,
+      "comments": {"nodes": [
+        {"body": "the column list will drift ` + marker("abc123", "feed.go\x00r\x00m") +
+		` <!-- redline:q:` + hexOf(q) + ` -->",
+         "author": {"login": "redline"}, "reactionGroups": []}
+      ]}
+    }`)
+	got, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Question != q {
+		t.Fatalf("question = %q, want %q", got[0].Question, q)
+	}
+	if strings.Contains(got[0].Said, "redline:q") {
+		t.Fatalf("the marker leaked into the prompt: %q", got[0].Said)
+	}
+}
+
+// A comment posted before the marker existed carries no question, and that has
+// to be an empty string rather than a match against everything.
+func TestAnOlderCommentHasNoQuestion(t *testing.T) {
+	raw := response(`{
+      "isResolved": false, "isOutdated": false, "path": "a.go", "line": 1,
+      "comments": {"nodes": [
+        {"body": "old ` + marker("abc123", "a.go\x00r\x00m") + `",
+         "author": {"login": "redline"}, "reactionGroups": []}
+      ]}
+    }`)
+	got, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Question != "" {
+		t.Fatalf("question = %q, want empty", got[0].Question)
+	}
+}
+
+func hexOf(s string) string { return hex.EncodeToString([]byte(s)) }

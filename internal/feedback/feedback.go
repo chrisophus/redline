@@ -44,6 +44,11 @@ type Thread struct {
 	Line        int    `json:"line,omitempty"`
 	// Said is what Redline posted, with the markers stripped.
 	Said string `json:"said"`
+	// Question is the question the finding asked, when it asked one that a
+	// lookup could settle. It is how a later review recognises the same claim
+	// in different words: the wording moves between runs and the question does
+	// not. Empty for a comment posted before the marker existed.
+	Question string `json:"question,omitempty"`
 	// Replies are what people wrote under it, in order.
 	Replies []Reply `json:"replies,omitempty"`
 	// Resolved is whether somebody closed the thread. On its own it is a weak
@@ -65,15 +70,28 @@ type Reply struct {
 	Body   string `json:"body"`
 }
 
-// Dismissed reports whether the thread looks like a finding the reader did not
-// accept: somebody wrote back, or thumbed it down, without the thread being
-// left open for an answer.
+// Answered reports whether somebody responded to the finding at all.
 //
-// Deliberately loose. It decides how the thread is introduced to the model and
-// nothing else, and the model is given the reply text either way, so a
-// misreading here costs a word of framing rather than a suppressed finding.
-func (t Thread) Dismissed() bool {
-	return t.Down > t.Up && t.Down > 0 || (len(t.Replies) > 0 && t.Resolved)
+// A reply is the answer. Resolution is not required and must not be, which the
+// field settled: the team that produced this evidence replies "Not fixing
+// (intentional)" on every thread and leaves them open for the merge gate to
+// close later. An earlier version of this required both, so it would have
+// called every one of those threads unanswered, and a statistic built on it
+// would have reported a wall of replies as silence.
+//
+// Nothing in the review path keys on this. The review is given the reply text
+// whether or not a thread is closed, and decides for itself. This is for the
+// read-back statistics, where the count is the whole output and a wrong
+// predicate is the whole error.
+func (t Thread) Answered() bool {
+	return len(t.Replies) > 0 || t.Up > 0 || t.Down > 0
+}
+
+// Disputed reports whether the response looks like disagreement rather than
+// agreement. Loose on purpose, and a caller that needs certainty should read
+// the reply text, which is why the review is given it.
+func (t Thread) Disputed() bool {
+	return t.Down > t.Up
 }
 
 // Resolve reads the threads on a pull request. A repository where `gh` cannot
@@ -198,6 +216,7 @@ func Parse(raw []byte) ([]Thread, error) {
 			File:        n.Path,
 			Line:        n.Line,
 			Said:        post.StripMarkers(first.Body),
+			Question:    post.QuestionIn(first.Body),
 			Resolved:    n.IsResolved,
 			Outdated:    n.IsOutdated,
 		}

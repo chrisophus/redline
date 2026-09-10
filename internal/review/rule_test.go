@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/chrisophus/redline/internal/envelope"
+	"github.com/chrisophus/redline/internal/feedback"
 	"github.com/chrisophus/redline/internal/findings"
 )
 
@@ -256,5 +257,126 @@ func TestVerifyCostsNothingOnACleanReview(t *testing.T) {
 	}
 	if got != one {
 		t.Fatal("a review with nothing to rule on was sent to a second call anyway")
+	}
+}
+
+// The second field round's first miss. The same pull request, reviewed again
+// on an unchanged head after the author replied on every thread, posted the
+// race finding a second time under wording with no words in common: first at
+// the pre-transaction check, then at CopyFrom and ON CONFLICT. One claim, two
+// wordings, two anchors, and a fingerprint that could not see it.
+func TestARewordedFindingOnAnAnsweredThreadIsAlreadyRaised(t *testing.T) {
+	q := findings.Question{Kind: findings.QuestionPrecedent, Subject: "ObjectAlreadyStaged"}
+	rev := findings.Review{Comments: []findings.ReviewComment{
+		comment("feed/offer.go", "CopyFrom cannot ON CONFLICT, so a concurrent stage fails the transaction.", q),
+	}}
+	cands := Candidates(rev)
+	got := alreadyRaised(cands, []feedback.Thread{{
+		File: "feed/offer.go", Line: 12,
+		Said:     "StageObject checks for already staged before starting the transaction.",
+		Question: q.Key(),
+		Replies: []feedback.Reply{{
+			Author: "chrisophus",
+			Body:   "Not fixing (intentional). Same pre-transaction idempotency check as account feed staging.",
+		}},
+	}})
+	if got["c1"].Verdict != findings.VerifiedAlreadyRaised {
+		t.Fatalf("the reworded claim was not recognised: %+v", got)
+	}
+	if !strings.Contains(got["c1"].Evidence, "account feed staging") {
+		t.Fatalf("a finding withheld on an earlier answer has to quote it: %q", got["c1"].Evidence)
+	}
+}
+
+// The reply is the answer. That team replies and leaves the thread open for
+// the merge gate to close, so waiting for resolution would recognise nothing.
+func TestAnOpenThreadWithAReplyStillCounts(t *testing.T) {
+	q := findings.Question{Kind: findings.QuestionCaller, Subject: "StageObject"}
+	cands := Candidates(findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "worded differently", q),
+	}})
+	got := alreadyRaised(cands, []feedback.Thread{{
+		File: "a.go", Question: q.Key(), Resolved: false,
+		Replies: []feedback.Reply{{Author: "someone", Body: "intentional, see the sibling"}},
+	}})
+	if got["c1"].Verdict != findings.VerifiedAlreadyRaised {
+		t.Fatal("an open thread with a reply is answered")
+	}
+}
+
+// A thread nobody answered means the author has not looked. Saying it once
+// more where they are looking is not noise, and suppressing it would hide a
+// finding on the grounds that it had been ignored.
+func TestAnUnansweredThreadDoesNotSuppressAnything(t *testing.T) {
+	q := findings.Question{Kind: findings.QuestionCaller, Subject: "Foo"}
+	cands := Candidates(findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "the same claim again", q),
+	}})
+	got := alreadyRaised(cands, []feedback.Thread{{File: "a.go", Question: q.Key()}})
+	if len(got) != 0 {
+		t.Fatalf("nobody answered, so nothing is settled: %+v", got)
+	}
+}
+
+// A thread posted before the question marker existed still catches a requote,
+// on the fingerprint's own identity. It cannot follow a rewording, which is
+// what the model is still there for.
+func TestAThreadWithoutAQuestionStillCatchesARequote(t *testing.T) {
+	cands := Candidates(findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "this races on line 947", findings.Question{Kind: findings.QuestionDiff}),
+	}})
+	got := alreadyRaised(cands, []feedback.Thread{{
+		File: "a.go", Said: "this races on line 12",
+		Replies: []feedback.Reply{{Author: "someone", Body: "intentional and accepted"}},
+	}})
+	if got["c1"].Verdict != findings.VerifiedAlreadyRaised {
+		t.Fatalf("a requote with the digits moved is the same comment: %+v", got)
+	}
+}
+
+// Two different findings on one file must not collapse into each other just
+// because the file has a history.
+func TestADifferentFindingOnTheSameFileSurvives(t *testing.T) {
+	cands := Candidates(findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "an entirely different problem", findings.Question{
+			Kind: findings.QuestionPrecedent, Subject: "SomethingElse"}),
+	}})
+	got := alreadyRaised(cands, []feedback.Thread{{
+		File: "a.go", Said: "this races",
+		Question: findings.Question{Kind: findings.QuestionPrecedent, Subject: "ObjectAlreadyStaged"}.Key(),
+		Replies:  []feedback.Reply{{Author: "someone", Body: "intentional and accepted"}},
+	}})
+	if len(got) != 0 {
+		t.Fatalf("a busy file must not swallow new findings: %+v", got)
+	}
+}
+
+// A re-review where every finding has already been answered has nothing for a
+// ruling to decide, and paying for the call to be told so is the waste the
+// field round paid for.
+func TestAReReviewOfOnlyAnsweredFindingsCostsNothing(t *testing.T) {
+	q := findings.Question{Kind: findings.QuestionPrecedent, Subject: "Foo"}
+	in := Input{Report: priors(), Prior: []feedback.Thread{{
+		File: "a.go", Question: q.Key(),
+		Replies: []feedback.Reply{{Author: "someone", Body: "intentional, and here is why"}},
+	}}}
+	one, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	one.Review = findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "reworded entirely", q),
+	}}
+	// DryRun is not set: reaching the call at all would be the failure, and a
+	// call with no key would error rather than return this.
+	got, err := Verify(context.Background(), in, Options{Verify: true}, one)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Verified {
+		t.Fatal("the pass ran and should say so")
+	}
+	if kept, _ := Kept(got.Review); kept != 0 {
+		t.Fatal("an answered finding must not post again")
 	}
 }
