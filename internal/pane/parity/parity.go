@@ -37,7 +37,7 @@ import (
 // Substrate is the pane's name in the findings schema.
 const Substrate = "redline/parity"
 
-// minShared is how many filenames two directories must have in common before
+// MinShared is how many filenames two directories must have in common before
 // this pane will call them parallel implementations of the same thing.
 //
 // This is the guard that keeps the pane quiet on directories that merely sit
@@ -45,7 +45,12 @@ const Substrate = "redline/parity"
 // and share no filenames, so a change to one of them says nothing about the
 // others and this pane holds its tongue. Provider directories share their
 // whole shape, which is what makes a missing file there a signal.
-const minShared = 3
+//
+// Exported because internal/precedent asks the same question for a different
+// reason: this pane reports the file a sibling directory is missing, and that
+// one puts the sibling's body in front of a review. Two answers to "are these
+// parallel implementations" that could disagree would be worse than either.
+const MinShared = 3
 
 // Pane compares a changed file's directory against its siblings.
 type Pane struct {
@@ -224,7 +229,7 @@ func parallelSiblings(byDir map[string]map[string]bool, dir string) []string {
 		if other == dir || path.Dir(other) != parent {
 			continue
 		}
-		if shared(byDir[dir], byDir[other]) >= minShared {
+		if shared(byDir[dir], byDir[other]) >= MinShared {
 			out = append(out, other)
 		}
 	}

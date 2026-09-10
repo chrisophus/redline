@@ -159,6 +159,12 @@ type Finding struct {
 	// it, and the report renders the connection against both sources rather
 	// than duplicating the text.
 	RelatedFindings []string `json:"relatedFindings,omitempty"`
+	// Question is what the reviewer said would settle this finding, for
+	// source "llm" only. It rides to the pull request in a hidden marker, so a
+	// later review can tell that a differently worded comment is the same
+	// claim: a fingerprint is file plus wording, and wording is exactly what
+	// moves between two runs.
+	Question Question `json:"question,omitempty"`
 	// Confidence is meaningful for source "llm" only. Empty on a
 	// deterministic finding, where it would be a category error.
 	Confidence Confidence `json:"confidence,omitempty"`
@@ -341,9 +347,11 @@ func (r *Report) Finalize() {
 		if f.Source == SourceLLM {
 			f.Confidence = NormalizeConfidence(f.Confidence)
 		} else {
-			// A measurement carries no confidence. Clearing it here means a
-			// review file cannot smuggle one onto a pane's finding.
+			// A measurement carries no confidence, and none was checked to
+			// produce it. Clearing both here means a review file cannot
+			// smuggle either onto a pane's finding.
 			f.Confidence = ""
+			f.Question = Question{}
 		}
 		f.New = true
 		f.Fingerprint = Fingerprint(*f)

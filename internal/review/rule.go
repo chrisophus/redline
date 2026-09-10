@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/chrisophus/redline/internal/envelope"
+	"github.com/chrisophus/redline/internal/feedback"
 	"github.com/chrisophus/redline/internal/findings"
 )
 
@@ -356,9 +357,23 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 		}
 	}
 
+	// Matched before the call, not by it. A model asked whether the pull
+	// request has heard a claim can answer honestly about the wording it was
+	// shown and miss the claim underneath; the question is the same sentence
+	// either way, so this is arithmetic rather than judgement.
+	settled := alreadyRaised(cands, in.Prior)
+
 	res := stageOne.ruleRequest(in, opts, cands, answers)
 	if opts.DryRun {
 		return res, nil
+	}
+	if len(settled) == len(cands) {
+		// Every finding on this change has already been raised and answered.
+		// There is nothing left for a ruling to decide, and paying for a call
+		// to be told so is the exact waste the second field round paid for.
+		stageOne.Verified = true
+		stageOne.Review = Apply(stageOne.Review, cands, settled)
+		return stageOne, nil
 	}
 	out, err := runOnce(ctx, in, opts, res)
 	// The pass was paid for whichever way it ended, so its usage folds into
@@ -372,6 +387,12 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 	if err != nil {
 		stageOne.VerifyFailed = err.Error()
 		return stageOne, nil
+	}
+	// The deterministic match wins over the model's. It is the one that read
+	// the actual thread, and a ruling that decided a re-raised finding was
+	// worth keeping is exactly the failure this pass is for.
+	for id, r := range settled {
+		out.Rulings[id] = r
 	}
 	stageOne.Review = Apply(stageOne.Review, cands, out.Rulings)
 	return stageOne, nil
@@ -436,4 +457,86 @@ func parseRulings(body []byte) (map[string]findings.Ruling, error) {
 		}
 	}
 	return out, nil
+}
+
+// alreadyRaised matches candidates against what this pull request has already
+// heard, before the ruling call is made.
+//
+// The second field round is why this is deterministic rather than left to the
+// model. The same pull request was reviewed twice on an unchanged head, after
+// the author had replied on every thread, and the second review posted two of
+// the same defects again under new wording on new lines: the pre-transaction
+// race came back as "CopyFrom cannot ON CONFLICT", the checkpoint ordinal came
+// back from a different function. Stage zero had shown the earlier threads and
+// their replies. A ruling asked whether the pull request had heard this exact
+// comment could answer no and be telling the truth.
+//
+// So the match is on the question, which is the same sentence for both
+// wordings, and it is applied before the model sees the candidates. Two
+// fallbacks for a thread posted before the marker existed: the same file with
+// a message that normalises to the same thing, which is the fingerprint's own
+// test, and nothing else. A looser fallback would suppress real findings on a
+// busy file, and the model still has the thread text to catch what this misses.
+//
+// Only threads somebody answered. An unanswered thread means the author has
+// not looked, and saying it once more where they are looking is not noise.
+func alreadyRaised(cands []Candidate, prior []feedback.Thread) map[string]findings.Ruling {
+	if len(prior) == 0 {
+		return nil
+	}
+	byQuestion := map[string]feedback.Thread{}
+	byMessage := map[string]feedback.Thread{}
+	for _, t := range prior {
+		if !t.Answered() {
+			continue
+		}
+		if t.Question != "" {
+			byQuestion[t.Question] = t
+		}
+		byMessage[messageKey(t.File, t.Said)] = t
+	}
+
+	out := map[string]findings.Ruling{}
+	for _, c := range cands {
+		t, ok := byQuestion[c.Comment.Question.Key()]
+		if !ok || c.Comment.Question.Key() == "" {
+			t, ok = byMessage[messageKey(c.Comment.File, c.Comment.Body)]
+		}
+		if !ok {
+			continue
+		}
+		out[c.ID] = findings.Ruling{
+			Verdict:  findings.VerifiedAlreadyRaised,
+			Evidence: threadEvidence(t),
+			Why: "this pull request already carries this finding and somebody answered it; " +
+				"saying it again in other words is how a reader learns to stop reading",
+		}
+	}
+	return out
+}
+
+// messageKey is the fingerprint's own identity, file plus the message with its
+// digits collapsed, which is what catches a thread posted before the question
+// marker existed. It catches a requote and nothing more; the wording that
+// moves is exactly what it cannot follow.
+func messageKey(file, body string) string {
+	return strings.ToLower(strings.TrimSpace(file)) + "\x00" +
+		findings.NormalizeMessage(strings.ToLower(strings.TrimSpace(body)))
+}
+
+// threadEvidence quotes what was said back, because a finding withheld on the
+// strength of an earlier answer has to show the reader that answer.
+func threadEvidence(t feedback.Thread) string {
+	loc := t.File
+	if t.Line > 0 {
+		loc = fmt.Sprintf("%s:%d", t.File, t.Line)
+	}
+	if len(t.Replies) > 0 {
+		who := t.Replies[0].Author
+		if who == "" {
+			who = "someone"
+		}
+		return fmt.Sprintf("%s, on the earlier thread at %s: %s", who, loc, oneLine(t.Replies[0].Body))
+	}
+	return fmt.Sprintf("an earlier thread at %s, which somebody reacted to", loc)
 }

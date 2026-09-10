@@ -379,10 +379,12 @@ that gets the first by losing the second is not an improvement.
 
 ## What shipped
 
-Steps 0–7 below are implemented. Step 8 (read-back statistics) is not.
-Three places where building it changed the design are worth recording,
-because each was a decision the plan got wrong. The section after this one
-is what the next field round showed the shipped steps still miss.
+Steps 0-7 and 9-11 below are implemented. Step 8 (read-back statistics) is
+not, and step 12 belongs to Marketplace. Three places where building the
+first batch changed the design are worth recording, because each was a
+decision the plan got wrong. The section after this one is what the second
+field round showed those steps still missed, and the section after that is
+what was built in answer.
 
 **A finding with no answerable question is folded, not dropped.** The plan
 said drop. That would have broken a promise the report already makes, that an
@@ -542,6 +544,59 @@ review of the same head still had nothing written down. Until Marketplace
 pins this branch **and** commits a small `review.instructions` for feed
 ingest parity, the field will keep paying for the same lesson.
 
+## What the second round bought
+
+Steps 9, 10 and 11 are in. Each answers one of the misses above, and two of
+them are deterministic, which matters: the failure was a model asked to
+recognise something it had every reason to miss.
+
+**A question now rides to the pull request.** `post` writes a second hidden
+marker carrying the finding's question, without the head SHA that the
+fingerprint marker needs. That asymmetry is the whole mechanism. Idempotency
+needs the SHA, because a live finding must be said again after a push;
+recognising that a claim was already made and answered must survive a push
+and must survive a re-review of an unchanged head. `feedback` reads the
+marker back, and `Verify` matches candidates against answered threads before
+the ruling call, on the question first and on the fingerprint's own identity
+as a fallback for comments posted before the marker existed. A match is
+ruled `already-raised` deterministically, and that ruling wins over the
+model's: it read the actual thread. A re-review where everything has already
+been answered now returns without paying for a call at all.
+
+Only answered threads suppress anything. A thread nobody replied to means the
+author has not looked, and saying it once more where they are looking is not
+noise.
+
+**Precedent reaches the package next door.** `internal/precedent` gains a
+second strategy: the same basename under a directory that shares enough
+filenames to be the same thing built twice, which is the parity pane's own
+test at the parity pane's own threshold, now exported so the two answers to
+"are these parallel implementations" cannot disagree. Beside-it is tried
+first and wins, because two files in one directory were put there by the
+author, where a parallel package is an inference from two listings. The block
+says which of the two it was.
+
+**Info and hedges stop interrupting.** A reviewer's info finding rides in the
+review body rather than opening a thread on the diff; a pane's info still
+gets its line, because a measurement is a fact about the change and the line
+is where the fact is. A finding whose own wording disqualifies it, the
+"acceptable but worth noting" warning that posted anyway, is withheld the way
+low confidence is, on a list of whole phrases rather than words. Both counts
+reach the body, so a reader can tell a reviewer that held something back from
+one that had nothing to say.
+
+**`Dismissed` is gone**, replaced by `Answered` and `Disputed`. It required a
+reply and a closed thread, and the team that produced this evidence replies
+first and lets the merge gate close the thread later, so a statistic built on
+it would have reported a wall of replies as silence. Nothing in the review
+path keys on either predicate: the review is given the reply text and decides
+for itself.
+
+What none of this fixes is step 12. `redline learnings` would have drafted
+path-scoped rules from those fifteen replies and nobody ran it, which is
+working as designed and is also why the second review had nothing written
+down to read.
+
 ## Sequencing
 
 0. **Read the pull request back before reviewing it.** Reuse the fetch in
@@ -582,17 +637,17 @@ ingest parity, the field will keep paying for the same lesson.
    [review-feedback.md](review-feedback.md): outcomes per posted finding,
    the acted-on and disputed rates, per class and per ruling. **M**
    (not done)
-9. **Already-raised across rewording.** Same-head re-review after
+9. **Already-raised across rewording.** Shipped. Same-head re-review after
    `**Not fixing (intentional).**` must not post a rewording of that thread.
    The reply is already in the prompt; identity (question kind + subject,
    or same file + similar claim) has to match it. If stats use
    `Dismissed`, count a reply without waiting for `isResolved`. **S**
-10. **Parallel-package precedent.** Same basename under directories the
+10. **Parallel-package precedent.** Shipped. Same basename under directories the
     parity pane already treats as siblings (shared filenames, different
     parent leaf) goes in the envelope, bounded like same-directory
     name-stem, so the scout is not the only way to see
     `accountfeedingest/workflow.go`. **S**
-11. **LLM Info is body-only; hedges do not post as Warning.** Line comments
+11. **LLM Info is body-only; hedges do not post as Warning.** Shipped. Line comments
     are error/warning that survived the ruling. **S**
 12. **Pin + one committed instruction.** Marketplace `REDLINE_VERSION` onto
     this branch, and a committed `review.instructions` for feed-ingest

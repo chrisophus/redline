@@ -207,3 +207,104 @@ func TestAMissingDirectoryIsNotAnError(t *testing.T) {
 		t.Fatalf("want nil, got %+v", env)
 	}
 }
+
+// The second field round's miss. A review of offerfeedingest/workflow.go
+// flagged three things accountfeedingest/workflow.go had already answered,
+// and that file is not beside the changed one: it is the same name in the
+// package next door.
+func TestTheSameFileInTheParallelPackageIsCarried(t *testing.T) {
+	root := t.TempDir()
+	for _, n := range []string{"workflow.go", "activities.go", "schedule.go", "ingest.go"} {
+		write(t, root, "internal/accountfeedingest/"+n, "package accountfeedingest // "+n+"\n")
+		write(t, root, "internal/offerfeedingest/"+n, "package offerfeedingest\n")
+	}
+	got := resolve(t, root, "internal/offerfeedingest/workflow.go")
+	content, ok := got["internal/accountfeedingest/workflow.go"]
+	if !ok {
+		t.Fatalf("the parallel package's own workflow was not carried: %v", got)
+	}
+	if !strings.Contains(content, "workflow.go") {
+		t.Fatalf("the neighbour's code has to reach the reviewer: %q", content)
+	}
+}
+
+// Two packages that merely sit side by side are not parallel implementations.
+// Sharing one filename every Go package has is a coincidence, and picking one
+// on that basis would put unrelated code in front of a reviewer.
+func TestPackagesThatShareAlmostNothingAreNotParallel(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "internal/lint/doc.go", "package lint\n")
+	write(t, root, "internal/lint/delta.go", "package lint\n")
+	write(t, root, "internal/migrations/doc.go", "package migrations\n")
+	write(t, root, "internal/migrations/apply.go", "package migrations\n")
+
+	if got := resolve(t, root, "internal/lint/doc.go"); len(got) != 0 {
+		t.Fatalf("one shared filename is not kinship: %v", got)
+	}
+}
+
+// The file beside it is the stronger claim, made by the author's own
+// arrangement rather than inferred from two directory listings, so it wins.
+func TestBesideItBeatsThePackageNextDoor(t *testing.T) {
+	root := t.TempDir()
+	for _, n := range []string{"offer_feed.go", "account_feed.go", "a.go", "b.go", "c.go"} {
+		write(t, root, "internal/ingest/"+n, "package ingest // near\n")
+		write(t, root, "internal/other/"+n, "package other // far\n")
+	}
+	got := resolve(t, root, "internal/ingest/offer_feed.go")
+	if _, ok := got["internal/ingest/account_feed.go"]; !ok {
+		t.Fatalf("the file beside it should win: %v", got)
+	}
+}
+
+// The reader has to be told which of the two claims it is looking at: the
+// author put those two files in one directory, and nobody put these two
+// packages beside each other for this reason.
+func TestAParallelMatchSaysWhatItIs(t *testing.T) {
+	root := t.TempDir()
+	for _, n := range []string{"workflow.go", "activities.go", "schedule.go"} {
+		write(t, root, "internal/accountfeedingest/"+n, "package a\n")
+		write(t, root, "internal/offerfeedingest/"+n, "package o\n")
+	}
+	env, err := Resolve(root, []string{"internal/offerfeedingest/workflow.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	x := env.Expansions[0]
+	if x.Details["found_via"] != "parallel-package" {
+		t.Fatalf("provenance = %v, want the weaker claim named", x.Details)
+	}
+	if !strings.Contains(x.Symbol, "package beside") {
+		t.Fatalf("symbol = %q, want it to say where this came from", x.Symbol)
+	}
+}
+
+// A file the change already carries is in front of the reviewer, whichever
+// directory it lives in.
+func TestAParallelSiblingInsideTheChangeIsNotSentTwice(t *testing.T) {
+	root := t.TempDir()
+	for _, n := range []string{"workflow.go", "activities.go", "schedule.go"} {
+		write(t, root, "internal/accountfeedingest/"+n, "package a\n")
+		write(t, root, "internal/offerfeedingest/"+n, "package o\n")
+	}
+	got := resolve(t, root,
+		"internal/offerfeedingest/workflow.go",
+		"internal/accountfeedingest/workflow.go")
+	if len(got) != 0 {
+		t.Fatalf("both are in the diff already: %v", got)
+	}
+}
+
+// A package at the repository root has no parent holding parallel
+// implementations, and reading one would compare it against every top-level
+// directory in the tree.
+func TestATopLevelPackageHasNoParallelSiblings(t *testing.T) {
+	root := t.TempDir()
+	for _, n := range []string{"workflow.go", "activities.go", "schedule.go"} {
+		write(t, root, "offerfeed/"+n, "package o\n")
+		write(t, root, "accountfeed/"+n, "package a\n")
+	}
+	if got := resolve(t, root, "offerfeed/workflow.go"); len(got) != 0 {
+		t.Fatalf("want nothing at the top level, got %v", got)
+	}
+}

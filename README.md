@@ -186,6 +186,15 @@ runs used to post the same defect twice in different words, and nothing could
 have caught that, because a reviewer finding's fingerprint is its wording and
 a push changes the commit the marker names.
 
+A posted comment also carries the question its finding asked, in a second
+marker with no commit in it. That is what lets a later review recognise the
+same claim in different words: a fingerprint is file plus wording, and the
+wording is exactly what moves between two runs. A candidate matching an
+answered thread is ruled already-raised before the ruling call is made, and a
+re-review where everything has already been answered returns without paying
+for a call. Only answered threads suppress anything, because a thread nobody
+replied to means the author has not looked yet.
+
 Deduplication is the smaller half. When a reader replies that something is
 deliberate, they have written down a convention that exists nowhere else, in
 the one place the next review can be shown it. That reply is carried as the
@@ -397,6 +406,13 @@ This is not a small gap being closed. Redline's own rules live in `AGENTS.md`
 and it has no `copilot-instructions.md`, so before this every review of this
 repository carried none of them.
 
+The same filename in the package next door is read under the same role, when
+the two directories share enough filenames to be the same thing built twice.
+That is the parity pane's test, and it is what a review of
+`offerfeedingest/workflow.go` needs when `accountfeedingest/workflow.go`
+answered the same three questions a year ago. The file beside it is the
+stronger claim and is tried first.
+
 The file beside a changed one is read too, under the `sibling` role. Two files
 in a directory whose names share enough of their parts are usually doing the
 same kind of work, and the older one is the convention the newer one follows.
@@ -517,6 +533,13 @@ under it, and the file table lists only files someone actually wrote a
 sentence about — GitHub's own Files tab already lists the paths and their
 line counts. The prose is bounded so that it can never be the reason a
 finding or a gate marker falls off the end of a body GitHub would reject.
+
+Line comments are for what interrupts somebody usefully. A finding opens a
+thread that has to be closed, so the reviewer's own `info` findings ride in
+the review body instead, and a pane's `info` still gets its line: a
+measurement is a fact about the change and the line is where the fact is. A
+finding whose own wording disqualifies it, "acceptable but worth noting" on a
+warning, is withheld the way an unsure one is.
 
 A reviewer finding that said it was unsure is not posted. The report folds
 those away behind a fold, and the pull request used to carry them as ordinary

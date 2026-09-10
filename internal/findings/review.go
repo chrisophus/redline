@@ -354,6 +354,7 @@ func (r *Review) CommentFindings() []Finding {
 			Severity:        normalizeSeverityFor(sev, cat),
 			Message:         c.Body,
 			Context:         ctx,
+			Question:        c.Question,
 			Source:          SourceLLM,
 			RelatedFindings: c.RelatedFindings,
 			Confidence:      NormalizeConfidence(c.Confidence),
