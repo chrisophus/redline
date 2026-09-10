@@ -188,7 +188,7 @@ func (in Input) hidesTests() bool {
 		return false
 	}
 	for _, f := range in.Change.Files {
-		if change.IsTest(f.Path) {
+		if change.IsTestCode(f.Path) {
 			continue
 		}
 		if f.Diff != "" || f.Head != "" {
@@ -209,7 +209,7 @@ func (in Input) contextFilter() envelope.Filter {
 	return envelope.Filter{
 		What: "test code",
 		Drop: func(x envelope.Expansion) bool {
-			return x.Role == envelope.RoleTest || change.IsTest(x.File)
+			return x.Role == envelope.RoleTest || change.IsTestCode(x.File)
 		},
 	}
 }
@@ -225,7 +225,7 @@ func (in Input) testsLine() string {
 	var paths []string
 	var added, removed int
 	for _, f := range in.Change.Files {
-		if !change.IsTest(f.Path) {
+		if !change.IsTestCode(f.Path) {
 			continue
 		}
 		paths = append(paths, f.Path)
@@ -256,7 +256,7 @@ func (in Input) shownLines() envelope.Seen {
 	}
 	hideTests := in.hidesTests()
 	for _, f := range in.Change.Files {
-		if hideTests && change.IsTest(f.Path) {
+		if hideTests && change.IsTestCode(f.Path) {
 			// Held back below, so nothing in it has been shown. Marking it
 			// seen would suppress expansions on the grounds that the model
 			// had already read lines it was never sent.
@@ -820,7 +820,7 @@ func (in Input) diffSection() string {
 		if f.Diff == "" && f.Head == "" {
 			continue
 		}
-		if hideTests && change.IsTest(f.Path) {
+		if hideTests && change.IsTestCode(f.Path) {
 			// Named in the change section with its line counts, and that is
 			// all a review of the code under test needs from it.
 			continue

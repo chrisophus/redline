@@ -107,6 +107,34 @@ func IsTest(path string) bool {
 		strings.Contains(lower, "/testdata/") || strings.HasPrefix(lower, "testdata/")
 }
 
+// IsTestCode reports whether a path is test code whose body a review can be
+// spared reading.
+//
+// Narrower than IsTest, and the difference is prose. Holding test bodies back
+// is a bargain with a reason: whether the tests assert enough is measured by
+// coverage and mutation, and those answers reach the review as findings. None
+// of that reasoning touches a Markdown file that happens to sit under
+// testdata. Documentation is exactly what a reviewer should read, and this
+// repository's own fixture README went to a review labelled as a test file
+// that had "moved", with the review told to judge the code it tests.
+//
+// IsTest keeps its wider reading, because the composition table is counting
+// where the lines went and a fixture is test material wherever it lives.
+func IsTestCode(path string) bool {
+	return IsTest(path) && !isDocs(path)
+}
+
+// isDocs reports whether a path is prose. Shared by kind and IsTestCode so
+// the two cannot drift apart on what counts as documentation.
+func isDocs(path string) bool {
+	lower := strings.ToLower(path)
+	base := filepath.Base(lower)
+	ext := filepath.Ext(lower)
+	return ext == ".md" || ext == ".rst" || ext == ".adoc" ||
+		strings.HasPrefix(base, "readme") || strings.HasPrefix(base, "changelog") ||
+		strings.Contains(lower, "/docs/")
+}
+
 // kind classifies what role a file plays in the change. Test wins over
 // config or docs when a path could read as either (a Markdown file inside a
 // testdata directory is still docs; the boundary Redline actually cares
@@ -119,9 +147,7 @@ func kind(path string) string {
 	if IsTest(path) {
 		return KindTest
 	}
-	if ext == ".md" || ext == ".rst" || ext == ".adoc" ||
-		strings.HasPrefix(base, "readme") || strings.HasPrefix(base, "changelog") ||
-		strings.Contains(lower, "/docs/") {
+	if isDocs(path) {
 		return KindDocs
 	}
 	switch base {
