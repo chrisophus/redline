@@ -62,11 +62,14 @@ flags:
                     which this one will not record (for example
                     enclosing,caller,type,sibling,history beside gorefactor)
   --covered-scope GLOBS  the files that applies to (for example **/*.go)
+  --api WIRE        anthropic (default) or openai, the wire it calls over
+  --api-user USER   caller id for an OpenAI gateway that meters by user
   --base-url URL    endpoint, for a proxy
   --version         print the adapter version
 
 It writes one context envelope as JSON to stdout and exits 0. It calls a
-model, so it needs ANTHROPIC_API_KEY and it costs money on every run; what it
+model, so it needs a credential for its wire, ANTHROPIC_API_KEY by default or
+OPENAI_API_KEY under --api openai, and it costs money on every run; what it
 spent goes to stderr. Running out of budget is not a failure: it stops early,
 says so in the envelope's notes, and the review still happens.
 `
@@ -94,6 +97,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		maxTurns    = fs.Int("max-turns", 0, "turn limit")
 		covered     = fs.String("covered", "", "roles another provider already resolves exactly")
 		coverScope  = fs.String("covered-scope", "", "globs those roles are covered for")
+		api         = fs.String("api", "", "wire the scout calls over: anthropic (default) or openai")
+		apiUser     = fs.String("api-user", "", "caller id for an OpenAI gateway that meters by user")
 		baseURL     = fs.String("base-url", "", "endpoint, for a proxy")
 		showVersion = fs.Bool("version", false, "print the adapter version")
 	)
@@ -139,8 +144,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		MaxCostUSD:   *maxCost,
 		Covered:      coveredRoles(*covered),
 		CoveredScope: commaList(*coverScope),
+		API:          *api,
 		BaseURL:      *baseURL,
-		APIKey:       os.Getenv("ANTHROPIC_API_KEY"),
+		APIKey:       scoutKey(*api),
+		APIUser:      *apiUser,
 	}
 	env, spend, err := scout.Run(context.Background(), opts)
 	if err != nil {
@@ -188,6 +195,16 @@ func capNote(s scout.Spend) string {
 		return " (stopped at the cost cap)"
 	}
 	return ""
+}
+
+// scoutKey reads the credential for the wire the scout runs over from the
+// vendor's own environment variable. Empty on the Anthropic wire leaves the
+// SDK to walk its own credential chain, an `ant auth login` profile included.
+func scoutKey(api string) string {
+	if api == review.APIOpenAI {
+		return os.Getenv("OPENAI_API_KEY")
+	}
+	return os.Getenv("ANTHROPIC_API_KEY")
 }
 
 // diffOf is the change as the reviewer will see it, which is the scout's

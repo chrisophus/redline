@@ -623,19 +623,16 @@ func TestPostAnchorsCommentsToTheSessionDiff(t *testing.T) {
 	}
 }
 
-// The scout speaks only to Anthropic. When the review runs on the OpenAI wire
-// and the environment carries no Anthropic credential, the lookups must be
-// skipped rather than run a call that can only fail; the ruling still runs
-// over no answers.
-func TestScoutSkipsWithoutAnthropicCredentialsOnTheOpenAIWire(t *testing.T) {
+// The scout speaks either wire now, so on the OpenAI wire the checking pass is
+// wired to run rather than skipped, over the same OpenAI credentials the
+// review used. A session with no working tree still has nothing to look up.
+func TestScoutRunsOnTheOpenAIWire(t *testing.T) {
 	res := &run.Result{Target: &target.Target{Dir: t.TempDir()}}
-	t.Setenv("ANTHROPIC_API_KEY", "")
-	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
-	if scoutAnswerer(res, opts{}, review.Options{API: review.APIOpenAI}, nil) != nil {
-		t.Fatal("the scout must not run with only OpenAI credentials")
+	if scoutAnswerer(res, review.Options{API: review.APIOpenAI, APIKey: "sk-openai"}, nil) == nil {
+		t.Fatal("the scout should be wired to run on the OpenAI wire")
 	}
-	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-present")
-	if scoutAnswerer(res, opts{}, review.Options{API: review.APIOpenAI}, nil) == nil {
-		t.Fatal("with an Anthropic key present the lookups should be available")
+	gone := &run.Result{Target: &target.Target{Dir: filepath.Join(t.TempDir(), "missing")}}
+	if scoutAnswerer(gone, review.Options{API: review.APIOpenAI, APIKey: "sk-openai"}, nil) != nil {
+		t.Fatal("with no working tree there is nothing to look up")
 	}
 }
