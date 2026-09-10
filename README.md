@@ -179,6 +179,22 @@ written to `.redline/review.json`, the same file a human or another agent
 writes by hand, and the report is re-rendered from the session with no
 second observation. Verdicts already in that file are kept.
 
+On a pull request, the review is shown what that pull request already heard
+from Redline and what people said back: the comments it posted before, the
+replies under them, the reactions, and whether each thread was closed. Two
+runs used to post the same defect twice in different words, and nothing could
+have caught that, because a reviewer finding's fingerprint is its wording and
+a push changes the commit the marker names.
+
+Deduplication is the smaller half. When a reader replies that something is
+deliberate, they have written down a convention that exists nowhere else, in
+the one place the next review can be shown it. That reply is carried as the
+author's position rather than as a ruling, because an author dismissing a
+finding about their own code has a stake in the answer, and the review is told
+it may still disagree where it has material the author did not. The threads
+are read by `run` and saved into the session, so `review` stays a pure
+function of what it was given.
+
 One turn, no tools. Context is cheap and turns are expensive: ten tool-use
 turns over a growing context cost several dollars, because every turn
 re-sends the whole conversation. So the context is generous and the loop is

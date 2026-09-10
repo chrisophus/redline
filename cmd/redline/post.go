@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -41,7 +40,7 @@ func cmdPost(o opts) error {
 		return fmt.Errorf("post targets the pull request this session reviewed; drop --branch/--commit/--range")
 	}
 
-	owner, repo, err := parseRepoURL(tgt.PR.URL)
+	owner, repo, err := tgt.PR.OwnerRepo()
 	if err != nil {
 		return err
 	}
@@ -336,20 +335,6 @@ func ghError(path string, err error) error {
 		}
 	}
 	return fmt.Errorf("gh api %s: %w", path, err)
-}
-
-// parseRepoURL pulls owner and repo from a PR HTML URL like
-// https://github.com/owner/repo/pull/7.
-func parseRepoURL(raw string) (owner, repo string, err error) {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Path == "" {
-		return "", "", fmt.Errorf("cannot read owner/repo from PR URL %q", raw)
-	}
-	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("cannot read owner/repo from PR URL %q", raw)
-	}
-	return parts[0], parts[1], nil
 }
 
 func shortSHA(sha string) string {

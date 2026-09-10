@@ -9,6 +9,7 @@ import (
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/cover"
 	"github.com/chrisophus/redline/internal/envelope"
+	"github.com/chrisophus/redline/internal/feedback"
 	"github.com/chrisophus/redline/internal/findings"
 )
 
@@ -284,10 +285,102 @@ func (in Input) fixed() string {
 	var b strings.Builder
 	b.WriteString(in.changeSection())
 	b.WriteString(in.priorsSection())
+	b.WriteString(in.heardSection())
 	b.WriteString(in.coverageSection())
 	b.WriteString(in.absentSection())
 	b.WriteString(in.diffSection())
 	return b.String()
+}
+
+// heardSection is what this pull request already heard from Redline, and what
+// the people reading it said back.
+//
+// It sits after the established findings and before everything else, because
+// it is the same register as they are: things already on the record. The
+// difference is who put them there, and the wording keeps that separate. A
+// pane's finding is a measurement. A previous reviewer's finding is a previous
+// reviewer's opinion, and an author's reply is the author's, which is why
+// neither is presented as established.
+//
+// Two jobs. The first is not saying the same thing twice: two runs on one pull
+// request posted one defect twice in different words, and no fingerprint could
+// have caught that because a reviewer's fingerprint is its wording. The second
+// is worth more. A reply saying "this mirrors the staging file next door" is a
+// convention nobody wrote down, handed over by the one person who knows it, in
+// the place the next review can be shown it.
+func (in Input) heardSection() string {
+	if len(in.Prior) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("## Already said on this pull request\n\n")
+	b.WriteString("Redline left these comments on an earlier run, and this is what happened to " +
+		"each. Do not raise any of them again: the author has seen it, and saying it twice is " +
+		"how a reader learns to stop reading.\n\n")
+	b.WriteString("A reply is the author's position, not a ruling. Where one explains that " +
+		"something is deliberate, treat it as this repository's convention for the rest of this " +
+		"review, and hold anything else the change does the same way to the same standard. " +
+		"Where you have material the author did not, in the diff or the context below, and it " +
+		"contradicts them, say so once, as a new finding, naming what you saw that they did " +
+		"not. What you must not do is repeat the original comment as though nothing was said.\n\n")
+	for _, t := range in.Prior {
+		loc := t.File
+		if t.Line > 0 {
+			loc = fmt.Sprintf("%s:%d", t.File, t.Line)
+		}
+		if loc == "" {
+			loc = "no line"
+		}
+		fmt.Fprintf(&b, "- %s — %s\n", loc, oneLine(t.Said))
+		fmt.Fprintf(&b, "  outcome: %s\n", outcomeOf(t))
+		for _, r := range t.Replies {
+			who := r.Author
+			if who == "" {
+				who = "someone"
+			}
+			fmt.Fprintf(&b, "  %s replied: %s\n", who, oneLine(r.Body))
+		}
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// outcomeOf says what became of a thread in the plainest words available.
+//
+// None of these signals is clean alone. A resolved thread with no reply means
+// "fixed" and "dismissed with a click" equally, so it is reported as what was
+// observed rather than as a conclusion drawn from it, and the reply text
+// beside it is what actually carries the meaning.
+func outcomeOf(t feedback.Thread) string {
+	var parts []string
+	switch {
+	case t.Resolved && len(t.Replies) > 0:
+		parts = append(parts, "answered and the thread closed")
+	case t.Resolved:
+		parts = append(parts, "the thread was closed without a reply, which may mean fixed or may mean dismissed")
+	case len(t.Replies) > 0:
+		parts = append(parts, "answered, thread still open")
+	default:
+		parts = append(parts, "nobody replied and nobody closed it")
+	}
+	if t.Outdated {
+		parts = append(parts, "the lines it sat on have changed since")
+	}
+	switch {
+	case t.Down > 0 && t.Up > 0:
+		parts = append(parts, fmt.Sprintf("%d found it useful, %d did not", t.Up, t.Down))
+	case t.Down > 0:
+		parts = append(parts, fmt.Sprintf("%d marked it wrong", t.Down))
+	case t.Up > 0:
+		parts = append(parts, fmt.Sprintf("%d marked it useful", t.Up))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// oneLine flattens a body so one thread is one entry. A reply pasted with its
+// own newlines runs into the next bullet and the list stops being a list.
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // build assembles the whole user-side prompt. The context block sits before
@@ -296,6 +389,7 @@ func (in Input) build(budget envelope.Budgeted) string {
 	var b strings.Builder
 	b.WriteString(in.changeSection())
 	b.WriteString(in.priorsSection())
+	b.WriteString(in.heardSection())
 	b.WriteString(in.coverageSection())
 	b.WriteString(in.absentSection())
 	if ctx := budget.Render(); ctx != "" {

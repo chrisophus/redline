@@ -11,6 +11,7 @@ import (
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
+	"github.com/chrisophus/redline/internal/feedback"
 	"github.com/chrisophus/redline/internal/findings"
 )
 
@@ -711,5 +712,115 @@ func TestTestExpansionsAreHeldBackAndCounted(t *testing.T) {
 	}
 	if !strings.Contains(got.Budget.Summary(), "test code") {
 		t.Fatalf("the summary must say what was withheld: %q", got.Budget.Summary())
+	}
+}
+
+// Two runs of one review on one pull request posted the same defect twice in
+// different words, and no fingerprint could have caught it, because a
+// reviewer's fingerprint is its wording. The only thing that can is telling
+// the next review what the last one said.
+func TestPromptSaysWhatThisPullRequestAlreadyHeard(t *testing.T) {
+	in := Input{Prior: []feedback.Thread{{
+		Fingerprint: "internal/feed/offer.go\x00agent-comment\x00races",
+		File:        "internal/feed/offer.go", Line: 42,
+		Said:     "StageObject checks for already staged before starting the transaction.",
+		Resolved: true,
+		Replies: []feedback.Reply{{
+			Author: "chrisophus",
+			Body:   "Not fixing. Same pre-transaction idempotency check as account feed staging.",
+		}},
+	}}}
+	got, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Prompt, "Already said on this pull request") {
+		t.Fatalf("the section is missing:\n%s", got.Prompt)
+	}
+	if !strings.Contains(got.Prompt, "internal/feed/offer.go:42") {
+		t.Fatal("a thread without its location cannot be matched to a finding")
+	}
+	if !strings.Contains(got.Prompt, "account feed staging") {
+		t.Fatal("the reply is the convention nobody wrote down; it has to reach the model")
+	}
+	if !strings.Contains(got.Prompt, "chrisophus replied") {
+		t.Fatal("a reply presented without its author reads as a fact rather than a position")
+	}
+	if !strings.Contains(got.Prompt, "Do not raise any of them again") {
+		t.Fatal("the instruction that makes the section worth its tokens is missing")
+	}
+}
+
+// A reply is the author's position, and an author dismissing a finding about
+// their own code has a stake in the answer. The prompt has to leave the review
+// able to disagree, or a wrong dismissal silences a real defect forever.
+func TestThePromptDoesNotTurnAReplyIntoARuling(t *testing.T) {
+	in := Input{Prior: []feedback.Thread{{
+		File: "a.go", Line: 1, Said: "this races",
+		Replies: []feedback.Reply{{Author: "someone", Body: "intentional"}},
+	}}}
+	got, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Prompt, "the author's position, not a ruling") {
+		t.Fatalf("a reply is being presented as settled:\n%s", got.Prompt)
+	}
+	if !strings.Contains(got.Prompt, "contradicts them, say so once") {
+		t.Fatal("the review has to be told it may still disagree, with new material")
+	}
+}
+
+// A resolved thread with no reply means "fixed" and "dismissed with a click"
+// equally. Reporting it as either would be inventing a fact.
+func TestASilentlyResolvedThreadIsReportedAsAmbiguous(t *testing.T) {
+	in := Input{Prior: []feedback.Thread{
+		{File: "a.go", Line: 1, Said: "x", Resolved: true},
+		{File: "b.go", Line: 2, Said: "y", Down: 2},
+	}}
+	got, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Prompt, "may mean fixed or may mean dismissed") {
+		t.Fatalf("a click is not an answer and must not read as one:\n%s", got.Prompt)
+	}
+	if !strings.Contains(got.Prompt, "2 marked it wrong") {
+		t.Fatal("the one unambiguous signal on the list did not reach the model")
+	}
+}
+
+// Every target but a pull request has nowhere for a conversation to have
+// happened, so the section is absent rather than empty. A heading with nothing
+// under it tells a reader something false.
+func TestNoPriorConversationRendersNoSection(t *testing.T) {
+	got, err := Assemble(Input{Report: priors()}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got.Prompt, "Already said on this pull request") {
+		t.Fatal("a working-tree review has no pull request to have heard anything")
+	}
+}
+
+// What is priced has to be what is sent. The section is part of the fixed
+// half, so an estimate that left it out would admit a request larger than the
+// ceiling it was admitted under.
+func TestThePriorConversationIsPriced(t *testing.T) {
+	long := strings.Repeat("the author explained at length why this is deliberate. ", 200)
+	with, err := Assemble(Input{Prior: []feedback.Thread{{
+		File: "a.go", Line: 1, Said: "x",
+		Replies: []feedback.Reply{{Author: "someone", Body: long}},
+	}}}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	without, err := Assemble(Input{}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if with.FixedEstimate <= without.FixedEstimate {
+		t.Fatalf("the conversation costs tokens and was priced at zero: %d vs %d",
+			with.FixedEstimate, without.FixedEstimate)
 	}
 }
