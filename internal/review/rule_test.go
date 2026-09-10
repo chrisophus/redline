@@ -533,3 +533,27 @@ func TestTheRulingInstructionRidesInTheUserTurn(t *testing.T) {
 		t.Fatal("the ruling instruction must not be in the system block")
 	}
 }
+
+// A gateway that serves claude over the OpenAI protocol does not always honour
+// the json_schema and returns the rulings array wrapped in a JSON string. The
+// pass must read that rather than fail open, which in the field left six
+// findings unchecked on a review whose ruling came back stringified.
+func TestParseRulingsToleratesAStringifiedArray(t *testing.T) {
+	wrapped := []byte(`{"rulings":"[{\"finding\":\"c1\",\"verdict\":\"withdrawn\",\"evidence\":\"e\",\"why\":\"w\"}]"}`)
+	got, err := parseRulings(wrapped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["c1"].Verdict != findings.VerifiedWithdrawn {
+		t.Fatalf("a stringified array must still parse: %+v", got)
+	}
+	// The ordinary array shape still works.
+	plain := []byte(`{"rulings":[{"finding":"c2","verdict":"kept","evidence":"e","why":"w"}]}`)
+	got, err = parseRulings(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["c2"].Verdict != findings.VerifiedKept {
+		t.Fatalf("the array shape must still parse: %+v", got)
+	}
+}
