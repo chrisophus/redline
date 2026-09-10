@@ -200,11 +200,39 @@ func enforceProfile(dryRun bool, prof *post.Profile, tgt *target.Target, owner, 
 	return nil
 }
 
+// ghLogin returns the GitHub login Redline posts as. User OAuth/PAT tokens
+// answer GET /user; GitHub App installation tokens cannot and instead expose
+// the app slug via GET /app (login is "{slug}[bot]").
 func ghLogin() (string, error) {
-	cmd := exec.Command("gh", "api", "user", "--jq", ".login")
+	if login := strings.TrimSpace(os.Getenv("REDLINE_GH_LOGIN")); login != "" {
+		return login, nil
+	}
+	login, userErr := ghAPIJQ("user", ".login")
+	if userErr == nil && login != "" {
+		return login, nil
+	}
+	slug, appErr := ghAPIJQ("app", ".slug")
+	if appErr == nil && slug != "" {
+		return appBotLogin(slug), nil
+	}
+	if userErr != nil {
+		return "", userErr
+	}
+	if appErr != nil {
+		return "", appErr
+	}
+	return "", fmt.Errorf("gh api app: empty slug")
+}
+
+func appBotLogin(slug string) string {
+	return slug + "[bot]"
+}
+
+func ghAPIJQ(path, jq string) (string, error) {
+	cmd := exec.Command("gh", "api", path, "--jq", jq)
 	out, err := cmd.Output()
 	if err != nil {
-		return "", ghError("user", err)
+		return "", ghError(path, err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }

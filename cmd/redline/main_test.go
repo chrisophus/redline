@@ -563,6 +563,23 @@ func TestSuppressionMarkersFromOtherAuthorsAreIgnored(t *testing.T) {
 	}
 }
 
+func TestAppBotLogin(t *testing.T) {
+	if got := appBotLogin("marketplace-review-bot"); got != "marketplace-review-bot[bot]" {
+		t.Fatalf("app bot login: got %q", got)
+	}
+}
+
+func TestGhLoginHonoursREDLINE_GH_LOGIN(t *testing.T) {
+	t.Setenv("REDLINE_GH_LOGIN", "marketplace-review-bot[bot]")
+	login, err := ghLogin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if login != "marketplace-review-bot[bot]" {
+		t.Fatalf("got %q", login)
+	}
+}
+
 // The review anchors to the session head, so its line comments have to be
 // validated against that head's diff, not the pull request's current one.
 // Commentable lines come from the session's own recorded diff: a finding on a
