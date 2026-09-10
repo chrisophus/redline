@@ -201,8 +201,8 @@ func enforceProfile(dryRun bool, prof *post.Profile, tgt *target.Target, owner, 
 }
 
 // ghLogin returns the GitHub login Redline posts as. User OAuth/PAT tokens
-// answer GET /user; GitHub App installation tokens cannot and instead expose
-// the app slug via GET /app (login is "{slug}[bot]").
+// answer GET /user; GitHub App installation tokens cannot (403) and GET /app
+// requires a JWT. GraphQL viewer returns the bot login ({slug}[bot]) for both.
 func ghLogin() (string, error) {
 	if login := strings.TrimSpace(os.Getenv("REDLINE_GH_LOGIN")); login != "" {
 		return login, nil
@@ -211,21 +211,28 @@ func ghLogin() (string, error) {
 	if userErr == nil && login != "" {
 		return login, nil
 	}
-	slug, appErr := ghAPIJQ("app", ".slug")
-	if appErr == nil && slug != "" {
-		return appBotLogin(slug), nil
+	login, viewerErr := ghGraphQLViewerLogin()
+	if viewerErr == nil && login != "" {
+		return login, nil
+	}
+	if viewerErr != nil {
+		return "", viewerErr
 	}
 	if userErr != nil {
 		return "", userErr
 	}
-	if appErr != nil {
-		return "", appErr
-	}
-	return "", fmt.Errorf("gh api app: empty slug")
+	return "", fmt.Errorf("resolve GitHub actor login: empty GraphQL viewer login")
 }
 
-func appBotLogin(slug string) string {
-	return slug + "[bot]"
+func ghGraphQLViewerLogin() (string, error) {
+	cmd := exec.Command("gh", "api", "graphql",
+		"-f", "query=query { viewer { login } }",
+		"--jq", ".data.viewer.login")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", ghError("graphql viewer", err)
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func ghAPIJQ(path, jq string) (string, error) {

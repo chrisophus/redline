@@ -563,12 +563,6 @@ func TestSuppressionMarkersFromOtherAuthorsAreIgnored(t *testing.T) {
 	}
 }
 
-func TestAppBotLogin(t *testing.T) {
-	if got := appBotLogin("marketplace-review-bot"); got != "marketplace-review-bot[bot]" {
-		t.Fatalf("app bot login: got %q", got)
-	}
-}
-
 func TestGhLoginHonoursREDLINE_GH_LOGIN(t *testing.T) {
 	t.Setenv("REDLINE_GH_LOGIN", "marketplace-review-bot[bot]")
 	login, err := ghLogin()
