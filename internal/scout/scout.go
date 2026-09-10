@@ -109,15 +109,33 @@ type Options struct {
 	MaxTurns   int
 	MaxTokens  int64
 	MaxCostUSD float64
-	APIKey     string
-	BaseURL    string
+	// API is the wire the scout's own calls go over: "anthropic" (default) or
+	// "openai". It is set to whatever wire the review ran on, so the lookups a
+	// review asked for are answered by the same provider that produced them.
+	API     string
+	APIKey  string
+	BaseURL string
+	// APIUser names the caller to an OpenAI gateway that meters by user. It
+	// rides beside the key the same way the reviewer's own OpenAI wire sends
+	// it, and the Anthropic wire ignores it.
+	APIUser string
 
 	Limits Limits
 }
 
 func (o Options) withDefaults() Options {
+	if o.API == "" {
+		o.API = review.APIAnthropic
+	}
 	if o.Model == "" {
 		o.Model = DefaultModel
+		if o.API == review.APIOpenAI {
+			// The scout is the cheap half of the split on either wire. gpt-5
+			// is the OpenAI default the reviewer uses, and the scout follows
+			// it rather than defaulting to an Anthropic model on an OpenAI
+			// endpoint, which would 404.
+			o.Model = review.DefaultOpenAIModel
+		}
 	}
 	if o.Effort == "" {
 		o.Effort = DefaultEffort
@@ -157,6 +175,32 @@ func Run(ctx context.Context, opts Options) (*envelope.Envelope, Spend, error) {
 
 	ts := newToolset(opts.Root, opts.Graph, opts.Limits)
 	ts.res.covered, ts.res.coveredScope = opts.Covered, opts.CoveredScope
+
+	// Same loop, same tools, same governor on either wire. Only the transport
+	// differs: the Anthropic SDK on one, plain chat-completions with function
+	// calling on the other.
+	var (
+		spend Spend
+		err   error
+	)
+	if opts.API == review.APIOpenAI {
+		spend, err = driveOpenAI(ctx, opts, ts)
+	} else {
+		spend, err = driveAnthropic(ctx, opts, ts)
+	}
+	if err != nil {
+		// Turn-zero failure: nothing was fetched and nothing is known. The
+		// caller turns this into an absent provider, which is the honest
+		// report and not the same as one that found nothing.
+		return nil, spend, err
+	}
+	spend.Records = len(ts.records)
+	env := build(opts, ts)
+	return env, spend, nil
+}
+
+// driveAnthropic runs the tool loop over the Anthropic Messages API.
+func driveAnthropic(ctx context.Context, opts Options, ts *toolset) (Spend, error) {
 	var clientOpts []option.RequestOption
 	if opts.APIKey != "" {
 		clientOpts = append(clientOpts, option.WithAPIKey(opts.APIKey))
@@ -180,8 +224,7 @@ func Run(ctx context.Context, opts Options) (*envelope.Envelope, Spend, error) {
 	}
 
 	var spend Spend
-	var runErr error
-	for turn := 0; turn < opts.MaxTurns; turn++ {
+	for turn := range opts.MaxTurns {
 		if stop, reason := overBudget(opts, spend, params); stop {
 			spend.CapHit = true
 			ts.notes = append(ts.notes, reason)
@@ -190,11 +233,8 @@ func Run(ctx context.Context, opts Options) (*envelope.Envelope, Spend, error) {
 		msg, err := client.Messages.New(ctx, params)
 		if err != nil {
 			if turn == 0 {
-				// Nothing was fetched and nothing is known. The caller turns
-				// this into an absent provider, which is the honest report.
-				return nil, spend, fmt.Errorf("%s: %w", opts.Model, err)
+				return spend, fmt.Errorf("%s: %w", opts.Model, err)
 			}
-			runErr = err
 			ts.notes = append(ts.notes, fmt.Sprintf(
 				"the search for context stopped early after %d turn(s): %v; what is below is what it had found by then", turn, err))
 			break
@@ -226,12 +266,8 @@ func Run(ctx context.Context, opts Options) (*envelope.Envelope, Spend, error) {
 				"the search for context stopped at its %d-turn limit; there may be context it had not reached", opts.MaxTurns))
 		}
 	}
-
 	spend.CostUSD, spend.CostKnown = spend.Usage.Cost(opts.Model)
-	spend.Records = len(ts.records)
-	env := build(opts, ts)
-	_ = runErr
-	return env, spend, nil
+	return spend, nil
 }
 
 // runTools executes every tool call in one assistant turn and returns the

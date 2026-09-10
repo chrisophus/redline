@@ -74,16 +74,11 @@ func cmdReview(o opts) error {
 	if o.verify {
 		ropts.Verify = true
 	}
-	// The scout's spend is accumulated here so a cost paid inside the verify
-	// pass reaches the ledger and not only its own log line.
-	tally := scoutTally{known: true}
-	if ropts.Verify {
-		ropts.Answer = scoutAnswerer(res, o, ropts, &tally)
-	}
+	// On the OpenAI wire the credentials are read here, in the vendor's own
+	// env names, before the checking pass is wired up: the scout that runs
+	// inside it now goes over the same wire and needs them. The flag wins over
+	// the variable.
 	if o.api == review.APIOpenAI {
-		// The Anthropic SDK reads its own environment. The OpenAI backend is
-		// plain HTTP, so the same convention is applied here, in the names
-		// the vendor's own tools use, and the flag wins over the variable.
 		ropts.APIKey = os.Getenv("OPENAI_API_KEY")
 		if ropts.BaseURL == "" {
 			ropts.BaseURL = os.Getenv("OPENAI_BASE_URL")
@@ -92,6 +87,12 @@ func cmdReview(o opts) error {
 		if ropts.APIUser == "" {
 			ropts.APIUser = os.Getenv("OPENAI_USER")
 		}
+	}
+	// The scout's spend is accumulated here so a cost paid inside the verify
+	// pass reaches the ledger and not only its own log line.
+	tally := scoutTally{known: true}
+	if ropts.Verify {
+		ropts.Answer = scoutAnswerer(res, ropts, &tally)
 	}
 	if !o.dryRun {
 		// Said before the call, not after it. A review is one blocking
@@ -272,7 +273,7 @@ type scoutTally struct {
 // money is the caller's business, and everything below degrades to nil rather
 // than failing, so a checkout with no key still gets a ruling over the
 // answers it has.
-func scoutAnswerer(res *run.Result, o opts, ropts review.Options, tally *scoutTally) review.Answerer {
+func scoutAnswerer(res *run.Result, ropts review.Options, tally *scoutTally) review.Answerer {
 	root := ""
 	if res.Target != nil {
 		root = res.Target.Dir
@@ -284,30 +285,6 @@ func scoutAnswerer(res *run.Result, o opts, ropts review.Options, tally *scoutTa
 	if root == "" || !isDir(root) {
 		return nil
 	}
-	// The scout speaks only to Anthropic, whichever wire the review used, so
-	// it takes Anthropic credentials and never the OpenAI gateway's. Handing
-	// the gateway's URL and key to an Anthropic client is why verification
-	// always failed on the --api openai path.
-	baseURL, apiKey := "", ""
-	if ropts.API == review.APIOpenAI {
-		// The review is going out over the OpenAI wire, so stage one used the
-		// OpenAI key. The scout needs an Anthropic credential of its own, and
-		// with only OpenAI credentials there is none: running it would spend a
-		// call only to fail. It is skipped and said so, the ruling still runs
-		// over no answers, and a finding that needed a lookup comes back
-		// unverifiable rather than confirmed.
-		if os.Getenv("ANTHROPIC_API_KEY") == "" && os.Getenv("ANTHROPIC_AUTH_TOKEN") == "" {
-			fmt.Fprintln(os.Stderr, "redline: the checking pass has no Anthropic credential for its lookups "+
-				"on the OpenAI wire, so they are skipped; findings that need one are marked unverifiable")
-			return nil
-		}
-	} else {
-		// The Anthropic wire. Stage one already authenticated through the
-		// SDK's credential chain, an `ant auth login` profile included, so
-		// these carry any explicit override and empty falls back to that
-		// chain.
-		baseURL, apiKey = ropts.BaseURL, ropts.APIKey
-	}
 	return func(ctx context.Context, qs []review.Question) (*envelope.Envelope, error) {
 		out := make([]scout.Question, 0, len(qs))
 		for _, q := range qs {
@@ -317,13 +294,19 @@ func scoutAnswerer(res *run.Result, o opts, ropts review.Options, tally *scoutTa
 			})
 		}
 		fmt.Fprintf(os.Stderr, "redline: looking up %d question(s) the review asked\n", len(out))
+		// The lookups go over the same wire the review did. On the OpenAI wire
+		// the scout uses the OpenAI credentials stage one used; on the
+		// Anthropic wire an empty key falls back to the SDK's own credential
+		// chain, an `ant auth login` profile included.
 		env, spend, err := scout.Run(ctx, scout.Options{
 			Root:      root,
 			Diff:      diffOf(res),
 			BaseSHA:   res.Report.BaseSHA,
 			Questions: out,
-			BaseURL:   baseURL,
-			APIKey:    apiKey,
+			API:       ropts.API,
+			BaseURL:   ropts.BaseURL,
+			APIKey:    ropts.APIKey,
+			APIUser:   ropts.APIUser,
 		})
 		if spend.Turns > 0 {
 			fmt.Fprintf(os.Stderr, "redline: lookups took %d turn(s), %d record(s), %s\n",
