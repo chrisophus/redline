@@ -6,7 +6,8 @@ workflow. Report layout and drill-in UX live in
 per-change envelope is worked out in [graph-context.md](graph-context.md).
 Measuring whether any finding was worth making is in
 [review-feedback.md](review-feedback.md), and it gates most of the choices
-these tables pose.
+these tables pose. A review that checks its own findings before posting them
+is worked out in [two-stage-review.md](two-stage-review.md).
 Phased design rationale is in [redline-design.md](../../redline-design.md) at
 the repo root.
 
