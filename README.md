@@ -573,11 +573,13 @@ not get the gate's finding marker. See `redline-review.yml.example`.
 `body_style` chooses the layout. `evidence` (the default) is the body above.
 `walkthrough` reads like the author-published Copilot and Bugbot reviews:
 reviewed-by and commit, the pull request's stated intent, what the change
-does, then a collapsible walkthrough of every changed file with the agent's
-one-line summary or "No notes." `body_include` decides how much of the report
-rides along: `coverage` and `lint` add per-file columns, `confirmations` and
-`unknowns` fold in the report sections the body otherwise drops. All of it
-comes from the session `run` already wrote, so posting still observes nothing.
+does, then a collapsible walkthrough of every changed file, test files aside,
+with the agent's one-line summary or "No notes." A finding that names one of
+those files rides under it there; only a finding with no file lands in the
+list after. `body_include` decides how much of the report rides along:
+`coverage` and `lint` add per-file columns, `confirmations` and `unknowns`
+fold in the report sections the body otherwise drops. All of it comes from the
+session `run` already wrote, so posting still observes nothing.
 
 ## The report server
 

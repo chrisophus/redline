@@ -494,7 +494,8 @@ func buildBodyWalkthrough(p Payload) string {
 			fmt.Fprintf(&head0, "**What it does.** %s\n\n", ov)
 		}
 	}
-	if s := walkthroughSection(p, maxNarrative); s != "" {
+	perFile, leftover := splitBodyFindingsByFile(p)
+	if s := walkthroughSection(p, perFile, maxNarrative); s != "" {
 		head0.WriteString(s)
 	}
 	if table := evidenceTable(p.rep); table != "" {
@@ -509,8 +510,31 @@ func buildBodyWalkthrough(p Payload) string {
 		head0.WriteString(unknownsSection(p.rep))
 	}
 	tail := bodyTail(p.reportURL, p.CommitID, p.profile, p.GateVerdict, p.withheld, p.hedged)
-	middle := notShownSection(p.bodyFindings, p.CommitID, p.profile, maxBody-head0.Len()-len(tail))
+	middle := notShownSection(leftover, p.CommitID, p.profile, maxBody-head0.Len()-len(tail))
 	return head0.String() + middle + tail
+}
+
+// splitBodyFindingsByFile groups the body findings that name a file the
+// walkthrough shows, so they render with that file instead of in a flat list
+// after it, and returns the rest. A finding with no file, or one on a test
+// file the walkthrough omits, has no row to ride with and stays in the list.
+func splitBodyFindingsByFile(p Payload) (map[string][]findings.Finding, []findings.Finding) {
+	shown := map[string]bool{}
+	for _, path := range p.changed {
+		if !change.IsTestCode(path) {
+			shown[path] = true
+		}
+	}
+	perFile := map[string][]findings.Finding{}
+	var leftover []findings.Finding
+	for _, f := range p.bodyFindings {
+		if f.File != "" && shown[f.File] {
+			perFile[f.File] = append(perFile[f.File], f)
+		} else {
+			leftover = append(leftover, f)
+		}
+	}
+	return perFile, leftover
 }
 
 // walkthroughHeading matches the author-published reviews: a failing gate reads
@@ -527,7 +551,7 @@ func walkthroughHeading(gateVerdict string) string {
 // columns body_include turns
 // on. coverage names the added lines a profile shows unexecuted; lint counts
 // what landed on the file by severity. Both read the report the run wrote.
-func walkthroughSection(p Payload, budget int) string {
+func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget int) string {
 	if len(p.changed) == 0 {
 		return ""
 	}
@@ -604,6 +628,29 @@ func walkthroughSection(p Payload, budget int) string {
 	}
 	if testOmitted > 0 {
 		fmt.Fprintf(&b, "\n_%d test file(s) omitted from the walkthrough._\n", testOmitted)
+	}
+	grpOmitted := 0
+	for _, path := range paths {
+		group := perFile[path]
+		if len(group) == 0 {
+			continue
+		}
+		// The file's own findings, each still carrying its fingerprint marker
+		// so a re-post skips it, listed under the file rather than in the flat
+		// section after the table.
+		var block strings.Builder
+		fmt.Fprintf(&block, "\n**`%s`**\n", path)
+		for _, f := range group {
+			block.WriteString(bodyFindingLine(f, p.CommitID, p.profile))
+		}
+		if b.Len()+block.Len() > budget {
+			grpOmitted += len(group)
+			continue
+		}
+		b.WriteString(block.String())
+	}
+	if grpOmitted > 0 {
+		fmt.Fprintf(&b, "\n_%d more finding(s) on the full report._\n", grpOmitted)
 	}
 	b.WriteString("\n</details>\n\n")
 	return b.String()

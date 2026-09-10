@@ -823,3 +823,31 @@ func TestWalkthroughOmitsTestFiles(t *testing.T) {
 		t.Fatalf("the omitted test-file count should be noted:\n%s", p.Body)
 	}
 }
+
+// A body finding that names a shown file rides under that file inside the
+// walkthrough; a fileless one stays in the flat not-shown list, and the file
+// finding is not duplicated there.
+func TestWalkthroughAttachesFileFindingsToTheFile(t *testing.T) {
+	rep := &findings.Report{
+		Findings: []findings.Finding{
+			{File: "a.go", Rule: "complexity", Substrate: "redline/lint",
+				Severity: findings.SeverityInfo, Message: "complexity 16 here"},
+			{Rule: "package-untested", Substrate: "redline/test-delta",
+				Severity: findings.SeverityInfo, Message: "no test in that package"},
+		},
+		Agent: &findings.AgentReview{Files: map[string]string{"a.go": "did a thing"}},
+	}
+	rep.Finalize()
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), []string{"a.go"})
+	body := p.Body
+	if !strings.Contains(body, "**`a.go`**") || !strings.Contains(body, "complexity 16 here") {
+		t.Fatalf("a file finding must ride under its file in the walkthrough:\n%s", body)
+	}
+	idx := strings.Index(body, "### Findings not shown inline")
+	if idx < 0 || !strings.Contains(body[idx:], "no test in that package") {
+		t.Fatalf("a fileless finding stays in the not-shown list:\n%s", body)
+	}
+	if idx >= 0 && strings.Contains(body[idx:], "complexity 16 here") {
+		t.Fatalf("a file finding must not also appear in the not-shown list:\n%s", body[idx:])
+	}
+}
