@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/chrisophus/redline/internal/gitx"
 )
 
 func TestResolveRejectsMultipleSelectors(t *testing.T) {
@@ -214,6 +216,42 @@ func initRepo(t *testing.T) string {
 	run("add", "-A")
 	run("commit", "-m", "init")
 	return dir
+}
+
+func TestPRHeadRefPrefersExistingOriginBranch(t *testing.T) {
+	dir := initRepo(t)
+	writeCommit(t, dir, "feature.txt", "feat\n", "feature")
+	featureSHA, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	headRefOid := strings.TrimSpace(string(featureSHA))
+	runGit(t, dir, "update-ref", "refs/remotes/origin/feat/pr-branch", headRefOid)
+
+	repo, err := gitx.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head, err := prHeadRef(repo, &PullRequest{
+		Number:      1,
+		HeadRefName: "feat/pr-branch",
+		HeadRefOid:  headRefOid,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if head != headRefOid {
+		t.Fatalf("head %q want %q", head, headRefOid)
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
 }
 
 // sameDir reports whether a and b name the same directory after symlink

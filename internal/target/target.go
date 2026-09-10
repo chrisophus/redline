@@ -61,6 +61,7 @@ type PullRequest struct {
 	URL         string   `json:"url"`
 	BaseRefName string   `json:"baseRefName"`
 	HeadRefName string   `json:"headRefName"`
+	HeadRefOid  string   `json:"headRefOid,omitempty"`
 	Files       []string `json:"files,omitempty"`
 	Draft       bool     `json:"draft"`
 }
@@ -221,36 +222,22 @@ func localCheckout(repo *gitx.Repo, head string) (string, bool) {
 	return repo.Root, true
 }
 
-// resolvePR fetches the pull request's head commit and its metadata. The
-// branch is fetched, not checked out: reviewing someone's PR must not touch
-// your own working tree.
+// resolvePR resolves the pull request head and its metadata. When the caller
+// already checked out the PR tip (typical in CI), it reuses that tree instead
+// of fetching refs/pull/N/head, which GITHUB_TOKEN often cannot read via git.
 func resolvePR(repo *gitx.Repo, opts Options) (*Target, error) {
 	pr, err := fetchPR(repo.Root, opts.PR)
 	if err != nil {
 		return nil, err
 	}
-	ref := fmt.Sprintf("refs/pull/%d/head", pr.Number)
-	if err := repo.Fetch("origin", ref+":refs/redline/pr/"+itoa(pr.Number)); err != nil {
-		return nil, fmt.Errorf("fetching PR #%d: %w", pr.Number, err)
-	}
-	head, err := repo.Resolve("refs/redline/pr/" + itoa(pr.Number))
+	base, err := prBaseRef(repo, opts, pr)
 	if err != nil {
 		return nil, err
 	}
-	base := opts.Base
-	if base == "" && pr.BaseRefName != "" {
-		base = "origin/" + pr.BaseRefName
-		if !repo.Exists(base) {
-			if err := repo.Fetch("origin", pr.BaseRefName); err != nil {
-				return nil, fmt.Errorf("fetching PR base %s: %w", pr.BaseRefName, err)
-			}
-		}
+	head, err := prHeadRef(repo, pr)
+	if err != nil {
+		return nil, err
 	}
-	// The pull request's head is fetched either way, so the comparison is
-	// against the real remote head rather than whatever the local branch
-	// happens to point at: a checkout that has not pulled is behind, and
-	// reviewing it would report the wrong change under the pull request's
-	// number.
 	if dir, ok := localCheckout(repo, head); ok {
 		return &Target{Kind: KindPR, Dir: dir, Head: head, Base: base, PR: pr}, nil
 	}
@@ -261,6 +248,51 @@ func resolvePR(repo *gitx.Repo, opts Options) (*Target, error) {
 	return &Target{Kind: KindPR, Dir: dir, Head: head, Base: base, PR: pr, Detached: true}, nil
 }
 
+func prBaseRef(repo *gitx.Repo, opts Options, pr *PullRequest) (string, error) {
+	base := opts.Base
+	if base != "" || pr.BaseRefName == "" {
+		return base, nil
+	}
+	base = "origin/" + pr.BaseRefName
+	if !repo.Exists(base) {
+		if err := repo.Fetch("origin", pr.BaseRefName); err != nil {
+			return "", fmt.Errorf("fetching PR base %s: %w", pr.BaseRefName, err)
+		}
+	}
+	return base, nil
+}
+
+func prHeadRef(repo *gitx.Repo, pr *PullRequest) (string, error) {
+	if pr.HeadRefOid != "" {
+		if _, ok := localCheckout(repo, pr.HeadRefOid); ok {
+			return pr.HeadRefOid, nil
+		}
+	}
+	if pr.HeadRefName != "" {
+		branchRef := "origin/" + pr.HeadRefName
+		if !repo.Exists(branchRef) {
+			if err := repo.Fetch("origin", pr.HeadRefName); err != nil {
+				return "", fmt.Errorf("fetching PR head branch %s: %w", pr.HeadRefName, err)
+			}
+		}
+		if repo.Exists(branchRef) {
+			head, err := repo.Resolve(branchRef)
+			if err != nil {
+				return "", err
+			}
+			if pr.HeadRefOid == "" || head == pr.HeadRefOid {
+				return head, nil
+			}
+		}
+	}
+	ref := fmt.Sprintf("refs/pull/%d/head", pr.Number)
+	localRef := "refs/redline/pr/" + itoa(pr.Number)
+	if err := repo.Fetch("origin", ref+":"+localRef); err != nil {
+		return "", fmt.Errorf("fetching PR #%d: %w", pr.Number, err)
+	}
+	return repo.Resolve(localRef)
+}
+
 // fetchPR reads PR metadata through gh, which already holds the user's
 // credentials. Redline never handles a token itself.
 func fetchPR(dir, ref string) (*PullRequest, error) {
@@ -268,7 +300,7 @@ func fetchPR(dir, ref string) (*PullRequest, error) {
 		return nil, fmt.Errorf("reviewing a PR needs the gh CLI on PATH: %w", err)
 	}
 	cmd := exec.Command("gh", "pr", "view", ref,
-		"--json", "number,title,body,author,url,baseRefName,headRefName,files,isDraft")
+		"--json", "number,title,body,author,url,baseRefName,headRefName,headRefOid,files,isDraft")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
@@ -286,6 +318,7 @@ func fetchPR(dir, ref string) (*PullRequest, error) {
 		URL         string                  `json:"url"`
 		BaseRefName string                  `json:"baseRefName"`
 		HeadRefName string                  `json:"headRefName"`
+		HeadRefOid  string                  `json:"headRefOid"`
 		IsDraft     bool                    `json:"isDraft"`
 		Files       []struct{ Path string } `json:"files"`
 	}
@@ -295,7 +328,8 @@ func fetchPR(dir, ref string) (*PullRequest, error) {
 	pr := &PullRequest{
 		Number: raw.Number, Title: raw.Title, Body: raw.Body,
 		Author: raw.Author.Login, URL: raw.URL,
-		BaseRefName: raw.BaseRefName, HeadRefName: raw.HeadRefName, Draft: raw.IsDraft,
+		BaseRefName: raw.BaseRefName, HeadRefName: raw.HeadRefName,
+		HeadRefOid: raw.HeadRefOid, Draft: raw.IsDraft,
 	}
 	for _, f := range raw.Files {
 		pr.Files = append(pr.Files, f.Path)
