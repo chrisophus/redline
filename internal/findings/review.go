@@ -58,6 +58,9 @@ type ReviewComment struct {
 	// schema measurement would put an opinion in the place the report
 	// reserves for facts.
 	Category Category `json:"category,omitempty"`
+	// Question is what would confirm or refute this comment. See question.go
+	// for why a finding has to carry one.
+	Question Question `json:"question,omitempty"`
 }
 
 // reviewWire is the on-disk shape before aliases and flexible fields normalize.
@@ -84,6 +87,7 @@ type reviewCommentWire struct {
 	Related         []string `json:"related"`
 	Confidence      string   `json:"confidence"`
 	Category        string   `json:"category"`
+	Question        Question `json:"question"`
 }
 
 type reviewFileEntry struct {
@@ -270,6 +274,19 @@ func parseReviewComments(commentsRaw, findingsRaw json.RawMessage) ([]ReviewComm
 		if len(related) == 0 {
 			related = w.Related
 		}
+		q := w.Question
+		q.Kind = NormalizeQuestionKind(q.Kind)
+		q.Ask, q.Subject = strings.TrimSpace(q.Ask), strings.TrimSpace(q.Subject)
+		conf := Confidence(strings.TrimSpace(w.Confidence))
+		if q.Kind == QuestionNone {
+			// The reviewer said nothing available would settle this, which is
+			// its own account of the finding as speculation. The report folds
+			// low confidence away and post withholds it, so saying so here is
+			// what makes that account bind. Only an explicit "none" does this:
+			// a hand-written review with no question field states nothing and
+			// is left alone.
+			conf = ConfidenceLow
+		}
 		out = append(out, ReviewComment{
 			File:            file,
 			Line:            w.Line,
@@ -278,8 +295,9 @@ func parseReviewComments(commentsRaw, findingsRaw json.RawMessage) ([]ReviewComm
 			Severity:        Severity(strings.TrimSpace(w.Severity)),
 			Body:            w.Body,
 			RelatedFindings: related,
-			Confidence:      Confidence(strings.TrimSpace(w.Confidence)),
+			Confidence:      conf,
 			Category:        normalizeCategory(Category(w.Category)),
+			Question:        q,
 		})
 	}
 	return out, nil

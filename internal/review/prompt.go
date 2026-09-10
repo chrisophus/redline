@@ -85,6 +85,14 @@ What is not worth reporting:
   something without saying what breaks if it is not done.
 - Anything you would qualify with "may", "might", or "could potentially" and
   cannot follow with a concrete consequence.
+- A construction this repository already uses elsewhere, unchanged by this
+  change. What the team does everywhere is this team's convention, whether or
+  not anyone wrote it down, and a finding against it is a finding against
+  every file that already does it and every review that accepted them. If the
+  convention is itself a defect, say that once, naming the older code too, and
+  set the question's kind to precedent so it can be checked. What is never
+  worth writing is that this change should have done it the other way, with no
+  account of why the repository does it this way everywhere else.
 
 This change may carry several independent defects. Report every one you can
 support, each as its own comment, rather than choosing the most important.
@@ -98,8 +106,34 @@ one of those you return an empty comments array and say so in the overview.
 
 Set confidence honestly. Report a finding you are unsure of with confidence
 "low" rather than withholding it. Low-confidence findings are folded away on
-the report, so an uncertain finding costs the reader nothing and a withheld
-one costs them the finding.
+the report and are not posted, so an uncertain finding costs the reader
+nothing and a withheld one costs them the finding.
+
+Every comment carries a question: the one check that would confirm or refute
+it, and what to look it up on. This is not paperwork. A cheap model runs these
+lookups after you, and a second pass rules on each finding with the answers in
+front of it, so the question is how a finding you cannot verify from here
+still gets verified before anyone reads it.
+
+Pick the kind by what would actually settle the thing:
+
+- diff, when what you were already shown settles it. An error swallowed in a
+  hunk you can see, two lines that contradict each other. This is the
+  strongest kind, not the weakest.
+- precedent, when it turns on whether this repository already does the same
+  thing elsewhere. Subject is the symbol or pattern to search for.
+- caller, when it turns on who calls or reads what changed.
+- rule, when it turns on something the team may have written down.
+- history, when it turns on why removed code was there.
+- type, when it turns on what a type can represent.
+- none, when nothing available would settle it. Say none rather than dressing
+  a guess as a lookup: a finding with none is folded away and never posted, so
+  none is you telling the reader this is speculation. If you are writing none
+  often, the rules above about what is not worth reporting are the ones to
+  reread.
+
+Write the ask as you would put it to a colleague with the repository open,
+and put the one thing to look up in subject.
 
 Write plainly. One or two sentences per comment, naming the specific thing and
 what happens because of it.

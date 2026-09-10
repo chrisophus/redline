@@ -189,3 +189,98 @@ func TestUnionIsNotAVote(t *testing.T) {
 			rev.Comments[0].Confidence)
 	}
 }
+
+// Two samples that found one defect describe it differently and ask the same
+// thing about it. Prose could never merge them; the question can, which is
+// what makes the zero-overlap measurement worth taking again.
+func TestUnionMergesTwoWordingsOfOneQuestion(t *testing.T) {
+	q := findings.Question{
+		Kind: findings.QuestionPrecedent, Subject: "awsOfferFeedRawColumns",
+		Ask: "does anything else in this repository hard-code a CopyFrom column list?",
+	}
+	a := &Result{Review: findings.Review{Comments: []findings.ReviewComment{{
+		File: "feed.go", Body: "The hard-coded column list will drift from the table.", Question: q,
+	}}}}
+	b := &Result{Review: findings.Review{Comments: []findings.ReviewComment{{
+		File: "feed.go", Body: "Columns are enumerated by hand here, so a migration can silently mis-stage rows.", Question: q,
+	}}}}
+
+	got := unionReviews([]*Result{a, b})
+	if len(got.Comments) != 1 {
+		t.Fatalf("one defect asked about twice is one finding: %+v", got.Comments)
+	}
+	// The longer phrasing survives, the way it always has.
+	if !strings.Contains(got.Comments[0].Body, "mis-stage") {
+		t.Fatalf("the fuller wording should win: %q", got.Comments[0].Body)
+	}
+}
+
+// Two different defects in one file are two findings even when both carry a
+// question, or the union would launder a real finding into silence.
+func TestUnionKeepsTwoDefectsApartByTheirSubject(t *testing.T) {
+	a := &Result{Review: findings.Review{Comments: []findings.ReviewComment{{
+		File: "feed.go", Body: "column list drifts",
+		Question: findings.Question{Kind: findings.QuestionPrecedent, Subject: "awsOfferFeedRawColumns"},
+	}}}}
+	b := &Result{Review: findings.Review{Comments: []findings.ReviewComment{{
+		File: "feed.go", Body: "the idempotency check races",
+		Question: findings.Question{Kind: findings.QuestionPrecedent, Subject: "ObjectAlreadyStaged"},
+	}}}}
+	if got := unionReviews([]*Result{a, b}); len(got.Comments) != 2 {
+		t.Fatalf("two subjects are two findings: %+v", got.Comments)
+	}
+}
+
+// A hand-written review has no question at all and must keep merging on prose
+// the way it always did.
+func TestUnionFallsBackToProseWithoutAQuestion(t *testing.T) {
+	one := findings.ReviewComment{File: "a.go", Body: "this leaks on line 12"}
+	two := findings.ReviewComment{File: "a.go", Body: "this leaks on line 947"}
+	a := &Result{Review: findings.Review{Comments: []findings.ReviewComment{one}}}
+	b := &Result{Review: findings.Review{Comments: []findings.ReviewComment{two}}}
+	if got := unionReviews([]*Result{a, b}); len(got.Comments) != 1 {
+		t.Fatalf("digit-normalised prose still merges: %+v", got.Comments)
+	}
+}
+
+// A finding whose author says nothing would settle it is speculation by its
+// own account, and the report and post already know what to do with a
+// low-confidence finding.
+func TestAQuestionOfNoneFoldsTheFindingAway(t *testing.T) {
+	rev, err := parseReview([]byte(`{
+      "overview": "x", "files": [], "verdicts": [],
+      "comments": [{
+        "file": "a.go", "line": 1, "severity": "warning", "confidence": "high",
+        "category": "review", "relatedFindings": [], "body": "this feels wrong",
+        "question": {"kind": "none", "ask": "", "subject": ""}
+      }]
+    }`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rev.Comments[0].Confidence; got != findings.ConfidenceLow {
+		t.Fatalf("confidence = %q; a finding nothing can settle must not post as certain", got)
+	}
+}
+
+// The kinds are a closed set because the stages behind this act on them. One
+// the scout cannot answer would be a lookup nobody can run.
+func TestAnUnknownQuestionKindReadsAsUnstated(t *testing.T) {
+	rev, err := parseReview([]byte(`{
+      "overview": "x", "files": [], "verdicts": [],
+      "comments": [{
+        "file": "a.go", "line": 1, "severity": "warning", "confidence": "high",
+        "category": "review", "relatedFindings": [], "body": "b",
+        "question": {"kind": "vibes", "ask": "is this nice", "subject": "everything"}
+      }]
+    }`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k := rev.Comments[0].Question.Kind; k != "" {
+		t.Fatalf("kind = %q, want unstated", k)
+	}
+	if rev.Comments[0].Question.Answerable() {
+		t.Fatal("an unstated question must not be sent to the scout as work")
+	}
+}
