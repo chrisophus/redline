@@ -1,6 +1,7 @@
 package post
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -177,6 +178,83 @@ func TestBuildBodyOmitsWhatDoesNotApply(t *testing.T) {
 	rep.Coverage.CoverableFiles = 0
 	if p := Build(rep, prTarget(), "", nil); strings.Contains(p.Body, "diff coverage") {
 		t.Fatalf("coverage must not be mentioned when no changed file is coverable:\n%s", p.Body)
+	}
+}
+
+// The posted review carries the agent's account of the change, which is what
+// makes the pull request readable without opening the report: what the change
+// does, then a line per file. Both are the agent's words, and the body says so
+// — a reader who cannot tell measured evidence from written prose cannot tell
+// which parts of the review are checkable.
+func TestBuildBodyCarriesTheAgentsOverviewAndFileSummaries(t *testing.T) {
+	rep := sampleReport()
+	rep.Agent = &findings.AgentReview{
+		Overview: "Adds a second nil rule and widens the first.",
+		Files: map[string]string{
+			"b.go": "Widens the guard rule to accept || chains.",
+			"a.go": "New rule: a flow-fact scanner over one body.",
+		},
+	}
+	p := Build(rep, prTarget(), "", nil)
+	for _, want := range []string{
+		"### What this change does",
+		"Adds a second nil rule and widens the first.",
+		"Written by the reviewing agent, not measured.",
+		"Summary per file (2)",
+		"| `a.go` | New rule: a flow-fact scanner over one body. |",
+		// A pipe in a summary is escaped, or it ends the table cell early.
+		"| `b.go` | Widens the guard rule to accept \\|\\| chains. |",
+	} {
+		if !strings.Contains(p.Body, want) {
+			t.Fatalf("body missing %q:\n%s", want, p.Body)
+		}
+	}
+	// The evidence has to survive the prose: the verdict leads, and the table
+	// and the markers a merge gate reads are still there.
+	if !strings.HasPrefix(p.Body, "### Changes recommended\n") {
+		t.Errorf("the verdict no longer leads the body:\n%s", p.Body)
+	}
+	for _, want := range []string{"| Evidence | Result |", reviewMarkerPrefix + "deadbeef"} {
+		if !strings.Contains(p.Body, want) {
+			t.Errorf("prose displaced %q", want)
+		}
+	}
+}
+
+// Redline writes no prose of its own. A run with no review must not grow a
+// heading with nothing under it, and a summary map with only blank strings is
+// not a summary.
+func TestBuildBodyInventsNoNarrative(t *testing.T) {
+	rep := sampleReport()
+	if p := Build(rep, prTarget(), "", nil); strings.Contains(p.Body, "What this change does") ||
+		strings.Contains(p.Body, "Summary per file") {
+		t.Fatalf("a run with no agent review grew a narrative:\n%s", p.Body)
+	}
+	rep.Agent = &findings.AgentReview{Overview: "  ", Files: map[string]string{"a.go": "", "b.go": "   "}}
+	if p := Build(rep, prTarget(), "", nil); strings.Contains(p.Body, "What this change does") ||
+		strings.Contains(p.Body, "Summary per file") {
+		t.Fatalf("blank prose produced a section:\n%s", p.Body)
+	}
+}
+
+// A body over 65536 characters is rejected by GitHub, and the prose is written
+// before the findings and the gate markers. A change with a summary per file of
+// a hundred files must not be the reason a finding never reaches the review.
+func TestBuildBodyBoundsTheNarrativeSoEvidenceSurvives(t *testing.T) {
+	rep := sampleReport()
+	files := map[string]string{}
+	for i := range 400 {
+		files[fmt.Sprintf("pkg/file%03d.go", i)] = strings.Repeat("a long summary of this file. ", 12)
+	}
+	rep.Agent = &findings.AgentReview{Overview: strings.Repeat("overview. ", 8000), Files: files}
+	p := Build(rep, prTarget(), "", nil)
+	if len(p.Body) >= 65536 {
+		t.Errorf("body is %d characters, which GitHub rejects", len(p.Body))
+	}
+	for _, want := range []string{"| Evidence | Result |", "more file(s) summarised", reviewMarkerPrefix + "deadbeef"} {
+		if !strings.Contains(p.Body, want) {
+			t.Errorf("body missing %q at length %d", want, len(p.Body))
+		}
 	}
 }
 

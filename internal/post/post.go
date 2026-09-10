@@ -18,6 +18,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/chrisophus/redline/internal/findings"
@@ -219,9 +220,24 @@ func fpMarker(head, fingerprint string) string {
 func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.Finding, prof *Profile, gateVerdict string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "### %s\n\n", verdictFor(rep))
+	// The agent's own account of the change, when there is one. Redline never
+	// writes prose: an overview is present only because a review was run or a
+	// human wrote one into review.json, so it is attributed rather than shown
+	// as the tool's own conclusion.
+	if s := overviewSection(rep); s != "" {
+		b.WriteString(s)
+	}
 	if table := evidenceTable(rep); table != "" {
 		b.WriteString(table)
 		b.WriteString("\n")
+	}
+	// One row per file the agent described. Deliberately not a list of every
+	// changed path with its line counts: GitHub's own Files tab already says
+	// that, and repeating it would pad the review with what the reader can
+	// see. A file reaches this table because someone wrote a sentence about
+	// it.
+	if s := fileSummarySection(rep); s != "" {
+		b.WriteString(s)
 	}
 	if len(inBody) > 0 {
 		b.WriteString("### Findings not shown inline\n\n")
@@ -245,6 +261,67 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.F
 		b.WriteByte('\n')
 		b.WriteString(m)
 	}
+	return b.String()
+}
+
+// maxNarrative bounds what the agent's prose may take of the review body.
+// GitHub rejects a body over 65536 characters, and the parts that carry the
+// tool's own evidence -- the verdict, the pane table, the findings that could
+// not be anchored, the markers a merge gate reads -- are written after this
+// one and must not be the thing that gets cut. A change with a hundred file
+// summaries is exactly when the findings matter most.
+const maxNarrative = 20_000
+
+// overviewSection is the agent's account of what the change does, attributed
+// to it. Redline writes no prose of its own, so a run with no review has no
+// section here rather than a heading with nothing under it.
+func overviewSection(rep *findings.Report) string {
+	if rep == nil || rep.Agent == nil {
+		return ""
+	}
+	overview := strings.TrimSpace(rep.Agent.Overview)
+	if overview == "" {
+		return ""
+	}
+	if len(overview) > maxNarrative {
+		overview = overview[:maxNarrative] + "\n\n_(truncated; the full overview is on the report)_"
+	}
+	return "### What this change does\n\n" + overview + "\n\n_Written by the reviewing agent, not measured._\n\n"
+}
+
+// fileSummarySection is one row per file the agent described. It is collapsed
+// because it is orientation rather than evidence: a reader who wants it opens
+// it, and a reader chasing a finding is not made to scroll past it.
+func fileSummarySection(rep *findings.Report) string {
+	if rep == nil || rep.Agent == nil || len(rep.Agent.Files) == 0 {
+		return ""
+	}
+	paths := make([]string, 0, len(rep.Agent.Files))
+	for path, summary := range rep.Agent.Files {
+		if strings.TrimSpace(summary) != "" {
+			paths = append(paths, path)
+		}
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	sort.Strings(paths)
+	var b strings.Builder
+	fmt.Fprintf(&b, "<details>\n<summary>Summary per file (%d), written by the agent</summary>\n\n", len(paths))
+	b.WriteString("| File | What changed |\n|---|---|\n")
+	var omitted int
+	for _, path := range paths {
+		row := fmt.Sprintf("| `%s` | %s |\n", path, escapeCell(rep.Agent.Files[path]))
+		if b.Len()+len(row) > maxNarrative {
+			omitted++
+			continue
+		}
+		b.WriteString(row)
+	}
+	if omitted > 0 {
+		fmt.Fprintf(&b, "\n_%d more file(s) summarised on the full report._\n", omitted)
+	}
+	b.WriteString("\n</details>\n\n")
 	return b.String()
 }
 
