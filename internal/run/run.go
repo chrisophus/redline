@@ -320,6 +320,9 @@ func Run(opts Options) (*Result, error) {
 		if review.Overview != "" || len(review.Files) > 0 {
 			res.Report.Agent = &findings.AgentReview{Overview: review.Overview, Files: review.Files}
 		}
+		if u, ok := reviewVerifyUnknown(review); ok {
+			res.Report.Unknowns = append(res.Report.Unknowns, u)
+		}
 	}
 	if res.Report.Coverage.ExaminedFiles == 0 && len(changed) > 0 {
 		// No pane looked at any of it. This is not a clean review and must
@@ -949,10 +952,18 @@ func ReapplyReview(res *Result, rev *findings.Review) {
 	}
 	res.Report.Findings = kept
 	res.Report.Agent = nil
+	// The review-scoped notes a prior run left describe a review that is about
+	// to be replaced: a stale file, one that could not be read, or a ruling
+	// that broke. Applying a review now settles all of them, so they are
+	// dropped and re-derived from the review actually going on the page.
+	res.Report.Unknowns = dropReviewUnknowns(res.Report.Unknowns)
 	if rev != nil {
 		res.Report.Findings = append(res.Report.Findings, rev.CommentFindings()...)
 		if rev.Overview != "" || len(rev.Files) > 0 {
 			res.Report.Agent = &findings.AgentReview{Overview: rev.Overview, Files: rev.Files}
+		}
+		if u, ok := reviewVerifyUnknown(rev); ok {
+			res.Report.Unknowns = append(res.Report.Unknowns, u)
 		}
 	}
 	res.Report.Finalize()
@@ -966,6 +977,37 @@ func ReapplyReview(res *Result, rev *findings.Review) {
 // reviewSubstrate is the name every finding that came from a reviewer rather
 // than a pane carries.
 const reviewSubstrate = "redline/review"
+
+// reviewVerifyUnknown names a checking pass that ran and could not be read, so
+// the reviewer's findings sit on the page unchecked. The signal rides in
+// review.json because the reader that renders it is often a later run with no
+// access to the command that wrote the review.
+func reviewVerifyUnknown(rev *findings.Review) (findings.Unknown, bool) {
+	if rev == nil || strings.TrimSpace(rev.VerifyFailed) == "" {
+		return findings.Unknown{}, false
+	}
+	return findings.Unknown{
+		Substrate: reviewSubstrate,
+		Message: "the checking pass did not complete, so the findings below are " +
+			"as the review wrote them and none of them was checked",
+		Reason: rev.VerifyFailed,
+	}, true
+}
+
+// dropReviewUnknowns removes the review-merge notes a prior run recorded, so a
+// re-applied review does not leave the page calling the review stale or
+// unmerged beside its own findings. Only this substrate's notes are review
+// state; every pane's stays.
+func dropReviewUnknowns(us []findings.Unknown) []findings.Unknown {
+	kept := us[:0:0]
+	for _, u := range us {
+		if u.Substrate == reviewSubstrate {
+			continue
+		}
+		kept = append(kept, u)
+	}
+	return kept
+}
 
 // priorReview reads the threads Redline already left on this pull request.
 //

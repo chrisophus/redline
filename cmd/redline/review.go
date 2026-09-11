@@ -245,6 +245,10 @@ func cmdReview(o opts) error {
 	// outlives the session it came from.
 	reviewed := out.Review
 	reviewed.Revision = change.ReviewIdentity(res.Report.BaseSHA, res.Change)
+	// Carried into the file so a later `run`, `report`, or `post` that renders
+	// review.json without this command's Result can still say the ruling broke
+	// rather than merging the unchecked findings as if the pass had run.
+	reviewed.VerifyFailed = out.VerifyFailed
 	path := filepath.Join(o.out, "review.json")
 	if err := review.Merge(path, reviewed); err != nil {
 		return err

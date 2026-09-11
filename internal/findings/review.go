@@ -33,6 +33,11 @@ type Review struct {
 	// MutationVerdicts are judgments of surviving mutants, keyed by the
 	// survivor's key (mutation.survived[].key in findings.json). Source llm.
 	MutationVerdicts map[string]Verdict `json:"mutationVerdicts,omitempty"`
+	// VerifyFailed records why the checking pass produced nothing when it
+	// ran, so a later run that renders this file rather than the command that
+	// wrote it can still say the findings below were left unchecked. Empty
+	// when the pass completed or never ran.
+	VerifyFailed string `json:"verifyFailed,omitempty"`
 }
 
 // ReviewComment is one remark the agent left on a line, shaped like a GitHub
@@ -77,6 +82,7 @@ type reviewWire struct {
 	Verdicts         json.RawMessage    `json:"verdicts"`
 	Revision         string             `json:"revision"`
 	MutationVerdicts map[string]Verdict `json:"mutationVerdicts"`
+	VerifyFailed     string             `json:"verifyFailed"`
 }
 
 type reviewCommentWire struct {
@@ -164,6 +170,7 @@ func LoadReview(path string) (*Review, error) {
 	r := &Review{Verdicts: verdicts}
 	r.Revision = strings.TrimSpace(wire.Revision)
 	r.MutationVerdicts = wire.MutationVerdicts
+	r.VerifyFailed = strings.TrimSpace(wire.VerifyFailed)
 	r.Overview = strings.TrimSpace(wire.Overview)
 	if r.Overview == "" {
 		r.Overview = strings.TrimSpace(wire.WhatItDoes)
