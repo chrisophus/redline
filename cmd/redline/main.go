@@ -75,9 +75,12 @@ flags:
   --api-user NAME   with review --api openai: name the caller to a proxy that
                     wants one, sent as "Bearer user=NAME&key=KEY" (also read
                     from OPENAI_USER)
-  --model NAME      with review: model to review with (default claude-sonnet-5,
-                    or gpt-5 with --api openai)
-  --effort LEVEL    with review: low|medium|high|xhigh|max (default: the model's)
+  --model NAME      with review: model to review with, and to check the
+                    findings with (default claude-sonnet-5, or gpt-5 with
+                    --api openai)
+  --effort LEVEL    with review: low|medium|high|xhigh|max, for the review and
+                    the checking alike (default: the model's for the review,
+                    low for the checking)
   --mode MODE       with review: oneshot (default) sends the context Redline
                     chose; explore sends a catalogue and lets the reviewer
                     fetch what it wants, costing more by design. In explore
@@ -179,8 +182,8 @@ func runMain(args []string) error {
 	fs.StringVar(&o.api, "api", "", "with review: anthropic or openai")
 	fs.StringVar(&o.baseURL, "base-url", "", "with review: endpoint to send the call to, for a proxy")
 	fs.StringVar(&o.apiUser, "api-user", "", "with review --api openai: caller name for a proxy that wants one beside the key")
-	fs.StringVar(&o.model, "model", "", "with review: model to review with")
-	fs.StringVar(&o.effort, "effort", "", "with review: low|medium|high|xhigh|max")
+	fs.StringVar(&o.model, "model", "", "with review: model to review and check the findings with")
+	fs.StringVar(&o.effort, "effort", "", "with review: low|medium|high|xhigh|max, for the review and the checking")
 	fs.StringVar(&o.mode, "mode", "", "with review: oneshot or explore")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "with review --mode explore: turn limit")
 	fs.IntVar(&o.samples, "samples", 0, "with review: independent reviews to union")

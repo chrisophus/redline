@@ -636,3 +636,25 @@ func TestScoutRunsOnTheOpenAIWire(t *testing.T) {
 		t.Fatal("with no working tree there is nothing to look up")
 	}
 }
+
+// --model and --effort used to stop at stage one, so a review run on another
+// model checked its findings with the scout's defaults. The lookups take the
+// review's flags, and an unset flag stays unset so the scout's own defaults
+// apply to it.
+func TestTheLookupsRunOnTheReviewsModelAndEffort(t *testing.T) {
+	res := &run.Result{}
+	ropts := review.Options{Model: "claude-opus-5", Effort: "medium", API: review.APIAnthropic, BaseURL: "http://proxy"}
+	got := answerOptions("/tree", res, ropts, []review.Question{{ID: "c1", Kind: "precedent", Subject: "Insert"}})
+	if got.Model != "claude-opus-5" || got.Effort != "medium" {
+		t.Errorf("model/effort = %q/%q, want the review's", got.Model, got.Effort)
+	}
+	if got.BaseURL != "http://proxy" || got.API != review.APIAnthropic {
+		t.Errorf("the lookups are not on the review's wire: %+v", got)
+	}
+	if len(got.Questions) != 1 || got.Questions[0].ID != "c1" {
+		t.Errorf("questions = %+v, want the one asked", got.Questions)
+	}
+	if unset := answerOptions("/tree", res, review.Options{}, nil); unset.Model != "" || unset.Effort != "" {
+		t.Errorf("an unset flag reached the scout as %q/%q; it should stay empty for the scout's defaults", unset.Model, unset.Effort)
+	}
+}

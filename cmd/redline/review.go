@@ -313,32 +313,9 @@ func scoutAnswerer(res *run.Result, ropts review.Options, tally *scoutTally) rev
 		return nil
 	}
 	return func(ctx context.Context, qs []review.Question) (*envelope.Envelope, error) {
-		out := make([]scout.Question, 0, len(qs))
-		for _, q := range qs {
-			out = append(out, scout.Question{
-				ID: q.ID, Kind: q.Kind, Ask: q.Ask, Subject: q.Subject,
-				Claim: q.Claim, File: q.File, Line: q.Line,
-			})
-		}
-		fmt.Fprintf(os.Stderr, "redline: looking up %d question(s) the review asked\n", len(out))
-		// The lookups go over the same wire the review did. On the OpenAI wire
-		// the scout uses the OpenAI credentials stage one used; on the
-		// Anthropic wire an empty key falls back to the SDK's own credential
-		// chain, an `ant auth login` profile included.
-		env, spend, err := scout.Run(ctx, scout.Options{
-			Root:      root,
-			Diff:      diffOf(res),
-			Intent:    intentOf(res),
-			BaseSHA:   res.Report.BaseSHA,
-			Questions: out,
-			API:       ropts.API,
-			BaseURL:   ropts.BaseURL,
-			APIKey:    ropts.APIKey,
-			APIUser:   ropts.APIUser,
-			Progress:  ropts.Progress,
-			Debug:     ropts.Debug,
-			Capture:   ropts.Capture,
-		})
+		sopts := answerOptions(root, res, ropts, qs)
+		fmt.Fprintf(os.Stderr, "redline: looking up %d question(s) the review asked\n", len(sopts.Questions))
+		env, spend, err := scout.Run(ctx, sopts)
 		if spend.Turns > 0 {
 			fmt.Fprintf(os.Stderr, "redline: lookups took %d turn(s), %d record(s), %s\n",
 				spend.Turns, spend.Records, review.FormatCost(spend.CostUSD, spend.CostKnown))
@@ -349,6 +326,43 @@ func scoutAnswerer(res *run.Result, ropts review.Options, tally *scoutTally) rev
 			tally.known = tally.known && spend.CostKnown
 		}
 		return env, err
+	}
+}
+
+// answerOptions is the scout run the review's own flags describe. The lookups
+// go over the same wire the review did, on the same model at the same effort:
+// --model and --effort used to stop at stage one, so a review run on another
+// model still checked its findings with the scout's defaults, and there was
+// no flag that reached the checking. Empty is still empty here, and the scout
+// applies its own defaults to it, so a review run with no flags checks its
+// findings as it always did.
+//
+// The credentials follow the same rule. On the OpenAI wire the scout uses the
+// credentials stage one used; on the Anthropic wire an empty key falls back
+// to the SDK's own credential chain, an `ant auth login` profile included.
+func answerOptions(root string, res *run.Result, ropts review.Options, qs []review.Question) scout.Options {
+	out := make([]scout.Question, 0, len(qs))
+	for _, q := range qs {
+		out = append(out, scout.Question{
+			ID: q.ID, Kind: q.Kind, Ask: q.Ask, Subject: q.Subject,
+			Claim: q.Claim, File: q.File, Line: q.Line,
+		})
+	}
+	return scout.Options{
+		Root:      root,
+		Diff:      diffOf(res),
+		Intent:    intentOf(res),
+		BaseSHA:   res.Report.BaseSHA,
+		Questions: out,
+		Model:     ropts.Model,
+		Effort:    ropts.Effort,
+		API:       ropts.API,
+		BaseURL:   ropts.BaseURL,
+		APIKey:    ropts.APIKey,
+		APIUser:   ropts.APIUser,
+		Progress:  ropts.Progress,
+		Debug:     ropts.Debug,
+		Capture:   ropts.Capture,
 	}
 }
 
