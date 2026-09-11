@@ -484,10 +484,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	// stream that breaks partway has already cost what it cost. A result
 	// that reports no usage is how a paid call ends up with no ledger line,
 	// which is the failure this ordering exists to prevent.
-	stage := "review"
-	if res.rulesRatherThanReviews() {
-		stage = "ruling"
-	}
+	stage := res.stage()
 	if opts.Debug != nil {
 		opts.Debug(fmt.Sprintf("→ %s %s (%s): ~%d input tokens, cap %d, effort %s",
 			opts.API, opts.Model, stage, res.InputEstimate, opts.MaxTokens, opts.Effort))
@@ -523,6 +520,15 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 		res.UsageEstimated = true
 	}
 	res.CostUSD, res.CostKnown = res.Usage.Cost(opts.Model)
+	if opts.Capture != nil {
+		// Written before the error is returned rather than after it, so a
+		// call that failed is recorded too: the old ordering captured only
+		// the paths that worked, which are the ones nobody reads. And it
+		// wrote the bare body, so a refusal, a truncation and a model that
+		// answered with nothing were three identical empty files with
+		// nothing on disk to tell them apart.
+		opts.Capture(stage+".response.json", captureResponse(opts, stage, res, c, err))
+	}
 	if err != nil {
 		return res, fmt.Errorf("review call: %w", err)
 	}
@@ -534,9 +540,6 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			opts.Debug(stage + " response body:\n" + debugBody(c.text))
 		}
 	}
-	if opts.Capture != nil {
-		opts.Capture(stage+".response.json", []byte(c.text))
-	}
 
 	// A refusal comes back as a normal 200 with an empty-looking body, so
 	// the stop reason is checked before the content is read. Reporting it as
@@ -547,6 +550,20 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			c.detail)
 	}
 	if c.truncated {
+		// Two different failures wear the same stop reason. A review cut
+		// off mid-finding wants a bigger cap. A response with no content at
+		// all spent the whole cap reasoning and never began, and telling
+		// that caller to raise a cap they may already have at the model's
+		// ceiling buys them another ten minutes and another empty answer.
+		if strings.TrimSpace(c.text) == "" {
+			advice := "raise --max-tokens if the model will emit more"
+			if opts.Effort != "" {
+				advice = fmt.Sprintf("lower --effort, which was %q, or %s", opts.Effort, advice)
+			}
+			return res, fmt.Errorf(
+				"the model spent the whole %d-token output cap on reasoning and never started the %s; %s",
+				opts.MaxTokens, stage, advice)
+		}
 		return res, fmt.Errorf("the response hit the %d-token cap and is truncated; raise --max-tokens",
 			opts.MaxTokens)
 	}
@@ -583,6 +600,70 @@ func debugBody(s string) string {
 		return s[:max] + fmt.Sprintf("\n… (%d bytes total, truncated in debug output)", len(s))
 	}
 	return s
+}
+
+// stage names which of the two calls a Result is carrying, which is what the
+// debug lines and the captured files are labelled with. The output contract
+// decides it: one wire, two stages.
+func (r *Result) stage() string {
+	if r.rulesRatherThanReviews() {
+		return "ruling"
+	}
+	return "review"
+}
+
+// captureResponse renders what came back, for a reader who has only the file
+// on disk and a run that is over.
+//
+// The body alone was not enough. A model that declined, a model that spent
+// its whole output cap reasoning, and a model that simply returned nothing
+// all produce an empty body, and the three want three different responses
+// from the person reading. The stop reason and the token counts tell them
+// apart at a glance, and they cost nothing to write down.
+//
+// A body that is JSON is nested as JSON rather than escaped into a string,
+// so the file stays worth piping through jq — which is the only reason
+// anybody opens it.
+func captureResponse(opts Options, stage string, res *Result, c completion, callErr error) []byte {
+	out := map[string]any{
+		"api":            opts.API,
+		"model":          opts.Model,
+		"stage":          stage,
+		"effort":         opts.Effort,
+		"maxTokens":      opts.MaxTokens,
+		"stopReason":     c.stopReason,
+		"usage":          res.Usage,
+		"usageEstimated": res.UsageEstimated,
+		"costUSD":        res.CostUSD,
+		"costKnown":      res.CostKnown,
+		"seconds":        res.Duration.Seconds(),
+		"bodyBytes":      len(c.text),
+	}
+	if c.truncated {
+		out["truncated"] = true
+	}
+	if c.refused {
+		out["refused"] = true
+		out["refusalDetail"] = c.detail
+	}
+	if callErr != nil {
+		out["error"] = callErr.Error()
+	}
+	if body := strings.TrimSpace(c.text); body != "" {
+		if json.Valid([]byte(body)) {
+			out["body"] = json.RawMessage(body)
+		} else {
+			out["body"] = body
+		}
+	}
+	b, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		// Nothing here can fail to marshal, but a capture that returned
+		// nothing would recreate the empty file this function exists to
+		// stop producing.
+		return []byte(fmt.Sprintf("{\"stage\":%q,\"captureError\":%q}\n", stage, err.Error()))
+	}
+	return append(b, '\n')
 }
 
 // languageFragments appends each provider's language half to the harness
