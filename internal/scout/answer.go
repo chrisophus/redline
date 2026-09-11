@@ -124,6 +124,16 @@ Your tools: %s.`, turns, strings.Join(tools, ", "))
 // about. The diff is here because a question names a symbol and the ruling
 // needs the same symbol found in the same place; without it the scout would be
 // grepping for a name with no idea which of its uses is the changed one.
+//
+// What the author said the change is for is deliberately not here, though the
+// exploring brief carries it. There it earns its place by naming a plan or a
+// package to go and look at, which is a lead the diff does not hold. Here
+// every question already says what to look up, so the account adds no lead
+// and does add a claim the author has a stake in: "this is intentional, it
+// mirrors the account feed" is the sentence that turns a neutral search into
+// one hunting for precedent that justifies. This stage is the one that is
+// supposed to be independent of it. The ruling still reads it, in the review
+// prompt it shares as its cache prefix.
 func answerBrief(opts Options) string {
 	var b strings.Builder
 	b.WriteString("Questions to answer. Each one belongs to a finding a reviewer made ")
@@ -145,7 +155,6 @@ func answerBrief(opts Options) string {
 		b.WriteString("\n")
 	}
 	b.WriteString(coveredBrief(opts))
-	b.WriteString(intentBrief(opts))
 	if asksAboutRules(opts.Questions) {
 		// A rule question is answered from the same files the exploring
 		// brief already inlines. Without them here the scout spends its

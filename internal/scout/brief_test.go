@@ -127,12 +127,18 @@ func TestAnUntaggedAnswerIsKeptAndTheScoutIsTold(t *testing.T) {
 	}
 }
 
-// The answering scout reads the same account of the change the finding was
-// made from.
-func TestTheAnsweringBriefCarriesTheAuthorsAccount(t *testing.T) {
-	got := answerBrief(Options{Diff: "d", Intent: "- Mirror the account feed\n", Questions: []Question{{ID: "c1", Kind: "precedent"}}})
-	if !strings.Contains(got, "Mirror the account feed") {
-		t.Errorf("the account is missing from the answering brief:\n%s", got)
+// The author's account steers the exploring search and is kept out of the
+// checking one. A question already says what to look up, so the account adds
+// no lead there, and it does add a claim the author has a stake in to the
+// stage whose job is to check their code independently of it.
+func TestTheAuthorsAccountIsKeptOutOfTheCheckingBrief(t *testing.T) {
+	opts := Options{Diff: "d", Intent: "- Mirror the account feed, this is intentional\n"}
+	if !strings.Contains(brief(opts), "Mirror the account feed") {
+		t.Error("the exploring brief lost the account it searches by")
+	}
+	opts.Questions = []Question{{ID: "c1", Kind: "precedent", Subject: "Insert"}}
+	if got := answerBrief(opts); strings.Contains(got, "Mirror the account feed") {
+		t.Errorf("the checking brief carries the author's claim about the code:\n%s", got)
 	}
 }
 

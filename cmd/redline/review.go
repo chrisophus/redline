@@ -372,7 +372,6 @@ func answerOptions(root string, res *run.Result, ropts review.Options, scoutOpts
 	return scout.Options{
 		Root:      root,
 		Diff:      diffOf(res),
-		Intent:    intentOf(res),
 		BaseSHA:   res.Report.BaseSHA,
 		Questions: out,
 		Model:     scoutOpts.Model,
@@ -390,33 +389,6 @@ func answerOptions(root string, res *run.Result, ropts review.Options, scoutOpts
 func isDir(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.IsDir()
-}
-
-// intentOf is what the author said the change does, as the review was sent
-// it: the pull request's title and body, then the commits with their bodies.
-// A rule question is often about what the author claims, and the scout
-// answering it should be reading the same claim the finding was made from.
-func intentOf(res *run.Result) string {
-	if res.Change == nil {
-		return ""
-	}
-	var b strings.Builder
-	if t := res.Change.Target; t != nil && t.PR != nil && (t.PR.Title != "" || t.PR.Body != "") {
-		fmt.Fprintf(&b, "Pull request #%d: %s\n", t.PR.Number, strings.TrimSpace(t.PR.Title))
-		if body := strings.TrimSpace(t.PR.Body); body != "" {
-			b.WriteString(body + "\n")
-		}
-		b.WriteString("\n")
-	}
-	for _, c := range res.Change.Commits {
-		fmt.Fprintf(&b, "- %s\n", strings.TrimSpace(c.Subject))
-		if body := strings.TrimSpace(c.Body); body != "" {
-			for _, line := range strings.Split(body, "\n") {
-				fmt.Fprintf(&b, "  %s\n", line)
-			}
-		}
-	}
-	return b.String()
 }
 
 // diffOf is the change as the review saw it, which is what the lookups are

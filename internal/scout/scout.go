@@ -76,8 +76,9 @@ type Options struct {
 	// brief: everything else it wants, it fetches.
 	Diff string
 	// Intent is what the author said the change does: commit messages, and
-	// the pull request's title and body when there is one. Rendered into the
-	// brief as a claim to steer the search by, the way the reviewer gets it.
+	// the pull request's title and body when there is one. It steers an
+	// exploring search, which has to work out for itself what to look at,
+	// and answerBrief says why a search given questions is not sent it.
 	Intent string
 	// Generated maps a changed path to why it is machine output, for the ones
 	// that are. Their diffs are held back, and the manifest says so, which is
