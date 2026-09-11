@@ -47,10 +47,17 @@ const (
 // from prose, so the result tracks a real count to within a few percent
 // instead of the fifty it used to be short by.
 func EstimateTokens(s string) int {
-	if s == "" {
+	return EstimateTokensLen(len(s))
+}
+
+// EstimateTokensLen is the same estimate for a string that was measured as
+// it streamed past and never assembled. One formula, because a second copy
+// of the ratio is a second copy to keep in step with the first.
+func EstimateTokensLen(n int) int {
+	if n <= 0 {
 		return 0
 	}
-	return (len(s)*charsPerTokenNum + charsPerTokenDen - 1) / charsPerTokenDen
+	return (n*charsPerTokenNum + charsPerTokenDen - 1) / charsPerTokenDen
 }
 
 // Tokens is what one expansion costs, including the header Redline renders

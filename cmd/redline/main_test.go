@@ -628,11 +628,63 @@ func TestPostAnchorsCommentsToTheSessionDiff(t *testing.T) {
 // review used. A session with no working tree still has nothing to look up.
 func TestScoutRunsOnTheOpenAIWire(t *testing.T) {
 	res := &run.Result{Target: &target.Target{Dir: t.TempDir()}}
-	if scoutAnswerer(res, review.Options{API: review.APIOpenAI, APIKey: "sk-openai"}, nil) == nil {
+	if scoutAnswerer(res, review.Options{API: review.APIOpenAI, APIKey: "sk-openai"}, scoutSettings{}, nil) == nil {
 		t.Fatal("the scout should be wired to run on the OpenAI wire")
 	}
 	gone := &run.Result{Target: &target.Target{Dir: filepath.Join(t.TempDir(), "missing")}}
-	if scoutAnswerer(gone, review.Options{API: review.APIOpenAI, APIKey: "sk-openai"}, nil) != nil {
+	if scoutAnswerer(gone, review.Options{API: review.APIOpenAI, APIKey: "sk-openai"}, scoutSettings{}, nil) != nil {
 		t.Fatal("with no working tree there is nothing to look up")
+	}
+}
+
+// --model and --effort used to stop at stage one, so a review run on another
+// model checked its findings with the scout's defaults. The lookups take the
+// review's flags, and an unset flag stays unset so the scout's own defaults
+// apply to it.
+func TestTheLookupsRunOnTheReviewsModelAndEffort(t *testing.T) {
+	res := &run.Result{}
+	ropts := review.Options{Model: "claude-opus-5", Effort: "medium", API: review.APIAnthropic, BaseURL: "http://proxy"}
+	settings := opts{model: "claude-opus-5", effort: "medium"}.scoutSettings()
+	got := answerOptions("/tree", res, ropts, settings, []review.Question{{ID: "c1", Kind: "precedent", Subject: "Insert"}})
+	if got.Model != "claude-opus-5" || got.Effort != "medium" {
+		t.Errorf("model/effort = %q/%q, want the review's", got.Model, got.Effort)
+	}
+	if got.BaseURL != "http://proxy" || got.API != review.APIAnthropic {
+		t.Errorf("the lookups are not on the review's wire: %+v", got)
+	}
+	if len(got.Questions) != 1 || got.Questions[0].ID != "c1" {
+		t.Errorf("questions = %+v, want the one asked", got.Questions)
+	}
+	if unset := answerOptions("/tree", res, review.Options{}, opts{}.scoutSettings(), nil); unset.Model != "" || unset.Effort != "" {
+		t.Errorf("an unset flag reached the scout as %q/%q; it should stay empty for the scout's defaults", unset.Model, unset.Effort)
+	}
+}
+
+// The answering scout resolves guideline files by walking up from each
+// changed path, so an empty Changed leaves it reading the repository's
+// root-level rules and nothing nearer. A question about a rule is then
+// answered against the most general rules in the tree.
+func TestTheLookupsAreToldWhichPathsChanged(t *testing.T) {
+	res := &run.Result{Change: &change.Set{Files: []change.File{
+		{Path: "internal/store/user.go"},
+		{Path: "internal/queue/q.go"},
+	}}}
+	got := answerOptions("/tree", res, review.Options{}, scoutSettings{}, nil)
+	if len(got.Changed) != 2 || got.Changed[0] != "internal/store/user.go" {
+		t.Errorf("Changed = %v, want the change's paths so nested rules resolve", got.Changed)
+	}
+}
+
+// --scout-model and --scout-effort win over --model and --effort for the
+// checking pass, each on its own, so the review can run on one model and
+// check its findings on a cheaper one.
+func TestTheScoutFlagsWinForTheCheckingPass(t *testing.T) {
+	both := opts{model: "claude-opus-5", effort: "high", scoutModel: "claude-haiku-4-5", scoutEffort: "low"}.scoutSettings()
+	if both.Model != "claude-haiku-4-5" || both.Effort != "low" {
+		t.Errorf("settings = %+v, want the scout flags", both)
+	}
+	one := opts{model: "claude-opus-5", effort: "high", scoutModel: "claude-haiku-4-5"}.scoutSettings()
+	if one.Model != "claude-haiku-4-5" || one.Effort != "high" {
+		t.Errorf("settings = %+v, want the scout model with the review's effort", one)
 	}
 }

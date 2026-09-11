@@ -316,7 +316,10 @@ Findings from `review` are advisory and marked `source: llm`. They never
 reach the merge gate, whatever severity they carry. A gate that blocks on
 something the author cannot reproduce gets bypassed inside a month.
 
-Flags: `--model` (default `claude-sonnet-5`), `--effort`, `--ceiling`
+Flags: `--model` (default `claude-sonnet-5`, and the checking pass runs on
+the same model), `--effort` (the same, with the checking pass at `low` when
+it is not set), `--scout-model` and `--scout-effort` (the checking pass
+alone, when it should differ from the review), `--ceiling`
 (default 250000 tokens, bounding the whole request), `--max-tokens`,
 `--max-cost` (a tripwire checked against the worst-case cost before anything
 is sent), `--stats`, `--dry-run`, `--api`, `--base-url`, `--debug`.

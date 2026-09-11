@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -46,6 +47,9 @@ type toolset struct {
 	// turn of the budget: a search cut off mid-lookup files nothing, and
 	// everything it read is paid for and then thrown away.
 	closing bool
+	// answering is set when the run has questions. A record then wants an
+	// id to be filed against, and one without gets told so.
+	answering bool
 
 	res    *resolver
 	root   string
@@ -219,8 +223,8 @@ func (ts *toolset) grep() tool {
 		name:        "grep",
 		description: "Search the repository for a regular expression. Returns matching lines with their file and line number, capped. Use it to find who mentions a changed symbol.",
 		schema: schema(map[string]any{
-			"pattern": str("Go regular expression"),
-			"glob":    str("optional path suffix filter, for example .go or internal/store/"),
+			"pattern": str("Go regular expression, matched against one line at a time"),
+			"glob":    str("optional filter: only paths containing this text are searched, for example .go or internal/store/"),
 		}, "pattern"),
 		run: func(input json.RawMessage) (string, error) {
 			var in struct {
@@ -246,9 +250,14 @@ func (ts *toolset) listDocs() tool {
 			"Use it when a change looks like it is implementing something that was written down, or when its intent is not obvious from the diff. Read what looks relevant with read_lines.",
 		schema: schema(map[string]any{}),
 		run: func(json.RawMessage) (string, error) {
-			docs := listDocs(ts.root, 80)
+			const max = 80
+			docs := listDocs(ts.root, max+1)
 			if len(docs) == 0 {
 				return "no documents in this repository", nil
+			}
+			cut := len(docs) > max
+			if cut {
+				docs = docs[:max]
 			}
 			var b strings.Builder
 			for _, d := range docs {
@@ -257,6 +266,11 @@ func (ts *toolset) listDocs() tool {
 					fmt.Fprintf(&b, ": %s", d.Heading)
 				}
 				b.WriteString("\n")
+			}
+			if cut {
+				// Said, so a design note that sorts after the cut is a gap
+				// the scout knows about rather than one it cannot.
+				fmt.Fprintf(&b, "(stopped at %d documents, sorted by path; there are more, so grep for a word a document would use)\n", max)
 			}
 			return b.String(), nil
 		},
@@ -361,9 +375,6 @@ func (ts *toolset) record() tool {
 			if err := json.Unmarshal(input, &in); err != nil {
 				return "", fmt.Errorf("bad arguments: %v", err)
 			}
-			if len(ts.records) >= ts.limits.MaxRecords {
-				return "", fmt.Errorf("already recorded %d ranges, which is the limit; call done", ts.limits.MaxRecords)
-			}
 			rec := record{
 				Role:      envelopeRole(in.Role),
 				File:      normPath(in.File),
@@ -376,9 +387,34 @@ func (ts *toolset) record() tool {
 			if err := ts.res.validate(rec); err != nil {
 				return "", err
 			}
+			if rec.Answers != "" {
+				// A tagged record replaces an untagged twin. The reminder
+				// below asks for exactly this second call, and the first
+				// record would otherwise reach the ruling as a duplicate
+				// tied to nothing.
+				ts.records = slices.DeleteFunc(ts.records, func(r record) bool {
+					return r.Answers == "" && r.Role == rec.Role && r.File == rec.File &&
+						r.StartLine == rec.StartLine && r.EndLine == rec.EndLine
+				})
+			}
+			// Checked after the dedup above rather than before it. A tagged
+			// record that replaces an untagged twin leaves the count exactly
+			// where it was, and the reminder below asks the model for that
+			// very call; refusing it at the limit made the tool contradict
+			// its own instruction on every run that filled its budget.
+			if len(ts.records) >= ts.limits.MaxRecords {
+				return "", fmt.Errorf("already recorded %d ranges, which is the limit; call done", ts.limits.MaxRecords)
+			}
 			ts.records = append(ts.records, rec)
-			return fmt.Sprintf("recorded %s %s:%d-%d (%d of %d)",
-				rec.Role, rec.File, rec.StartLine, rec.EndLine, len(ts.records), ts.limits.MaxRecords), nil
+			out := fmt.Sprintf("recorded %s %s:%d-%d (%d of %d)",
+				rec.Role, rec.File, rec.StartLine, rec.EndLine, len(ts.records), ts.limits.MaxRecords)
+			if ts.answering && rec.Answers == "" {
+				// Accepted, because the evidence is real either way, and
+				// told: an untagged answer reaches the ruling as something
+				// found but tied to nothing, which one more call can fix.
+				out += "; it is tied to no question, so record it again with answers set to the id in brackets of the finding it bears on"
+			}
+			return out, nil
 		},
 	}
 }
@@ -391,7 +427,7 @@ func (ts *toolset) finish() tool {
 			"notes": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "what you could not determine, one short sentence each",
+				"description": "what you could not determine, one short sentence each, naming what you looked for; when you were given questions, start each with the id in brackets of the one it is about",
 			},
 		}),
 		run: func(input json.RawMessage) (string, error) {

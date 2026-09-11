@@ -54,7 +54,7 @@ type Question struct {
 // stage after this one treats silence and absence differently: an unanswered
 // question makes a finding unverifiable and folds it away, where a wrong
 // silence would let it through as though nothing had been asked.
-func answerPrompt(tools []string) string {
+func answerPrompt(tools []string, turns int) string {
 	return fmt.Sprintf(`You are checking a code review's findings before anyone reads them.
 
 A model reviewed a change and wrote down, for each thing it flagged, the one
@@ -95,6 +95,13 @@ If you cannot settle a question, say so in your notes for that finding, in one
 sentence, naming what you looked for. A finding nobody could check is folded
 away rather than posted, so an honest "no precedent found for X, searched the
 whole tree" and a silence are read very differently: the first is an answer.
+Start every note with the id of the question it is about, in brackets, the
+way the brief writes it: the ruling reads the notes beside the findings and
+a note that names no finding is a note it cannot place.
+
+Tag every record with the id of the question it answers. A record with no id
+reaches the ruling as something found but tied to nothing, and a finding it
+would have settled reads as unchecked.
 
 Do not record test files. Redline holds test context back.
 
@@ -102,15 +109,31 @@ Be frugal. One or two records per question, and none at all for a question
 whose answer is simply that nothing turned up. Every line you record is a line
 the ruling has to read.
 
+You have %d turns, and the last of them is for filing rather than searching.
+Every tool call in one turn runs before you see any result, at one turn's
+cost, so run the lookups for several questions in the same turn: the greps
+for each precedent question, the caller query for each caller question.
+Record as soon as a lookup settles a range rather than at the end.
+
 When you have worked through the questions, call done.
 
-Your tools: %s.`, strings.Join(tools, ", "))
+Your tools: %s.`, turns, strings.Join(tools, ", "))
 }
 
 // answerBrief is the user turn: the questions, and the diff they were asked
 // about. The diff is here because a question names a symbol and the ruling
 // needs the same symbol found in the same place; without it the scout would be
 // grepping for a name with no idea which of its uses is the changed one.
+//
+// What the author said the change is for is deliberately not here, though the
+// exploring brief carries it. There it earns its place by naming a plan or a
+// package to go and look at, which is a lead the diff does not hold. Here
+// every question already says what to look up, so the account adds no lead
+// and does add a claim the author has a stake in: "this is intentional, it
+// mirrors the account feed" is the sentence that turns a neutral search into
+// one hunting for precedent that justifies. This stage is the one that is
+// supposed to be independent of it. The ruling still reads it, in the review
+// prompt it shares as its cache prefix.
 func answerBrief(opts Options) string {
 	var b strings.Builder
 	b.WriteString("Questions to answer. Each one belongs to a finding a reviewer made ")
@@ -132,9 +155,25 @@ func answerBrief(opts Options) string {
 		b.WriteString("\n")
 	}
 	b.WriteString(coveredBrief(opts))
+	if asksAboutRules(opts.Questions) {
+		// A rule question is answered from the same files the exploring
+		// brief already inlines. Without them here the scout spends its
+		// first turn on list_docs and a read of AGENTS.md to reach lines
+		// the brief could have carried for a few hundred tokens.
+		b.WriteString(guidelineBrief(opts.Root, guidelines(opts.Root, opts.Changed), inlineGuidelineLines, totalGuidelineLines))
+	}
 	b.WriteString("\nThe change these were written about:\n\n")
 	b.WriteString(opts.Diff)
 	return b.String()
+}
+
+func asksAboutRules(qs []Question) bool {
+	for _, q := range qs {
+		if strings.EqualFold(strings.TrimSpace(q.Kind), "rule") {
+			return true
+		}
+	}
+	return false
 }
 
 func location(q Question) string {
@@ -178,9 +217,9 @@ and a finding resting on it has not been verified by anything.`
 // that the model never writes the content are all worth having once.
 func promptFor(opts Options, tools []string) string {
 	if len(opts.Questions) > 0 {
-		return answerPrompt(tools)
+		return answerPrompt(tools, opts.MaxTurns)
 	}
-	return systemPrompt(tools)
+	return systemPrompt(tools, opts.MaxTurns)
 }
 
 func briefFor(opts Options) string {
@@ -190,12 +229,17 @@ func briefFor(opts Options) string {
 	return brief(opts)
 }
 
-// closingBrief is the last thing the scout is told. The turns are spent, and
-// a model that keeps searching now has its work discarded: nothing reaches
-// the review except through record, so the loop asks for the filing rather
-// than stopping mid-lookup and reporting that it found nothing. Named
+// The closing brief is the last thing the scout is told. The turns are spent,
+// and a model that keeps searching now has its work discarded: nothing
+// reaches the review except through record, so the loop asks for the filing
+// rather than stopping mid-lookup and reporting that it found nothing. Named
 // separately from the notes because the model is told this, not the reader.
-const closingBrief = `That is the last of the turns. Look nothing else up: the searching is over.
+//
+// One per job. The answering one talks about questions and a ruling, and an
+// exploring scout told that has been handed a brief about a stage it is not
+// in.
+const (
+	closingBrief = `That is the last of the turns. Look nothing else up: the searching is over.
 
 File what you have now. Call record for every location that bears on a
 question, even a partial answer, and say in the note what is still missing.
@@ -204,6 +248,23 @@ Then call done, and put what you could not establish in its notes.
 Anything you do not record is lost. The findings are ruled on with whatever
 is filed here, and a question with nothing against it reads as a question
 nobody could answer.`
+
+	exploringClosingBrief = `That is the last of the turns. Look nothing else up: the searching is over.
+
+File what you have now. Call record for every location you have already read
+that the reviewer needs and the diff does not show, then call done, and put
+what you went looking for and did not reach in its notes.
+
+Anything you do not record is lost. The reviewer sees the diff and what is
+filed here, and a gap nobody names reads exactly like a gap that is not there.`
+)
+
+func closingFor(opts Options) string {
+	if len(opts.Questions) > 0 {
+		return closingBrief
+	}
+	return exploringClosingBrief
+}
 
 func fragmentFor(opts Options) string {
 	if len(opts.Questions) > 0 {

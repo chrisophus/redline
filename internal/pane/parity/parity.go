@@ -29,6 +29,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/gitx"
 	"github.com/chrisophus/redline/internal/pane"
@@ -165,6 +166,16 @@ func (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {
 
 	for _, changed := range p.scoped {
 		dir, file := path.Dir(changed), path.Base(changed)
+		// A test file is named after the unit it tests, not after a
+		// capability its siblings ought to match. On one real change
+		// internal/review/cache_test.go and internal/scout/brief_test.go
+		// covered the same capability on two wires under two names, and
+		// this pane reported each as missing from the other: the opposite
+		// of the truth, twice, on one change. Filenames answer the
+		// capability question for source and not for tests.
+		if change.IsTest(changed) {
+			continue
+		}
 		// One sibling is enough. Two parallel implementations that share a
 		// shape, where a capability landed in only one of them, is the whole
 		// question; a repository does not need three providers to have it.

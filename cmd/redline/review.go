@@ -118,7 +118,7 @@ func cmdReview(o opts) error {
 		}
 	}
 	if ropts.Verify {
-		ropts.Answer = scoutAnswerer(res, ropts, &tally)
+		ropts.Answer = scoutAnswerer(res, ropts, o.scoutSettings(), &tally)
 	}
 	if !o.dryRun {
 		// Said before the call, not after it. A review is one blocking
@@ -300,7 +300,7 @@ type scoutTally struct {
 // money is the caller's business, and everything below degrades to nil rather
 // than failing, so a checkout with no key still gets a ruling over the
 // answers it has.
-func scoutAnswerer(res *run.Result, ropts review.Options, tally *scoutTally) review.Answerer {
+func scoutAnswerer(res *run.Result, ropts review.Options, scoutOpts scoutSettings, tally *scoutTally) review.Answerer {
 	root := ""
 	if res.Target != nil {
 		root = res.Target.Dir
@@ -313,31 +313,9 @@ func scoutAnswerer(res *run.Result, ropts review.Options, tally *scoutTally) rev
 		return nil
 	}
 	return func(ctx context.Context, qs []review.Question) (*envelope.Envelope, error) {
-		out := make([]scout.Question, 0, len(qs))
-		for _, q := range qs {
-			out = append(out, scout.Question{
-				ID: q.ID, Kind: q.Kind, Ask: q.Ask, Subject: q.Subject,
-				Claim: q.Claim, File: q.File, Line: q.Line,
-			})
-		}
-		fmt.Fprintf(os.Stderr, "redline: looking up %d question(s) the review asked\n", len(out))
-		// The lookups go over the same wire the review did. On the OpenAI wire
-		// the scout uses the OpenAI credentials stage one used; on the
-		// Anthropic wire an empty key falls back to the SDK's own credential
-		// chain, an `ant auth login` profile included.
-		env, spend, err := scout.Run(ctx, scout.Options{
-			Root:      root,
-			Diff:      diffOf(res),
-			BaseSHA:   res.Report.BaseSHA,
-			Questions: out,
-			API:       ropts.API,
-			BaseURL:   ropts.BaseURL,
-			APIKey:    ropts.APIKey,
-			APIUser:   ropts.APIUser,
-			Progress:  ropts.Progress,
-			Debug:     ropts.Debug,
-			Capture:   ropts.Capture,
-		})
+		sopts := answerOptions(root, res, ropts, scoutOpts, qs)
+		fmt.Fprintf(os.Stderr, "redline: looking up %d question(s) the review asked\n", len(sopts.Questions))
+		env, spend, err := scout.Run(ctx, sopts)
 		if spend.Turns > 0 {
 			fmt.Fprintf(os.Stderr, "redline: lookups took %d turn(s), %d record(s), %s\n",
 				spend.Turns, spend.Records, review.FormatCost(spend.CostUSD, spend.CostKnown))
@@ -348,6 +326,70 @@ func scoutAnswerer(res *run.Result, ropts review.Options, tally *scoutTally) rev
 			tally.known = tally.known && spend.CostKnown
 		}
 		return env, err
+	}
+}
+
+// scoutSettings is what the command says about the checking pass alone.
+type scoutSettings struct {
+	Model  string
+	Effort string
+}
+
+// scoutSettings resolves the checking pass's model and effort from the flags.
+// --scout-model and --scout-effort win; without them the review's own --model
+// and --effort carry over, so one flag runs both stages on one model unless
+// the caller says otherwise. Empty stays empty, and the scout applies its own
+// defaults to it, so a review run with no flags checks its findings as it
+// always did.
+func (o opts) scoutSettings() scoutSettings {
+	s := scoutSettings{Model: o.scoutModel, Effort: o.scoutEffort}
+	if s.Model == "" {
+		s.Model = o.model
+	}
+	if s.Effort == "" {
+		s.Effort = o.effort
+	}
+	return s
+}
+
+// answerOptions is the scout run the review's flags describe. The lookups go
+// over the same wire the review did, on the model and effort scoutSettings
+// resolved: --model and --effort used to stop at stage one, so a review run on
+// another model still checked its findings with the scout's defaults, and
+// there was no flag that reached the checking.
+//
+// The credentials follow the same rule. On the OpenAI wire the scout uses the
+// credentials stage one used; on the Anthropic wire an empty key falls back
+// to the SDK's own credential chain, an `ant auth login` profile included.
+func answerOptions(root string, res *run.Result, ropts review.Options, scoutOpts scoutSettings, qs []review.Question) scout.Options {
+	out := make([]scout.Question, 0, len(qs))
+	for _, q := range qs {
+		out = append(out, scout.Question{
+			ID: q.ID, Kind: q.Kind, Ask: q.Ask, Subject: q.Subject,
+			Claim: q.Claim, File: q.File, Line: q.Line,
+		})
+	}
+	return scout.Options{
+		Root:    root,
+		Diff:    diffOf(res),
+		BaseSHA: res.Report.BaseSHA,
+		// Without this the answering scout sees only root-level guideline
+		// files: guidelines() finds package-nested AGENTS.md and its kin by
+		// walking up from each changed path, and an empty Changed has
+		// nothing to walk up from. A question about a rule would then be
+		// answered against the repository's most general rules rather than
+		// the ones nearest the code it is about.
+		Changed:   changedPaths(res.Change),
+		Questions: out,
+		Model:     scoutOpts.Model,
+		Effort:    scoutOpts.Effort,
+		API:       ropts.API,
+		BaseURL:   ropts.BaseURL,
+		APIKey:    ropts.APIKey,
+		APIUser:   ropts.APIUser,
+		Progress:  ropts.Progress,
+		Debug:     ropts.Debug,
+		Capture:   ropts.Capture,
 	}
 }
 

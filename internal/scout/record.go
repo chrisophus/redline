@@ -149,6 +149,13 @@ func (r *resolver) validate(rec record) error {
 		return fmt.Errorf("%s is already resolved for %s by a provider that does it exactly; record something it cannot see instead",
 			rec.Role, rec.File)
 	}
+	if classOf(rec.File) == envelope.ClassTest {
+		// Redline drops test code from the context block, so a record here
+		// would be paid for and never shown. Refused with the reason, which
+		// is a correction the scout can act on; the prompt says the same
+		// thing and a model told once will still sometimes do it.
+		return fmt.Errorf("%s is a test file, and Redline holds test context back from the review; record the code it tests instead", rec.File)
+	}
 	lines, err := r.read(rec.File)
 	if err != nil {
 		return fmt.Errorf("%s: %v", rec.File, err)
@@ -198,11 +205,15 @@ func (r *resolver) resolve(rec record, priority int) (envelope.Expansion, bool) 
 	if rec.Answers != "" {
 		details["answers"] = rec.Answers
 	}
-	if rec.FoundVia == "graph" {
-		// The graph matches by name, not by type. The tag rides along for the
-		// same reason it does in the graph provider: a name-resolved
-		// connection must not read as a resolved fact.
+	symbol := rec.Symbol
+	if rec.FoundVia == "graph" || rec.FoundVia == "grep" {
+		// The graph and grep match by name, not by type. The tag rides along
+		// for the same reason it does in the graph provider: a name-resolved
+		// connection must not read as a resolved fact. Nothing renders
+		// details for the reviewer, so the header says it too: it is the one
+		// line of a block the reviewer is certain to read.
 		details["resolution"] = "name"
+		symbol = strings.TrimSpace(symbol + " (matched by name)")
 	}
 
 	content := strings.Join(lines[start-1:end], "\n") + "\n"
@@ -220,7 +231,7 @@ func (r *resolver) resolve(rec record, priority int) (envelope.Expansion, bool) 
 	return envelope.Expansion{
 		Role:      rec.Role,
 		Priority:  priority,
-		Symbol:    rec.Symbol,
+		Symbol:    symbol,
 		File:      rec.File,
 		StartLine: start,
 		EndLine:   end,

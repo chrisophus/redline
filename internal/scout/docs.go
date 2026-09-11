@@ -178,6 +178,12 @@ func firstHeading(lines []string) string {
 // hundred tokens an AGENTS.md takes: this is the one piece of context that is
 // relevant to every change, so paying a round trip for it every run is the
 // one saving worth taking here.
+//
+// They are shown with line numbers, in the shape read_lines uses. A record
+// needs a line range, and a file shown without numbers has to be counted
+// through or read again before one can be given; the second is the round trip
+// inlining was meant to save, and the first is how a rule gets filed three
+// lines off.
 func guidelineBrief(root string, found []docFile, inlineLines, totalLines int) string {
 	if len(found) == 0 {
 		return ""
@@ -193,7 +199,7 @@ func guidelineBrief(root string, found []docFile, inlineLines, totalLines int) s
 			body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f.Path)))
 			if err == nil {
 				budget -= f.Lines
-				fmt.Fprintf(&b, "\n--- %s (%d lines, shown in full) ---\n%s\n", f.Path, f.Lines, strings.TrimRight(string(body), "\n"))
+				fmt.Fprintf(&b, "\n--- %s (%d lines, shown in full with line numbers) ---\n%s\n", f.Path, f.Lines, numbered(string(body)))
 				continue
 			}
 		}
@@ -204,6 +210,17 @@ func guidelineBrief(root string, found []docFile, inlineLines, totalLines int) s
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// numbered renders a file the way read_lines does, one line per row with its
+// 1-based number in front, so a range can be recorded straight off it.
+func numbered(body string) string {
+	lines := strings.Split(strings.TrimRight(body, "\n"), "\n")
+	var b strings.Builder
+	for i, l := range lines {
+		fmt.Fprintf(&b, "%d\t%s\n", i+1, l)
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func truncate(s string, n int) string {
