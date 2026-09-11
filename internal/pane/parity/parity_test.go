@@ -153,3 +153,20 @@ func TestSiblingsNeedAMinimumSharedShape(t *testing.T) {
 		t.Errorf("did not fire once the directories share a shape: %+v", res.Findings)
 	}
 }
+
+// A test file is named after the unit it tests, not after a capability the
+// siblings ought to match. Reporting one as a parity gap said the opposite
+// of the truth on a real change, where two packages tested the same
+// capability under two filenames and each was reported missing from the
+// other.
+func TestATestFileIsNotACapabilityGap(t *testing.T) {
+	head := append(append([]string{}, providerTree...), "internal/provider/gcp/offer_test.go")
+	if res := run(t, providerTree, head, []string{"internal/provider/gcp/offer_test.go"}); len(res.Findings) != 0 {
+		t.Errorf("a test file was reported as a parity gap: %+v", res.Findings)
+	}
+	// The source file beside it is still the pane's whole purpose.
+	src := append(append([]string{}, providerTree...), "internal/provider/gcp/offer_amend.go")
+	if res := run(t, providerTree, src, []string{"internal/provider/gcp/offer_amend.go"}); len(res.Findings) != 1 {
+		t.Errorf("exempting tests silenced the source case too: %+v", res.Findings)
+	}
+}
