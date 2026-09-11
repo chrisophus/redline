@@ -375,9 +375,6 @@ func (ts *toolset) record() tool {
 			if err := json.Unmarshal(input, &in); err != nil {
 				return "", fmt.Errorf("bad arguments: %v", err)
 			}
-			if len(ts.records) >= ts.limits.MaxRecords {
-				return "", fmt.Errorf("already recorded %d ranges, which is the limit; call done", ts.limits.MaxRecords)
-			}
 			rec := record{
 				Role:      envelopeRole(in.Role),
 				File:      normPath(in.File),
@@ -399,6 +396,14 @@ func (ts *toolset) record() tool {
 					return r.Answers == "" && r.Role == rec.Role && r.File == rec.File &&
 						r.StartLine == rec.StartLine && r.EndLine == rec.EndLine
 				})
+			}
+			// Checked after the dedup above rather than before it. A tagged
+			// record that replaces an untagged twin leaves the count exactly
+			// where it was, and the reminder below asks the model for that
+			// very call; refusing it at the limit made the tool contradict
+			// its own instruction on every run that filled its budget.
+			if len(ts.records) >= ts.limits.MaxRecords {
+				return "", fmt.Errorf("already recorded %d ranges, which is the limit; call done", ts.limits.MaxRecords)
 			}
 			ts.records = append(ts.records, rec)
 			out := fmt.Sprintf("recorded %s %s:%d-%d (%d of %d)",

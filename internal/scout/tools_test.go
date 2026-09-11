@@ -77,3 +77,35 @@ func TestGraphPathPassesDashEndpointsAsPositionals(t *testing.T) {
 		t.Errorf("dash endpoints were not passed as positionals after --; positionals: %q", got)
 	}
 }
+
+// record() reminds a scout that an untagged record is tied to no question
+// and asks it to record the range again with the finding's id. That second
+// call replaces the first, so it does not grow the set — but the cap was
+// checked before the replacement ran, so at the limit the tool refused the
+// very call it had just asked for.
+func TestARetagIsAcceptedAtTheRecordCap(t *testing.T) {
+	root := tree(t)
+	ts := newToolset(root, "", Limits{MaxRecords: 1})
+	ts.answering = true
+	rec := ts.byName[recordTool]
+
+	args := `{"role":"type","file":"internal/store/user.go","start_line":6,"end_line":8,"symbol":"Insert"`
+	if _, err := rec.run([]byte(args + `}`)); err != nil {
+		t.Fatalf("the first record was refused: %v", err)
+	}
+	if _, err := rec.run([]byte(args + `,"answers":"c1"}`)); err != nil {
+		t.Fatalf("the retag the tool asks for was refused at the cap: %v", err)
+	}
+	if len(ts.records) != 1 {
+		t.Fatalf("records = %d, want 1: the retag must replace, not add", len(ts.records))
+	}
+	if ts.records[0].Answers != "c1" {
+		t.Errorf("the surviving record is untagged (%q); the retag did not replace it", ts.records[0].Answers)
+	}
+
+	// A retag with nowhere to replace still grows the set, so the cap holds.
+	other := `{"role":"type","file":"internal/store/user.go","start_line":3,"end_line":3,"answers":"c2"}`
+	if _, err := rec.run([]byte(other)); err == nil {
+		t.Error("a net-new record at the cap must still be refused")
+	}
+}
