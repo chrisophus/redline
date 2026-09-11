@@ -121,6 +121,17 @@ type Options struct {
 	APIUser string
 
 	Limits Limits
+
+	// Progress is called once per turn with a short heartbeat, for a loop that
+	// would otherwise print nothing for minutes. Debug is called with the
+	// under-the-covers detail: each tool call and what it returned. Either may
+	// be nil, and nothing depends on either being called.
+	Progress func(string)
+	Debug    func(string)
+	// Capture, when set, is handed the whole conversation once the loop ends:
+	// the system prompt, the brief, and every turn's tool calls and results,
+	// which is everything the scout sent and got back.
+	Capture func(name string, data []byte)
 }
 
 func (o Options) withDefaults() Options {
@@ -175,6 +186,7 @@ func Run(ctx context.Context, opts Options) (*envelope.Envelope, Spend, error) {
 
 	ts := newToolset(opts.Root, opts.Graph, opts.Limits)
 	ts.res.covered, ts.res.coveredScope = opts.Covered, opts.CoveredScope
+	ts.debug = opts.Debug
 
 	// Same loop, same tools, same governor on either wire. Only the transport
 	// differs: the Anthropic SDK on one, plain chat-completions with function
@@ -248,6 +260,10 @@ func driveAnthropic(ctx context.Context, opts Options, ts *toolset) (Spend, erro
 		// next turn's ceiling, and a total that is still zero while the loop
 		// runs makes the governor a per-turn check that never accumulates.
 		spend.CostUSD, spend.CostKnown = spend.Usage.Cost(opts.Model)
+		if opts.Progress != nil {
+			opts.Progress(fmt.Sprintf("scout turn %d: %d record(s), %s so far",
+				spend.Turns, len(ts.records), review.FormatCost(spend.CostUSD, spend.CostKnown)))
+		}
 
 		// ToParam carries the assistant turn back unchanged, thinking blocks
 		// included, which is what a tool loop on a thinking model requires.
@@ -267,6 +283,10 @@ func driveAnthropic(ctx context.Context, opts Options, ts *toolset) (Spend, erro
 		}
 	}
 	spend.CostUSD, spend.CostKnown = spend.Usage.Cost(opts.Model)
+	if opts.Capture != nil {
+		b, _ := json.MarshalIndent(map[string]any{"system": params.System, "messages": params.Messages}, "", "  ")
+		opts.Capture("scout.transcript.json", b)
+	}
 	return spend, nil
 }
 

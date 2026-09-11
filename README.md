@@ -319,7 +319,15 @@ something the author cannot reproduce gets bypassed inside a month.
 Flags: `--model` (default `claude-sonnet-5`), `--effort`, `--ceiling`
 (default 250000 tokens, bounding the whole request), `--max-tokens`,
 `--max-cost` (a tripwire checked against the worst-case cost before anything
-is sent), `--stats`, `--dry-run`, `--api`, `--base-url`.
+is sent), `--stats`, `--dry-run`, `--api`, `--base-url`, `--debug`.
+
+`--debug` (or `REDLINE_DEBUG`) puts every model call on stderr: the wire,
+model, stage, input tokens, cap, and effort going out; the stop reason and
+token counts coming back; the body the parser was handed; and each scout
+tool call with its result size. The full requests and responses are written
+under `--out/debug`, which is how a gateway that answers in a shape the
+schema forbids is diagnosed rather than guessed at. Those files carry the
+whole prompt, so they carry the diff.
 
 Credentials come from `ANTHROPIC_API_KEY` or an `ant auth login` profile.
 Without one, every other command still works.

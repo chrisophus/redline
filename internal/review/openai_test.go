@@ -3,7 +3,6 @@ package review
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,21 +14,47 @@ import (
 	"github.com/chrisophus/redline/internal/findings"
 )
 
-// sse renders a chat completions stream: the content in a few chunks, then
-// the finish reason, then usage when given, then the terminator.
-func sse(content, finish string, usage string) string {
-	var b strings.Builder
-	half := len(content) / 2
-	for _, part := range []string{content[:half], content[half:]} {
-		raw, _ := json.Marshal(part)
-		fmt.Fprintf(&b, "data: {\"choices\":[{\"delta\":{\"content\":%s},\"finish_reason\":null}]}\n\n", raw)
+// toolReply renders a non-streamed reply whose structured body rides as the
+// forced tool call's arguments, with the finish reason and usage when given.
+func toolReply(t *testing.T, args, finish, usage string) string {
+	t.Helper()
+	msg := map[string]any{
+		"tool_calls": []any{map[string]any{
+			"function": map[string]any{"name": "review", "arguments": args},
+		}},
 	}
-	fmt.Fprintf(&b, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":%q}]}\n\n", finish)
+	return oaEnvelope(t, msg, finish, usage)
+}
+
+// contentReply renders a reply that answered in prose, for a proxy that
+// ignored the forced tool call and dropped the schema.
+func contentReply(t *testing.T, content, finish, usage string) string {
+	t.Helper()
+	return oaEnvelope(t, map[string]any{"content": content}, finish, usage)
+}
+
+func refusalReply(t *testing.T, refusal string) string {
+	t.Helper()
+	return oaEnvelope(t, map[string]any{"refusal": refusal}, "stop", "")
+}
+
+func oaEnvelope(t *testing.T, message map[string]any, finish, usage string) string {
+	t.Helper()
+	env := map[string]any{
+		"choices": []any{map[string]any{"message": message, "finish_reason": finish}},
+	}
 	if usage != "" {
-		fmt.Fprintf(&b, "data: {\"choices\":[],\"usage\":%s}\n\n", usage)
+		var u any
+		if err := json.Unmarshal([]byte(usage), &u); err != nil {
+			t.Fatalf("bad usage json: %v", err)
+		}
+		env["usage"] = u
 	}
-	b.WriteString("data: [DONE]\n\n")
-	return b.String()
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal reply: %v", err)
+	}
+	return string(b)
 }
 
 const reviewBody = `{"overview":"Adds a thing.","files":[{"path":"a.go","summary":"adds x"}],` +
@@ -68,8 +93,7 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 	var got openAIRequest
 	srv, hits, hdr, path := openAIServer(t, func(w http.ResponseWriter, req openAIRequest) {
 		got = req
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, sse(reviewBody, "stop",
+		_, _ = io.WriteString(w, toolReply(t, reviewBody, "tool_calls",
 			`{"prompt_tokens":1000,"completion_tokens":50,"prompt_tokens_details":{"cached_tokens":300}}`))
 	})
 	res, err := Run(context.Background(), smallInput(), Options{
@@ -90,9 +114,6 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 	if got.Model != DefaultOpenAIModel {
 		t.Fatalf("model = %q; openai must not default to a Claude model", got.Model)
 	}
-	if !got.Stream || !got.StreamOptions["include_usage"] {
-		t.Fatal("the stream must ask for usage, or the ledger has nothing to record")
-	}
 	if got.MaxCompletionTokens != DefaultMaxTokens {
 		t.Fatalf("max_completion_tokens = %d", got.MaxCompletionTokens)
 	}
@@ -103,15 +124,21 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 		got.Messages[1].Role != "user" || got.Messages[1].Content != res.Prompt {
 		t.Fatal("the system block and the prompt must be sent exactly as assembled and priced")
 	}
-	js, _ := got.ResponseFormat["json_schema"].(map[string]any)
-	if got.ResponseFormat["type"] != "json_schema" || js == nil || js["strict"] != true {
-		t.Fatalf("the reply must be pinned to the schema, got %v", got.ResponseFormat)
+	// The schema goes as one function the model is forced to call, not as
+	// response_format, which this gateway class does not enforce.
+	if len(got.Tools) != 1 || got.Tools[0].Type != "function" || got.Tools[0].Function.Name != "review" {
+		t.Fatalf("the reply must be asked for as one function call, got %+v", got.Tools)
 	}
-	if _, ok := js["schema"].(map[string]any); !ok {
-		t.Fatal("the schema itself must be sent")
+	if _, ok := got.Tools[0].Function.Parameters.(map[string]any); !ok {
+		t.Fatalf("the schema itself must be the function parameters, got %T", got.Tools[0].Function.Parameters)
+	}
+	tc, _ := got.ToolChoice.(map[string]any)
+	fnsel, _ := tc["function"].(map[string]any)
+	if tc["type"] != "function" || fnsel["name"] != "review" {
+		t.Fatalf("the model must be forced to call the function, got %v", got.ToolChoice)
 	}
 
-	if res.API != APIOpenAI || res.Turns != 1 || res.StopReason != "stop" {
+	if res.API != APIOpenAI || res.Turns != 1 || res.StopReason != "tool_calls" {
 		t.Fatalf("result: api=%q turns=%d stop=%q", res.API, res.Turns, res.StopReason)
 	}
 	if res.Usage.InputTokens != 700 || res.Usage.CacheReadTokens != 300 || res.Usage.OutputTokens != 50 {
@@ -130,7 +157,7 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 
 func TestOpenAITruncationIsReportedNotParsed(t *testing.T) {
 	srv, _, _, _ := openAIServer(t, func(w http.ResponseWriter, req openAIRequest) {
-		_, _ = io.WriteString(w, sse(`{"overview":"cut off`, "length",
+		_, _ = io.WriteString(w, toolReply(t, `{"overview":"cut off`, "length",
 			`{"prompt_tokens":10,"completion_tokens":32000}`))
 	})
 	res, err := Run(context.Background(), smallInput(), Options{
@@ -146,9 +173,7 @@ func TestOpenAITruncationIsReportedNotParsed(t *testing.T) {
 
 func TestOpenAIRefusalIsNotAnEmptyReview(t *testing.T) {
 	srv, _, _, _ := openAIServer(t, func(w http.ResponseWriter, req openAIRequest) {
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"refusal\":\"I cannot help with that.\"},\"finish_reason\":null}]}\n\n"+
-			"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"+
-			"data: [DONE]\n\n")
+		_, _ = io.WriteString(w, refusalReply(t, "I cannot help with that."))
 	})
 	_, err := Run(context.Background(), smallInput(), Options{
 		API: APIOpenAI, BaseURL: srv.URL, APIKey: "k",
@@ -173,7 +198,7 @@ func TestOpenAIServerErrorQuotesTheServer(t *testing.T) {
 
 func TestOpenAIEstimatesUsageWhenTheProxyReportsNone(t *testing.T) {
 	srv, _, _, _ := openAIServer(t, func(w http.ResponseWriter, req openAIRequest) {
-		_, _ = io.WriteString(w, sse(reviewBody, "stop", ""))
+		_, _ = io.WriteString(w, toolReply(t, reviewBody, "tool_calls", ""))
 	})
 	res, err := Run(context.Background(), smallInput(), Options{
 		API: APIOpenAI, BaseURL: srv.URL, APIKey: "k",
@@ -192,16 +217,19 @@ func TestOpenAIEstimatesUsageWhenTheProxyReportsNone(t *testing.T) {
 	}
 }
 
-func TestOpenAIToleratesAFencedReply(t *testing.T) {
+func TestOpenAIToleratesAContentReplyThatDroppedTheToolCall(t *testing.T) {
+	// A proxy that ignores tool_choice answers in content, sometimes fenced.
+	// The review inside still parses, so a dropped constraint degrades rather
+	// than empties the review.
 	srv, _, _, _ := openAIServer(t, func(w http.ResponseWriter, req openAIRequest) {
-		_, _ = io.WriteString(w, sse("```json\n"+reviewBody+"\n```", "stop",
+		_, _ = io.WriteString(w, contentReply(t, "```json\n"+reviewBody+"\n```", "stop",
 			`{"prompt_tokens":10,"completion_tokens":5}`))
 	})
 	res, err := Run(context.Background(), smallInput(), Options{
 		API: APIOpenAI, BaseURL: srv.URL, APIKey: "k",
 	})
 	if err != nil {
-		t.Fatalf("a proxy that drops the schema constraint may fence the JSON; the review inside still parses: %v", err)
+		t.Fatalf("a proxy that answered in content must still be read: %v", err)
 	}
 	if res.Review.Overview != "Adds a thing." {
 		t.Fatalf("overview = %q", res.Review.Overview)
@@ -210,7 +238,7 @@ func TestOpenAIToleratesAFencedReply(t *testing.T) {
 
 func TestOpenAIProxyMayNeedNoKey(t *testing.T) {
 	srv, _, hdr, _ := openAIServer(t, func(w http.ResponseWriter, req openAIRequest) {
-		_, _ = io.WriteString(w, sse(reviewBody, "stop", `{"prompt_tokens":10,"completion_tokens":5}`))
+		_, _ = io.WriteString(w, toolReply(t, reviewBody, "tool_calls", `{"prompt_tokens":10,"completion_tokens":5}`))
 	})
 	if _, err := Run(context.Background(), smallInput(), Options{API: APIOpenAI, BaseURL: srv.URL}); err != nil {
 		t.Fatalf("a proxy that authenticates some other way must be reachable without a key: %v", err)
@@ -222,7 +250,7 @@ func TestOpenAIProxyMayNeedNoKey(t *testing.T) {
 
 func TestOpenAIUserRidesInTheBearerWhenNamed(t *testing.T) {
 	srv, _, hdr, _ := openAIServer(t, func(w http.ResponseWriter, req openAIRequest) {
-		_, _ = io.WriteString(w, sse(reviewBody, "stop", `{"prompt_tokens":10,"completion_tokens":5}`))
+		_, _ = io.WriteString(w, toolReply(t, reviewBody, "tool_calls", `{"prompt_tokens":10,"completion_tokens":5}`))
 	})
 	_, err := Run(context.Background(), smallInput(), Options{
 		API: APIOpenAI, BaseURL: srv.URL, APIKey: "k1", APIUser: "chris",
@@ -302,15 +330,15 @@ func TestARateComesOnlyFromItsOwnFamily(t *testing.T) {
 	}
 }
 
-func TestStreamThatEndsEarlyIsAnError(t *testing.T) {
+func TestOpenAINoChoicesIsAnError(t *testing.T) {
 	srv, _, _, _ := openAIServer(t, func(w http.ResponseWriter, req openAIRequest) {
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"{\"},\"finish_reason\":null}]}\n\n")
+		_, _ = io.WriteString(w, `{"usage":{"prompt_tokens":10,"completion_tokens":5}}`)
 	})
 	_, err := Run(context.Background(), smallInput(), Options{
 		API: APIOpenAI, BaseURL: srv.URL, APIKey: "k",
 	})
-	if err == nil || !strings.Contains(err.Error(), "ended before") {
-		t.Fatalf("a stream cut off with no finish reason is not a review, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "no choices") {
+		t.Fatalf("a reply with no choices is not a review, got %v", err)
 	}
 }
 

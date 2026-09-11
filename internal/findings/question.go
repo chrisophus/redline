@@ -152,6 +152,9 @@ type Ruling struct {
 	// this stage exists to replace.
 	Evidence string `json:"evidence,omitempty"`
 	Why      string `json:"why,omitempty"`
+	// Analysis is the reasoning the ruling wrote before it chose the verdict,
+	// kept so the report can show the working rather than only the conclusion.
+	Analysis string `json:"analysis,omitempty"`
 }
 
 // Posts reports whether a comment carrying this ruling should reach the

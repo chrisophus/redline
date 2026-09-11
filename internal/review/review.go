@@ -162,6 +162,16 @@ type Options struct {
 	// call of two to five minutes and sampling makes it several, so silence
 	// reads as a hang. Nil is fine; nothing depends on it being called.
 	Progress func(string)
+	// Debug is called with the under-the-covers detail of each model call: the
+	// wire and size going out, the stop reason and token counts coming back,
+	// and the raw body the parser was handed. It is what turns an opaque parse
+	// failure into a shape you can read. Nil is fine.
+	Debug func(string)
+	// Capture, when set, is handed the full bytes of everything the model was
+	// sent and everything it returned, one call at a time, named so a reader
+	// can tell the review call from the ruling call. Debug shows a bounded
+	// line on the terminal; this is the whole thing, for writing to disk.
+	Capture func(name string, data []byte)
 	// DryRun assembles the prompt and prices it without calling anything.
 	DryRun bool
 	// Answer runs the lookups a finding asked for, between the review and the
@@ -459,8 +469,8 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	// the check did not happen, because a review that posts unchecked is the
 	// behaviour this tool had all along and an empty one is worse than that.
 	if opts.Progress != nil {
-		opts.Progress(fmt.Sprintf("checking %d finding(s) against the repository",
-			len(out.Review.Comments)))
+		opts.Progress(fmt.Sprintf("stage one produced %d finding(s) in %s; checking them against the repository",
+			len(out.Review.Comments), out.Duration.Round(time.Second)))
 	}
 	return Verify(ctx, in, opts, out)
 }
@@ -474,6 +484,23 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	// stream that breaks partway has already cost what it cost. A result
 	// that reports no usage is how a paid call ends up with no ledger line,
 	// which is the failure this ordering exists to prevent.
+	stage := "review"
+	if res.rulesRatherThanReviews() {
+		stage = "ruling"
+	}
+	if opts.Debug != nil {
+		opts.Debug(fmt.Sprintf("→ %s %s (%s): ~%d input tokens, cap %d, effort %s",
+			opts.API, opts.Model, stage, res.InputEstimate, opts.MaxTokens, opts.Effort))
+	}
+	if opts.Capture != nil {
+		req, _ := json.MarshalIndent(map[string]any{
+			"api": opts.API, "model": opts.Model, "stage": stage,
+			"effort": opts.Effort, "maxTokens": opts.MaxTokens,
+			"inputTokensEstimate": res.InputEstimate,
+			"system":              res.System, "prompt": res.Prompt, "schema": res.Schema,
+		}, "", "  ")
+		opts.Capture(stage+".request.json", req)
+	}
 	start := time.Now()
 	var c completion
 	if opts.API == APIOpenAI {
@@ -500,6 +527,16 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 		return res, fmt.Errorf("review call: %w", err)
 	}
 	res.StopReason = c.stopReason
+	if opts.Debug != nil {
+		opts.Debug(fmt.Sprintf("← %s: stop=%s, out=%d token(s), %s",
+			stage, c.stopReason, res.Usage.OutputTokens, res.Duration.Round(time.Millisecond)))
+		if strings.TrimSpace(c.text) != "" {
+			opts.Debug(stage + " response body:\n" + debugBody(c.text))
+		}
+	}
+	if opts.Capture != nil {
+		opts.Capture(stage+".response.json", []byte(c.text))
+	}
 
 	// A refusal comes back as a normal 200 with an empty-looking body, so
 	// the stop reason is checked before the content is read. Reporting it as
@@ -534,6 +571,18 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	}
 	res.Review = *rev
 	return res, nil
+}
+
+// debugBody bounds a response body for a debug line. The whole point is to see
+// the shape a parser choked on, and the first few kilobytes carry it; a review
+// large enough to overflow this would drown the log rather than inform it.
+func debugBody(s string) string {
+	const max = 8 << 10
+	s = strings.TrimSpace(s)
+	if len(s) > max {
+		return s[:max] + fmt.Sprintf("\n… (%d bytes total, truncated in debug output)", len(s))
+	}
+	return s
 }
 
 // languageFragments appends each provider's language half to the harness

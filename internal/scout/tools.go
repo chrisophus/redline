@@ -47,6 +47,8 @@ type toolset struct {
 	root   string
 	graph  string
 	limits Limits
+	// debug, when set, is called with each tool call and what it returned.
+	debug func(string)
 }
 
 func newToolset(root, graph string, limits Limits) *toolset {
@@ -95,7 +97,10 @@ func (ts *toolset) params() []anthropic.ToolUnionParam {
 
 // dispatch runs one tool call and returns the result text and whether it
 // failed.
-func (ts *toolset) dispatch(name string, input json.RawMessage) (string, bool) {
+func (ts *toolset) dispatch(name string, input json.RawMessage) (out string, failed bool) {
+	if ts.debug != nil {
+		defer func() { ts.debug(fmt.Sprintf("tool %s(%s) → %s", name, toolArgs(input), toolResult(out, failed))) }()
+	}
 	t, ok := ts.byName[name]
 	if !ok {
 		return fmt.Sprintf("no tool named %q", name), true
@@ -108,6 +113,28 @@ func (ts *toolset) dispatch(name string, input json.RawMessage) (string, bool) {
 		return "(no output)", false
 	}
 	return out, false
+}
+
+// toolArgs renders a tool call's arguments on one bounded line for a debug log.
+func toolArgs(input json.RawMessage) string {
+	s := strings.Join(strings.Fields(string(input)), " ")
+	if len(s) > 120 {
+		s = s[:120] + "…"
+	}
+	return s
+}
+
+// toolResult says what a tool handed back: the byte count on success, or the
+// bounded error text, which is what the model saw and corrected from.
+func toolResult(out string, failed bool) string {
+	if failed {
+		s := strings.Join(strings.Fields(out), " ")
+		if len(s) > 100 {
+			s = s[:100] + "…"
+		}
+		return "error: " + s
+	}
+	return fmt.Sprintf("%d bytes", len(out))
 }
 
 // Names lists the registered tools, for the run's own log line.

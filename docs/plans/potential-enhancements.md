@@ -136,6 +136,27 @@ gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
 | Broader review skill context | Skill text for "why was this nolint added" and whether a rule is noisy. Docs/skills, not binary code. | S |
 | Domain-aware `promptFragment` | Delivered by the scout rather than as proposed, and better: instead of a config key naming convention docs and a digest appended to every review, `redline-scout` finds `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and the rest at the root and beside the changed files, reads the short ones in its opening turn, and records the lines that bear on this change under a `guideline` role, quoted from the file. Per-change instead of per-repo, and no config to keep current. The MKT-1415 case it was written for is the one it is aimed at: a domain rule written down in the repository, invisible to generic-Go doctrine. | done |
 
+## Review quality (Copilot comparison, MKT-1360)
+
+Held against GitHub Copilot on the same PR (NetApp/marketplace-cp #1360), the
+deterministic half of Redline covered a class Copilot has nothing for (lint
+delta, coverage on added lines, structural parity, assertion drop), and the
+agent half was out-reviewed. Copilot found two verified correctness bugs Redline
+missed, both violations of the PR's own stated invariant that expansion counts
+and drill-through lists evaluate at one `asOf`. Full write-up in
+[../dogfood-reports/2026-09-10-copilot-comparison-mkt-1360.md](../dogfood-reports/2026-09-10-copilot-comparison-mkt-1360.md).
+
+| Item | What | Effort |
+|------|------|--------|
+| Invariant hypotheses from the PR body | Extract stated invariants from the description and rationale (here: "shared evaluation timestamp so counts and lists agree") and task the reviewer to falsify each against the code. Copilot did this by default; Redline read the description as prose and never tested it. | M |
+| As-of provenance trace | When a change introduces a snapshot or as-of value, follow it through the call graph and flag every sibling time source not derived from it (`now`, `CURRENT_DATE`, `UTCStartOfDay(now)`). One check catches both missed bugs: `offers.go` derives `EndDateBoundary` from `now` while `AttentionAsOf` comes from `evaluationAt`, and the entitlement usage-window predicates hardcode `CURRENT_DATE - days` regardless of the threaded `asOf`. | M |
+| Ruling loop generates, not just adjudicates | The two-stage ruling spent budget confirming a non-bug (test-products predicate, ruled kept) and marked two low-confidence infos unverifiable after empty lookups. An empty lookup should re-query with a different phrasing, not conclude unverifiable. Reward hypothesis breadth over defending the first guess. See [two-stage-review.md](two-stage-review.md). | M |
+| Route pane blind spots to the agent | Two Copilot findings (openapi 403-vs-404, UI cache staleness) landed exactly in Redline's own "what could not be determined" list: the api pane follows no `$ref`, the ui pane checks 15-16 are unbuilt. Feed that list to the agent reviewer as targeted tasks instead of only printing it for the human. | S |
+| Response-shape detector | A collection field whose size scales with entity count and has no pagination (Copilot #2: required member-ID arrays unbounded by buyer size, consumed only for a `count`). Structural heuristic on the OpenAPI schema and its consumers, no LLM. | M |
+| React Query cache-key hygiene | Flag a new `useQuery` key that is not nested under the parent prefix the page's refresh invalidates (Copilot #4/#5: attention and summary keys outside `['buyers', organizationId]`, stale up to 10 min after a view refresh). A UI-substrate structural check. | M |
+| Agent-comment coverage skew | On this PR the agent left 5 comments across 4 files, skewed to two SQL predicate files, while Copilot spread across the diff. Check whether the reviewer is capped per file or per finding-count in a way that starves later files. | S |
+| Report revision-sync integrity | `report.md` claimed no agent review merged (wrong base revision) while `review.json` recorded the change under review and the report printed its five comments. The staleness note and the merged findings must not be able to disagree. | S |
+
 ## What the review request carries
 
 | Item | What | Effort |

@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -555,5 +556,73 @@ func TestParseRulingsToleratesAStringifiedArray(t *testing.T) {
 	}
 	if got["c2"].Verdict != findings.VerifiedKept {
 		t.Fatalf("the array shape must still parse: %+v", got)
+	}
+}
+
+// A schema-dropping gateway has also returned rulings as an object instead of
+// an array: one ruling on its own, or a map keyed by the finding id. Both
+// carry the same rulings, and the pass reads them rather than failing open,
+// which is the failure that left findings unchecked in the field.
+func TestParseRulingsToleratesObjectShapes(t *testing.T) {
+	single := []byte(`{"rulings":{"finding":"c1","verdict":"withdrawn","evidence":"e","why":"w"}}`)
+	got, err := parseRulings(single)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got["c1"].Verdict != findings.VerifiedWithdrawn {
+		t.Fatalf("a single ruling object must parse: %+v", got)
+	}
+
+	keyed := []byte(`{"rulings":{"c1":{"verdict":"kept","evidence":"e","why":"w"},` +
+		`"c2":{"verdict":"withdrawn","evidence":"e2","why":"w2"}}}`)
+	got, err = parseRulings(keyed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["c1"].Verdict != findings.VerifiedKept || got["c2"].Verdict != findings.VerifiedWithdrawn {
+		t.Fatalf("a map keyed by finding id must fill the finding from the key: %+v", got)
+	}
+
+	// A re-wrapped, stringified object: the gateway put a whole {"rulings":[…]}
+	// as a JSON string into the rulings field. Seen on a large ruling over the
+	// Marketplace gateway even with the forced tool call. Unwrap and read it.
+	nested := []byte(`{"rulings":"{\"rulings\":[{\"finding\":\"c1\",\"verdict\":\"kept\",\"evidence\":\"e\",\"why\":\"w\"}]}"}`)
+	got, err = parseRulings(nested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["c1"].Verdict != findings.VerifiedKept {
+		t.Fatalf("a re-wrapped stringified object must parse: %+v", got)
+	}
+
+	// A body that is no ruling shape at all still fails the pass rather than
+	// inventing one, and names what it saw.
+	if _, err := parseRulings([]byte(`{"rulings":42}`)); err == nil {
+		t.Fatal("a rulings value that is neither array nor object must error")
+	}
+}
+
+// The ruling reasons before it decides: the schema carries an analysis field,
+// the pass reads it back, and it serializes before the verdict so a model held
+// to schema order writes its working first rather than justifying a verdict it
+// already wrote.
+func TestRulingReasonsBeforeItDecides(t *testing.T) {
+	body := []byte(`{"rulings":[{"analysis":"the caller at x.go:10 is updated in this same commit, so the missed-caller claim is false","finding":"c1","verdict":"withdrawn","evidence":"x.go:10 foo(newSig)","why":"caller updated"}]}`)
+	got, err := parseRulings(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := got["c1"]; r.Verdict != findings.VerifiedWithdrawn || !strings.Contains(r.Analysis, "same commit") {
+		t.Fatalf("the analysis must survive the parse with the verdict: %+v", r)
+	}
+
+	raw, err := json.Marshal(ruleSchema())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	ai, vi := strings.Index(s, `"analysis"`), strings.Index(s, `"verdict"`)
+	if ai < 0 || vi < 0 || ai > vi {
+		t.Fatalf("analysis must be in the schema and serialize before verdict, got analysis@%d verdict@%d", ai, vi)
 	}
 }

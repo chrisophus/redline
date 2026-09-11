@@ -102,6 +102,10 @@ flags:
   --stats           with review: print the cost distribution of the reviews
                     recorded in --out and exit. The target is an average, so
                     this is the number to read, not any single run.
+  --debug           with review: log every model request, its stop reason and
+                    token counts, the body the parser was handed, and each
+                    scout tool call to stderr, and write the full requests and
+                    responses under --out/debug. REDLINE_DEBUG does the same.
   --report-url URL  with post: link to the full report in the review body
   --profile PATH    with post: YAML that stamps pass/fail markers a merge
                     gate can read (error and warning fail unless the file
@@ -135,7 +139,7 @@ type opts struct {
 	reportURL, profile, olderThan                                     string
 	model, effort, mode, api, baseURL, apiUser                        string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
-	stats, verify, noVerify                                           bool
+	stats, verify, noVerify, debug                                    bool
 	port, ceiling, maxTokens, maxTurns, samples                       int
 	maxCost                                                           float64
 }
@@ -182,6 +186,7 @@ func runMain(args []string) error {
 	fs.IntVar(&o.samples, "samples", 0, "with review: independent reviews to union")
 	fs.BoolVar(&o.verify, "verify", false, "with review: check each finding against the repository before posting it")
 	fs.BoolVar(&o.noVerify, "no-verify", false, "with review: skip the checking pass")
+	fs.BoolVar(&o.debug, "debug", false, "with review: log each model request, response, and scout tool call to stderr")
 	fs.IntVar(&o.ceiling, "ceiling", 0, "with review: token ceiling for the whole request")
 	fs.IntVar(&o.maxTokens, "max-tokens", 0, "with review: cap on the response")
 	fs.Float64Var(&o.maxCost, "max-cost", 0, "with review: refuse a request estimated above this many dollars")

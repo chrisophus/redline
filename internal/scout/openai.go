@@ -161,6 +161,10 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 			spend.Usage.CacheReadTokens += cached
 		}
 		spend.CostUSD, spend.CostKnown = spend.Usage.Cost(opts.Model)
+		if opts.Progress != nil {
+			opts.Progress(fmt.Sprintf("scout turn %d: %d record(s), %s so far",
+				spend.Turns, len(ts.records), review.FormatCost(spend.CostUSD, spend.CostKnown)))
+		}
 
 		if len(resp.Choices) == 0 {
 			ts.notes = append(ts.notes, "the search for context came back with no content")
@@ -195,6 +199,10 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 		}
 	}
 	spend.CostUSD, spend.CostKnown = spend.Usage.Cost(opts.Model)
+	if opts.Capture != nil {
+		b, _ := json.MarshalIndent(messages, "", "  ")
+		opts.Capture("scout.transcript.json", b)
+	}
 	return spend, nil
 }
 
