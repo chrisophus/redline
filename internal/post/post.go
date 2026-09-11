@@ -109,7 +109,11 @@ type Payload struct {
 	rep          *findings.Report
 	reportURL    string
 	bodyFindings []findings.Finding
-	profile      *Profile
+	// lowConf are the reviewer's low-confidence findings when a profile asked
+	// to see them folded rather than withheld. They render in a collapsed
+	// block, never as line comments.
+	lowConf []findings.Finding
+	profile *Profile
 	// withheld counts the reviewer's own findings this payload did not post
 	// because they said they were unsure, and hedged those it withheld for
 	// hedging. Kept apart because they are different failures and a reader
@@ -166,7 +170,13 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 	}
 	for _, f := range findingsList {
 		if lowConfidence(f) {
-			p.withheld++
+			if prof.includes("low-confidence") {
+				// Shown behind a chevron instead of withheld: a guess the
+				// reader can open, never a line comment and never a gate.
+				p.lowConf = append(p.lowConf, f)
+			} else {
+				p.withheld++
+			}
 			continue
 		}
 		if hedged(f) {
@@ -395,7 +405,7 @@ func fpMarker(head, fingerprint string) string {
 // written first and kept whole; the not-shown list is what grows without
 // bound with the findings, so it is the part that truncates when the body
 // would otherwise be rejected.
-func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.Finding, prof *Profile, gateVerdict string, withheld, hedged int) string {
+func buildBody(rep *findings.Report, head, reportURL string, inBody, lowConf []findings.Finding, prof *Profile, gateVerdict string, withheld, hedged int) string {
 	var head0 strings.Builder
 	fmt.Fprintf(&head0, "### %s\n\n", verdictFor(rep))
 	// The agent's own account of the change, when there is one. Redline never
@@ -419,8 +429,42 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody []findings.F
 	}
 
 	tail := bodyTail(reportURL, head, prof, gateVerdict, withheld, hedged)
-	middle := notShownSection(inBody, head, prof, maxBody-head0.Len()-len(tail))
-	return head0.String() + middle + tail
+	budget := maxBody - head0.Len() - len(tail)
+	middle := notShownSection(inBody, head, prof, budget)
+	low := lowConfidenceSection(lowConf, head, prof, budget-len(middle))
+	return head0.String() + middle + low + tail
+}
+
+// lowConfidenceSection folds the findings the reviewer was unsure of into a
+// collapsed block, for a profile that would rather see a guess behind a
+// chevron than not at all. They never become line comments and never gate:
+// shown as guesses, in one place a reader opens on purpose. Enabled by
+// body_include: low-confidence; without it these are withheld as before.
+func lowConfidenceSection(lowConf []findings.Finding, head string, prof *Profile, budget int) string {
+	if len(lowConf) == 0 {
+		return ""
+	}
+	heading := fmt.Sprintf("<details>\n<summary>Low confidence (%d)</summary>\n\n", len(lowConf))
+	const closing = "\n</details>\n\n"
+	if len(heading)+len(closing) > budget {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(heading)
+	shown := 0
+	for _, f := range lowConf {
+		entry := bodyFindingLine(f, head, prof)
+		if b.Len()+len(entry)+len(closing) > budget {
+			break
+		}
+		b.WriteString(entry)
+		shown++
+	}
+	if shown < len(lowConf) {
+		b.WriteString(truncatedNote(len(lowConf) - shown))
+	}
+	b.WriteString(closing)
+	return b.String()
 }
 
 // bodyTail is the review's own bookkeeping that must survive however long the
@@ -458,7 +502,7 @@ func (p Payload) renderBody() string {
 	if p.profile != nil && p.profile.BodyStyle == BodyWalkthrough {
 		return buildBodyWalkthrough(p)
 	}
-	return buildBody(p.rep, p.CommitID, p.reportURL, p.bodyFindings, p.profile, p.GateVerdict, p.withheld, p.hedged)
+	return buildBody(p.rep, p.CommitID, p.reportURL, p.bodyFindings, p.lowConf, p.profile, p.GateVerdict, p.withheld, p.hedged)
 }
 
 // WithMeta stamps the PR metadata the walkthrough body opens with and
@@ -510,8 +554,10 @@ func buildBodyWalkthrough(p Payload) string {
 		head0.WriteString(unknownsSection(p.rep))
 	}
 	tail := bodyTail(p.reportURL, p.CommitID, p.profile, p.GateVerdict, p.withheld, p.hedged)
-	middle := notShownSection(leftover, p.CommitID, p.profile, maxBody-head0.Len()-len(tail))
-	return head0.String() + middle + tail
+	budget := maxBody - head0.Len() - len(tail)
+	middle := notShownSection(leftover, p.CommitID, p.profile, budget)
+	low := lowConfidenceSection(p.lowConf, p.CommitID, p.profile, budget-len(middle))
+	return head0.String() + middle + low + tail
 }
 
 // splitBodyFindingsByFile groups the body findings that name a file the

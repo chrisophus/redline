@@ -27,13 +27,17 @@ fail_closed_pane: true
 body_style: evidence
 
 # Walkthrough add-ons, all opt-in, so you decide how much of the report reaches
-# the pull request. Ignored in evidence mode.
-#   coverage      per-file uncovered-added-lines column
-#   lint          per-file finding counts by severity
-#   confirmations the checks that ran clean, folded in collapsed
-#   unknowns      what could not be determined, folded in collapsed
+# the pull request. coverage, lint, confirmations and unknowns are ignored in
+# evidence mode; low-confidence applies in both.
+#   coverage       per-file uncovered-added-lines column
+#   lint           per-file finding counts by severity
+#   confirmations  the checks that ran clean, folded in collapsed
+#   unknowns       what could not be determined, folded in collapsed
+#   low-confidence the reviewer's unsure findings, folded behind a chevron
+#                  instead of withheld from the pull request
 # body_include:
 #   - coverage
 #   - lint
 #   - confirmations
 #   - unknowns
+#   - low-confidence
