@@ -242,6 +242,7 @@ func driveAnthropic(ctx context.Context, opts Options, ts *toolset) (Spend, erro
 		if turn > 0 && turn == opts.MaxTurns-1 && !ts.done {
 			ts.closing = true
 			params.Tools = ts.params()
+			params.System = []anthropic.TextBlockParam{{Text: promptFor(opts, ts.Names())}}
 			params.Messages = append(params.Messages,
 				anthropic.NewUserMessage(anthropic.NewTextBlock(closingBrief)))
 			ts.notes = append(ts.notes, fmt.Sprintf(

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -104,6 +105,7 @@ func TestABudgetSpentSearchingStillFilesWhatItFound(t *testing.T) {
 
 	var offered [][]string
 	var closed []bool
+	var system []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Tools []struct {
@@ -126,6 +128,9 @@ func TestABudgetSpentSearchingStillFilesWhatItFound(t *testing.T) {
 		for _, m := range req.Messages {
 			if m.Role == "user" && m.Content == closingBrief {
 				told = true
+			}
+			if m.Role == "system" {
+				system = append(system, m.Content)
 			}
 		}
 		closed = append(closed, told)
@@ -174,6 +179,26 @@ func TestABudgetSpentSearchingStillFilesWhatItFound(t *testing.T) {
 	if len(offered[0]) <= 2 {
 		t.Errorf("the first turn should carry the search tools, got %v", offered[0])
 	}
+	// The prompt ends "Your tools: …", so it is part of the same claim. A
+	// closing turn that still advertises grep asks for a call the request
+	// cannot carry, which is the review's own finding on this change. The
+	// body names tools in its advice, so the claim is the last line alone.
+	if !strings.Contains(lastLine(system[0]), "grep") {
+		t.Errorf("the searching turns should be told they have grep: %q", lastLine(system[0]))
+	}
+	if strings.Contains(lastLine(system[2]), "grep") {
+		t.Errorf("the closing turn was told it still has grep: %q", lastLine(system[2]))
+	}
+	if !strings.Contains(lastLine(system[2]), recordTool) {
+		t.Errorf("the closing turn was not told it has record: %q", lastLine(system[2]))
+	}
+}
+
+// lastLine is the "Your tools: …" line, which is what these assertions are
+// about; the whole prompt in a failure message buries it.
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	return lines[len(lines)-1]
 }
 
 func writeOAToolCall(w http.ResponseWriter, name, args, id string) {

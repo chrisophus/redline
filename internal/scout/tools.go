@@ -158,10 +158,13 @@ func toolResult(out string, failed bool) string {
 	return fmt.Sprintf("%d bytes", len(out))
 }
 
-// Names lists the registered tools, for the run's own log line.
+// Names is what the prompt tells the model it has, so it reads from the tools
+// actually offered: on the closing turn a prompt still ending "Your tools:
+// grep, read_lines, …" invites lookups the request no longer carries.
 func (ts *toolset) Names() []string {
-	out := make([]string, 0, len(ts.tools))
-	for _, t := range ts.tools {
+	offered := ts.offered()
+	out := make([]string, 0, len(offered))
+	for _, t := range offered {
 		out = append(out, t.name)
 	}
 	sort.Strings(out)

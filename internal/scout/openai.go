@@ -140,6 +140,10 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 		if turn > 0 && turn == opts.MaxTurns-1 && !ts.done {
 			ts.closing = true
 			tools = ts.openAITools()
+			// The system prompt names the tools, so it is rendered again from
+			// what is left. A prompt that still lists grep while the request
+			// carries record alone asks for a call that cannot be made.
+			messages[0].Content = promptFor(opts, ts.Names())
 			messages = append(messages, oaMessage{Role: "user", Content: closingBrief})
 			ts.notes = append(ts.notes, fmt.Sprintf(
 				"the search for context stopped at its %d-turn limit; there may be context it had not reached", opts.MaxTurns))
