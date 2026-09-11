@@ -128,6 +128,10 @@ type Options struct {
 	// be nil, and nothing depends on either being called.
 	Progress func(string)
 	Debug    func(string)
+	// Capture, when set, is handed the whole conversation once the loop ends:
+	// the system prompt, the brief, and every turn's tool calls and results,
+	// which is everything the scout sent and got back.
+	Capture func(name string, data []byte)
 }
 
 func (o Options) withDefaults() Options {
@@ -279,6 +283,10 @@ func driveAnthropic(ctx context.Context, opts Options, ts *toolset) (Spend, erro
 		}
 	}
 	spend.CostUSD, spend.CostKnown = spend.Usage.Cost(opts.Model)
+	if opts.Capture != nil {
+		b, _ := json.MarshalIndent(map[string]any{"system": params.System, "messages": params.Messages}, "", "  ")
+		opts.Capture("scout.transcript.json", b)
+	}
 	return spend, nil
 }
 

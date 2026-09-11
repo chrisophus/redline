@@ -199,6 +199,10 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 		}
 	}
 	spend.CostUSD, spend.CostKnown = spend.Usage.Cost(opts.Model)
+	if opts.Capture != nil {
+		b, _ := json.MarshalIndent(messages, "", "  ")
+		opts.Capture("scout.transcript.json", b)
+	}
 	return spend, nil
 }
 

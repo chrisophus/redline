@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
@@ -98,6 +99,19 @@ func cmdReview(o opts) error {
 		ropts.Progress = func(msg string) { fmt.Fprintln(os.Stderr, "redline:", msg) }
 		if o.debug || os.Getenv("REDLINE_DEBUG") != "" {
 			ropts.Debug = func(msg string) { fmt.Fprintln(os.Stderr, "redline debug:", msg) }
+			dir := filepath.Join(o.out, "debug")
+			if err := os.MkdirAll(dir, 0o755); err == nil {
+				var mu sync.Mutex
+				var seq int
+				ropts.Capture = func(name string, data []byte) {
+					mu.Lock()
+					seq++
+					n := seq
+					mu.Unlock()
+					_ = os.WriteFile(filepath.Join(dir, fmt.Sprintf("%02d-%s", n, name)), data, 0o644)
+				}
+				fmt.Fprintf(os.Stderr, "redline debug: writing the full LLM requests and responses to %s/\n", dir)
+			}
 		}
 	}
 	if ropts.Verify {
@@ -315,6 +329,7 @@ func scoutAnswerer(res *run.Result, ropts review.Options, tally *scoutTally) rev
 			APIUser:   ropts.APIUser,
 			Progress:  ropts.Progress,
 			Debug:     ropts.Debug,
+			Capture:   ropts.Capture,
 		})
 		if spend.Turns > 0 {
 			fmt.Fprintf(os.Stderr, "redline: lookups took %d turn(s), %d record(s), %s\n",

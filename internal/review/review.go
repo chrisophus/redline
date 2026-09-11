@@ -167,6 +167,11 @@ type Options struct {
 	// and the raw body the parser was handed. It is what turns an opaque parse
 	// failure into a shape you can read. Nil is fine.
 	Debug func(string)
+	// Capture, when set, is handed the full bytes of everything the model was
+	// sent and everything it returned, one call at a time, named so a reader
+	// can tell the review call from the ruling call. Debug shows a bounded
+	// line on the terminal; this is the whole thing, for writing to disk.
+	Capture func(name string, data []byte)
 	// DryRun assembles the prompt and prices it without calling anything.
 	DryRun bool
 	// Answer runs the lookups a finding asked for, between the review and the
@@ -487,6 +492,15 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 		opts.Debug(fmt.Sprintf("→ %s %s (%s): ~%d input tokens, cap %d, effort %s",
 			opts.API, opts.Model, stage, res.InputEstimate, opts.MaxTokens, opts.Effort))
 	}
+	if opts.Capture != nil {
+		req, _ := json.MarshalIndent(map[string]any{
+			"api": opts.API, "model": opts.Model, "stage": stage,
+			"effort": opts.Effort, "maxTokens": opts.MaxTokens,
+			"inputTokensEstimate": res.InputEstimate,
+			"system":              res.System, "prompt": res.Prompt, "schema": res.Schema,
+		}, "", "  ")
+		opts.Capture(stage+".request.json", req)
+	}
 	start := time.Now()
 	var c completion
 	if opts.API == APIOpenAI {
@@ -519,6 +533,9 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 		if strings.TrimSpace(c.text) != "" {
 			opts.Debug(stage + " response body:\n" + debugBody(c.text))
 		}
+	}
+	if opts.Capture != nil {
+		opts.Capture(stage+".response.json", []byte(c.text))
 	}
 
 	// A refusal comes back as a normal 200 with an empty-looking body, so
