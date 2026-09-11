@@ -370,9 +370,16 @@ func answerOptions(root string, res *run.Result, ropts review.Options, scoutOpts
 		})
 	}
 	return scout.Options{
-		Root:      root,
-		Diff:      diffOf(res),
-		BaseSHA:   res.Report.BaseSHA,
+		Root:    root,
+		Diff:    diffOf(res),
+		BaseSHA: res.Report.BaseSHA,
+		// Without this the answering scout sees only root-level guideline
+		// files: guidelines() finds package-nested AGENTS.md and its kin by
+		// walking up from each changed path, and an empty Changed has
+		// nothing to walk up from. A question about a rule would then be
+		// answered against the repository's most general rules rather than
+		// the ones nearest the code it is about.
+		Changed:   changedPaths(res.Change),
 		Questions: out,
 		Model:     scoutOpts.Model,
 		Effort:    scoutOpts.Effort,

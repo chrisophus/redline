@@ -660,6 +660,21 @@ func TestTheLookupsRunOnTheReviewsModelAndEffort(t *testing.T) {
 	}
 }
 
+// The answering scout resolves guideline files by walking up from each
+// changed path, so an empty Changed leaves it reading the repository's
+// root-level rules and nothing nearer. A question about a rule is then
+// answered against the most general rules in the tree.
+func TestTheLookupsAreToldWhichPathsChanged(t *testing.T) {
+	res := &run.Result{Change: &change.Set{Files: []change.File{
+		{Path: "internal/store/user.go"},
+		{Path: "internal/queue/q.go"},
+	}}}
+	got := answerOptions("/tree", res, review.Options{}, scoutSettings{}, nil)
+	if len(got.Changed) != 2 || got.Changed[0] != "internal/store/user.go" {
+		t.Errorf("Changed = %v, want the change's paths so nested rules resolve", got.Changed)
+	}
+}
+
 // --scout-model and --scout-effort win over --model and --effort for the
 // checking pass, each on its own, so the review can run on one model and
 // check its findings on a cheaper one.
