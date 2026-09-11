@@ -42,6 +42,10 @@ type toolset struct {
 	records []record
 	notes   []string
 	done    bool
+	// closing narrows the offered tools to record and done. Set for the last
+	// turn of the budget: a search cut off mid-lookup files nothing, and
+	// everything it read is paid for and then thrown away.
+	closing bool
 
 	res    *resolver
 	root   string
@@ -81,10 +85,27 @@ func (ts *toolset) register(t tool) {
 	ts.byName[t.name] = t
 }
 
+// offered is the toolset the next request carries. On the closing turn it is
+// record and done alone: the lookups are over, and the only thing left that
+// can help the review is filing what was found.
+func (ts *toolset) offered() []tool {
+	if !ts.closing {
+		return ts.tools
+	}
+	out := make([]tool, 0, 2)
+	for _, t := range ts.tools {
+		if t.name == recordTool || t.name == doneTool {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // params renders the toolset for the request.
 func (ts *toolset) params() []anthropic.ToolUnionParam {
-	out := make([]anthropic.ToolUnionParam, 0, len(ts.tools))
-	for _, t := range ts.tools {
+	offered := ts.offered()
+	out := make([]anthropic.ToolUnionParam, 0, len(offered))
+	for _, t := range offered {
 		def := anthropic.ToolParam{
 			Name:        t.name,
 			Description: anthropic.String(t.description),
@@ -302,9 +323,17 @@ func (ts *toolset) graphPath() tool {
 	}
 }
 
+// The two tools that end a search rather than extend it: everything the
+// review sees arrives through record, and done says what could not be found.
+// Named because the closing turn offers exactly these.
+const (
+	recordTool = "record"
+	doneTool   = "done"
+)
+
 func (ts *toolset) record() tool {
 	return tool{
-		name: "record",
+		name: recordTool,
 		description: "Put a range of code in front of the reviewer. You choose the range and the role; this program reads the bytes from the tree itself, so record the location rather than the code. " +
 			"Roles: enclosing (the whole declaration a changed hunk sits in), caller (a call site of something the change touched), type (a type named in a changed signature), sibling (another implementation of an interface the change touches), history (what git says about those lines, for a deleted guard or a reverted fix), neighbor (a file of another kind the change is coupled to, such as a migration or a config file), guideline (a rule this repository wrote down that bears on this change: a house style, a convention, the paragraph of a design doc that says why something is the way it is).",
 		schema: schema(map[string]any{
@@ -353,7 +382,7 @@ func (ts *toolset) record() tool {
 
 func (ts *toolset) finish() tool {
 	return tool{
-		name:        "done",
+		name:        doneTool,
 		description: "Finish. Call this when you have recorded what the reviewer needs. Give notes for anything you looked for and could not establish: those reach the report as unknowns, and a gap nobody names reads exactly like a gap that is not there.",
 		schema: schema(map[string]any{
 			"notes": map[string]any{

@@ -237,6 +237,16 @@ func driveAnthropic(ctx context.Context, opts Options, ts *toolset) (Spend, erro
 
 	var spend Spend
 	for turn := range opts.MaxTurns {
+		// The last turn of the budget files rather than searches; see the
+		// OpenAI loop, which does the same for the same reason.
+		if turn > 0 && turn == opts.MaxTurns-1 && !ts.done {
+			ts.closing = true
+			params.Tools = ts.params()
+			params.Messages = append(params.Messages,
+				anthropic.NewUserMessage(anthropic.NewTextBlock(closingBrief)))
+			ts.notes = append(ts.notes, fmt.Sprintf(
+				"the search for context stopped at its %d-turn limit; there may be context it had not reached", opts.MaxTurns))
+		}
 		if stop, reason := overBudget(opts, spend, params); stop {
 			spend.CapHit = true
 			ts.notes = append(ts.notes, reason)
@@ -277,10 +287,6 @@ func driveAnthropic(ctx context.Context, opts Options, ts *toolset) (Spend, erro
 			break
 		}
 		params.Messages = append(params.Messages, anthropic.NewUserMessage(results...))
-		if turn == opts.MaxTurns-1 {
-			ts.notes = append(ts.notes, fmt.Sprintf(
-				"the search for context stopped at its %d-turn limit; there may be context it had not reached", opts.MaxTurns))
-		}
 	}
 	spend.CostUSD, spend.CostKnown = spend.Usage.Cost(opts.Model)
 	if opts.Capture != nil {
