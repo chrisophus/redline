@@ -120,9 +120,15 @@ still gets verified before anyone reads it.
 
 Pick the kind by what would actually settle the thing:
 
-- diff, when what you were already shown settles it. An error swallowed in a
-  hunk you can see, two lines that contradict each other. This is the
-  strongest kind, not the weakest.
+- diff, when the lines you were shown settle it on their own: an error
+  swallowed in a hunk you can see, two lines that contradict each other. The
+  ruling will re-read those exact lines and expect the claim to follow from
+  them. What the diff never settles is a claim about the language, a library,
+  or the toolchain: that a construction does not compile, that a call is
+  deprecated, that a function panics on some input. Those are beliefs about
+  code you were not shown, and a wrong one is the false finding this whole
+  pass exists to catch. Give them the kind of the thing that would check them,
+  and if nothing here could, say so with none.
 - precedent, when it turns on whether this repository already does the same
   thing elsewhere. Subject is the symbol or pattern to search for.
 - caller, when it turns on who calls or reads what changed.
@@ -550,6 +556,12 @@ func providerName(e *envelope.Envelope) string {
 	return e.Provider.Name + " " + e.Provider.Version
 }
 
+// intentChars bounds what the author's own account of the change may take.
+// A pull request body is usually a few hundred words; one that runs to pages
+// is pasted output or a template, and the first part is the part that says
+// what the change is for.
+const intentChars = 2000
+
 func (in Input) changeSection() string {
 	var b strings.Builder
 	b.WriteString("## The change\n\n")
@@ -560,13 +572,7 @@ func (in Input) changeSection() string {
 		}
 		return b.String()
 	}
-	if len(in.Change.Commits) > 0 {
-		b.WriteString("Commits:\n")
-		for _, c := range in.Change.Commits {
-			b.WriteString("- " + strings.TrimSpace(c.Subject) + "\n")
-		}
-		b.WriteString("\n")
-	}
+	b.WriteString(in.intentSection())
 	b.WriteString("Files:\n")
 	for _, f := range in.Change.Files {
 		fmt.Fprintf(&b, "- %s (%s, +%d -%d)\n", f.Path, f.Status, f.Added, f.Removed)
@@ -579,6 +585,67 @@ func (in Input) changeSection() string {
 		b.WriteString(tests + "\n\n")
 	}
 	return b.String()
+}
+
+// intentSection is what the author said the change is for: the pull
+// request's title and body when there is one, and the commit messages with
+// their bodies. The first thing the prompt asks for is a change that does
+// not do what its commits say, and until this was sent the model was asked
+// that with the subject lines alone; the body, where the reason lives, was
+// captured for exactly this purpose and never left the session file.
+//
+// It is framed as a claim rather than as context. What the author wrote is
+// what the code is judged against, and it is not evidence about the code: a
+// description that says the error is handled does not handle it.
+func (in Input) intentSection() string {
+	var b strings.Builder
+	if pr := in.Change.Target; pr != nil && pr.PR != nil && (pr.PR.Title != "" || pr.PR.Body != "") {
+		fmt.Fprintf(&b, "Pull request #%d: %s\n", pr.PR.Number, strings.TrimSpace(pr.PR.Title))
+		if body := strings.TrimSpace(pr.PR.Body); body != "" {
+			b.WriteString(indent(clip(body, intentChars)) + "\n")
+		}
+		b.WriteString("\n")
+	}
+	if len(in.Change.Commits) > 0 {
+		b.WriteString("Commits:\n")
+		room := intentChars
+		for _, c := range in.Change.Commits {
+			b.WriteString("- " + strings.TrimSpace(c.Subject) + "\n")
+			body := strings.TrimSpace(c.Body)
+			if body == "" || room <= 0 {
+				continue
+			}
+			body = clip(body, room)
+			room -= len(body)
+			b.WriteString(indent(body) + "\n")
+		}
+		b.WriteString("\n")
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	return "What the author says it does. Judge the code against this; it is not evidence " +
+		"about the code, and a description that says a case is handled does not handle it.\n\n" +
+		b.String()
+}
+
+// clip bounds text at a character count on a line boundary where it can, and
+// says that it did, so a cut description is not read as a short one.
+func clip(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	cut := s[:n]
+	if i := strings.LastIndexByte(cut, '\n'); i > n/2 {
+		cut = cut[:i]
+	}
+	return cut + "\n[… cut at " + strconv.Itoa(n) + " characters]"
+}
+
+// indent sets a block off from the prompt's own structure, so a description
+// with headings of its own does not read as sections of the prompt.
+func indent(s string) string {
+	return "    " + strings.ReplaceAll(s, "\n", "\n    ")
 }
 
 // generatedLine is the whole of what generated files get: a count. Pasting

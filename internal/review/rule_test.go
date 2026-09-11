@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -556,6 +557,24 @@ func TestParseRulingsToleratesAStringifiedArray(t *testing.T) {
 	}
 	if got["c2"].Verdict != findings.VerifiedKept {
 		t.Fatalf("the array shape must still parse: %+v", got)
+	}
+}
+
+// The candidates are shown as "[c1] file:line", and a model at high effort
+// returned that whole string as the finding id. Every ruling then matched
+// nothing, every finding was recorded as unruled, and the run said none were
+// kept as though it had judged them. The id is the first token, however the
+// model dressed it.
+func TestParseRulingsReadsTheIdOutOfWhatTheModelCopied(t *testing.T) {
+	for _, shape := range []string{"c1", "[c1]", "[c1] internal/scout/openai.go:132", "c1 openai.go:132", " [c1]\n"} {
+		body := []byte(`{"rulings":[{"finding":` + strconv.Quote(shape) + `,"verdict":"kept","evidence":"e","why":"w"}]}`)
+		got, err := parseRulings(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got["c1"].Verdict != findings.VerifiedKept {
+			t.Errorf("finding %q did not resolve to c1: %+v", shape, got)
+		}
 	}
 }
 
