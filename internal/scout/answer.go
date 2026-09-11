@@ -190,6 +190,21 @@ func briefFor(opts Options) string {
 	return brief(opts)
 }
 
+// closingBrief is the last thing the scout is told. The turns are spent, and
+// a model that keeps searching now has its work discarded: nothing reaches
+// the review except through record, so the loop asks for the filing rather
+// than stopping mid-lookup and reporting that it found nothing. Named
+// separately from the notes because the model is told this, not the reader.
+const closingBrief = `That is the last of the turns. Look nothing else up: the searching is over.
+
+File what you have now. Call record for every location that bears on a
+question, even a partial answer, and say in the note what is still missing.
+Then call done, and put what you could not establish in its notes.
+
+Anything you do not record is lost. The findings are ruled on with whatever
+is filed here, and a question with nothing against it reads as a question
+nobody could answer.`
+
 func fragmentFor(opts Options) string {
 	if len(opts.Questions) > 0 {
 		return answeringPromptFragment

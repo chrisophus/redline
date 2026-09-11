@@ -88,8 +88,9 @@ type oaResponse struct {
 // tool specs the Anthropic path builds its own params from, so a model on
 // either wire is offered the same tools with the same schemas.
 func (ts *toolset) openAITools() []oaTool {
-	out := make([]oaTool, 0, len(ts.tools))
-	for _, t := range ts.tools {
+	offered := ts.offered()
+	out := make([]oaTool, 0, len(offered))
+	for _, t := range offered {
 		params := map[string]any{"type": "object"}
 		if t.schema.Properties != nil {
 			params["properties"] = t.schema.Properties
@@ -131,6 +132,22 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 
 	var spend Spend
 	for turn := range opts.MaxTurns {
+		// The last turn of the budget files rather than searches. A loop that
+		// simply stops at the limit throws away everything the turns before it
+		// paid to read, because nothing reaches the review except through
+		// record. Not on the first turn: a search that has read nothing has
+		// nothing to file.
+		if turn > 0 && turn == opts.MaxTurns-1 && !ts.done {
+			ts.closing = true
+			tools = ts.openAITools()
+			// The system prompt names the tools, so it is rendered again from
+			// what is left. A prompt that still lists grep while the request
+			// carries record alone asks for a call that cannot be made.
+			messages[0].Content = promptFor(opts, ts.Names())
+			messages = append(messages, oaMessage{Role: "user", Content: closingBrief})
+			ts.notes = append(ts.notes, fmt.Sprintf(
+				"the search for context stopped at its %d-turn limit; there may be context it had not reached", opts.MaxTurns))
+		}
 		if stop, reason := overBudgetOpenAI(opts, spend, messages, tools); stop {
 			spend.CapHit = true
 			ts.notes = append(ts.notes, reason)
@@ -192,10 +209,6 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 		}
 		if ts.done {
 			break
-		}
-		if turn == opts.MaxTurns-1 {
-			ts.notes = append(ts.notes, fmt.Sprintf(
-				"the search for context stopped at its %d-turn limit; there may be context it had not reached", opts.MaxTurns))
 		}
 	}
 	spend.CostUSD, spend.CostKnown = spend.Usage.Cost(opts.Model)

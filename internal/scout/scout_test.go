@@ -112,6 +112,52 @@ func TestRecordsWhatTheScoutAsksForAndStopsWhenItSaysDone(t *testing.T) {
 	}
 }
 
+// The Anthropic loop reserves its last turn the same way the OpenAI one does.
+// Both wires narrow through the same toolset flag, so what this pins is that
+// this driver sets it: the tools on the last request, and the system prompt
+// that names them, are the filing pair alone.
+func TestTheLastTurnOfTheBudgetFilesRatherThanSearches(t *testing.T) {
+	api := serve(t,
+		msg("tool_use", toolUse("tu_1", "grep", map[string]any{"pattern": "Insert", "glob": "*.go"})),
+		msg("tool_use", recordCall("tu_2")),
+	)
+	env, spend, err := runScout(t, api, Options{MaxTurns: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Expansions) != 1 {
+		t.Fatalf("a spent budget filed nothing: %d expansion(s) after %d turn(s)", len(env.Expansions), spend.Turns)
+	}
+	if len(api.requests) != 2 {
+		t.Fatalf("want the whole budget spent, got %d request(s)", len(api.requests))
+	}
+	var names []string
+	tools, _ := api.requests[1]["tools"].([]any)
+	for _, tool := range tools {
+		tt, _ := tool.(map[string]any)
+		name, _ := tt["name"].(string)
+		names = append(names, name)
+		if name != recordTool && name != doneTool {
+			t.Errorf("the last turn was still offered %q, so it can search instead of filing", name)
+		}
+	}
+	if len(names) != 2 {
+		t.Errorf("the last turn should be offered record and done, got %v", names)
+	}
+	system, _ := api.requests[1]["system"].([]any)
+	if len(system) == 0 {
+		t.Fatal("no system prompt on the closing turn")
+	}
+	block, _ := system[0].(map[string]any)
+	prompt, _ := block["text"].(string)
+	if strings.Contains(lastLine(prompt), "grep") {
+		t.Errorf("the closing turn was told it still has grep: %q", lastLine(prompt))
+	}
+	if !hasNote(env, "stopped at its 2-turn limit") {
+		t.Errorf("a budget that ran out is still worth saying: %v", env.Notes)
+	}
+}
+
 // Every tool call in one turn has to come back in one user message. Splitting
 // them teaches the model to stop calling tools in parallel.
 func TestParallelToolResultsGoBackInOneMessage(t *testing.T) {
