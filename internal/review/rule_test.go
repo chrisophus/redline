@@ -602,6 +602,29 @@ func TestParseRulingsToleratesObjectShapes(t *testing.T) {
 	}
 }
 
+// A gateway has also returned the whole {"rulings":[…]} object as a JSON string
+// and escaped it only once, so the decoded value is not valid JSON: a quote
+// inside a finding's own text (a code snippet like == "") sits raw where the
+// wire should carry an escaped one. Seen on the large MKT-1360 ruling over the
+// Marketplace gateway, where it dropped every verdict. Re-escape those quotes
+// and read the rulings rather than leaving the findings unchecked.
+func TestParseRulingsRecoversAStringifiedObjectThatLostEscaping(t *testing.T) {
+	mangled := []byte(`{"rulings":"{\"rulings\":[{\"finding\":\"c1\",\"verdict\":\"kept\",` +
+		`\"evidence\":\"e\",\"why\":\"w\",` +
+		`\"analysis\":\"the query.buyerScopeSQL == \"\" branch is separate\"}]}"}`)
+	got, err := parseRulings(mangled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, ok := got["c1"]
+	if !ok || r.Verdict != findings.VerifiedKept {
+		t.Fatalf("a stringified object that lost a level of escaping must still parse: %+v", got)
+	}
+	if !strings.Contains(r.Analysis, `== "" branch`) {
+		t.Fatalf("the re-escaped quotes must survive into the analysis text: %q", r.Analysis)
+	}
+}
+
 // The ruling reasons before it decides: the schema carries an analysis field,
 // the pass reads it back, and it serializes before the verdict so a model held
 // to schema order writes its working first rather than justifying a verdict it
