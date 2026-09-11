@@ -102,6 +102,10 @@ flags:
   --stats           with review: print the cost distribution of the reviews
                     recorded in --out and exit. The target is an average, so
                     this is the number to read, not any single run.
+  --debug           with review: log every model request, its stop reason and
+                    token counts, the body the parser was handed, and each
+                    scout tool call to stderr, and write the full requests and
+                    responses under --out/debug. REDLINE_DEBUG does the same.
   --report-url URL  with post: link to the full report in the review body
   --profile PATH    with post: YAML that stamps pass/fail markers a merge
                     gate can read (error and warning fail unless the file
