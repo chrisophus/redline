@@ -851,3 +851,41 @@ func TestWalkthroughAttachesFileFindingsToTheFile(t *testing.T) {
 		t.Fatalf("a file finding must not also appear in the not-shown list:\n%s", body[idx:])
 	}
 }
+
+// With body_include: low-confidence, a finding the reviewer was unsure of
+// folds into a collapsed block in the body instead of being withheld. It is
+// still never a line comment, even on a changed line, and it is no longer
+// counted as withheld to the report.
+func TestLowConfidenceFoldsIntoTheBodyWhenIncluded(t *testing.T) {
+	rep := &findings.Report{Findings: []findings.Finding{{
+		File: "a.go", Line: 1, Rule: "agent-comment", Substrate: "redline/review",
+		Severity: findings.SeverityInfo, Source: findings.SourceLLM,
+		Confidence: findings.ConfidenceLow, Message: "nil deref on the returned pointer",
+	}}}
+	rep.Finalize()
+	commentable := map[string]map[int]bool{"a.go": {1: true}}
+
+	off := BuildAttest(rep, prTarget(), "", commentable, &Profile{}, []string{"a.go"})
+	if len(off.Comments) != 0 {
+		t.Fatalf("a low-confidence finding is never a line comment: %+v", off.Comments)
+	}
+	if strings.Contains(off.Body, "nil deref on the returned pointer") {
+		t.Fatalf("without the opt it is withheld, not shown:\n%s", off.Body)
+	}
+	if !strings.Contains(off.Body, "1 said they were uncertain") {
+		t.Fatalf("without the opt the withheld count is noted:\n%s", off.Body)
+	}
+
+	on := BuildAttest(rep, prTarget(), "", commentable,
+		&Profile{BodyInclude: map[string]bool{"low-confidence": true}}, []string{"a.go"})
+	if len(on.Comments) != 0 {
+		t.Fatalf("folded low-confidence stays body-only, never a comment: %+v", on.Comments)
+	}
+	if !strings.Contains(on.Body, "<summary>Low confidence (1)</summary>") ||
+		!strings.Contains(on.Body, "nil deref on the returned pointer") {
+		t.Fatalf("with the opt it folds behind a chevron:\n%s", on.Body)
+	}
+	if strings.Contains(on.Body, "said they were uncertain") {
+		t.Fatalf("a folded finding must not also be reported as withheld:\n%s", on.Body)
+	}
+}

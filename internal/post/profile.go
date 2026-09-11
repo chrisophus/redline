@@ -56,6 +56,7 @@ const (
 // bodySections are the optional walkthrough add-ons body_include may name.
 var bodySections = map[string]bool{
 	"coverage": true, "lint": true, "confirmations": true, "unknowns": true,
+	"low-confidence": true,
 }
 
 // includes reports whether a walkthrough body carries an optional section.
@@ -117,7 +118,7 @@ func LoadProfile(path string) (*Profile, error) {
 		for _, s := range f.BodyInclude {
 			key := strings.ToLower(strings.TrimSpace(s))
 			if !bodySections[key] {
-				return nil, fmt.Errorf("profile %s: body_include %q is not one of coverage, lint, confirmations, unknowns", path, s)
+				return nil, fmt.Errorf("profile %s: body_include %q is not one of coverage, lint, confirmations, unknowns, low-confidence", path, s)
 			}
 			p.BodyInclude[key] = true
 		}

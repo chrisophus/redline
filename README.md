@@ -548,6 +548,9 @@ measurement. The two readers now agree, and the body says how many were held
 back so a reviewer that withheld something can be told from one that had
 nothing to say. Only the reviewer's own findings: a pane's finding carries no
 confidence at all, so this can never withhold something that was measured.
+A repository that would rather see them can set `body_include: low-confidence`,
+which folds them into a collapsed block on the pull request instead of holding
+them back; they still never open a line comment and never gate.
 
 A finding becomes a line-anchored comment only when its `file:line` is on a
 changed line in the PR's diff; findings off the diff (or with no line) go in
@@ -578,8 +581,10 @@ with the agent's one-line summary or "No notes." A finding that names one of
 those files rides under it there; only a finding with no file lands in the
 list after. `body_include` decides how much of the report rides along:
 `coverage` and `lint` add per-file columns, `confirmations` and `unknowns`
-fold in the report sections the body otherwise drops. All of it comes from the
-session `run` already wrote, so posting still observes nothing.
+fold in the report sections the body otherwise drops, and `low-confidence`
+folds the reviewer's unsure findings behind a chevron rather than withholding
+them (the one add-on that also applies to the evidence body). All of it comes
+from the session `run` already wrote, so posting still observes nothing.
 
 ## The report server
 
