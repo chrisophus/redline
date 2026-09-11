@@ -177,3 +177,23 @@ func mustGit(t *testing.T, dir string, args ...string) string {
 	}
 	return string(out)
 }
+
+// The commits' own account of the change reaches the brief, oldest first, so
+// the scout can open a plan a message names rather than guess that one exists.
+func TestTheBriefCarriesWhatTheCommitsSay(t *testing.T) {
+	r, _ := repo(t)
+	base, err := r.Resolve("HEAD~1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := intentOf(r, base); !strings.Contains(got, "- change") {
+		t.Errorf("intent = %q, want the commit subject", got)
+	}
+	head, err := r.Resolve("HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := intentOf(r, head); got != "" {
+		t.Errorf("intent for an empty range = %q, want nothing", got)
+	}
+}

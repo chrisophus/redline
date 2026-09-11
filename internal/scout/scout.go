@@ -75,6 +75,10 @@ type Options struct {
 	// Diff is the change as the reviewer will see it. It is the scout's whole
 	// brief: everything else it wants, it fetches.
 	Diff string
+	// Intent is what the author said the change does: commit messages, and
+	// the pull request's title and body when there is one. Rendered into the
+	// brief as a claim to steer the search by, the way the reviewer gets it.
+	Intent string
 	// Generated maps a changed path to why it is machine output, for the ones
 	// that are. Their diffs are held back, and the manifest says so, which is
 	// the answer to "should a reviewer read this" that the envelope carries.
@@ -187,6 +191,7 @@ func Run(ctx context.Context, opts Options) (*envelope.Envelope, Spend, error) {
 	ts := newToolset(opts.Root, opts.Graph, opts.Limits)
 	ts.res.covered, ts.res.coveredScope = opts.Covered, opts.CoveredScope
 	ts.debug = opts.Debug
+	ts.answering = len(opts.Questions) > 0
 
 	// Same loop, same tools, same governor on either wire. Only the transport
 	// differs: the Anthropic SDK on one, plain chat-completions with function
@@ -222,33 +227,50 @@ func driveAnthropic(ctx context.Context, opts Options, ts *toolset) (Spend, erro
 	}
 	client := anthropic.NewClient(clientOpts...)
 
+	// Two cache breakpoints, on the system prompt and on the brief. Every
+	// turn resends both, and they are the bulk of a request: the diff and the
+	// repository's rules run to thousands of tokens against a few hundred of
+	// tool calls. The breakpoint on the system block also covers the tools
+	// ahead of it. Under the cap this is the difference between three turns
+	// and eight, because a cached read is a tenth of the price and the
+	// governor sees that in the usage it is handed.
+	brief := anthropic.NewTextBlock(briefFor(opts))
+	brief.OfText.CacheControl = anthropic.NewCacheControlEphemeralParam()
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(opts.Model),
 		MaxTokens: opts.MaxTokens,
 		System: []anthropic.TextBlockParam{{
-			Text: promptFor(opts, ts.Names()),
+			Text:         promptFor(opts, ts.Names()),
+			CacheControl: anthropic.NewCacheControlEphemeralParam(),
 		}},
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(briefFor(opts))),
-		},
+		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(brief)},
 		Tools:        ts.params(),
 		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffort(opts.Effort)},
 	}
 
 	var spend Spend
+	// cachedLast is what the previous turn read from the cache, which is the
+	// governor's evidence that the next turn will read it again.
+	var cachedLast int64
 	for turn := range opts.MaxTurns {
 		// The last turn of the budget files rather than searches; see the
 		// OpenAI loop, which does the same for the same reason.
 		if turn > 0 && turn == opts.MaxTurns-1 && !ts.done {
 			ts.closing = true
 			params.Tools = ts.params()
-			params.System = []anthropic.TextBlockParam{{Text: promptFor(opts, ts.Names())}}
+			// The prompt names the tools, so it changes here, and with it
+			// the cached prefix. One turn at the full rate, once.
+			params.System = []anthropic.TextBlockParam{{
+				Text:         promptFor(opts, ts.Names()),
+				CacheControl: anthropic.NewCacheControlEphemeralParam(),
+			}}
 			params.Messages = append(params.Messages,
-				anthropic.NewUserMessage(anthropic.NewTextBlock(closingBrief)))
+				anthropic.NewUserMessage(anthropic.NewTextBlock(closingFor(opts))))
 			ts.notes = append(ts.notes, fmt.Sprintf(
 				"the search for context stopped at its %d-turn limit; there may be context it had not reached", opts.MaxTurns))
+			cachedLast = 0
 		}
-		if stop, reason := overBudget(opts, spend, params); stop {
+		if stop, reason := overBudget(opts, spend, params, cachedLast); stop {
 			spend.CapHit = true
 			ts.notes = append(ts.notes, reason)
 			break
@@ -267,6 +289,7 @@ func driveAnthropic(ctx context.Context, opts Options, ts *toolset) (Spend, erro
 		spend.Usage.OutputTokens += msg.Usage.OutputTokens
 		spend.Usage.CacheReadTokens += msg.Usage.CacheReadInputTokens
 		spend.Usage.CacheWriteTokens += msg.Usage.CacheCreationInputTokens
+		cachedLast = msg.Usage.CacheReadInputTokens + msg.Usage.CacheCreationInputTokens
 		// Priced every turn, not once at the end: overBudget adds this to the
 		// next turn's ceiling, and a total that is still zero while the loop
 		// runs makes the governor a per-turn check that never accumulates.
@@ -323,8 +346,19 @@ func runTools(ts *toolset, msg *anthropic.Message) []anthropic.ContentBlockParam
 // allowance. It prices the turn about to be sent, which is what a governor
 // has to do: knowing afterwards that a turn was too expensive is knowing it
 // too late.
-func overBudget(opts Options, spend Spend, params anthropic.MessageNewParams) (bool, string) {
+//
+// cachedLast is what the previous turn read from or wrote to the prompt
+// cache. When it is more than nothing, the prefix under the breakpoints is
+// priced at the cached rate, because that is what the wire will charge for
+// it; a governor that prices a cached brief at the full rate stops a run
+// three turns before its money is gone. It is evidence rather than
+// assumption: a prefix too short to cache reports no cached tokens, and the
+// full rate stands.
+func overBudget(opts Options, spend Spend, params anthropic.MessageNewParams, cachedLast int64) (bool, string) {
 	next := estimateInput(params)
+	if cachedLast > 0 {
+		next -= cacheDiscount(estimatePrefix(params))
+	}
 	ceiling, ok := review.CeilingCost(opts.Model, next, opts.MaxTokens)
 	if !ok {
 		// An unpriced model cannot be governed by cost. Turns still bound it.
@@ -336,6 +370,30 @@ func overBudget(opts Options, spend Spend, params anthropic.MessageNewParams) (b
 	return true, fmt.Sprintf(
 		"the search for context stopped at its cost cap of %s after %d turn(s); there may be context it had not reached",
 		review.FormatCost(opts.MaxCostUSD, true), spend.Turns)
+}
+
+// cacheDiscount is how much less a cached prefix of n tokens costs than an
+// uncached one, in tokens at the full rate. A cached read is a tenth of the
+// input price.
+func cacheDiscount(prefix int) int {
+	return prefix * 9 / 10
+}
+
+// estimatePrefix sizes the part of the request under the cache breakpoints:
+// the system prompt and the brief.
+func estimatePrefix(params anthropic.MessageNewParams) int {
+	n := 0
+	for _, s := range params.System {
+		n += envelope.EstimateTokens(s.Text)
+	}
+	if len(params.Messages) > 0 {
+		for _, block := range params.Messages[0].Content {
+			if t := block.OfText; t != nil {
+				n += envelope.EstimateTokens(t.Text)
+			}
+		}
+	}
+	return n
 }
 
 // estimateInput sizes the next request from the conversation so far. It is

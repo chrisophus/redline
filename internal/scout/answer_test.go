@@ -62,7 +62,7 @@ func TestTheModeIsChosenByWhetherThereAreQuestions(t *testing.T) {
 // forming opinions stops fetching, which is the failure the exploring prompt
 // already guards against and the answering one has more reason to.
 func TestTheAnsweringPromptForbidsRuling(t *testing.T) {
-	got := answerPrompt([]string{"grep", "read_lines", "record", "done"})
+	got := answerPrompt([]string{"grep", "read_lines", "record", "done"}, 8)
 	if !strings.Contains(got, "You do not\nrule") {
 		t.Error("the scout was not told that ruling is somebody else's turn")
 	}

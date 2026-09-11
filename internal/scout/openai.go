@@ -131,6 +131,7 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 	}
 
 	var spend Spend
+	var cachedLast int64
 	for turn := range opts.MaxTurns {
 		// The last turn of the budget files rather than searches. A loop that
 		// simply stops at the limit throws away everything the turns before it
@@ -144,11 +145,12 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 			// what is left. A prompt that still lists grep while the request
 			// carries record alone asks for a call that cannot be made.
 			messages[0].Content = promptFor(opts, ts.Names())
-			messages = append(messages, oaMessage{Role: "user", Content: closingBrief})
+			messages = append(messages, oaMessage{Role: "user", Content: closingFor(opts)})
 			ts.notes = append(ts.notes, fmt.Sprintf(
 				"the search for context stopped at its %d-turn limit; there may be context it had not reached", opts.MaxTurns))
+			cachedLast = 0
 		}
-		if stop, reason := overBudgetOpenAI(opts, spend, messages, tools); stop {
+		if stop, reason := overBudgetOpenAI(opts, spend, messages, tools, cachedLast); stop {
 			spend.CapHit = true
 			ts.notes = append(ts.notes, reason)
 			break
@@ -176,6 +178,7 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 			spend.Usage.InputTokens += resp.Usage.PromptTokens - cached
 			spend.Usage.OutputTokens += resp.Usage.CompletionTokens
 			spend.Usage.CacheReadTokens += cached
+			cachedLast = cached
 		}
 		spend.CostUSD, spend.CostKnown = spend.Usage.Cost(opts.Model)
 		if opts.Progress != nil {
@@ -274,9 +277,14 @@ func oaBearer(opts Options) string {
 
 // overBudgetOpenAI is the cost governor for the OpenAI loop, the same check the
 // Anthropic path makes: price the turn about to be sent and stop before it
-// takes the run past its allowance.
-func overBudgetOpenAI(opts Options, spend Spend, messages []oaMessage, tools []oaTool) (bool, string) {
+// takes the run past its allowance. The vendor caches a repeated prefix on
+// its own; once a turn has reported cached tokens, the system prompt and the
+// brief are priced at the cached rate, for the reason overBudget gives.
+func overBudgetOpenAI(opts Options, spend Spend, messages []oaMessage, tools []oaTool, cachedLast int64) (bool, string) {
 	next := estimateInputOpenAI(messages, tools)
+	if cachedLast > 0 && len(messages) >= 2 {
+		next -= cacheDiscount(envelope.EstimateTokens(messages[0].Content) + envelope.EstimateTokens(messages[1].Content))
+	}
 	ceiling, ok := review.CeilingCost(opts.Model, next, opts.MaxTokens)
 	if !ok {
 		// An unpriced model cannot be governed by cost. Turns still bound it.

@@ -107,8 +107,13 @@ func TestShortRulesAreInlinedAndLongOnesAreListed(t *testing.T) {
 	if !strings.Contains(got, "CONTRIBUTING.md (300 lines, read it if it bears on this change)") {
 		t.Errorf("the long file was not offered to be read:\n%s", got)
 	}
-	if !strings.Contains(got, "AGENTS.md (3 lines, shown in full)") {
+	if !strings.Contains(got, "AGENTS.md (3 lines, shown in full with line numbers)") {
 		t.Errorf("the short file was not inlined:\n%s", got)
+	}
+	// Numbered the way read_lines numbers, so a rule can be recorded straight
+	// off the brief without a turn spent reading the file again.
+	if !strings.Contains(got, "3\tNo em dashes.") {
+		t.Errorf("the inlined rules carry no line numbers:\n%s", got)
 	}
 }
 

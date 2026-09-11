@@ -16,7 +16,12 @@ import (
 // or two things beyond the diff; a scout that pads is spending the reviewer's
 // ceiling on padding, and the reviewer's attention is the scarce resource
 // here, not the tokens.
-func systemPrompt(tools []string) string {
+//
+// The turn count is in the prompt because the loop is short and the model
+// cannot see it otherwise. A scout that does not know it has eight turns
+// spends the first three reading around, and the closing turn then files
+// whatever it had reached.
+func systemPrompt(tools []string, turns int) string {
 	return fmt.Sprintf(`You gather context for a code reviewer. You do not review.
 
 Another model reviews this change after you, and it sees the diff plus
@@ -27,6 +32,13 @@ You are not writing the context. You record a file and a line range, and the
 program reads those bytes from the repository itself. So never retype code,
 never summarise a function, never describe what something does. Record where
 it is.
+
+Start from what the author says the change is for, when the brief carries
+it. A commit that names a plan tells you which document to open; one that
+says a guard was removed on purpose tells you to pull the history of those
+lines; one that says the change mirrors another package tells you where the
+sibling is. The description is a claim about the code and not evidence, so
+it says where to look and never what to record.
 
 What is usually worth recording, and what it is usually not:
 
@@ -73,10 +85,10 @@ diff. The exception is a declaration a hunk sits inside: if the diff shows
 three changed lines of a forty-line function, record the function. That
 exception does not apply to anything the brief says is already covered.
 
-Read the covered list at the top of the brief before you decide what to look
-for. Another provider may already resolve some of these roles exactly, from a
-type checker rather than by searching, and for those files it is right and you
-are guessing. Your value is what it cannot see: the rule this repository wrote
+Read the covered list in the brief before you decide what to look for.
+Another provider may already resolve some of these roles exactly, from a type
+checker rather than by searching, and for those files it is right and you are
+guessing. Your value is what it cannot see: the rule this repository wrote
 down, the file of another kind the change is coupled to, the history behind a
 deleted guard, and the languages it does not read. Recording a role it covers
 is refused, and the turn is gone either way.
@@ -86,16 +98,27 @@ dependency bump, a documentation edit, needs none, and recording nothing is a
 correct and useful answer. Padding costs the reviewer the ceiling it would
 have spent on the thing that mattered.
 
+You have %d turns, and the last of them is for filing rather than searching.
+Every tool call you make in one turn runs before you see any of the results,
+and the turn costs the same whether it carries one call or six, so put the
+lookups you already know you want in the same turn: the grep for a symbol's
+callers, the read of the file the diff is coupled to, list_docs when the
+change looks planned. Record in the turn a lookup settles the range, rather
+than reading everything first and filing at the end; a search cut off by the
+budget keeps what was recorded and loses the rest. When the results of a turn
+have not changed what you were going to record, stop and file.
+
 When you are done, call done, and use its notes for anything you went looking
 for and could not establish. Those reach the report as unknowns: "no caller
 of X outside the change" is worth saying, because a gap nobody names reads
 exactly like a gap that is not there.
 
-Your tools: %s.`, strings.Join(tools, ", "))
+Your tools: %s.`, turns, strings.Join(tools, ", "))
 }
 
-// brief is the user turn: the change itself, and nothing else. Everything
-// beyond it the scout has to go and get, which is the point.
+// brief is the user turn: the change itself, what its author said it was for,
+// and the repository's own rules. Everything beyond that the scout has to go
+// and get, which is the point.
 func brief(opts Options) string {
 	var b strings.Builder
 	b.WriteString("Changed files:\n")
@@ -106,10 +129,55 @@ func brief(opts Options) string {
 		b.WriteString("\nThis repository has no cross-language graph, so the code tools are all you have.\n")
 	}
 	b.WriteString(coveredBrief(opts))
+	b.WriteString(intentBrief(opts))
 	b.WriteString(guidelineBrief(opts.Root, guidelines(opts.Root, opts.Changed), inlineGuidelineLines, totalGuidelineLines))
 	b.WriteString("\nThe diff:\n\n")
 	b.WriteString(opts.Diff)
 	return b.String()
+}
+
+// intentBrief is what the author said the change does: commit messages, and
+// the pull request's title and body when there is one. The reviewer has been
+// sent this since #36 and the scout never was, which left it inferring from
+// the shape of a diff what a commit body often says outright. A message that
+// names the plan it implements or the decision it reverses is the shortest
+// route to the one document worth recording.
+//
+// The same framing the reviewer gets: a claim about the code, not evidence
+// about it. Where to look, never what to record.
+func intentBrief(opts Options) string {
+	intent := strings.TrimSpace(opts.Intent)
+	if intent == "" {
+		return ""
+	}
+	return "\nWhat the author says the change does, in their words. It is a claim about " +
+		"the code rather than evidence, so use it to decide where to look: a plan it names, " +
+		"a decision it says it reverses, a package it says it mirrors.\n\n" +
+		indent(clipIntent(intent, maxIntentChars)) + "\n"
+}
+
+// maxIntentChars bounds the author's account. A few hundred words say what a
+// change is for; pages of it are pasted output or a template, and the first
+// part is the part that says why.
+const maxIntentChars = 2000
+
+func clipIntent(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	cut := strings.LastIndexByte(s[:n], '\n')
+	if cut < n/2 {
+		cut = n
+	}
+	return s[:cut] + "\n[… cut here; the rest was longer than a description needs to be]"
+}
+
+func indent(s string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for i, l := range lines {
+		lines[i] = "    " + l
+	}
+	return strings.Join(lines, "\n")
 }
 
 // coveredBrief says what another provider already resolves, so the scout does
@@ -150,13 +218,14 @@ const (
 // where it came from and what that makes it worth, because a block of source
 // with a role on it reads as established fact and half of this was chosen by
 // a model that could have chosen wrong.
-const promptFragment = `The context tagged scout was chosen by a smaller model that read this diff
-and went looking. Every block below is the real file, copied from the
-repository at the revision under review, so the code is exactly what is there.
-What is a judgement is the selection: which lines were worth showing you, and
-which role each was filed under. Read the roles as that model's reading of the
-change rather than as resolved facts, particularly where a block's details say
-it was found by name rather than resolved by a type checker.
+const promptFragment = `The context tagged scout was chosen by a model that read this diff and went
+looking. Every block below is the real file, copied from the repository at the
+revision under review, so the code is exactly what is there. What is a
+judgement is the selection: which lines were worth showing you, and which role
+each was filed under. Read the roles as that model's reading of the change
+rather than as resolved facts. A block whose header says it was matched by
+name came from a text search for the name rather than from a type checker, so
+a caller filed that way may be a different thing with the same name.
 
 Blocks in the guideline role are this repository's own rules, quoted from the
 file that states them. They are how this team has said its code and its prose

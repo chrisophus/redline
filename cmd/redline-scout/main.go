@@ -137,6 +137,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		Generated:    generated,
 		BaseSHA:      base,
 		Diff:         diffOf(repo, base, paths, generated),
+		Intent:       intentOf(repo, base),
 		Graph:        resolveGraph(repo.Root, *graph),
 		Model:        *model,
 		Effort:       *effort,
@@ -252,6 +253,29 @@ func diffOf(repo *gitx.Repo, base string, paths []string, generated map[string]s
 			b.WriteString("\n")
 		}
 		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// intentOf is what the commits say the change is for, oldest first, each
+// subject with its body under it. The reviewer is sent the same thing, and a
+// scout that has it can open the plan a commit names instead of guessing from
+// the diff's shape that one exists. A repository whose log cannot be read
+// gets an empty account, and the brief leaves the section out.
+func intentOf(repo *gitx.Repo, base string) string {
+	commits, err := repo.Log(base, "HEAD")
+	if err != nil || len(commits) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i := len(commits) - 1; i >= 0; i-- {
+		c := commits[i]
+		fmt.Fprintf(&b, "- %s\n", strings.TrimSpace(c.Subject))
+		if body := strings.TrimSpace(c.Body); body != "" {
+			for _, line := range strings.Split(body, "\n") {
+				fmt.Fprintf(&b, "  %s\n", line)
+			}
+		}
 	}
 	return b.String()
 }
