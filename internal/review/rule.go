@@ -99,29 +99,49 @@ func questionsFor(cands []Candidate) []Question {
 // system prompt so the two calls share a prefix and the second is served from
 // cache.
 //
+// The pass is addressed as a judge of someone else's findings, not as the
+// reviewer checking its own. Sharing the prefix needs the same bytes ahead of
+// it, not the same speaker, and a model told these are its findings is being
+// asked to disown its own work: measured on a real run, it kept six of six
+// with no answers in front of it at all.
+//
 // The hard part is the asymmetry. A pass rewarded only for withdrawing
 // findings will withdraw everything, score perfectly on precision, and be
 // worthless, and a reader with a stake in the code does exactly that. So the
-// instruction names the failure in both directions and gives the withdrawal a
-// burden of proof the keep does not have: refuting takes a line you can quote.
+// instruction names the failure in both directions and gives the withdrawal
+// a burden it must meet: quote what refutes it, or quote the finding's own
+// false premise. The second ground is there because a finding that is wrong
+// about the language has no line in the repository that refutes it, and
+// without it such a finding could only be kept.
 const rulePrompt = `
 
-You have already reviewed this change. Now check what you found, before any of
-it reaches the author.
+A reviewer proposed findings on this change. You rule on them, before any of
+them reaches the author. You did not write them, and you owe them nothing.
 
-Below your findings are the answers to the questions you asked about them: a
-cheap model ran each lookup and recorded what it found, as real lines from the
-repository. Rule on every finding, using one of five verdicts.
+Below the findings are the answers to the questions the reviewer asked about
+them: a cheap model ran each lookup and recorded what it found, as real lines
+from the repository. Rule on every finding, using one of five verdicts.
 
-- kept: the evidence supports it, or it never needed evidence because what you
-  were shown settles it. Quote the line it rests on.
-- withdrawn: the evidence refutes it. Quote the line that does.
+- kept: the evidence supports it. Quote the line it rests on. For a finding
+  whose question said the diff settles it, that means the lines of the diff
+  it points at: re-read them, and keep it only if the claim follows from what
+  they say. A finding kept on the diff alone is kept on those lines and
+  nothing else.
+- withdrawn: it is wrong, and you can say why. Either the evidence refutes it,
+  and you quote the line that does; or it rests on a claim about the
+  language, a library, or the toolchain that is false, and you quote the
+  finding's own words and say what is wrong with them. The second is the
+  finding no lookup can refute, because the repository has no line that says
+  what the language does, and it is the one that costs the author the most.
 - justified: it is true, and this repository does it on purpose. Precedent in
   code counts: when the answers show the same choice made elsewhere in code
   this change did not touch, that is this team's convention whether or not
   anyone wrote it down. So does an author saying so on an earlier review, if
   you were shown one.
 - unverifiable: the lookup came back with nothing either way, so nobody knows.
+  A finding whose question needed a lookup, when no lookup ran or none came
+  back, is unverifiable: with no answers in front of you, you do not get to
+  keep it on the reviewer's word.
 - already-raised: this pull request has already heard it. Only when you were
   shown the earlier comment.
 
@@ -137,8 +157,8 @@ Two ways to fail here, and they are not symmetric in how they feel.
 
 Withdrawing everything is the easy one and it is worthless. A pass that keeps
 nothing has perfect precision and no value, and the author learns to skip the
-tool entirely. Withdraw a finding when you can quote what refutes it. "I am
-not sure any more" is unverifiable, not withdrawn.
+tool entirely. Withdraw a finding when you can say what is wrong with it. "I
+am not sure any more" is unverifiable, not withdrawn.
 
 Keeping everything is the other, and it is what put you here. A finding you
 cannot point at is a finding the author will dismiss, and the first one they
@@ -154,8 +174,8 @@ Two findings that ask the same question about the same thing are one finding.
 Keep the clearer one and rule the other already-raised.
 
 Do not write new findings here. You are ruling on the ones you have. If the
-answers show you something you missed entirely, that is a real cost of this
-design and it is worth less than the noise it prevents.`
+answers show you something the reviewer missed entirely, that is a real cost
+of this design and it is worth less than the noise it prevents.`
 
 // ruleSchema is the ruling's output contract. Every property required, for the
 // reason the review's own schema gives: a model that must emit a field cannot
@@ -385,8 +405,9 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 	}
 
 	var answers *envelope.Envelope
+	var qs []Question
 	if opts.Answer != nil {
-		qs := questionsFor(pending)
+		qs = questionsFor(pending)
 		if len(qs) > 0 {
 			env, err := opts.Answer(ctx, qs)
 			if err != nil {
@@ -401,6 +422,25 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 				answers = env
 			}
 		}
+	}
+	// Questions were asked and nothing came back for any of them: the scout
+	// failed, or it ran and filed neither a record nor a note. The ruling is
+	// not sent. It would be ruling on the same material that produced the
+	// claims, and a finding whose question named a lookup is unverifiable
+	// when no lookup ran, so every one of them would be withheld in a single
+	// step and the author would get an empty review that reads exactly like
+	// a clean change. The findings go out as the review wrote them, with the
+	// reason on the report, which is what the tripwire branch below does for
+	// the same reason.
+	//
+	// A note with no records is an answer: "no precedent found for X,
+	// searched the whole tree" is evidence, and the ruling is sent.
+	if len(qs) > 0 && !answered(answers) {
+		stageOne.Verified = true
+		stageOne.VerifyFailed = fmt.Sprintf(
+			"the %d lookup(s) the review asked for came back with nothing, so the findings below are as the review wrote them",
+			len(qs))
+		return stageOne, nil
 	}
 
 	res := stageOne.ruleRequest(in, opts, pending, answers)
@@ -450,6 +490,15 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 		verifyCorpus(stageOne.Prompt, answers))
 	stageOne.Review = Apply(stageOne.Review, cands, rulings)
 	return stageOne, nil
+}
+
+// answered reports whether the lookups produced anything a ruling could read.
+// An envelope with no expansions and no notes is a search that filed nothing,
+// which is not the same as a search that looked and said so: the note is the
+// answer in that case, and the prompt tells the model to read the notes as
+// carefully as the code.
+func answered(env *envelope.Envelope) bool {
+	return env != nil && (len(env.Expansions) > 0 || len(env.Notes) > 0)
 }
 
 // ruleRequest assembles the second call. The prefix is stage one's own, which
@@ -639,7 +688,7 @@ func parseRulings(body []byte) (map[string]findings.Ruling, error) {
 	}
 	out := make(map[string]findings.Ruling, len(items))
 	for _, r := range items {
-		id := strings.Trim(strings.TrimSpace(r.Finding), "[]")
+		id := findingID(r.Finding)
 		if id == "" {
 			continue
 		}
@@ -654,6 +703,21 @@ func parseRulings(body []byte) (map[string]findings.Ruling, error) {
 		}
 	}
 	return out, nil
+}
+
+// findingID reads the id out of whatever the model put in the finding field.
+// The candidates are shown as "[c1] file:line", and a model at high effort
+// copied that whole string back. Trimming brackets off the ends left
+// "c1] file:line", nothing matched, and every finding was recorded as
+// unruled and not posted, which the summary reported as none kept. The id is
+// the first token, with or without its brackets.
+func findingID(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "[")
+	if i := strings.IndexAny(s, "] \t\n"); i >= 0 {
+		s = s[:i]
+	}
+	return s
 }
 
 // decodeRulingItems reads the rulings out of whatever shape the wire returned,
