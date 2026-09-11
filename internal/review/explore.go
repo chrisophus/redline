@@ -170,11 +170,16 @@ func runExplore(ctx context.Context, in Input, opts Options, res *Result) (*Resu
 		stream := client.Beta.Messages.NewStreaming(ctx, params)
 		var acc anthropic.BetaMessage
 		var streamErr error
+		// A turn of this loop is as silent as the one-shot call was, and for
+		// longer: the per-turn line below cannot print until the turn ends.
+		hb := newHeartbeat(opts, fmt.Sprintf("turn %d", turn))
 		for stream.Next() {
-			if err := acc.Accumulate(stream.Current()); err != nil {
+			ev := stream.Current()
+			if err := acc.Accumulate(ev); err != nil {
 				streamErr = fmt.Errorf("accumulate (turn %d): %w", turn, err)
 				break
 			}
+			hb.observe(ev.Delta.Type, ev.Delta.Text, ev.Delta.Thinking, ev.Delta.PartialJSON)
 		}
 		if streamErr == nil {
 			if err := stream.Err(); err != nil {

@@ -171,3 +171,19 @@ func TestFitWithNoSeenSetKeepsEverything(t *testing.T) {
 		t.Fatal("without a diff to compare against, nothing is known to be redundant")
 	}
 }
+
+// One formula, two entry points: EstimateTokens prices a string it holds,
+// EstimateTokensLen prices a length measured as the text streamed past and
+// was never assembled. A change to either that leaves the other behind makes
+// a running estimate disagree with the same text priced whole.
+func TestBothTokenEstimatesPriceTheSameText(t *testing.T) {
+	for _, s := range []string{"", "x", "func main() {}", strings.Repeat("a line of code\n", 500)} {
+		if whole, streamed := EstimateTokens(s), EstimateTokensLen(len(s)); whole != streamed {
+			t.Errorf("%d char(s): EstimateTokens = %d but EstimateTokensLen = %d",
+				len(s), whole, streamed)
+		}
+	}
+	if got := EstimateTokensLen(-1); got != 0 {
+		t.Errorf("a negative length priced as %d; it must be nothing, never a negative count", got)
+	}
+}

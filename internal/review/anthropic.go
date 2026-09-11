@@ -94,10 +94,13 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 			CacheWriteTokens: msg.Usage.CacheCreationInputTokens,
 		}
 	}
+	hb := newHeartbeat(opts, res.stage())
 	for stream.Next() {
-		if err := msg.Accumulate(stream.Current()); err != nil {
+		ev := stream.Current()
+		if err := msg.Accumulate(ev); err != nil {
 			return completion{usage: usage()}, err
 		}
+		hb.observe(ev.Delta.Type, ev.Delta.Text, ev.Delta.Thinking, ev.Delta.PartialJSON)
 	}
 	if err := stream.Err(); err != nil {
 		return completion{usage: usage()}, err
