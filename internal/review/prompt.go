@@ -70,7 +70,16 @@ change. Treat them as established and already on the report.
 
 What is worth reporting, given tools have already run:
 
-- The change does not do what its commits and its shape say it does.
+- The change does not do what its own description says it does. Where the
+  author's account of the change is given above, read it against the diff and
+  report any place they disagree. Say which half is wrong if you can tell: a
+  description claiming a case is handled that the code does not handle is the
+  dangerous direction, because the next reader trusts the description and
+  stops looking. A description that is merely silent about something the
+  change does is worth one line, not an argument. Anchor it to the line that
+  contradicts the sentence, quote both, and say which to change. This is a
+  finding about the change, not a style note about writing: a wrong
+  description outlives the review.
 - An invariant that holds elsewhere in this code no longer holds here.
 - An error path that cannot be reached, or one that is reached and swallowed.
 - A caller you were shown that this change breaks.
@@ -121,14 +130,20 @@ still gets verified before anyone reads it.
 Pick the kind by what would actually settle the thing:
 
 - diff, when the lines you were shown settle it on their own: an error
-  swallowed in a hunk you can see, two lines that contradict each other. The
-  ruling will re-read those exact lines and expect the claim to follow from
-  them. What the diff never settles is a claim about the language, a library,
-  or the toolchain: that a construction does not compile, that a call is
-  deprecated, that a function panics on some input. Those are beliefs about
-  code you were not shown, and a wrong one is the false finding this whole
-  pass exists to catch. Give them the kind of the thing that would check them,
-  and if nothing here could, say so with none.
+  swallowed in a hunk you can see, two lines that contradict each other, a
+  write to a map that was never made, a goroutine with nothing to end it.
+  What those have in common is that they are about what the code does when it
+  runs, and the lines are in front of you. The ruling will re-read those exact
+  lines and expect the claim to follow from them, so quote what it should
+  read.
+
+  One class is not a finding at all: whether the toolchain accepts this code.
+  That it does not compile, that a construction is invalid, that a call no
+  longer exists. Whether the code builds is measured, not reviewed, and you
+  did not run the build, so a finding that it does not compile is a claim
+  about a check you have no result from. Say nothing. That is different from
+  what the code does once it compiles, which is most of what is worth
+  finding here.
 - precedent, when it turns on whether this repository already does the same
   thing elsewhere. Subject is the symbol or pattern to search for.
 - caller, when it turns on who calls or reads what changed.
@@ -612,7 +627,15 @@ func (in Input) intentSection() string {
 		for _, c := range in.Change.Commits {
 			b.WriteString("- " + strings.TrimSpace(c.Subject) + "\n")
 			body := strings.TrimSpace(c.Body)
-			if body == "" || room <= 0 {
+			if body == "" {
+				continue
+			}
+			// Said rather than skipped, for the reason clip exists: a commit
+			// whose message explained the change must not read like a commit
+			// that had nothing to say. The budget is spent in commit order,
+			// so this is the tail of a long series.
+			if room <= 0 {
+				b.WriteString(indent("[… message not shown, the budget for these was spent]") + "\n")
 				continue
 			}
 			body = clip(body, room)
@@ -624,8 +647,11 @@ func (in Input) intentSection() string {
 	if b.Len() == 0 {
 		return ""
 	}
-	return "What the author says it does. Judge the code against this; it is not evidence " +
-		"about the code, and a description that says a case is handled does not handle it.\n\n" +
+	return "What the author says it does, in their words. Judge the code against it: it is a " +
+		"claim, not evidence about the code, and a description that says a case is handled " +
+		"does not handle it. Read it against the diff and report where they disagree, " +
+		"naming the sentence and the line that contradict each other. Where they agree, " +
+		"say nothing about it.\n\n" +
 		b.String()
 }
 

@@ -1,6 +1,7 @@
 package review
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -34,11 +35,16 @@ func TestThePromptCarriesWhatTheAuthorSaidTheChangeDoes(t *testing.T) {
 		"This adds an idempotency key.",
 		"Add an idempotency key to charge",
 		"Without it a retried request charged twice.",
-		"it is not evidence about the code",
+		// The account is only worth carrying if the review is asked to check
+		// it: a description that survives review wrong outlives the review.
+		"report where they disagree",
 	} {
 		if !strings.Contains(got.Prompt, want) {
 			t.Errorf("the prompt does not carry %q", want)
 		}
+	}
+	if !strings.Contains(got.System, "does not do what its own description says") {
+		t.Error("the reporting rules do not make an inaccurate description a finding")
 	}
 }
 
@@ -60,6 +66,33 @@ func TestALongDescriptionIsCutAndSaysSo(t *testing.T) {
 	}
 	if strings.Count(got.Prompt, "what the change is for") > 100 {
 		t.Error("the whole description went in")
+	}
+}
+
+// The budget is spent in commit order, so a long series runs out of room.
+// A commit whose message explained the change must not read like a commit
+// that had nothing to say, which is the reason clip announces its own cut.
+func TestACommitWhoseBodyDidNotFitSaysSo(t *testing.T) {
+	var commits []gitx.Commit
+	for i := range 6 {
+		commits = append(commits, gitx.Commit{
+			Subject: "commit " + strconv.Itoa(i),
+			Body:    strings.Repeat("reason for this commit\n", 30),
+		})
+	}
+	in := Input{Report: &findings.Report{}, Change: &change.Set{
+		Commits: commits,
+		Files:   []change.File{{Path: "a.go", Status: "modified", Diff: "--- a.go\n+x\n"}},
+	}}
+	got, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Prompt, "commit 5") {
+		t.Error("the last commit's subject was dropped, not just its body")
+	}
+	if !strings.Contains(got.Prompt, "budget for these was spent") {
+		t.Error("a commit body dropped for room says nothing about it")
 	}
 }
 

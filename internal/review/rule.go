@@ -405,8 +405,9 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 	}
 
 	var answers *envelope.Envelope
+	var qs []Question
 	if opts.Answer != nil {
-		qs := questionsFor(pending)
+		qs = questionsFor(pending)
 		if len(qs) > 0 {
 			env, err := opts.Answer(ctx, qs)
 			if err != nil {
@@ -421,6 +422,25 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 				answers = env
 			}
 		}
+	}
+	// Questions were asked and nothing came back for any of them: the scout
+	// failed, or it ran and filed neither a record nor a note. The ruling is
+	// not sent. It would be ruling on the same material that produced the
+	// claims, and a finding whose question named a lookup is unverifiable
+	// when no lookup ran, so every one of them would be withheld in a single
+	// step and the author would get an empty review that reads exactly like
+	// a clean change. The findings go out as the review wrote them, with the
+	// reason on the report, which is what the tripwire branch below does for
+	// the same reason.
+	//
+	// A note with no records is an answer: "no precedent found for X,
+	// searched the whole tree" is evidence, and the ruling is sent.
+	if len(qs) > 0 && !answered(answers) {
+		stageOne.Verified = true
+		stageOne.VerifyFailed = fmt.Sprintf(
+			"the %d lookup(s) the review asked for came back with nothing, so the findings below are as the review wrote them",
+			len(qs))
+		return stageOne, nil
 	}
 
 	res := stageOne.ruleRequest(in, opts, pending, answers)
@@ -470,6 +490,15 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 		verifyCorpus(stageOne.Prompt, answers))
 	stageOne.Review = Apply(stageOne.Review, cands, rulings)
 	return stageOne, nil
+}
+
+// answered reports whether the lookups produced anything a ruling could read.
+// An envelope with no expansions and no notes is a search that filed nothing,
+// which is not the same as a search that looked and said so: the note is the
+// answer in that case, and the prompt tells the model to read the notes as
+// carefully as the code.
+func answered(env *envelope.Envelope) bool {
+	return env != nil && (len(env.Expansions) > 0 || len(env.Notes) > 0)
 }
 
 // ruleRequest assembles the second call. The prefix is stage one's own, which

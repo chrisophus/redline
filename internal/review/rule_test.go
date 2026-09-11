@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -506,6 +507,77 @@ func TestTheLookupsSkipFindingsAlreadyAnswered(t *testing.T) {
 	}
 	if len(asked) != 1 || asked[0] != "c2" {
 		t.Fatalf("only the open finding should be looked up, asked %v", asked)
+	}
+}
+
+// A total lookup failure must not read as a clean change. The ruling used to
+// be sent with no answers at all, and a finding whose question named a lookup
+// is unverifiable when no lookup ran, so every one of them was withheld in a
+// single step and the author saw an empty review. The findings go out as the
+// review wrote them, and the report says why.
+func TestLookupsThatAnswerNothingLeaveTheFindingsAlone(t *testing.T) {
+	q := findings.Question{Kind: findings.QuestionPrecedent, Subject: "Thing"}
+	for _, tc := range []struct {
+		name string
+		env  *envelope.Envelope
+		err  error
+	}{
+		{"the scout failed", nil, errors.New("no api key")},
+		{"the scout filed nothing", &envelope.Envelope{}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := Input{Report: priors()}
+			one, err := Assemble(in, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			one.Review = findings.Review{Comments: []findings.ReviewComment{
+				comment("a.go", "still open", q),
+			}}
+			opts := Options{Verify: true, Answer: func(_ context.Context, _ []Question) (*envelope.Envelope, error) {
+				return tc.env, tc.err
+			}}
+			got, err := Verify(context.Background(), in, opts, one)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Review.Comments) != 1 {
+				t.Fatalf("the findings were withheld on no evidence: %+v", got.Review.Comments)
+			}
+			if got.Review.Comments[0].Ruling.Verdict != "" {
+				t.Errorf("a finding was ruled with nothing to rule on: %q",
+					got.Review.Comments[0].Ruling.Verdict)
+			}
+			if got.VerifyFailed == "" {
+				t.Error("the report does not say the lookups came back with nothing")
+			}
+		})
+	}
+}
+
+// A note with no records is an answer: "no precedent found for X, searched
+// the whole tree" is evidence, and the ruling is sent to read it.
+func TestANoteWithNoRecordsIsStillAnAnswer(t *testing.T) {
+	in := Input{Report: priors()}
+	one, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	one.Review = findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "still open", findings.Question{Kind: findings.QuestionPrecedent, Subject: "Thing"}),
+	}}
+	opts := Options{Verify: true, DryRun: true, Answer: func(_ context.Context, _ []Question) (*envelope.Envelope, error) {
+		return &envelope.Envelope{Notes: []string{"no precedent found for Thing, searched the whole tree"}}, nil
+	}}
+	got, err := Verify(context.Background(), in, opts, one)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.VerifyFailed != "" {
+		t.Fatalf("a note is an answer, so the ruling must be sent: %q", got.VerifyFailed)
+	}
+	if !strings.Contains(got.Prompt, "searched the whole tree") {
+		t.Error("the note did not reach the ruling")
 	}
 }
 
