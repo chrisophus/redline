@@ -139,15 +139,21 @@ func runExplore(ctx context.Context, in Input, opts Options, res *Result) (*Resu
 	}
 	client := anthropic.NewClient(clientOpts...)
 
-	msgs := []anthropic.BetaMessageParam{
-		anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(res.Prompt)),
-	}
+	// Cache breakpoints on the system block and on the opening turn, the
+	// same two the one-shot call carries. Every turn of this loop resends
+	// the whole conversation, and the diff plus the catalogue is most of it;
+	// without the breakpoints each turn paid the full input rate for a
+	// prefix the previous turn had already sent.
+	opening := anthropic.NewBetaTextBlock(res.Prompt)
+	opening.OfText.CacheControl = anthropic.NewBetaCacheControlEphemeralParam()
+	msgs := []anthropic.BetaMessageParam{anthropic.NewBetaUserMessage(opening)}
 	params := anthropic.BetaMessageNewParams{
 		Model:     anthropic.Model(opts.Model),
 		MaxTokens: opts.MaxTokens,
 		Betas:     []anthropic.AnthropicBeta{anthropic.AnthropicBetaTaskBudgets2026_03_13},
 		System: []anthropic.BetaTextBlockParam{{
-			Text: systemPrompt + exploreAddendum + languageFragments(in.Envelopes),
+			Text:         systemPrompt + exploreAddendum + languageFragments(in.Envelopes),
+			CacheControl: anthropic.NewBetaCacheControlEphemeralParam(),
 		}},
 		Tools: []anthropic.BetaToolUnionParam{fetchToolParam()},
 		OutputConfig: anthropic.BetaOutputConfigParam{
