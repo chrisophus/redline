@@ -118,7 +118,7 @@ func cmdReview(o opts) error {
 		}
 	}
 	if ropts.Verify {
-		ropts.Answer = scoutAnswerer(res, ropts, &tally)
+		ropts.Answer = scoutAnswerer(res, ropts, o.scoutSettings(), &tally)
 	}
 	if !o.dryRun {
 		// Said before the call, not after it. A review is one blocking
@@ -300,7 +300,7 @@ type scoutTally struct {
 // money is the caller's business, and everything below degrades to nil rather
 // than failing, so a checkout with no key still gets a ruling over the
 // answers it has.
-func scoutAnswerer(res *run.Result, ropts review.Options, tally *scoutTally) review.Answerer {
+func scoutAnswerer(res *run.Result, ropts review.Options, scoutOpts scoutSettings, tally *scoutTally) review.Answerer {
 	root := ""
 	if res.Target != nil {
 		root = res.Target.Dir
@@ -313,7 +313,7 @@ func scoutAnswerer(res *run.Result, ropts review.Options, tally *scoutTally) rev
 		return nil
 	}
 	return func(ctx context.Context, qs []review.Question) (*envelope.Envelope, error) {
-		sopts := answerOptions(root, res, ropts, qs)
+		sopts := answerOptions(root, res, ropts, scoutOpts, qs)
 		fmt.Fprintf(os.Stderr, "redline: looking up %d question(s) the review asked\n", len(sopts.Questions))
 		env, spend, err := scout.Run(ctx, sopts)
 		if spend.Turns > 0 {
@@ -329,18 +329,39 @@ func scoutAnswerer(res *run.Result, ropts review.Options, tally *scoutTally) rev
 	}
 }
 
-// answerOptions is the scout run the review's own flags describe. The lookups
-// go over the same wire the review did, on the same model at the same effort:
-// --model and --effort used to stop at stage one, so a review run on another
-// model still checked its findings with the scout's defaults, and there was
-// no flag that reached the checking. Empty is still empty here, and the scout
-// applies its own defaults to it, so a review run with no flags checks its
-// findings as it always did.
+// scoutSettings is what the command says about the checking pass alone.
+type scoutSettings struct {
+	Model  string
+	Effort string
+}
+
+// scoutSettings resolves the checking pass's model and effort from the flags.
+// --scout-model and --scout-effort win; without them the review's own --model
+// and --effort carry over, so one flag runs both stages on one model unless
+// the caller says otherwise. Empty stays empty, and the scout applies its own
+// defaults to it, so a review run with no flags checks its findings as it
+// always did.
+func (o opts) scoutSettings() scoutSettings {
+	s := scoutSettings{Model: o.scoutModel, Effort: o.scoutEffort}
+	if s.Model == "" {
+		s.Model = o.model
+	}
+	if s.Effort == "" {
+		s.Effort = o.effort
+	}
+	return s
+}
+
+// answerOptions is the scout run the review's flags describe. The lookups go
+// over the same wire the review did, on the model and effort scoutSettings
+// resolved: --model and --effort used to stop at stage one, so a review run on
+// another model still checked its findings with the scout's defaults, and
+// there was no flag that reached the checking.
 //
 // The credentials follow the same rule. On the OpenAI wire the scout uses the
 // credentials stage one used; on the Anthropic wire an empty key falls back
 // to the SDK's own credential chain, an `ant auth login` profile included.
-func answerOptions(root string, res *run.Result, ropts review.Options, qs []review.Question) scout.Options {
+func answerOptions(root string, res *run.Result, ropts review.Options, scoutOpts scoutSettings, qs []review.Question) scout.Options {
 	out := make([]scout.Question, 0, len(qs))
 	for _, q := range qs {
 		out = append(out, scout.Question{
@@ -354,8 +375,8 @@ func answerOptions(root string, res *run.Result, ropts review.Options, qs []revi
 		Intent:    intentOf(res),
 		BaseSHA:   res.Report.BaseSHA,
 		Questions: out,
-		Model:     ropts.Model,
-		Effort:    ropts.Effort,
+		Model:     scoutOpts.Model,
+		Effort:    scoutOpts.Effort,
 		API:       ropts.API,
 		BaseURL:   ropts.BaseURL,
 		APIKey:    ropts.APIKey,

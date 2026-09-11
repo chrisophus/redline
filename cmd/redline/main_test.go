@@ -628,11 +628,11 @@ func TestPostAnchorsCommentsToTheSessionDiff(t *testing.T) {
 // review used. A session with no working tree still has nothing to look up.
 func TestScoutRunsOnTheOpenAIWire(t *testing.T) {
 	res := &run.Result{Target: &target.Target{Dir: t.TempDir()}}
-	if scoutAnswerer(res, review.Options{API: review.APIOpenAI, APIKey: "sk-openai"}, nil) == nil {
+	if scoutAnswerer(res, review.Options{API: review.APIOpenAI, APIKey: "sk-openai"}, scoutSettings{}, nil) == nil {
 		t.Fatal("the scout should be wired to run on the OpenAI wire")
 	}
 	gone := &run.Result{Target: &target.Target{Dir: filepath.Join(t.TempDir(), "missing")}}
-	if scoutAnswerer(gone, review.Options{API: review.APIOpenAI, APIKey: "sk-openai"}, nil) != nil {
+	if scoutAnswerer(gone, review.Options{API: review.APIOpenAI, APIKey: "sk-openai"}, scoutSettings{}, nil) != nil {
 		t.Fatal("with no working tree there is nothing to look up")
 	}
 }
@@ -644,7 +644,8 @@ func TestScoutRunsOnTheOpenAIWire(t *testing.T) {
 func TestTheLookupsRunOnTheReviewsModelAndEffort(t *testing.T) {
 	res := &run.Result{}
 	ropts := review.Options{Model: "claude-opus-5", Effort: "medium", API: review.APIAnthropic, BaseURL: "http://proxy"}
-	got := answerOptions("/tree", res, ropts, []review.Question{{ID: "c1", Kind: "precedent", Subject: "Insert"}})
+	settings := opts{model: "claude-opus-5", effort: "medium"}.scoutSettings()
+	got := answerOptions("/tree", res, ropts, settings, []review.Question{{ID: "c1", Kind: "precedent", Subject: "Insert"}})
 	if got.Model != "claude-opus-5" || got.Effort != "medium" {
 		t.Errorf("model/effort = %q/%q, want the review's", got.Model, got.Effort)
 	}
@@ -654,7 +655,21 @@ func TestTheLookupsRunOnTheReviewsModelAndEffort(t *testing.T) {
 	if len(got.Questions) != 1 || got.Questions[0].ID != "c1" {
 		t.Errorf("questions = %+v, want the one asked", got.Questions)
 	}
-	if unset := answerOptions("/tree", res, review.Options{}, nil); unset.Model != "" || unset.Effort != "" {
+	if unset := answerOptions("/tree", res, review.Options{}, opts{}.scoutSettings(), nil); unset.Model != "" || unset.Effort != "" {
 		t.Errorf("an unset flag reached the scout as %q/%q; it should stay empty for the scout's defaults", unset.Model, unset.Effort)
+	}
+}
+
+// --scout-model and --scout-effort win over --model and --effort for the
+// checking pass, each on its own, so the review can run on one model and
+// check its findings on a cheaper one.
+func TestTheScoutFlagsWinForTheCheckingPass(t *testing.T) {
+	both := opts{model: "claude-opus-5", effort: "high", scoutModel: "claude-haiku-4-5", scoutEffort: "low"}.scoutSettings()
+	if both.Model != "claude-haiku-4-5" || both.Effort != "low" {
+		t.Errorf("settings = %+v, want the scout flags", both)
+	}
+	one := opts{model: "claude-opus-5", effort: "high", scoutModel: "claude-haiku-4-5"}.scoutSettings()
+	if one.Model != "claude-haiku-4-5" || one.Effort != "high" {
+		t.Errorf("settings = %+v, want the scout model with the review's effort", one)
 	}
 }

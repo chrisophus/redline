@@ -81,6 +81,12 @@ flags:
   --effort LEVEL    with review: low|medium|high|xhigh|max, for the review and
                     the checking alike (default: the model's for the review,
                     low for the checking)
+  --scout-model NAME
+                    with review: model to check the findings with, when it
+                    should differ from --model
+  --scout-effort LEVEL
+                    with review: effort for the checking, when it should
+                    differ from --effort
   --mode MODE       with review: oneshot (default) sends the context Redline
                     chose; explore sends a catalogue and lets the reviewer
                     fetch what it wants, costing more by design. In explore
@@ -141,6 +147,7 @@ type opts struct {
 	base, upstream, migDir, format, out, pr, branch, commit, revRange string
 	reportURL, profile, olderThan                                     string
 	model, effort, mode, api, baseURL, apiUser                        string
+	scoutModel, scoutEffort                                           string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
 	stats, verify, noVerify, debug                                    bool
 	port, ceiling, maxTokens, maxTurns, samples                       int
@@ -184,6 +191,8 @@ func runMain(args []string) error {
 	fs.StringVar(&o.apiUser, "api-user", "", "with review --api openai: caller name for a proxy that wants one beside the key")
 	fs.StringVar(&o.model, "model", "", "with review: model to review and check the findings with")
 	fs.StringVar(&o.effort, "effort", "", "with review: low|medium|high|xhigh|max, for the review and the checking")
+	fs.StringVar(&o.scoutModel, "scout-model", "", "with review: model to check the findings with, when it should differ from --model")
+	fs.StringVar(&o.scoutEffort, "scout-effort", "", "with review: effort for the checking, when it should differ from --effort")
 	fs.StringVar(&o.mode, "mode", "", "with review: oneshot or explore")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "with review --mode explore: turn limit")
 	fs.IntVar(&o.samples, "samples", 0, "with review: independent reviews to union")
