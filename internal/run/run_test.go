@@ -990,3 +990,108 @@ func TestTheStampMatchesTheChangeItWasWrittenFor(t *testing.T) {
 		t.Fatalf("a review stamped with this change was refused; unknowns: %+v", rep.Unknowns)
 	}
 }
+
+// A review whose ruling broke still merges its findings, because a comment
+// nobody ruled on is the review's own and posts as it always did. What must
+// not happen is the reader being left to read those unchecked findings as if
+// the pass had run. The signal rides in review.json, so a run that renders the
+// file without the command that wrote it still states it.
+func TestABrokenRulingIsStatedWhenTheReviewMerges(t *testing.T) {
+	r := newRepo(t)
+	r.write("a.go", "package a\n")
+	r.commit("base")
+	r.write("a.go", "package a\n\nfunc A() {}\n")
+	out := filepath.Join(r.dir, ".redline")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(findings.Review{
+		Overview:     "a review whose ruling did not parse",
+		Comments:     []findings.ReviewComment{{File: "a.go", Line: 3, Body: "an unchecked remark"}},
+		VerifyFailed: "the verifying pass's response did not parse: rulings is neither an array nor an object",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "review.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rep := r.run(run.Options{Base: "main", Out: out}).Report
+	if rep.Agent == nil {
+		t.Fatal("a review whose ruling broke was refused; its findings are still the review")
+	}
+	var said bool
+	for _, u := range rep.Unknowns {
+		if u.Substrate == "redline/review" && strings.Contains(u.Message, "checking pass did not complete") {
+			said = true
+		}
+	}
+	if !said {
+		t.Errorf("a broken ruling was not stated, so the unchecked findings read as checked: %+v", rep.Unknowns)
+	}
+}
+
+// Re-applying a review supersedes the notes a prior run left about the review
+// it found: a stale-revision refusal from a session built before `redline
+// review` ran is exactly the contradiction that put "no agent review was
+// merged" on a page beside the review's own merged comments. The re-apply
+// clears the review-scoped notes and re-derives them, and leaves every pane's
+// own note alone.
+func TestReapplyReviewClearsStaleReviewNotesAndSurfacesABrokenRuling(t *testing.T) {
+	res := &run.Result{Report: findings.Report{
+		Findings: []findings.Finding{
+			{Substrate: "redline/lint", Rule: "x", File: "a.go", Line: 1,
+				Message: "a pane finding", Source: findings.SourceDeterministic},
+			{Substrate: "redline/review", Rule: "agent-comment", File: "a.go", Line: 3,
+				Message: "a stale review comment", Source: findings.SourceLLM},
+		},
+		Unknowns: []findings.Unknown{
+			{Substrate: "redline/review", Message: "review.json was written against X and this change is Y, so no agent review was merged"},
+			{Substrate: "redline/lint", Message: "a pane applied to this change but did not run"},
+		},
+	}}
+	rev := &findings.Review{
+		Overview:     "the fresh review",
+		Comments:     []findings.ReviewComment{{File: "a.go", Line: 4, Body: "a fresh remark"}},
+		VerifyFailed: "the verifying pass's response did not parse",
+	}
+	run.ReapplyReview(res, rev)
+
+	var staleNote, paneNote, brokeSaid bool
+	for _, u := range res.Report.Unknowns {
+		switch {
+		case u.Substrate == "redline/review" && strings.Contains(u.Message, "no agent review was merged"):
+			staleNote = true
+		case u.Substrate == "redline/lint":
+			paneNote = true
+		case u.Substrate == "redline/review" && strings.Contains(u.Message, "checking pass did not complete"):
+			brokeSaid = true
+		}
+	}
+	if staleNote {
+		t.Error("a superseded stale-review note survived the re-apply, so the page contradicts itself")
+	}
+	if !paneNote {
+		t.Error("a pane's own unknown was dropped by the review re-apply")
+	}
+	if !brokeSaid {
+		t.Error("a re-applied review whose ruling broke said nothing about it")
+	}
+
+	staleGone, freshThere := true, false
+	for _, f := range res.Report.Findings {
+		if strings.Contains(f.Message, "stale review comment") {
+			staleGone = false
+		}
+		if strings.Contains(f.Message, "fresh remark") {
+			freshThere = true
+		}
+	}
+	if !staleGone {
+		t.Error("a prior review's comment survived the re-apply")
+	}
+	if !freshThere {
+		t.Error("the fresh review's comment did not reach the findings")
+	}
+}

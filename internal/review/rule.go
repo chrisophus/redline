@@ -656,7 +656,30 @@ func parseRulings(body []byte) (map[string]findings.Ruling, error) {
 	return out, nil
 }
 
-// decodeRulingItems reads the rulings out of whatever shape the wire returned.
+// decodeRulingItems reads the rulings out of whatever shape the wire returned,
+// including a stringified object whose own text lost a level of escaping.
+//
+// decodeRulingShapes reads the shapes that are still well-formed JSON. When
+// none of them parse, a gateway that returned the whole object as a JSON string
+// and escaped it only once is the remaining case: the decoded value is not
+// valid JSON, because a quote inside a field's text sits raw where the wire
+// should carry an escaped one. relaxUnescapedQuotes re-escapes those and the
+// shapes are tried one more time. It runs only after the strict read has
+// failed, so a well-formed response never reaches it.
+func decodeRulingItems(raw json.RawMessage) ([]rulingItem, error) {
+	items, err := decodeRulingShapes(raw)
+	if err == nil {
+		return items, nil
+	}
+	if repaired, ok := relaxUnescapedQuotes(raw); ok {
+		if items, err2 := decodeRulingShapes(repaired); err2 == nil {
+			return items, nil
+		}
+	}
+	return nil, err
+}
+
+// decodeRulingShapes reads the rulings out of the shapes that parse as JSON.
 //
 // The forced tool call on the OpenAI wire fixed this at the source, but the
 // review still posts over gateways that drop the schema, so the parse stays
@@ -665,7 +688,7 @@ func parseRulings(body []byte) (map[string]findings.Ruling, error) {
 // object instead of an array: one ruling on its own, or a map keyed by the
 // finding id. Each of those carries the same rulings, so they are read out
 // rather than failing the pass open.
-func decodeRulingItems(raw json.RawMessage) ([]rulingItem, error) {
+func decodeRulingShapes(raw json.RawMessage) ([]rulingItem, error) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 {
 		return nil, nil
@@ -696,6 +719,62 @@ func decodeRulingItems(raw json.RawMessage) ([]rulingItem, error) {
 		}
 	}
 	return nil, fmt.Errorf("rulings is neither an array nor an object of rulings: %s", snippet(raw))
+}
+
+// relaxUnescapedQuotes re-escapes the raw double-quotes a gateway leaves in a
+// stringified ruling's own text. A gateway that returns the whole object as a
+// JSON string and escapes it only once produces valid outer JSON whose decoded
+// value is not valid JSON: every structural quote is intact, but a quote inside
+// a field (a snippet like == "") sits raw where the wire should carry an
+// escaped one, and the strict shapes stop at it. This walks the bytes and
+// escapes any in-string quote that is not a real terminator, judged by whether
+// the next non-space byte continues the structure (':', ',', '}', ']', or the
+// end). Reported false when nothing was re-escaped, so a payload it cannot help
+// falls back to the original parse error rather than a second identical one.
+func relaxUnescapedQuotes(raw json.RawMessage) (json.RawMessage, bool) {
+	s := bytes.TrimSpace(raw)
+	if len(s) == 0 || (s[0] != '{' && s[0] != '[') {
+		return nil, false
+	}
+	var b bytes.Buffer
+	b.Grow(len(s) + 8)
+	inStr := false
+	changed := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !inStr {
+			b.WriteByte(c)
+			if c == '"' {
+				inStr = true
+			}
+			continue
+		}
+		if c == '\\' && i+1 < len(s) {
+			b.WriteByte(c)
+			b.WriteByte(s[i+1])
+			i++
+			continue
+		}
+		if c == '"' {
+			j := i + 1
+			for j < len(s) && (s[j] == ' ' || s[j] == '\t' || s[j] == '\r' || s[j] == '\n') {
+				j++
+			}
+			if j >= len(s) || s[j] == ':' || s[j] == ',' || s[j] == '}' || s[j] == ']' {
+				b.WriteByte('"')
+				inStr = false
+			} else {
+				b.WriteString(`\"`)
+				changed = true
+			}
+			continue
+		}
+		b.WriteByte(c)
+	}
+	if !changed {
+		return nil, false
+	}
+	return json.RawMessage(b.Bytes()), true
 }
 
 // rulingItemsFromObject reads the two object shapes a schema-dropping gateway
