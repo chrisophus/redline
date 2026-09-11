@@ -450,6 +450,9 @@ func rulingContext(r Ruling) string {
 	if r.Evidence != "" {
 		b.WriteString(" (" + r.Evidence + ")")
 	}
+	if r.Analysis != "" {
+		b.WriteString("\n\n" + r.Analysis)
+	}
 	return b.String()
 }
 

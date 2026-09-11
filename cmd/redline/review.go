@@ -108,7 +108,10 @@ func cmdReview(o opts) error {
 					seq++
 					n := seq
 					mu.Unlock()
-					_ = os.WriteFile(filepath.Join(dir, fmt.Sprintf("%02d-%s", n, name)), data, 0o644)
+					p := filepath.Join(dir, fmt.Sprintf("%02d-%s", n, name))
+					if err := os.WriteFile(p, data, 0o644); err != nil {
+						fmt.Fprintf(os.Stderr, "redline debug: could not write %s: %v\n", p, err)
+					}
 				}
 				fmt.Fprintf(os.Stderr, "redline debug: writing the full LLM requests and responses to %s/\n", dir)
 			}

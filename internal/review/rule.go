@@ -129,6 +129,10 @@ Only a kept finding reaches the author. The other four are recorded on the
 report with your reason and are not posted, so they cost the author nothing
 and cost you nothing to admit.
 
+For each finding, reason before you rule. Write the analysis first: work
+through what the answers show for that finding, then give the verdict it leads
+to. The analysis is your thinking, not a restatement of the finding.
+
 Two ways to fail here, and they are not symmetric in how they feel.
 
 Withdrawing everything is the easy one and it is worthless. A pass that keeps
@@ -160,8 +164,13 @@ func ruleSchema() map[string]any {
 	ruling := map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"finding", "verdict", "evidence", "why"},
+		"required":             []string{"analysis", "finding", "verdict", "evidence", "why"},
 		"properties": map[string]any{
+			"analysis": map[string]any{
+				"type": "string",
+				"description": "Work through what the answers show for this finding here, " +
+					"before the verdict. Your reasoning, not a restatement of the finding.",
+			},
 			"finding": map[string]any{
 				"type":        "string",
 				"description": "The id of the finding, exactly as given in brackets.",
@@ -195,8 +204,11 @@ func ruleSchema() map[string]any {
 	}
 }
 
-// rulingItem is one ruling as it comes off the wire.
+// rulingItem is one ruling as it comes off the wire. analysis leads so the
+// model reasons before it commits to a verdict rather than justifying one it
+// has already written.
 type rulingItem struct {
+	Analysis string `json:"analysis"`
 	Finding  string `json:"finding"`
 	Verdict  string `json:"verdict"`
 	Evidence string `json:"evidence"`
@@ -638,6 +650,7 @@ func parseRulings(body []byte) (map[string]findings.Ruling, error) {
 			Verdict:  findings.NormalizeVerdict(r.Verdict),
 			Evidence: strings.TrimSpace(r.Evidence),
 			Why:      strings.TrimSpace(r.Why),
+			Analysis: strings.TrimSpace(r.Analysis),
 		}
 	}
 	return out, nil
@@ -670,6 +683,14 @@ func decodeRulingItems(raw json.RawMessage) ([]rulingItem, error) {
 		return decodeRulingItems(json.RawMessage(s))
 	}
 	if raw[0] == '{' {
+		// A re-wrapped ruleWire, {"rulings": …} nested one level down, which a
+		// gateway has produced by stringifying the whole object into the field.
+		// Unwrap it before trying the bare-object shapes, or the wrapper reads
+		// as a ruling with no fields.
+		var w ruleWire
+		if json.Unmarshal(raw, &w) == nil && len(bytes.TrimSpace(w.Rulings)) > 0 {
+			return decodeRulingItems(w.Rulings)
+		}
 		if items, ok := rulingItemsFromObject(raw); ok {
 			return items, nil
 		}
