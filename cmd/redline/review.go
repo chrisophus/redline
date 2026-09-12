@@ -11,6 +11,7 @@ import (
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/postmortem"
 	"github.com/chrisophus/redline/internal/review"
 	"github.com/chrisophus/redline/internal/run"
 	"github.com/chrisophus/redline/internal/scout"
@@ -190,6 +191,13 @@ func cmdReview(o opts) error {
 			// and losing a cost line is not worth failing the command over.
 			fmt.Fprintf(os.Stderr, "redline: could not record the run's cost: %v\n", rerr)
 		}
+		// Written here for the same reason and under the same guard: a review
+		// that came back truncated or unparseable is the one someone is most
+		// likely to go looking at afterwards, and it is about to return an
+		// error a few lines down.
+		if rerr := writeTrace(o, res, out, &tally); rerr != nil {
+			fmt.Fprintf(os.Stderr, "redline: could not record what the review did: %v\n", rerr)
+		}
 	}
 	if err != nil {
 		return err
@@ -282,12 +290,64 @@ func describeSession(res *run.Result) string {
 	return res.Target.Describe()
 }
 
+// writeTrace saves what this review did, for `redline postmortem`. It is the
+// stage-one findings, the questions they named, what the lookups did about
+// them, and what the ruling decided, none of which survives anywhere else:
+// review.json is the outcome, and the outcome is what a reader already has.
+func writeTrace(o opts, res *run.Result, out *review.Result, tally *scoutTally) error {
+	look := postmortem.Lookup{
+		Ran:       tally.ran,
+		Model:     tally.model,
+		Effort:    tally.effort,
+		Error:     tally.err,
+		Turns:     tally.turns,
+		CostUSD:   tally.cost,
+		CostKnown: tally.known && tally.ran,
+		CapHit:    tally.capHit,
+		Notes:     tally.log.Notes,
+	}
+	// Copied field by field rather than handed over. The scout is a context
+	// provider and the trace is Redline's own file, so this command is the
+	// one place that knows both shapes; internal/boundary is the test that
+	// keeps it that way.
+	for _, c := range tally.log.Calls {
+		look.Calls = append(look.Calls, postmortem.Call{
+			Turn: c.Turn, Tool: c.Tool, Args: c.Args, Result: c.Result, Failed: c.Failed,
+		})
+	}
+	for _, f := range tally.log.Filed {
+		look.Filed = append(look.Filed, postmortem.Filed{
+			Role: f.Role, File: f.File, StartLine: f.StartLine, EndLine: f.EndLine,
+			Symbol: f.Symbol, FoundVia: f.FoundVia, Answers: f.Answers,
+		})
+	}
+	t := postmortem.Of(out, look)
+	t.Effort = o.effort
+	t.Target = describeSession(res)
+	t.Revision = change.ReviewIdentity(res.Report.BaseSHA, res.Change)
+	return postmortem.Write(o.out, t)
+}
+
 // scoutTally accumulates what the answering scout spent, so a cost paid inside
-// the verify pass reaches the ledger rather than staying on a log line.
+// the verify pass reaches the ledger rather than staying on a log line, and
+// what it did, so `redline postmortem` can say where a lookup went.
+//
+// One review can run the lookups more than once in principle, so the calls
+// and the records accumulate rather than replace: a second run's search is
+// still part of what this review did.
 type scoutTally struct {
 	ran   bool
 	cost  float64
 	known bool
+	turns int
+	// model and effort are what the lookups actually ran on, after the
+	// scout's own defaults.
+	model, effort string
+	// err is the last failure, when the lookups could not run at all. The
+	// review goes on without them and the trace says so.
+	err    string
+	capHit bool
+	log    scout.Log
 }
 
 // scoutAnswerer runs the lookups a review asked for, as the scout in its
@@ -324,6 +384,15 @@ func scoutAnswerer(res *run.Result, ropts review.Options, scoutOpts scoutSetting
 			tally.ran = true
 			tally.cost += spend.CostUSD
 			tally.known = tally.known && spend.CostKnown
+			tally.turns += spend.Turns
+			tally.model, tally.effort = spend.Model, spend.Effort
+			tally.capHit = tally.capHit || spend.CapHit
+			tally.log.Calls = append(tally.log.Calls, spend.Log.Calls...)
+			tally.log.Filed = append(tally.log.Filed, spend.Log.Filed...)
+			tally.log.Notes = append(tally.log.Notes, spend.Log.Notes...)
+			if err != nil {
+				tally.err = err.Error()
+			}
 		}
 		return env, err
 	}

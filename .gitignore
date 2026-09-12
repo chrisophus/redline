@@ -19,5 +19,12 @@
 
 /.planning/
 scratch/
-.claude
+# Personal agent config stays local. The session hook and the settings that
+# register it are the repository's: a hook only reaches a session when it is
+# on the branch, and this one installs the pinned linter into a fresh
+# container.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+.claude/settings.local.json
 /bin/

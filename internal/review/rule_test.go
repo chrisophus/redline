@@ -825,3 +825,41 @@ func TestAFindingKeptOnQuotedEvidencePostsWhateverStageOneGuessed(t *testing.T) 
 		t.Error("a finding kept on an unquotable line was promoted past the gate")
 	}
 }
+
+// The pass writes its rulings onto the review in place and folds what it did
+// not keep down to low confidence, so after it runs nothing says what the
+// reviewer originally proposed. That is the first thing anyone asking why a
+// review came back with two of nine findings wants to read.
+func TestTheVerifyingPassKeepsWhatStageOneProposed(t *testing.T) {
+	in := Input{Report: priors()}
+	one, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	one.Review = findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "settled by the diff", findings.Question{Kind: findings.QuestionDiff}),
+		comment("b.go", "needs a lookup", findings.Question{
+			Kind: findings.QuestionPrecedent, Subject: "Thing", Ask: "does anything else do this?"}),
+	}}
+	answers := &envelope.Envelope{Expansions: []envelope.Expansion{{
+		Role: envelope.RoleCaller, File: "c.go", StartLine: 1, EndLine: 4,
+		Content: "x\n", Details: map[string]string{"answers": "c2", "foundVia": "grep"},
+	}}}
+	opts := Options{Verify: true, DryRun: true, Answer: func(_ context.Context, _ []Question) (*envelope.Envelope, error) {
+		return answers, nil
+	}}
+	if _, err := Verify(context.Background(), in, opts, one); err != nil {
+		t.Fatal(err)
+	}
+	if len(one.Candidates) != 2 || one.Candidates[1].Comment.Body != "needs a lookup" {
+		t.Fatalf("candidates = %+v, want stage one's findings as it wrote them", one.Candidates)
+	}
+	// The finding the diff settles is not worth a lookup, so only the other
+	// one was asked about, and the trace has to be able to say which.
+	if len(one.Questions) != 1 || one.Questions[0].ID != "c2" {
+		t.Fatalf("questions = %+v, want only the answerable one", one.Questions)
+	}
+	if one.Answers != answers {
+		t.Error("what the lookups came back with was not kept")
+	}
+}

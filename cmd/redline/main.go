@@ -41,6 +41,8 @@ usage:
   redline learnings [flags] draft review rules from what people said about
                             earlier findings on this pull request
   redline post    [flags]   post the session's findings as one PR review (--pr)
+  redline postmortem [flags] read back what the last review did: what it
+                             proposed, what the lookups found, what was ruled
   redline open    [flags]   serve and open the last report (--file opens it from disk, no server)
   redline serve   [flags]   serve .redline over http (blocks; --stop ends it)
   redline gc      [flags]   remove this repo's cached review worktrees (~/.redline/worktrees)
@@ -57,7 +59,8 @@ flags:
   --base REF        base revision (default: commit parent, range start, PR base, else origin/main)
   --upstream REF    branch new migrations must not collide with
   --migrations DIR  restrict migration checks to one directory
-  --format FMT      report|json  (default report)
+  --format FMT      report|json  (default report; with postmortem, json is
+                    the whole trace as it was written)
   --out DIR         evidence directory (default .redline)
   --prepare         run harness produce steps from .redline.yml before observe
   --allow-missing-coverage  do not fail when a configured coverage profile is absent
@@ -214,6 +217,8 @@ func runMain(args []string) error {
 		return cmdReview(o)
 	case "post":
 		return cmdPost(o)
+	case "postmortem":
+		return cmdPostmortem(o)
 	case "learnings":
 		return cmdLearnings(o)
 	case "open":

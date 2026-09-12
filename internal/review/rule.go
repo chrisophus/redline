@@ -385,6 +385,10 @@ func Kept(rev findings.Review) (kept, ruled int) {
 func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Result, error) {
 	opts = opts.withDefaults()
 	cands := Candidates(stageOne.Review)
+	// Stamped before anything is ruled on, and on every path out of here: a
+	// pass that ends early is the one the reader most needs the stage-one
+	// findings for.
+	stageOne.Candidates = cands
 	if len(cands) == 0 {
 		// Nothing to rule on. A clean review is the answer this whole design
 		// is trying to make possible, so it must not cost a second call.
@@ -415,6 +419,7 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 	var qs []Question
 	if opts.Answer != nil {
 		qs = questionsFor(pending)
+		stageOne.Questions = qs
 		if len(qs) > 0 {
 			env, err := opts.Answer(ctx, qs)
 			if err != nil {
@@ -427,6 +432,7 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 				}
 			} else {
 				answers = env
+				stageOne.Answers = env
 			}
 		}
 	}
@@ -613,9 +619,9 @@ func sanitizeRulings(cands []Candidate, rulings map[string]findings.Ruling, corp
 					"carries no earlier thread for it and no other finding asks the same question")
 			}
 		case findings.VerifiedKept:
-			r.Grounded = groundedEvidence(r.Evidence, corpus)
+			r.Grounded = Quoted(r.Evidence, corpus)
 		case findings.VerifiedWithdrawn, findings.VerifiedJustified:
-			if !groundedEvidence(r.Evidence, corpus) {
+			if !Quoted(r.Evidence, corpus) {
 				r = unverifiable("the checking pass gave evidence that is not in the material it was shown, " +
 					"so the verdict rests on nothing checkable")
 			}
@@ -634,11 +640,16 @@ func unverifiable(why string) findings.Ruling {
 // coincidence, short enough that one quoted statement clears it.
 const minEvidenceRun = 24
 
-// groundedEvidence reports whether a run of the quoted evidence appears in the
-// material the ruling was shown. Case and whitespace are forgiven, because a
-// model requotes a line reflowed and recapitalised; nothing else is, because
-// the point is that the words were there to quote.
-func groundedEvidence(evidence, corpus string) bool {
+// Quoted reports whether a run of the quoted text appears in the material the
+// ruling was shown. Case and whitespace are forgiven, because a model requotes
+// a line reflowed and recapitalised; nothing else is, because the point is that
+// the words were there to quote.
+//
+// Exported for the postmortem, which asks a narrower version of the same
+// question: not whether a ruling's evidence was in front of it at all, but
+// whether it was in one of the ranges the lookups filed. One rule for what
+// counts as a quote, or the two answers disagree about the same line.
+func Quoted(evidence, corpus string) bool {
 	e := collapseSpace(strings.ToLower(evidence))
 	if e == "" {
 		return false
