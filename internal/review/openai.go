@@ -121,12 +121,13 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 		return completion{}, errors.New("OPENAI_API_KEY is not set")
 	}
 
-	// The function is named for what it returns, so a debug log reads which
-	// stage this is; the schema it carries is the same one Assemble priced.
-	fn := "review"
-	if res.rulesRatherThanReviews() {
-		fn = "rulings"
-	}
+	// Every stage's function goes out on every call and the stage is chosen by
+	// name, which is what the Anthropic wire now does too. Here it buys
+	// nothing directly: a gateway's cache is its own business and this
+	// protocol says nothing about one. It is done anyway so that a request is
+	// the same request over either wire, which is the property that lets the
+	// eval compare an arm run over one against an arm run over the other.
+	fn := res.stage()
 	body := openAIRequest{
 		Model: opts.Model,
 		Messages: []openAIMessage{
@@ -134,14 +135,7 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 			{Role: "user", Content: res.Prompt},
 		},
 		MaxCompletionTokens: opts.MaxTokens,
-		Tools: []openAITool{{
-			Type: "function",
-			Function: openAIFunction{
-				Name:        fn,
-				Description: "Return the structured object this schema defines. Call this and nothing else.",
-				Parameters:  res.Schema,
-			},
-		}},
+		Tools:               openAITools(),
 		ToolChoice: map[string]any{
 			"type":     "function",
 			"function": map[string]any{"name": fn},

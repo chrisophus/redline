@@ -46,18 +46,21 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 	}
 	client := anthropic.NewClient(clientOpts...)
 
-	// No cache breakpoint on this path, because nothing can read what it would
-	// write. The response schema is part of the cached prefix and sits in front
-	// of the system block, so the ruling - which sends a different schema than
-	// the review it follows - misses however much prompt the two share.
-	// Measured on the wire: one system and one prompt, the review's schema then
-	// the ruling's, wrote 12,449 and 11,360 tokens and read nothing either
-	// time; the same pair of writes at 171,690 and 170,601 in a real run.
-	// Samples cannot read each other either, since they go out together: three
-	// concurrent calls over one fresh prefix each wrote it. A write nobody
-	// reads bills a quarter above the base rate, so this call pays the base
-	// rate and no more. Explore mode keeps its breakpoints, where one growing
-	// conversation under one schema means a later turn really does read an
+	// Still no cache breakpoint on this path, but no longer for the old
+	// reason. What blocked one was the response schema: it sits in front of the
+	// system block and the ruling sent a different one from the review it
+	// follows, so each call wrote the shared prefix and read none of it, at
+	// 171,690 and 170,601 tokens on a real run. The contract now goes as a
+	// constant tool array with the stage picked by tool_choice, so the review
+	// and the ruling send the same bytes ahead of the prompt and a breakpoint
+	// would be read back. Marking one is the next change and is not this one;
+	// until it lands a write nobody reads would still cost a quarter above
+	// base input, so this call pays the base rate and no more.
+	//
+	// Samples are a separate case and stay uncached whatever happens here:
+	// they go out together, so three concurrent calls over one fresh prefix
+	// each write it and none reads. Explore mode keeps its own breakpoints,
+	// where one growing conversation means a later turn really does read an
 	// earlier one.
 	stream := client.Messages.NewStreaming(ctx, anthropicParams(opts, res))
 	// Next returning false at the end of the stream does not close the
@@ -87,7 +90,7 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 		return completion{usage: usage()}, err
 	}
 	c := completion{
-		text:       textOf(msg),
+		text:       structuredOf(msg),
 		stopReason: string(msg.StopReason),
 		usage:      usage(),
 		truncated:  msg.StopReason == anthropic.StopReasonMaxTokens,
@@ -112,14 +115,32 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(res.Prompt)),
 		},
-		OutputConfig: anthropic.OutputConfigParam{
-			Format: anthropic.JSONOutputFormatParam{Schema: res.Schema},
-		},
+		// The whole catalogue, every time, with the stage chosen by name. See
+		// tools.go for why the contract cannot be a per-call output format.
+		Tools:      anthropicTools(),
+		ToolChoice: anthropic.ToolChoiceParamOfTool(res.stage()),
 	}
 	if opts.Effort != "" {
 		params.OutputConfig.Effort = anthropic.OutputConfigEffort(opts.Effort)
 	}
 	return params
+}
+
+// structuredOf is the body the parser is handed: the arguments of the tool
+// call the request forced.
+//
+// It falls back to the text blocks when no tool call came back. A model that
+// answers a forced tool_choice in prose is a broken contract, not a review
+// with no findings, and the parse below will say so with the body in front of
+// it. Returning nothing here would report it as an empty response instead,
+// which is the one thing this producer must not do.
+func structuredOf(msg anthropic.Message) string {
+	for _, block := range msg.Content {
+		if t, ok := block.AsAny().(anthropic.ToolUseBlock); ok {
+			return string(t.Input)
+		}
+	}
+	return textOf(msg)
 }
 
 func textOf(msg anthropic.Message) string {

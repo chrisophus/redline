@@ -156,6 +156,13 @@ func runExplore(ctx context.Context, in Input, opts Options, res *Result) (*Resu
 			CacheControl: anthropic.NewBetaCacheControlEphemeralParam(),
 		}},
 		Tools: []anthropic.BetaToolUnionParam{fetchToolParam()},
+		// Explore keeps the response format where the one-shot path moved to a
+		// tool. Its tools array is not a catalogue of contracts, it is one real
+		// tool the reviewer calls to fetch context, and the loop below takes it
+		// away when the budget runs out to make the model answer. Two meanings
+		// for one array is what the change was avoiding, and the reason it
+		// mattered there does not reach here: this is one conversation under
+		// one format, so nothing about the prefix varies between its turns.
 		OutputConfig: anthropic.BetaOutputConfigParam{
 			Format:     anthropic.BetaJSONOutputFormatParam{Schema: outputSchema()},
 			TaskBudget: anthropic.BetaTokenTaskBudgetParam{Total: opts.TaskBudget},
