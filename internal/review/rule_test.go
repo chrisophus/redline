@@ -597,9 +597,6 @@ func TestTheRulingInstructionRidesInTheUserTurn(t *testing.T) {
 	if two.System != one.System {
 		t.Fatal("the system block must stay byte-identical between the review and its ruling")
 	}
-	if two.CachePrefix != one.Prompt {
-		t.Fatal("the ruling's cache prefix must be the review's own prompt")
-	}
 	if !strings.HasSuffix(two.Prompt, rulePrompt) {
 		t.Fatal("the ruling instruction must be at the tail of the user turn")
 	}

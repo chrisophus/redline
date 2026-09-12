@@ -36,6 +36,20 @@ type Entry struct {
 	Known    bool      `json:"costKnown"`
 	Seconds  float64   `json:"seconds"`
 	Findings int       `json:"findings"`
+	// StopReason is what ended the last turn, and Truncated whether that was
+	// the output cap. Recorded because a review that found nothing and a
+	// review that was cut off mid-finding cost the same and look identical
+	// here without them: the design expects roughly three changes in ten to
+	// deserve no comment, so a zero-finding line is only readable as a clean
+	// pass once the cap can be ruled out.
+	StopReason string `json:"stopReason,omitempty"`
+	Truncated  bool   `json:"truncated,omitempty"`
+	// Batched marks a row billed at the Message Batches tier's half rate.
+	// Summarize leaves those out of the distribution: the target is a claim
+	// about what a review costs the person waiting for it, and a sweep of
+	// half-price fixtures would drag that average somewhere no interactive
+	// run can reach.
+	Batched bool `json:"batched,omitempty"`
 	// Ceiling and InputEstimate record what the request was allowed and what
 	// it used, so a run that was trimmed can be told from one that fit.
 	Ceiling       int  `json:"ceiling"`
@@ -68,6 +82,8 @@ func Record(dir string, r *Result, effort string) error {
 		At: time.Now().UTC(), API: r.API, Model: r.Model, Effort: effort,
 		Usage: r.Usage, CostUSD: r.CostUSD, Known: r.CostKnown,
 		Seconds: r.Duration.Seconds(), Findings: len(r.Review.Comments),
+		StopReason: r.StopReason, Truncated: r.Truncated,
+		Batched: r.Batched,
 		Ceiling: r.Ceiling, InputEstimate: r.InputEstimate, OverCeiling: r.OverCeiling,
 		Samples: r.Samples, SamplesFailed: r.SamplesFailed,
 		RulingOutputTokens: r.RulingOutputTokens, ScoutCostUSD: r.ScoutCostUSD,
@@ -126,6 +142,13 @@ type Stats struct {
 	Unknown int
 	// MeanSeconds is wall time, the other number a pre-push tool is judged on.
 	MeanSeconds float64
+	// Batched counts rows excluded for having gone over the batch tier.
+	Batched int
+	// Truncated counts reviews the output cap cut off. They are paid for in
+	// full and yield nothing, so they belong beside the average rather than
+	// inside it: a rising count is the signal to raise --max-tokens, and it
+	// is the one thing that separates a cheap run from a wasted one.
+	Truncated int
 	// MedianOutput is what reviews actually emitted. It replaces the guess
 	// in ExpectedOutputTokens once there is enough evidence to have a
 	// median, so the estimate converges on this installation's own reviews
@@ -154,12 +177,19 @@ func Summarize(entries []Entry) Stats {
 	var outs []int64
 	var secs float64
 	for _, e := range entries {
+		if e.Batched {
+			s.Batched++
+			continue
+		}
 		if !e.Known {
 			s.Unknown++
 			continue
 		}
 		costs = append(costs, e.CostUSD)
 		secs += e.Seconds
+		if e.Truncated {
+			s.Truncated++
+		}
 		if e.Usage.OutputTokens > 0 {
 			outs = append(outs, e.Usage.OutputTokens)
 		}
@@ -218,6 +248,12 @@ func (s Stats) String() string {
 	}
 	out := fmt.Sprintf("%d review(s): mean $%.4f, median $%.4f, p90 $%.4f, range $%.4f to $%.4f, mean wall %.1fs",
 		s.Count, s.Mean, s.Median, s.P90, s.Min, s.Max, s.MeanSeconds)
+	if s.Batched > 0 {
+		out += fmt.Sprintf(" (%d more ran at the batch tier's half rate and are excluded)", s.Batched)
+	}
+	if s.Truncated > 0 {
+		out += fmt.Sprintf("; %d hit the output cap and were paid for in full for nothing", s.Truncated)
+	}
 	if s.Unknown > 0 {
 		out += fmt.Sprintf(" (%d more had no rate and are excluded)", s.Unknown)
 	}

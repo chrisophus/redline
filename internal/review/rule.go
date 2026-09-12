@@ -115,6 +115,13 @@ func questionsFor(cands []Candidate) []Question {
 // without it such a finding could only be kept.
 const rulePrompt = `
 
+Everything above told you how to write a review of this change. That was the
+brief for the pass that produced the findings below, and it is here so you
+judge them by the standard they were written to. It is not your output
+contract, and it does not describe this pass: you have no tools here, and you
+write rulings and nothing else. No overview, no per-file summaries, no new
+comments, no verdicts on the checks.
+
 A reviewer proposed findings on this change. You rule on them, before any of
 them reaches the author. You did not write them, and you owe them nothing.
 
@@ -506,13 +513,14 @@ func answered(env *envelope.Envelope) bool {
 // findings are byte-identical, so the endpoint serves them from cache.
 func (r *Result) ruleRequest(in Input, opts Options, cands []Candidate, answers *envelope.Envelope) *Result {
 	out := r.clone()
-	// The system block is left byte-identical to stage one, and the ruling
-	// instruction goes at the tail of the user turn instead. The prefix a
-	// prompt cache serves is the longest identical run of system plus user, so
-	// appending the instruction to the system block, as this once did, moved
-	// the boundary and turned every ruling into a full-price call.
+	// The system block is left byte-identical to stage one and the ruling
+	// instruction goes at the tail of the user turn, beside the findings it
+	// refers to. This once bought a prompt-cache hit as well, until the wire
+	// showed the schema in front of the cached prefix: a ruling sends its own
+	// schema, so it never reads the review's entry however the two prompts are
+	// arranged. What is left is the reason that still holds - a judge of these
+	// findings works under the rules the review was given.
 	out.System = r.System
-	out.CachePrefix = r.Prompt
 	out.Prompt = r.Prompt + "\n" + candidatesSection(cands) +
 		boundAnswers(answersSection(answers)) + rulePrompt
 	out.Schema = ruleSchema()

@@ -46,13 +46,12 @@ import (
 // experiment, at 41 comments and 32 unmatched.
 const systemPrompt = `You are reviewing one change in a code repository, once, in a single pass.
 
-You have no tools in this pass. Everything you get to see is below. A concern
-you can anchor to what you see but cannot confirm against the rest of the
-repository is not one to withhold: it is what the question on each comment is
-for. Name the check that would confirm or refute it, and a cheap model runs
-that lookup and a second pass rules on it before the author reads it. What is
-not worth raising is a concern with nothing below to anchor it: do not state a
-fact about code you were not shown as if you had checked it.
+A concern you can anchor to what you see but cannot confirm against the rest
+of the repository is not one to withhold: it is what the question on each
+comment is for. Name the check that would confirm or refute it, and a cheap
+model runs that lookup and a second pass rules on it before the author reads
+it. What is not worth raising is a concern with nothing below to anchor it: do
+not state a fact about code you were not shown as if you had checked it.
 
 You are given findings that deterministic tools already produced for this
 change. Treat them as established and already on the report.
@@ -194,6 +193,13 @@ Rule only where you have something the check did not. A verdict that restates
 the finding is worse than no verdict: it costs the reader a line and tells
 them nothing. An empty verdicts array is the right answer when the findings
 speak for themselves, and most of the time they do.`
+
+// oneShotAddendum is true only of the pass that gets no tools. It sat in
+// systemPrompt until explore mode inherited it there, and was told its context
+// was complete in the same block that handed it a catalogue and a fetch tool.
+const oneShotAddendum = `
+
+You have no tools in this pass. Everything you get to see is below.`
 
 // hidesTests reports whether the request holds the change's test files back.
 //

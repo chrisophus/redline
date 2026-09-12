@@ -267,6 +267,11 @@ type Result struct {
 	Ceiling int `json:"ceiling"`
 	// Turns is how many model calls the review took. One, in oneshot mode.
 	Turns int `json:"turns,omitempty"`
+	// Batched records that this review went over the Message Batches tier at
+	// half rate. Carried so the ledger can keep those rows out of the
+	// interactive average: a sweep of eleven half-price fixtures would
+	// otherwise report the tool as having got cheaper.
+	Batched bool `json:"batched,omitempty"`
 	// Fetched is how many context entries the reviewer asked for.
 	Fetched int `json:"fetched,omitempty"`
 	// CapHit records that the loop was stopped by the dollar cap rather than
@@ -281,6 +286,13 @@ type Result struct {
 	// StopReason is what ended the turn. Checked rather than assumed: a
 	// refusal returns HTTP 200 and an empty-looking result.
 	StopReason string `json:"stopReason,omitempty"`
+
+	// Truncated is whether the output cap cut the response off. Set from the
+	// completion rather than re-derived from StopReason, because the two APIs
+	// spell the same event differently - Anthropic's "max_tokens" against
+	// OpenAI's "length" - and a ledger that string-matches one of them records
+	// the other's truncations as clean runs.
+	Truncated bool `json:"truncated,omitempty"`
 	// Rulings is the verifying pass's answer, keyed by candidate id. Set on
 	// that pass's own result and read by Verify, which writes them onto the
 	// review.
@@ -299,11 +311,6 @@ type Result struct {
 	// them folds it into CostUSD and records it apart, because it is a
 	// separate call on a separate model under its own governor.
 	ScoutCostUSD float64 `json:"scoutCostUSD,omitempty"`
-	// CachePrefix is the run of Prompt that is identical to another request
-	// sharing this one's prefix, marked for the prompt cache. Empty caches the
-	// whole prompt, which is what a review's own call does so the ruling that
-	// follows can be served from it.
-	CachePrefix string `json:"-"`
 }
 
 // Summary is the one line a run prints. Cost and wall time per review are
@@ -354,7 +361,7 @@ func (r *Result) Summary() string {
 // actually went out.
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
-	system := systemPrompt + languageFragments(in.Envelopes)
+	system := systemPrompt + oneShotAddendum + languageFragments(in.Envelopes)
 	fixed := envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
 		// The block's own header is written after FitAll has fitted the
@@ -403,6 +410,34 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	}, nil
 }
 
+// verifyCeilingCost is what the checking pass adds to the worst case, and zero
+// when it is not going to run.
+//
+// The tripwire priced stage one alone while the ledger priced both: Verify
+// sums the ruling's input into the same Usage the review's went into, so a
+// verified run recorded roughly twice the input its estimate had been checked
+// against - measured at 1.5x to 1.8x on the three largest runs in the ledger.
+// A guard that sees half the request is not a guard.
+//
+// Input is the certain half and is priced as such: the ruling re-sends stage
+// one's whole prompt, and the answers on top of it are bounded by
+// maxAnswersBytes. Output is priced at ExpectedRulingTokens rather than the
+// cap, which is the same number ruleRequest estimates itself with and is
+// borne out by the ledger, where the largest ruling wrote under ten thousand
+// tokens. A ruling cannot spend the review's whole allowance: it emits one
+// small object per finding.
+func verifyCeilingCost(opts Options, res *Result) float64 {
+	if !opts.Verify || res == nil {
+		return 0
+	}
+	in := res.InputEstimate + envelope.EstimateTokensLen(maxAnswersBytes)
+	cost, ok := EstimateCost(opts.Model, in, ExpectedRulingTokens)
+	if !ok {
+		return 0
+	}
+	return cost
+}
+
 // Run performs the review: one call, no tools, structured output.
 func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
@@ -420,7 +455,7 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	// job is the run where the model does spend its entire allowance, and with
 	// --samples that run happens N times: the samples go out together over the
 	// same prompt, so the worst case is N full-price calls, not one.
-	worst := res.CostCeilingUSD * float64(opts.Samples)
+	worst := res.CostCeilingUSD*float64(opts.Samples) + verifyCeilingCost(opts, res)
 	if res.CostKnown && worst > opts.MaxCostUSD {
 		return res, fmt.Errorf(
 			"worst-case cost %s across %d sample(s) exceeds the %s tripwire (expected %s): %d input tokens against a %d-token ceiling. "+
@@ -532,7 +567,22 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	if err != nil {
 		return res, fmt.Errorf("review call: %w", err)
 	}
+	if err := res.absorb(opts, stage, c); err != nil {
+		return res, err
+	}
+	return res, nil
+}
+
+// absorb reads one completed call into the result: the stop reason, the
+// failures that wear a 200, and the body under whichever contract went out.
+//
+// Shared rather than inlined because a batched review comes back through a
+// different door than a streamed one and must be judged by the same rules. A
+// refusal or a truncation that reads as "no findings" is the one lie this tool
+// must not tell, and there should be exactly one place that decides it.
+func (res *Result) absorb(opts Options, stage string, c completion) error {
 	res.StopReason = c.stopReason
+	res.Truncated = c.truncated
 	if opts.Debug != nil {
 		opts.Debug(fmt.Sprintf("← %s: stop=%s, out=%d token(s), %s",
 			stage, c.stopReason, res.Usage.OutputTokens, res.Duration.Round(time.Millisecond)))
@@ -546,7 +596,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	// "the reviewer found nothing" would be a lie in the one direction this
 	// tool must never lie.
 	if c.refused {
-		return res, fmt.Errorf("the model declined this request (%s); no review was produced",
+		return fmt.Errorf("the model declined this request (%s); no review was produced",
 			c.detail)
 	}
 	if c.truncated {
@@ -560,34 +610,34 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			if opts.Effort != "" {
 				advice = fmt.Sprintf("lower --effort, which was %q, or %s", opts.Effort, advice)
 			}
-			return res, fmt.Errorf(
+			return fmt.Errorf(
 				"the model spent the whole %d-token output cap on reasoning and never started the %s; %s",
 				opts.MaxTokens, stage, advice)
 		}
-		return res, fmt.Errorf("the response hit the %d-token cap and is truncated; raise --max-tokens",
+		return fmt.Errorf("the response hit the %d-token cap and is truncated; raise --max-tokens",
 			opts.MaxTokens)
 	}
 
 	body := c.text
 	if strings.TrimSpace(body) == "" {
-		return res, fmt.Errorf("the model returned no content (stop reason %q)", c.stopReason)
+		return fmt.Errorf("the model returned no content (stop reason %q)", c.stopReason)
 	}
 	// Which shape came back is decided by which contract went out, so the
 	// result's own schema says how to read it. One wire, two stages.
 	if res.rulesRatherThanReviews() {
 		rulings, err := parseRulings([]byte(body))
 		if err != nil {
-			return res, err
+			return err
 		}
 		res.Rulings = rulings
-		return res, nil
+		return nil
 	}
 	rev, err := parseReview([]byte(body))
 	if err != nil {
-		return res, err
+		return err
 	}
 	res.Review = *rev
-	return res, nil
+	return nil
 }
 
 // debugBody bounds a response body for a debug line. The whole point is to see
