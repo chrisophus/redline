@@ -65,6 +65,12 @@ func LookupPricing(model string) (Pricing, bool) {
 	return Pricing{}, false
 }
 
+// BatchDiscount is what the Message Batches tier takes off, on every token in
+// both directions and on cache reads and writes alike. Named here beside the
+// other multipliers rather than applied at the call site, so a reader auditing
+// what a run cost finds every rate in one file.
+const BatchDiscount = 0.5
+
 // Usage is what one review actually consumed.
 type Usage struct {
 	InputTokens      int64 `json:"inputTokens"`
