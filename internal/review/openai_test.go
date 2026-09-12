@@ -139,7 +139,7 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 		}
 		names = append(names, tool.Function.Name)
 	}
-	if !slices.Equal(names, []string{"review", "ruling"}) {
+	if !slices.Equal(names, []string{StageReview, StageRuling, StageSynopsis, StageFindings}) {
 		t.Fatalf("every stage's contract goes on every call, in a fixed order, got %v", names)
 	}
 	tc, _ := got.ToolChoice.(map[string]any)

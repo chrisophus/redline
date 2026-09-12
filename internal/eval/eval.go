@@ -193,6 +193,19 @@ type Scorecard struct {
 	// legitimately find something the annotation's author did not, and until
 	// somebody reads one it is unlabelled rather than wrong.
 	Extra int
+	// Shown is how many files' diffs the prompt carried, and Described how
+	// many of those came back with a non-empty summary. This is the one
+	// number the describing stage exists to move, and it costs no model call
+	// to score: the prompt decides which files are shown and the review
+	// either has a line for each or does not.
+	//
+	// A summary for a file that was never shown is not counted here and is
+	// not silently ignored either - it is in Invented, because a line about a
+	// diff the reviewer was not given is the same failure as a finding about
+	// one.
+	Shown     int
+	Described int
+	Invented  int
 	// CleanHeld is meaningful for a clean fixture: it stayed silent.
 	CleanHeld bool
 	// Samples is how many independent reviews were scored, and CaughtIn how
@@ -290,8 +303,31 @@ func Score(f Fixture, rev findings.Review) Scorecard {
 			sc.Extra++
 		}
 	}
+	scoreWalkthrough(&sc, f, rev)
 	sc.CleanHeld = !f.Annotation.Clean || len(rev.Comments) == 0
 	return sc
+}
+
+// scoreWalkthrough counts the description rather than the findings: how many
+// of the files the prompt carried came back with a line, and how many lines
+// were written about files it did not carry.
+//
+// The shown set comes from the producer's own predicate, not a copy of it, so
+// a change to what the prompt holds back moves both sides together.
+func scoreWalkthrough(sc *Scorecard, f Fixture, rev findings.Review) {
+	if f.Session == nil {
+		return
+	}
+	shown := review.Input{Change: f.Session.Change}.ShownFiles()
+	sc.Shown = len(shown)
+	for path, summary := range rev.Files {
+		switch {
+		case !shown[path]:
+			sc.Invented++
+		case strings.TrimSpace(summary) != "":
+			sc.Described++
+		}
+	}
 }
 
 // ScoreSamples scores k independent reviews of one fixture: the union of what
@@ -337,9 +373,19 @@ func ScoreSamples(f Fixture, revs []findings.Review) Scorecard {
 func unionOf(revs []findings.Review) findings.Review {
 	var out findings.Review
 	seen := map[string]bool{}
+	// The walkthrough is unioned the way unionReviews does it - longest
+	// overview, longest line per path - because a score of the merged review
+	// that dropped the description would report every sampled arm as having
+	// written no walkthrough at all.
+	files := map[string]string{}
 	for _, rev := range revs {
 		if len(rev.Overview) > len(out.Overview) {
 			out.Overview = rev.Overview
+		}
+		for path, summary := range rev.Files {
+			if len(summary) > len(files[path]) {
+				files[path] = summary
+			}
 		}
 		for _, c := range rev.Comments {
 			// The producer's own key, not a copy of it. The score has to be of
@@ -352,6 +398,9 @@ func unionOf(revs []findings.Review) findings.Review {
 			seen[key] = true
 			out.Comments = append(out.Comments, c)
 		}
+	}
+	if len(files) > 0 {
+		out.Files = files
 	}
 	return out
 }
@@ -462,8 +511,15 @@ type Totals struct {
 	QuietViolations int
 	Rejected        int
 	Extra           int
-	CleanFixtures   int
-	CleanHeld       int
+	// Shown, Described and Invented are the walkthrough: files whose diffs
+	// were sent, files that came back with a line, and lines about files that
+	// were not sent. The column exists because the describing stage is scored
+	// on it and on nothing else the other columns measure.
+	Shown         int
+	Described     int
+	Invented      int
+	CleanFixtures int
+	CleanHeld     int
 	// Samples is the per-fixture sample count when every fixture used the
 	// same one, and CaughtSampleHits the number of (expectation, sample)
 	// pairs that hit. Together they are the rate: a configuration that
@@ -506,6 +562,9 @@ func Sum(cards []Scorecard) Totals {
 		for _, n := range c.CaughtIn {
 			t.CaughtSampleHits += n
 		}
+		t.Shown += c.Shown
+		t.Described += c.Described
+		t.Invented += c.Invented
 		switch {
 		case t.Samples == 0:
 			t.Samples = c.Samples
@@ -548,10 +607,20 @@ func Table(label string, medianCostUSD float64, t Totals) string {
 	if t.Rejected > 0 && t.QuietViolations > 0 {
 		fp = fmt.Sprintf("%d (%d quiet, %d rejected)", t.FalsePositives(), t.QuietViolations, t.Rejected)
 	}
-	return fmt.Sprintf("| %s | %s | %d/%d | %s | %s | %d | %s |",
-		label, cost, t.Caught, t.Expected, rate, fp, t.Extra, clean)
+	// The walkthrough, which is the one column the describing stage moves. A
+	// line about a file nobody sent is named beside it rather than folded in:
+	// it is not a thinner description, it is a description of something else.
+	walk := "n/a"
+	if t.Shown > 0 {
+		walk = fmt.Sprintf("%d/%d", t.Described, t.Shown)
+		if t.Invented > 0 {
+			walk += fmt.Sprintf(" (+%d unsent)", t.Invented)
+		}
+	}
+	return fmt.Sprintf("| %s | %s | %d/%d | %s | %s | %d | %s | %s |",
+		label, cost, t.Caught, t.Expected, rate, fp, t.Extra, walk, clean)
 }
 
 // TableHeader is the header for Table's rows.
-const TableHeader = "| Config | Median cost | Caught (union) | Caught rate | False positives | Unlabelled | Clean held |\n" +
-	"|---|---|---|---|---|---|---|"
+const TableHeader = "| Config | Median cost | Caught (union) | Caught rate | False positives | Unlabelled | Walkthrough | Clean held |\n" +
+	"|---|---|---|---|---|---|---|---|"

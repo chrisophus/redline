@@ -488,10 +488,7 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 	stageOne.Usage.CacheWriteTokens += out.Usage.CacheWriteTokens
 	stageOne.RulingOutputTokens += out.Usage.OutputTokens
 	stageOne.Duration += out.Duration
-	stageOne.CostUSD, stageOne.CostKnown = stageOne.Usage.Cost(opts.Model)
-	if rc, ok := (Usage{OutputTokens: stageOne.RulingOutputTokens}).Cost(opts.Model); ok && stageOne.CostKnown {
-		stageOne.CostUSD += rc
-	}
+	stageOne.recost(opts.Model)
 	// A ruling that asked for the cache and read none of it paid full rate
 	// for a prefix the review had already written, which is worse than not
 	// caching at all: the review paid the write premium too. Said out loud,

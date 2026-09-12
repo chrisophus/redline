@@ -56,6 +56,13 @@ type Entry struct {
 	// numbers and opposite facts. These rows stay in the distribution: a
 	// cached review is what an interactive review costs once this is on.
 	Cached bool `json:"cached,omitempty"`
+	// Synopsis marks a row whose walkthrough came from its own call, and
+	// SynopsisOutputTokens what that call wrote. Both are needed to read the
+	// row: the output median below prices a judging call, and a row that
+	// split the two jobs wrote its description somewhere this number does not
+	// count.
+	Synopsis             bool  `json:"synopsis,omitempty"`
+	SynopsisOutputTokens int64 `json:"synopsisOutputTokens,omitempty"`
 	// Ceiling and InputEstimate record what the request was allowed and what
 	// it used, so a run that was trimmed can be told from one that fit.
 	Ceiling       int  `json:"ceiling"`
@@ -90,6 +97,7 @@ func Record(dir string, r *Result, effort string) error {
 		Seconds: r.Duration.Seconds(), Findings: len(r.Review.Comments),
 		StopReason: r.StopReason, Truncated: r.Truncated,
 		Batched: r.Batched, Cached: r.Cached,
+		Synopsis: r.Synopsis, SynopsisOutputTokens: r.SynopsisOutputTokens,
 		Ceiling: r.Ceiling, InputEstimate: r.InputEstimate, OverCeiling: r.OverCeiling,
 		Samples: r.Samples, SamplesFailed: r.SamplesFailed,
 		RulingOutputTokens: r.RulingOutputTokens, ScoutCostUSD: r.ScoutCostUSD,

@@ -93,6 +93,11 @@ func cmdReview(o opts) error {
 	default:
 		return fmt.Errorf("--cache-ttl is %s or %s, not %q", review.CacheTTL5m, review.CacheTTL1h, o.cacheTTL)
 	}
+	// The describing stage is off by default. It is a second call, and the
+	// case for it is measured on the fixtures rather than assumed: what it
+	// has to show is a walkthrough that covers every shown file and a judging
+	// call that stops losing findings to the output cap.
+	ropts.Synopsis = o.synopsis && !o.noSynopsis
 	// On the OpenAI wire the credentials are read here, in the vendor's own
 	// env names, before the checking pass is wired up: the scout that runs
 	// inside it now goes over the same wire and needs them. The flag wins over
