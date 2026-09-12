@@ -292,6 +292,16 @@ five-minute TTL and 2x at the hour, and a pre-push tool firing a few times a
 day pays every write and reads none of them. It is worth revisiting only if
 measured review frequency shows clustering.
 
+That reasoning is about caching across runs and it still holds. It is not the
+whole question: the producer is already two calls over one prefix, and
+`verifyCeilingCost` records that the ruling re-sends stage one's whole prompt
+at full rate. Several calls sharing a prefix seconds apart is the opposite
+arithmetic — one write, then reads at a tenth — and what stops it today is not
+the frequency argument above but the response schema, which renders ahead of
+the system block and differs per stage. Worked out in
+[docs/plans/staged-review.md](docs/plans/staged-review.md); this decision
+stands until that ships.
+
 ## The product
 
 `redline run` observes a change (working tree, commit, range, branch, or
