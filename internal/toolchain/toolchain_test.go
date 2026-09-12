@@ -55,6 +55,15 @@ func TestTheLinterIsToldTheGoVersionGoModDeclares(t *testing.T) {
 			t.Errorf("ci.yml builds on go %s against a go.mod of %s", line[1], mod[1])
 		}
 	}
+	// The toolchain directive names the release everything local builds with,
+	// `make lint-install` included. A release from another line would build
+	// and lint with a Go nobody else here is using, which is the drift these
+	// checks are about even though the go command would allow it.
+	if tc := regexp.MustCompile(`(?m)^toolchain go(\d+\.\d+)`).FindStringSubmatch(read(t, "go.mod")); tc != nil {
+		if tc[1] != mod[1] {
+			t.Errorf("go.mod builds with the go %s toolchain against a go directive of %s", tc[1], mod[1])
+		}
+	}
 }
 
 // The Makefile names the version so a developer can install it; CI names it so

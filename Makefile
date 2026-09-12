@@ -60,9 +60,10 @@ fmt:
 	fi
 
 # The Go the linter is built with, read from go.mod so this is not a third
-# place to keep a version in step. A toolchain name wants a patch number and
-# go.mod's directive usually has none, so a two-part version gets a .0.
-GO_TOOLCHAIN := $(shell awk '/^go /{v=$$2; if (split(v, p, ".") == 2) v = v ".0"; print "go" v; exit}' go.mod)
+# place to keep a version in step. go.mod's toolchain directive wins when it
+# is there, because it names a release; the go directive names a language
+# version, and a toolchain name derived from it can only be the .0 patch.
+GO_TOOLCHAIN := $(shell awk '/^go /{g=$$2} /^toolchain /{t=$$2} END{if (t != "") {print t} else {if (split(g, p, ".") == 2) g = g ".0"; print "go" g}}' go.mod)
 
 # The version CI gates on. Named here because a local run that disagrees with
 # the gate is worse than no local run: it either passes what CI will fail or
