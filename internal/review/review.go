@@ -286,6 +286,13 @@ type Result struct {
 	// StopReason is what ended the turn. Checked rather than assumed: a
 	// refusal returns HTTP 200 and an empty-looking result.
 	StopReason string `json:"stopReason,omitempty"`
+
+	// Truncated is whether the output cap cut the response off. Set from the
+	// completion rather than re-derived from StopReason, because the two APIs
+	// spell the same event differently - Anthropic's "max_tokens" against
+	// OpenAI's "length" - and a ledger that string-matches one of them records
+	// the other's truncations as clean runs.
+	Truncated bool `json:"truncated,omitempty"`
 	// Rulings is the verifying pass's answer, keyed by candidate id. Set on
 	// that pass's own result and read by Verify, which writes them onto the
 	// review.
@@ -575,6 +582,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 // must not tell, and there should be exactly one place that decides it.
 func (res *Result) absorb(opts Options, stage string, c completion) error {
 	res.StopReason = c.stopReason
+	res.Truncated = c.truncated
 	if opts.Debug != nil {
 		opts.Debug(fmt.Sprintf("← %s: stop=%s, out=%d token(s), %s",
 			stage, c.stopReason, res.Usage.OutputTokens, res.Duration.Round(time.Millisecond)))

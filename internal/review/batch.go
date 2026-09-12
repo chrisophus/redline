@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -192,8 +193,16 @@ func RunBatch(ctx context.Context, ins []Input, opts Options) ([]*Result, []erro
 			// read are still billed, but the batch result carries no usage
 			// to record them from, so the slot stays at its estimate and
 			// says why rather than reporting a free call.
+			// Only the errored variant carries a message; canceled and
+			// expired leave it empty, and "came back expired:" with nothing
+			// after the colon reads as a truncated error rather than a
+			// complete one.
+			why := item.Result.Error.Error.Message
+			if strings.TrimSpace(why) == "" {
+				why = "the batch endpoint gave no reason"
+			}
 			errs[i] = fmt.Errorf("batch request %d came back %s: %s",
-				i, item.Result.Type, item.Result.Error.Error.Message)
+				i, item.Result.Type, why)
 		}
 	}
 	if err := stream.Err(); err != nil {

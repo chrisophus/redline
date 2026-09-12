@@ -182,14 +182,24 @@ func schema(props map[string]any, required ...string) anthropic.ToolInputSchemaP
 func str(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
 func num(desc string) map[string]any { return map[string]any{"type": "integer", "description": desc} }
 
+// The two caps read_lines and grep enforce. Named because each is stated in a
+// tool description and applied at a call site, and a limit a model is told
+// about in one place and held to in another is the drift this file already
+// fixed once for record.
+const (
+	maxReadLines   = 200
+	maxGrepMatches = 60
+)
+
 func (ts *toolset) readLines() tool {
 	return tool{
 		name: "read_lines",
-		description: "Read a range of lines from a file in the repository, with line numbers. " +
-			"Use it to look at code the diff does not show. At most 200 lines come back per call: a " +
-			"wider range is cut to the first 200 from start_line, so ask for the declaration you want " +
-			"rather than the file. A path that does not exist, or a start_line past the end of the " +
+		description: fmt.Sprintf("Read a range of lines from a file in the repository, with line numbers. "+
+			"Use it to look at code the diff does not show. At most %d lines come back per call: a "+
+			"wider range is cut to the first %d from start_line, so ask for the declaration you want "+
+			"rather than the file. A path that does not exist, or a start_line past the end of the "+
 			"file, is an error rather than an empty result.",
+			maxReadLines, maxReadLines),
 		schema: schema(map[string]any{
 			"path":       str("repository-relative path"),
 			"start_line": num("first line, 1-based"),
@@ -208,7 +218,7 @@ func (ts *toolset) readLines() tool {
 			if err != nil {
 				return "", fmt.Errorf("%s: %v", in.Path, err)
 			}
-			start, end := clamp(in.StartLine, in.EndLine, len(lines), 200)
+			start, end := clamp(in.StartLine, in.EndLine, len(lines), maxReadLines)
 			if start == 0 {
 				return "", fmt.Errorf("%s has %d lines; %d is past the end", in.Path, len(lines), in.StartLine)
 			}
@@ -225,12 +235,13 @@ func (ts *toolset) readLines() tool {
 func (ts *toolset) grep() tool {
 	return tool{
 		name: "grep",
-		description: "Search the repository for a regular expression. Returns matching lines with " +
-			"their file and line number, at most 60 of them, walking the whole tree except .git, " +
-			"vendor, node_modules and build output. Use it to find who mentions a changed symbol. It " +
-			"matches text rather than types, so a hit may be a different thing with the same name; " +
-			"where gorefactor_context can answer instead, it resolves through the type checker and its " +
+		description: fmt.Sprintf("Search the repository for a regular expression. Returns matching lines with "+
+			"their file and line number, at most %d of them, walking the whole tree except .git, "+
+			"vendor, node_modules and build output. Use it to find who mentions a changed symbol. It "+
+			"matches text rather than types, so a hit may be a different thing with the same name; "+
+			"where gorefactor_context can answer instead, it resolves through the type checker and its "+
 			"callers are facts. Files over 1 MB are skipped, and it says so when it stops at the cap.",
+			maxGrepMatches),
 		schema: schema(map[string]any{
 			"pattern": str("Go regular expression, matched against one line at a time"),
 			"glob":    str("optional filter: only paths containing this text are searched, for example .go or internal/store/"),
@@ -247,7 +258,7 @@ func (ts *toolset) grep() tool {
 			if err != nil {
 				return "", fmt.Errorf("bad pattern: %v", err)
 			}
-			return grepTree(ts.root, re, in.Glob, 60)
+			return grepTree(ts.root, re, in.Glob, maxGrepMatches)
 		},
 	}
 }
@@ -460,8 +471,31 @@ func (ts *toolset) finish() tool {
 	}
 }
 
+// questionKindRoles maps the two question kinds that name no record role onto
+// the role that carries the same evidence.
+//
+// The brief teaches five kinds of question - precedent, caller, rule, history,
+// type - and record accepts a different seven roles. Three of the words are in
+// both lists, so tagging a record with the kind it answers works for those and
+// is refused for precedent and rule. On PR #38 the scout answered a precedent
+// question, said so out loud, filed two records under role "precedent", was
+// refused twice, and ran out of turns: the finding came back unverifiable on
+// evidence that had already been found. A vocabulary a model is invited to
+// confuse should be accepted rather than corrected on the last turn.
+var questionKindRoles = map[envelope.Role]envelope.Role{
+	// A precedent is somewhere else in the tree doing the same thing, which
+	// is what neighbor already means.
+	"precedent": RoleNeighbor,
+	// A rule the team wrote down is a guideline.
+	"rule": RoleGuideline,
+}
+
 func envelopeRole(s string) envelope.Role {
-	return envelope.Role(strings.ToLower(strings.TrimSpace(s)))
+	role := envelope.Role(strings.ToLower(strings.TrimSpace(s)))
+	if mapped, ok := questionKindRoles[role]; ok {
+		return mapped
+	}
+	return role
 }
 
 func runCmd(dir, name string, args ...string) (string, error) {

@@ -295,3 +295,27 @@ func TestNoScopeCoversEveryFile(t *testing.T) {
 		t.Error("an unscoped covered role did not apply to every file")
 	}
 }
+
+// The brief teaches question kinds and record accepts roles, and the two lists
+// only partly overlap. A scout that tags a record with the kind it answers is
+// doing what the brief asks; precedent and rule must not be the two words that
+// fail. Regression for the dropped c6 evidence on PR #38.
+func TestQuestionKindsAreAcceptedAsRoles(t *testing.T) {
+	r := newResolver(tree(t), Limits{})
+	for kind, want := range map[string]envelope.Role{
+		"precedent": RoleNeighbor,
+		"rule":      RoleGuideline,
+		"caller":    envelope.RoleCaller,
+		"type":      envelope.RoleType,
+		"history":   envelope.RoleHistory,
+	} {
+		if got := envelopeRole(kind); got != want {
+			t.Errorf("question kind %q maps to role %q, want %q", kind, got, want)
+		}
+		if err := r.validate(record{
+			Role: envelopeRole(kind), File: "internal/store/user.go", StartLine: 1, EndLine: 2,
+		}); err != nil {
+			t.Errorf("a record answering a %q question was refused: %v", kind, err)
+		}
+	}
+}

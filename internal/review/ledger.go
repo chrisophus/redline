@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
-
-	"github.com/anthropics/anthropic-sdk-go"
 )
 
 // The cost target is an average, not a cap on every review.
@@ -84,7 +82,7 @@ func Record(dir string, r *Result, effort string) error {
 		At: time.Now().UTC(), API: r.API, Model: r.Model, Effort: effort,
 		Usage: r.Usage, CostUSD: r.CostUSD, Known: r.CostKnown,
 		Seconds: r.Duration.Seconds(), Findings: len(r.Review.Comments),
-		StopReason: r.StopReason, Truncated: r.StopReason == string(anthropic.StopReasonMaxTokens),
+		StopReason: r.StopReason, Truncated: r.Truncated,
 		Batched: r.Batched,
 		Ceiling: r.Ceiling, InputEstimate: r.InputEstimate, OverCeiling: r.OverCeiling,
 		Samples: r.Samples, SamplesFailed: r.SamplesFailed,
