@@ -72,3 +72,16 @@ func TestMakeAndCIInstallTheSameGolangciLint(t *testing.T) {
 		t.Errorf("make lint installs %s and CI gates on %s", mk[1], ver[1])
 	}
 }
+
+// A second place naming the version is a second place to forget it. The
+// install target exists so nobody pastes a version by hand, so it has to take
+// the pin rather than restate it.
+func TestTheInstallTargetTakesThePinnedVersion(t *testing.T) {
+	mk := read(t, "Makefile")
+	if !strings.Contains(mk, "golangci-lint@$(GOLANGCI_VERSION)") {
+		t.Error("nothing in the Makefile installs the pinned golangci-lint")
+	}
+	if named := regexp.MustCompile(`golangci-lint@v[0-9][^\s]*`).FindString(mk); named != "" {
+		t.Errorf("the Makefile names a golangci-lint version by hand (%s); use $(GOLANGCI_VERSION)", named)
+	}
+}

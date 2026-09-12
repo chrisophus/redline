@@ -63,11 +63,11 @@ type Log struct {
 func logOf(ts *toolset, env *envelope.Envelope) Log {
 	log := Log{Calls: ts.log}
 	for _, rec := range ts.records {
-		log.Filed = append(log.Filed, Filed{
-			Role: rec.Role, File: rec.File,
-			StartLine: rec.StartLine, EndLine: rec.EndLine,
-			Symbol: rec.Symbol, FoundVia: rec.FoundVia, Answers: rec.Answers,
-		})
+		// A conversion, because Filed is record's fields with json tags on
+		// them: what the scout asked for, in the shape a reader can be handed.
+		// Adding a field to one and not the other stops this compiling, which
+		// is the point of writing it this way rather than field by field.
+		log.Filed = append(log.Filed, Filed(rec))
 	}
 	if env != nil {
 		log.Notes = env.Notes
