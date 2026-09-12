@@ -14,8 +14,10 @@
         "closure parameter",
         "its own parameter",
         "the literal's parameter",
-        "parameter of the function literal"
-      ]
+        "parameter of the function literal",
+        "funclit"
+      ],
+      "note": "The any_of gained `funclit` after a measured sample described the same defect by its other symptom - a captured variable judged at the literal's definition point rather than a shadowed parameter - and scored as an extra. Both readings name the same missing *ast.FuncLit cutoff and the same fix."
     },
     {
       "key": "condition-checked-before-facts-invalidated",
@@ -203,6 +205,44 @@
       ],
       "file": "",
       "all_of": []
+    },
+    {
+      "key": "baseline-not-relocked-for-the-new-rules",
+      "what": "The change registers a warning-tier rule and widens another, and touches no lint baseline file. gorefactor commits a `.gorefactor-lint-baseline.json` and its default gate fails on new-or-worsened findings against it, so a rule that fires anywhere on gorefactor's own source is growth against the recorded baseline. The frozen session carries the proof in its history expansions: f469c19, which added the previous rules, says \"re-lock the baseline for the new backlog\" in its own commit body, and 3a6f44d is \"lint: clear CI ratchet growth vs main\".",
+      "needs_history": true,
+      "all_of": [
+        "baseline",
+        "ratchet"
+      ],
+      "note": "Labelled after the fact. All three samples of the first measured arm wrote this and all three scored as extras, which is what the reject list exists to stop; read against the session it is not a false positive but a defect nobody had written down."
+    },
+    {
+      "key": "changelog-overstates-closure-capture",
+      "what": "The CHANGELOG entry says facts are \"dropped on reassignment, address-taking, closure capture, or method calls that could rebind the value\". closureTaintedNames taints a name only when it is assigned inside a function literal or has its address taken anywhere in the body, so a name that is merely captured and read keeps its fact. The rule's own header comment states the narrower behaviour, so the two descriptions disagree and the looser one is the one a reader of the release notes gets.",
+      "file": "CHANGELOG.md",
+      "optional": true,
+      "all_of": [
+        "closure capture"
+      ],
+      "any_of": [
+        "closuretaintednames",
+        "only taints",
+        "merely captured",
+        "assigned inside"
+      ],
+      "note": "Optional because it is a documentation defect beside twelve behavioural ones, not because it is uncertain: the diff contains both halves."
+    },
+    {
+      "key": "parity-notices-are-one-rule",
+      "what": "The session carries three sibling-missing-file findings, one each for the implementation, facts and test files of a single new lint rule. They are one fact reported three times, and the envelope shows why there is no counterpart to add: every other cmd_lint_* rule lives only under cmd/gorefactor. A review that says so with the three ids attached turns three notices into one.",
+      "correlation": true,
+      "relates_to_rules": [
+        "sibling-missing-file"
+      ],
+      "all_of": [
+        "parity"
+      ],
+      "note": "Labelled after the fact, from two samples that each referenced all three findings. This is the fixture's only correlation label, and the bar a staged arm has to clear without losing."
     }
   ]
 }

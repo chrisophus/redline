@@ -534,8 +534,13 @@ Then, per arm, against the frozen fixtures:
    string, not two blocks, so `Result` had to grow a `Tail` and the wire had to
    build a two-block user turn. A breakpoint on the old arrangement would have
    marked a block whose bytes differ per stage and read back nothing. **S**
-3. **Label the extras.** The `reject` list, as `two-stage-review.md` step 2
-   already called for. Nothing after this is measurable without it. **S**
+3. **Label the extras.** Shipped. Every unmatched comment in the two arms still
+   on disk is now classified: three `expect` entries for real defects the
+   annotation had missed, the fixture's first `reject`, and a fix to `Score`,
+   which was counting a second phrasing of a caught defect as an extra. The
+   arm recorded at 3 of 14 was catching 6 of 17. Nothing after this is
+   measurable without it, and the correlation survival bar the cohort arm has
+   to clear now has a label to be measured against. **S**
 4. **The synopsis stage, under `oneshot`.** Overview, per-file summaries and
    cohorts emitted by their own call; `post` and the report read the
    walkthrough from it. Ships value alone: the walkthrough stops being sparse

@@ -234,15 +234,23 @@ func Score(f Fixture, rev findings.Review) Scorecard {
 	matched := make([]bool, len(rev.Comments))
 	for _, exp := range f.Annotation.Expect {
 		hit := -1
+		// Every comment that matches, not only the first. Samples are unioned
+		// and two of them describing one defect in different words survive the
+		// union as two comments; scoring the second as an extra counted a true
+		// finding as a false positive. Measured on the first arm dumped here,
+		// every one of the six residual extras was a second phrasing of a
+		// label the same review had already caught.
 		for i, c := range rev.Comments {
-			if expectationMatches(exp, c, prior) {
+			if !expectationMatches(exp, c, prior) {
+				continue
+			}
+			matched[i] = true
+			if hit < 0 {
 				hit = i
-				break
 			}
 		}
 		switch {
 		case hit >= 0:
-			matched[hit] = true
 			sc.Caught = append(sc.Caught, exp.Key)
 		case exp.Optional:
 			sc.MissedOptional = append(sc.MissedOptional, exp.Key)

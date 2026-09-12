@@ -33,6 +33,17 @@ score treated that as neutral:
 | claude-sonnet-5 | 4/12 | 6 |
 | gpt-5.6-terra | 3/12 | 7 |
 
+Those extras have since been read against the sessions that produced them, and
+the neutrality was hiding two different things rather than one. The counts
+above are from arms scored before the labelling; on the two arms whose reviews
+were still on disk, none of the extras was invention. Three were defects the
+annotation had not written down and the rest were second phrasings of findings
+the same review had already been credited with, which `Score` was counting as
+extras because it stopped at the first match. Both are fixed below. The
+conclusion the table was drawn to support - that the false-positive column
+cannot see a false positive - stands; the inference that the arms were noisy
+does not.
+
 One fixture in ten is clean. Real changes are clean about three in ten.
 
 The reader is worth a caution of its own. An agent judging a review of its
@@ -335,12 +346,32 @@ which it cannot today. Then the field has to say whether the readers agree.
 
 ### In the eval
 
-Label the extras. `REDLINE_EVAL_DUMP` already writes each arm's reviews.
-Read the unmatched comments and sort them: real but unlabelled goes into
-`expect`, wrong goes into a new `reject` list beside `quiet`, same keyword
-shape. Once that exists, `Extra` stops being neutral and the false-positive
-column means what it says. This is the first step and it costs no model
-calls.
+Label the extras. **Done, and the answer was not the one this paragraph
+expected.** `REDLINE_EVAL_DUMP` had written two fixtures' arms; every
+unmatched comment in them was read against the frozen session and sorted.
+Nothing in the fourteen-defect fixture was invention. Three were real defects
+nobody had written down - a warning-tier rule added without re-locking the
+committed lint baseline, which the packet's own history proves by carrying the
+two earlier rule commits doing exactly that; a CHANGELOG claiming facts are
+dropped on "closure capture" when `closureTaintedNames` only taints a name
+assigned inside a literal; and a correlation collapsing the three
+`sibling-missing-file` notices into the one new rule they describe, with all
+three ids attached. They are `expect` entries now, and the arm that was
+recorded catching 3 of 14 was catching 6 of 17.
+
+The rest were duplicates, and that was a defect in the instrument rather than
+in the reviewer. `Score` stopped at the first comment matching an expectation,
+so when two samples described one defect in different words the union kept
+both and the second scored as an extra: a true finding counted as a false
+positive. Every one of the six residual extras was of that kind. `Score` now
+marks every matching comment, and both arms of both fixtures score zero
+unlabelled comments.
+
+One real false positive turned up, on the clean fixture: a remark about
+`fetch-depth: 0` in a workflow whose change was one line moving an action from
+v6 to v7. Whether the remark is true is beside the point - nothing it names is
+touched by the change - and it is the first `reject` entry. `Extra` now means
+what it says, and the false-positive column has something in it.
 
 Turn the dismissed field findings into fixtures. Each has a session on disk
 in that repository's `.redline` directory and a reason from the reader. The
@@ -643,9 +674,12 @@ plan has been waiting on since step 2.
 1. **Stop posting what the report hides.** `post` skips model findings
    marked low confidence, and every posted model finding carries its
    severity. One condition. **S**
-2. **Label the extras and freeze the field sessions.** The `reject` list in
-   annotations, scored as false positives; the dismissed reviews as fixtures.
-   Everything after this is measured against it. **S**
+2. **Label the extras and freeze the field sessions.** The `reject` list is
+   scored as a false positive and now has its first entry, and the two arms
+   still on disk are fully labelled: no unmatched comment in either, three new
+   `expect` entries, one `reject`. What is left of this step is the field
+   half - turning the dismissed reviews into fixtures - which needs sessions
+   from the repository they were dismissed in. **S**
 3. **Read root convention files and the sibling next door without a model.**
    Extend `internal/houserules` to the file list the scout already uses,
    bounded the same way, and add the same-directory name-stem sibling to the

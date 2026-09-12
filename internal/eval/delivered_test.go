@@ -61,7 +61,7 @@ func noise() []findings.ReviewComment {
 // scores perfectly on precision and costs the author every real defect.
 func TestTheGatesRemoveTheNoiseAndKeepEveryLabelledDefect(t *testing.T) {
 	f := nilRulesFixture(t)
-	correct := nilRulesCorrectReview()
+	correct := nilRulesCorrectReview(f)
 
 	noisy := findings.Review{Comments: append(append(
 		[]findings.ReviewComment{}, correct.Comments...), noise()...)}
@@ -100,7 +100,7 @@ func TestTheGatesRemoveTheNoiseAndKeepEveryLabelledDefect(t *testing.T) {
 func TestEachGateAccountsForItsOwnNoise(t *testing.T) {
 	f := nilRulesFixture(t)
 	noisy := findings.Review{Comments: append(append(
-		[]findings.ReviewComment{}, nilRulesCorrectReview().Comments...), noise()...)}
+		[]findings.ReviewComment{}, nilRulesCorrectReview(f).Comments...), noise()...)}
 	_ = f
 
 	d := Deliver(noisy)
@@ -141,7 +141,7 @@ func TestNothingSuppressesAMeasurement(t *testing.T) {
 // a reader sees.
 func TestAReviewWithNoRulingIsDeliveredWhole(t *testing.T) {
 	f := nilRulesFixture(t)
-	correct := nilRulesCorrectReview()
+	correct := nilRulesCorrectReview(f)
 
 	delivered, written, lost := ScoreDelivered(f, correct)
 	if len(lost) != 0 {
