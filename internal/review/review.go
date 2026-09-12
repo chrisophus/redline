@@ -299,11 +299,6 @@ type Result struct {
 	// them folds it into CostUSD and records it apart, because it is a
 	// separate call on a separate model under its own governor.
 	ScoutCostUSD float64 `json:"scoutCostUSD,omitempty"`
-	// CachePrefix is the run of Prompt that is identical to another request
-	// sharing this one's prefix, marked for the prompt cache. Empty caches the
-	// whole prompt, which is what a review's own call does so the ruling that
-	// follows can be served from it.
-	CachePrefix string `json:"-"`
 }
 
 // Summary is the one line a run prints. Cost and wall time per review are

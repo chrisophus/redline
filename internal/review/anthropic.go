@@ -46,30 +46,26 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 	}
 	client := anthropic.NewClient(clientOpts...)
 
-	// The system block and the shared run of the user turn carry a cache
-	// breakpoint, so the ruling call that follows a review is served from the
-	// prompt cache instead of paying the full input rate for the whole prefix
-	// again. res.CachePrefix names the run identical between the two calls;
-	// empty means cache the whole prompt, which is what a review's own call
-	// does to write the entry the ruling reads.
-	user := []anthropic.ContentBlockParamUnion{}
-	if res.CachePrefix != "" && strings.HasPrefix(res.Prompt, res.CachePrefix) {
-		prefix := anthropic.NewTextBlock(res.CachePrefix)
-		prefix.OfText.CacheControl = anthropic.NewCacheControlEphemeralParam()
-		user = append(user, prefix, anthropic.NewTextBlock(res.Prompt[len(res.CachePrefix):]))
-	} else {
-		whole := anthropic.NewTextBlock(res.Prompt)
-		whole.OfText.CacheControl = anthropic.NewCacheControlEphemeralParam()
-		user = append(user, whole)
-	}
+	// No cache breakpoint on this path, because nothing can read what it would
+	// write. The response schema is part of the cached prefix and sits in front
+	// of the system block, so the ruling - which sends a different schema than
+	// the review it follows - misses however much prompt the two share.
+	// Measured on the wire: one system and one prompt, the review's schema then
+	// the ruling's, wrote 12,449 and 11,360 tokens and read nothing either
+	// time; the same pair of writes at 171,690 and 170,601 in a real run.
+	// Samples cannot read each other either, since they go out together: three
+	// concurrent calls over one fresh prefix each wrote it. A write nobody
+	// reads bills a quarter above the base rate, so this call pays the base
+	// rate and no more. Explore mode keeps its breakpoints, where one growing
+	// conversation under one schema means a later turn really does read an
+	// earlier one.
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(opts.Model),
 		MaxTokens: opts.MaxTokens,
-		System: []anthropic.TextBlockParam{{
-			Text:         res.System,
-			CacheControl: anthropic.NewCacheControlEphemeralParam(),
-		}},
-		Messages: []anthropic.MessageParam{anthropic.NewUserMessage(user...)},
+		System:    []anthropic.TextBlockParam{{Text: res.System}},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(res.Prompt)),
+		},
 		OutputConfig: anthropic.OutputConfigParam{
 			Format: anthropic.JSONOutputFormatParam{Schema: res.Schema},
 		},

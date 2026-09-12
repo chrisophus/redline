@@ -85,11 +85,15 @@ func (u Usage) Cost(model string) (usd float64, ok bool) {
 		return 0, false
 	}
 	const million = 1_000_000.0
-	// Cache writes bill above base input and reads far below it. The review's
-	// own call writes its prefix and the ruling that follows reads it, so both
-	// multipliers are live now rather than only stated against a future that
-	// used them. The OpenAI backend reports cache reads at the same tenth and
-	// never a write, so the same arithmetic serves it.
+	// Cache writes bill a quarter above base input and reads at a tenth of it.
+	// Both multipliers stay live because explore mode and the scout resend one
+	// conversation and read their own prefixes back. The one-shot review and
+	// the ruling after it do not: a response schema is part of the cached
+	// prefix, the two stages send different schemas, and the wire reported a
+	// second full write rather than a read. They send no breakpoint now, so
+	// their input arrives on the first term. The OpenAI backend reports cache
+	// reads at the same tenth and never a write, so the same arithmetic serves
+	// it.
 	in := float64(u.InputTokens)/million*p.InPerM +
 		float64(u.CacheWriteTokens)/million*p.InPerM*1.25 +
 		float64(u.CacheReadTokens)/million*p.InPerM*0.1
