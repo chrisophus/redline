@@ -76,6 +76,23 @@ func cmdReview(o opts) error {
 	if o.verify {
 		ropts.Verify = true
 	}
+	// The breakpoint is on unless it is turned off, for the same shape of
+	// reason: a run that pays two full-rate calls over one prefix is paying
+	// for nothing, and the measured saving on the pair is about a quarter of
+	// the input. --no-cache is there for a caller measuring against the
+	// uncached behaviour. The library refuses it where it cannot pay -
+	// the OpenAI wire, several samples, the batch tier - so this is only the
+	// policy, not the arithmetic.
+	ropts.Cache = !o.noCache
+	if o.cache {
+		ropts.Cache = true
+	}
+	switch o.cacheTTL {
+	case "", review.CacheTTL5m, review.CacheTTL1h:
+		ropts.CacheTTL = o.cacheTTL
+	default:
+		return fmt.Errorf("--cache-ttl is %s or %s, not %q", review.CacheTTL5m, review.CacheTTL1h, o.cacheTTL)
+	}
 	// On the OpenAI wire the credentials are read here, in the vendor's own
 	// env names, before the checking pass is wired up: the scout that runs
 	// inside it now goes over the same wire and needs them. The flag wins over

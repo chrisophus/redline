@@ -492,6 +492,20 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 	if rc, ok := (Usage{OutputTokens: stageOne.RulingOutputTokens}).Cost(opts.Model); ok && stageOne.CostKnown {
 		stageOne.CostUSD += rc
 	}
+	// A ruling that asked for the cache and read none of it paid full rate
+	// for a prefix the review had already written, which is worse than not
+	// caching at all: the review paid the write premium too. Said out loud,
+	// because it is silent otherwise - the run works, the numbers are only
+	// higher - and because the two causes are worth telling apart. The entry
+	// lives from the start of the request that wrote it, and the scout runs
+	// between the two calls, so a long lookup is the likely one; a prefix
+	// that moved is the other and is a bug here.
+	if res.Cached && out.Usage.CacheReadTokens == 0 && opts.Progress != nil {
+		opts.Progress(fmt.Sprintf(
+			"the ruling read no cached prefix and paid full rate for %d input token(s): "+
+				"the %s entry expired before it ran, or the shared block moved",
+			out.Usage.InputTokens, opts.CacheTTL))
+	}
 	stageOne.Verified = true
 	if err != nil {
 		stageOne.VerifyFailed = err.Error()
@@ -521,20 +535,24 @@ func (r *Result) ruleRequest(in Input, opts Options, cands []Candidate, answers 
 	out := r.clone()
 	// The system block is left byte-identical to stage one and the ruling
 	// instruction goes at the tail of the user turn, beside the findings it
-	// refers to. Two reasons, and both hold again. A judge of these findings
-	// works under the rules the review was given. And everything ahead of that
-	// tail is now the same bytes the review sent, tools included, so a cache
-	// breakpoint on the shared part would be read back here rather than
-	// rewritten: what used to break that was the schema, and the schema no
-	// longer varies.
+	// refers to. Two reasons, and both hold. A judge of these findings works
+	// under the rules the review was given. And everything ahead of that tail
+	// is the same bytes the review sent, tools included, so the breakpoint at
+	// the end of the shared prompt is read back here rather than rewritten.
+	//
+	// The tail is a second block rather than more of the first. Appending it
+	// to Prompt would move the breakpoint's own block and the review's entry
+	// would never match.
 	out.System = r.System
-	out.Prompt = r.Prompt + "\n" + candidatesSection(cands) +
+	out.Prompt = r.Prompt
+	out.Tail = "\n" + candidatesSection(cands) +
 		boundAnswers(answersSection(answers)) + rulePrompt
 	out.Stage = StageRuling
 	// The catalogue rides on this call as it does on the review's, so it is
 	// counted here as Assemble counts it. Left out, the ruling would report an
 	// estimate short by the whole tool array against a request that carries it.
-	out.InputEstimate = toolsTokens() + envelope.EstimateTokens(out.System) + envelope.EstimateTokens(out.Prompt)
+	out.InputEstimate = toolsTokens() + envelope.EstimateTokens(out.System) +
+		envelope.EstimateTokens(out.Prompt) + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedRulingTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)
 	return out

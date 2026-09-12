@@ -104,6 +104,17 @@ flags:
                     Only findings the ruling keeps are posted; the rest stay
                     on the report with the reason. On by default when a key
                     is present; --no-verify turns it off.
+  --cache           with review: mark the prompt the review and the ruling
+                    share for the prompt cache, so the second call reads it
+                    back instead of paying for it again. On by default;
+                    --no-cache sends both at full input rate. Ignored where
+                    the write could not be read: --api openai, --samples
+                    above one, and the batch tier.
+  --cache-ttl D     with review: how long the cached prefix lives, 5m
+                    (default) or 1h. The hour costs 2x base input to write
+                    against the five minutes' 1.25x, and is worth it only
+                    when the gap between the two calls runs past five
+                    minutes.
   --ceiling N       with review: token ceiling for the whole request
                     (default 250000). A tail bound, not a per-review budget:
                     a change whose diff and findings alone exceed it is
@@ -152,9 +163,10 @@ type opts struct {
 	model, effort, mode, api, baseURL, apiUser                        string
 	scoutModel, scoutEffort                                           string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
-	stats, verify, noVerify, debug                                    bool
+	stats, verify, noVerify, debug, cache, noCache                    bool
 	port, ceiling, maxTokens, maxTurns, samples                       int
 	maxCost                                                           float64
+	cacheTTL                                                          string
 }
 
 func runMain(args []string) error {
@@ -201,6 +213,9 @@ func runMain(args []string) error {
 	fs.IntVar(&o.samples, "samples", 0, "with review: independent reviews to union")
 	fs.BoolVar(&o.verify, "verify", false, "with review: check each finding against the repository before posting it")
 	fs.BoolVar(&o.noVerify, "no-verify", false, "with review: skip the checking pass")
+	fs.BoolVar(&o.cache, "cache", false, "with review: mark the shared prefix for the prompt cache (on by default)")
+	fs.BoolVar(&o.noCache, "no-cache", false, "with review: send every call at full input rate")
+	fs.StringVar(&o.cacheTTL, "cache-ttl", "", "with review: how long the cached prefix lives, 5m or 1h")
 	fs.BoolVar(&o.debug, "debug", false, "with review: log each model request, response, and scout tool call to stderr")
 	fs.IntVar(&o.ceiling, "ceiling", 0, "with review: token ceiling for the whole request")
 	fs.IntVar(&o.maxTokens, "max-tokens", 0, "with review: cap on the response")

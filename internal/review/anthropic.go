@@ -108,13 +108,25 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 // that differed from a streamed one in any field would make the eval's cheap
 // arm measure something other than what ships.
 func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
+	// The shared prefix is its own block, and the breakpoint goes at the end
+	// of it. On the system block instead it would cache a few thousand tokens
+	// of the hundred and seventy thousand that matter; behind the stage's
+	// instruction it would cache bytes the next call does not send.
+	prefix := anthropic.NewTextBlock(res.Prompt)
+	if opts.cacheOn() {
+		prefix.OfText.CacheControl = anthropic.CacheControlEphemeralParam{
+			TTL: anthropic.CacheControlEphemeralTTL(opts.CacheTTL),
+		}
+	}
+	blocks := []anthropic.ContentBlockParamUnion{prefix}
+	if res.Tail != "" {
+		blocks = append(blocks, anthropic.NewTextBlock(res.Tail))
+	}
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(opts.Model),
 		MaxTokens: opts.MaxTokens,
 		System:    []anthropic.TextBlockParam{{Text: res.System}},
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(res.Prompt)),
-		},
+		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(blocks...)},
 		// The whole catalogue, every time, with the stage chosen by name. See
 		// tools.go for why the contract cannot be a per-call output format.
 		Tools:      anthropicTools(),

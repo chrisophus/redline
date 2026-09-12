@@ -182,6 +182,23 @@ type Options struct {
 	// as it was, which is what a caller with no budget for a second call, or
 	// one comparing against the old behaviour, needs.
 	Verify bool
+	// Cache marks the shared prefix of a run's calls for the prompt cache.
+	//
+	// One run's calls, not one day's: the entry is written by the review and
+	// read by the ruling seconds later, and nothing outside the run is
+	// expected to find it. That is the arithmetic that makes it worth doing
+	// here and not across runs, where a pre-push tool firing a few times a
+	// day would pay every write and read none of them.
+	//
+	// It only ever applies to the Anthropic wire, to one sample, and to the
+	// one-shot shape; cacheOn says why.
+	Cache bool
+	// CacheTTL is how long the entry lives, "5m" or "1h". The hour costs 2x
+	// base input to write against the five minutes' 1.25x, so it is worth it
+	// only where the gap between the two calls really does run past five
+	// minutes, which is a measurement this installation's ledger can make
+	// and this default will not guess at.
+	CacheTTL string
 }
 
 func (o Options) withDefaults() Options {
@@ -215,7 +232,35 @@ func (o Options) withDefaults() Options {
 	if o.Samples <= 0 {
 		o.Samples = 1
 	}
+	if o.CacheTTL == "" {
+		o.CacheTTL = CacheTTL5m
+	}
 	return o
+}
+
+// Cache TTLs the endpoint accepts. Five minutes is the default everywhere.
+const (
+	CacheTTL5m = "5m"
+	CacheTTL1h = "1h"
+)
+
+// cacheOn reports whether this run marks a breakpoint, and is the one place
+// that decides it.
+//
+// Three exclusions, each because the write would never be read. The OpenAI
+// wire has no breakpoint to place: what a gateway caches is its own business
+// and this protocol says nothing about it. Samples go out together over one
+// fresh prefix, so every one of them writes it and none reads it - N writes at
+// a quarter above base input to save one later read. And the batch tier's
+// window is twenty-four hours, where a five-minute entry is gone long before
+// the results are.
+//
+// The wire test is written as "not the OpenAI one" rather than "the Anthropic
+// one" because the empty API means Anthropic everywhere else and a caller that
+// reaches the wire code without withDefaults would otherwise lose the cache
+// silently, which is the failure this whole change is about noticing.
+func (o Options) cacheOn() bool {
+	return o.Cache && o.API != APIOpenAI && o.Samples <= 1
 }
 
 // Result is one review and what it cost.
@@ -238,9 +283,22 @@ type Result struct {
 	Duration       time.Duration `json:"durationNS"`
 	// Budget records what fit in the context ceiling and what did not.
 	Budget envelope.Budgeted `json:"-"`
-	// Prompt is the assembled user-side prompt, kept for --dry-run and for
-	// the eval, which replays a frozen prompt rather than re-deriving one.
+	// Prompt is the shared user-side prompt: the change, the priors, the diff
+	// and the context, identical on every call of one run. Kept for --dry-run
+	// and for the eval, which replays a frozen prompt rather than re-deriving
+	// one.
+	//
+	// It is also the block the breakpoint goes on, which is why the stage's
+	// own instruction is not in it. A cache entry is keyed on the bytes of
+	// the block it was written at, so the review's block and the ruling's
+	// block have to be the same block; concatenating the ruling's tail onto
+	// this would make them two different ones and nothing would ever be read
+	// back.
 	Prompt string `json:"-"`
+	// Tail is this stage's own instruction, sent as a second user block after
+	// Prompt and after the breakpoint. Empty on the review, which asks for
+	// nothing the shared prompt does not already say.
+	Tail string `json:"-"`
 	// System is the assembled system block actually sent: the harness prompt
 	// plus every provider's language fragment.
 	System string `json:"-"`
@@ -250,6 +308,9 @@ type Result struct {
 	// request under a different contract and both go over the same two wires.
 	// Empty means the review, which is what a caller that never set it wants.
 	Stage string `json:"-"`
+	// Cached records that this call marked a breakpoint, so a ledger row that
+	// read nothing can be told from one that never asked to.
+	Cached bool `json:"cached,omitempty"`
 	// InputEstimate is the pre-call token estimate for the whole request.
 	InputEstimate int `json:"inputEstimate"`
 	// FixedEstimate is what the parts a review cannot do without cost: the
@@ -534,16 +595,22 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	// that reports no usage is how a paid call ends up with no ledger line,
 	// which is the failure this ordering exists to prevent.
 	stage := res.stage()
+	res.Cached = opts.cacheOn()
 	if opts.Debug != nil {
-		opts.Debug(fmt.Sprintf("→ %s %s (%s): ~%d input tokens, cap %d, effort %s",
-			opts.API, opts.Model, stage, res.InputEstimate, opts.MaxTokens, opts.Effort))
+		opts.Debug(fmt.Sprintf("→ %s %s (%s): ~%d input tokens, cap %d, effort %s, cache %s",
+			opts.API, opts.Model, stage, res.InputEstimate, opts.MaxTokens, opts.Effort,
+			map[bool]string{true: opts.CacheTTL, false: "off"}[res.Cached]))
 	}
 	if opts.Capture != nil {
 		req, _ := json.MarshalIndent(map[string]any{
 			"api": opts.API, "model": opts.Model, "stage": stage,
 			"effort": opts.Effort, "maxTokens": opts.MaxTokens,
 			"inputTokensEstimate": res.InputEstimate,
-			"system":              res.System, "prompt": res.Prompt,
+			// Prompt and tail apart, because the breakpoint is between them
+			// and a reader comparing two captured requests is looking for
+			// exactly the block that has to match.
+			"system": res.System, "prompt": res.Prompt, "tail": res.Tail,
+			"cache": map[string]any{"breakpoint": res.Cached, "ttl": opts.CacheTTL},
 			// The whole array, because the whole array is what was sent and
 			// its bytes are what a cache read depends on.
 			"tools": stageTools(), "toolChoice": stage,

@@ -132,7 +132,9 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 		Model: opts.Model,
 		Messages: []openAIMessage{
 			{Role: "system", Content: res.System},
-			{Role: "user", Content: res.Prompt},
+			// One string, because this protocol's user turn is one string and
+			// there is no breakpoint here to keep the two apart for.
+			{Role: "user", Content: res.Prompt + res.Tail},
 		},
 		MaxCompletionTokens: opts.MaxTokens,
 		Tools:               openAITools(),
