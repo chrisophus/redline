@@ -737,3 +737,91 @@ func TestRulingReasonsBeforeItDecides(t *testing.T) {
 		t.Fatalf("analysis must be in the schema and serialize before verdict, got analysis@%d verdict@%d", ai, vi)
 	}
 }
+
+// A review whose every finding says the diff settles it asks nothing, which is
+// reachable and was measured twice: at --effort high the reviewer chose the
+// diff kind for every finding in both runs. The scout must not be called with
+// an empty list, and the ruling still has to be sent, because the diff those
+// findings point at is what it rules on.
+func TestAReviewThatAsksNothingRunsNoLookupsAndIsStillRuled(t *testing.T) {
+	in := Input{Report: priors()}
+	one, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	one.Review = findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "the hunk shows the error going nowhere", findings.Question{Kind: findings.QuestionDiff}),
+		comment("b.go", "a guess with nothing to look up", findings.Question{Kind: findings.QuestionNone}),
+	}}
+	var calls int
+	opts := Options{Verify: true, DryRun: true, Answer: func(_ context.Context, qs []Question) (*envelope.Envelope, error) {
+		calls++
+		return nil, nil
+	}}
+	got, err := Verify(context.Background(), in, opts, one)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Errorf("the lookups ran %d time(s) with no question to answer", calls)
+	}
+	if got == one {
+		t.Fatal("the findings were left unruled, so nothing checked them at all")
+	}
+	if !strings.Contains(got.Prompt, "The findings to rule on") {
+		t.Fatalf("the ruling request was not assembled:\n%s", got.Prompt)
+	}
+	if !strings.Contains(got.Prompt, "has been checked") {
+		t.Error("the ruling must be told no lookup ran, or an absent answer reads as a clean one")
+	}
+}
+
+// The gate that decides what an author reads has to be the check rather than
+// the guess before it. On a measured run the only real logic defect in the
+// packet was rated low by stage one, kept by the ruling with a line quoted
+// from the diff, and withheld from the pull request anyway.
+func TestAFindingKeptOnQuotedEvidencePostsWhateverStageOneGuessed(t *testing.T) {
+	corpus := "func record() error {\n\tif len(ts.records) >= ts.limits.MaxRecords {\n"
+	cands := []Candidate{
+		{ID: "c1", Comment: findings.ReviewComment{
+			File: "a.go", Body: "the cap is checked before the dedup", Confidence: findings.ConfidenceLow,
+			Question: findings.Question{Kind: findings.QuestionDiff},
+		}},
+		{ID: "c2", Comment: findings.ReviewComment{
+			File: "b.go", Body: "same shape, no quote behind it", Confidence: findings.ConfidenceLow,
+			Question: findings.Question{Kind: findings.QuestionDiff},
+		}},
+	}
+	rulings := sanitizeRulings(cands, map[string]findings.Ruling{
+		"c1": {Verdict: findings.VerifiedKept, Evidence: "if len(ts.records) >= ts.limits.MaxRecords {"},
+		"c2": {Verdict: findings.VerifiedKept, Evidence: "a line nobody can find in the material"},
+	}, corpus)
+
+	if !rulings["c1"].Grounded {
+		t.Fatal("a quote out of the material was not read as evidence")
+	}
+	if rulings["c2"].Grounded {
+		t.Error("an invented quote was taken as evidence")
+	}
+	// Both stay kept. A kept verdict is never demoted for its quote; what the
+	// quote decides is whether stage one's doubt still withholds the finding.
+	for id, r := range rulings {
+		if r.Verdict != findings.VerifiedKept {
+			t.Errorf("%s came back %q, want it left kept", id, r.Verdict)
+		}
+	}
+
+	rev := Apply(findings.Review{Comments: []findings.ReviewComment{
+		cands[0].Comment, cands[1].Comment,
+	}}, cands, rulings)
+	got := (&rev).CommentFindings()
+	if len(got) != 2 {
+		t.Fatalf("want both findings, got %d", len(got))
+	}
+	if got[0].Confidence == findings.ConfidenceLow {
+		t.Error("a finding the ruling verified is still folded away as unsure")
+	}
+	if got[1].Confidence != findings.ConfidenceLow {
+		t.Error("a finding kept on an unquotable line was promoted past the gate")
+	}
+}

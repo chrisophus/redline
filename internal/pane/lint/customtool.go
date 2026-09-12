@@ -79,7 +79,7 @@ func exitOK(exit int, okCodes []int) bool {
 func parseGenericJSON(stdout string, cfg ToolConfig) ([]Issue, error) {
 	var root any
 	if err := decodeOneJSON(stdout, &root); err != nil {
-		return nil, fmt.Errorf("%s output was not JSON: %v: %s", cfg.Name, err, firstLine(stdout))
+		return nil, fmt.Errorf("%s output was not JSON: %w: %s", cfg.Name, err, firstLine(stdout))
 	}
 	results, ok := jsonPathGet(root, cfg.ResultsPath)
 	if !ok {
@@ -165,7 +165,7 @@ type sarifLog struct {
 func parseSARIF(stdout string, cfg ToolConfig) ([]Issue, error) {
 	var log sarifLog
 	if err := decodeOneJSON(stdout, &log); err != nil {
-		return nil, fmt.Errorf("%s output was not SARIF: %v: %s", cfg.Name, err, firstLine(stdout))
+		return nil, fmt.Errorf("%s output was not SARIF: %w: %s", cfg.Name, err, firstLine(stdout))
 	}
 	var out []Issue
 	for _, run := range log.Runs {
@@ -203,7 +203,7 @@ type spectralItem struct {
 func parseSpectral(stdout string, cfg ToolConfig) ([]Issue, error) {
 	var items []spectralItem
 	if err := decodeOneJSON(stdout, &items); err != nil {
-		return nil, fmt.Errorf("%s output was not Spectral JSON: %v: %s", cfg.Name, err, firstLine(stdout))
+		return nil, fmt.Errorf("%s output was not Spectral JSON: %w: %s", cfg.Name, err, firstLine(stdout))
 	}
 	out := make([]Issue, 0, len(items))
 	for _, it := range items {

@@ -109,3 +109,37 @@ func TestARetagIsAcceptedAtTheRecordCap(t *testing.T) {
 		t.Error("a net-new record at the cap must still be refused")
 	}
 }
+
+// A question the tree cannot answer has to come back saying so. The scout's
+// grep walks this repository and nothing else, so a question about a
+// dependency's own code hits an empty search; reported as a bare "no matches"
+// the ruling reads it as "searched and found nothing", which is a different
+// answer and the wrong one.
+func TestAnEmptySearchSaysWhatItSearched(t *testing.T) {
+	ts := newToolset(tree(t), "", Limits{})
+	out, failed := ts.dispatch("grep", []byte(`{"pattern":"MessageBatchResultUnion"}`))
+	if failed {
+		t.Fatalf("a search that matched nothing is not a failure: %s", out)
+	}
+	for _, want := range []string{"this repository", "dependency"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("an empty search does not say what it covered (%q missing): %q", want, out)
+		}
+	}
+}
+
+// And the scout is told the same thing where it decides what to file: an
+// unanswerable question is a note naming why, not a silence.
+func TestTheAnsweringBriefSaysWhatIsOutsideTheTree(t *testing.T) {
+	got := answerPrompt([]string{"grep"}, 8)
+	for _, want := range []string{"not in this repository", "outside the tree"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the brief never tells the scout to say %q:\n%s", want, got)
+		}
+	}
+	// A caller question is usually settled by what the callee does with the
+	// argument, not by the line that passes it.
+	if !strings.Contains(got, "the answer is in the callee") {
+		t.Errorf("the brief leaves a caller question answerable by the dispatch site:\n%s", got)
+	}
+}

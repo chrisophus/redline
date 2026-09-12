@@ -466,11 +466,18 @@ func rulingContext(r Ruling) string {
 // effectiveConfidence is how sure a comment is once its own account of itself
 // is taken into account.
 //
-// Two things override what the reviewer typed in the confidence field. A
+// Three things override what the reviewer typed in the confidence field. A
 // ruling that did not keep the finding, and a question of "none", which is the
 // reviewer saying nothing available would settle its own claim. Both mean the
 // finding must not reach an author, and low confidence is how the report and
 // post already spell that.
+//
+// The third runs the other way. A finding the verifying pass kept on a line it
+// quoted from the material was checked after the confidence field was written,
+// so withholding it for the doubt is paying for the check and ignoring it: one
+// measured run rated its only real logic defect low, confirmed it against a
+// line of the diff, and posted nothing. Medium rather than high, because the
+// evidence says the claim stands and not that its author was sure.
 //
 // It lives here, at the conversion every consumer goes through, rather than in
 // the deserializer where it started. The measurement is what moved it: a
@@ -485,5 +492,9 @@ func effectiveConfidence(c ReviewComment) Confidence {
 	if c.Question.Kind == QuestionNone {
 		return ConfidenceLow
 	}
-	return NormalizeConfidence(c.Confidence)
+	conf := NormalizeConfidence(c.Confidence)
+	if conf == ConfidenceLow && c.Ruling.Verdict == VerifiedKept && c.Ruling.Grounded {
+		return ConfidenceMedium
+	}
+	return conf
 }

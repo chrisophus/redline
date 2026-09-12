@@ -16,9 +16,11 @@
 //
 // One rule holds the whole design up. The model picks and this program
 // copies: an expansion's content is read from the tree by record.go, never
-// written by the model, so a cheap model's recollection of a function cannot
-// reach the reviewer looking like source. The only model-written text in the
-// envelope is the notes, which say what it looked for and could not find.
+// written by the model, so its recollection of a function cannot reach the
+// reviewer looking like source. That is also what would make a weaker model
+// safe here, whatever this ends up running on. The only model-written text
+// in the envelope is the notes, which say what it looked for and could not
+// find.
 //
 // The cost of that is reproducibility. gorefactor writes the same envelope
 // for a revision every time; the scout does not, so the model and the effort
@@ -39,9 +41,12 @@ import (
 	"github.com/chrisophus/redline/internal/review"
 )
 
-// DefaultModel is the cheap half of the two-model split. The scout fetches
-// and does not judge, so it is bought at the rate of the thing it is: a
-// search, run several times, whose output another model reads.
+// DefaultModel is what the scout runs on when the caller names nothing. It is
+// the reviewer's own model today, so the split is by job rather than by price:
+// the scout fetches and does not judge, and what a smaller model costs in the
+// quality of that fetching has not been measured. --model is how a repository
+// tries one, and the rule above, that the scout writes locations and this
+// program reads the bytes, is what bounds the damage if it chooses badly.
 const DefaultModel = "claude-sonnet-5"
 
 // DefaultEffort keeps the scout's own thinking short. It is deciding what to
@@ -146,10 +151,9 @@ func (o Options) withDefaults() Options {
 	if o.Model == "" {
 		o.Model = DefaultModel
 		if o.API == review.APIOpenAI {
-			// The scout is the cheap half of the split on either wire. gpt-5
-			// is the OpenAI default the reviewer uses, and the scout follows
-			// it rather than defaulting to an Anthropic model on an OpenAI
-			// endpoint, which would 404.
+			// gpt-5 is the OpenAI default the reviewer uses, and the scout
+			// follows it rather than defaulting to an Anthropic model on an
+			// OpenAI endpoint, which would 404.
 			o.Model = review.DefaultOpenAIModel
 		}
 	}
@@ -253,10 +257,15 @@ func driveAnthropic(ctx context.Context, opts Options, ts *toolset) (Spend, erro
 	// cachedLast is what the previous turn read from the cache, which is the
 	// governor's evidence that the next turn will read it again.
 	var cachedLast int64
-	for turn := range opts.MaxTurns {
+	// extra is the one turn a closing turn spent entirely on refusals buys
+	// back; see the OpenAI loop, which grants it for the same reason.
+	extra := 0
+	for turn := 0; turn < opts.MaxTurns+extra; turn++ {
 		// The last turn of the budget files rather than searches; see the
-		// OpenAI loop, which does the same for the same reason.
-		if turn > 0 && turn == opts.MaxTurns-1 && !ts.done {
+		// OpenAI loop, which does the same for the same reason. Not entered
+		// twice: the granted turn is a second closing turn, not a second
+		// closing message.
+		if turn > 0 && turn == opts.MaxTurns-1 && !ts.done && !ts.closing {
 			ts.closing = true
 			params.Tools = ts.params()
 			// The prompt names the tools, so it changes here, and with it
@@ -304,7 +313,13 @@ func driveAnthropic(ctx context.Context, opts Options, ts *toolset) (Spend, erro
 		// included, which is what a tool loop on a thinking model requires.
 		params.Messages = append(params.Messages, msg.ToParam())
 
+		ts.startTurn()
 		results := runTools(ts, msg)
+		if ts.closing && extra == 0 && !ts.done && ts.refusedEveryCall() {
+			// The closing turn filed nothing and was told why. Give it the
+			// turn the correction needs; see refusedEveryCall.
+			extra = 1
+		}
 		if ts.done || len(results) == 0 {
 			if !ts.done {
 				ts.notes = append(ts.notes, "the search for context ended without a summary of what it could not find")

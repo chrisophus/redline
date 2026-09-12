@@ -15,6 +15,24 @@ linters:
     - gosec
     - gocritic
 
+    # errorlint: three files read an exit code by asserting *exec.ExitError
+    # off a subprocess error, and three more formatted an error with %v. Both
+    # work until something wraps the error on the way out, and then the exit
+    # code reads as a failure to run and the chain is gone.
+    - errorlint
+    # bodyclose: the review and the scout each hold one HTTP client open for
+    # minutes, so a body nobody closes is a connection nobody gets back.
+    - bodyclose
+    # usestdlibvars: a status code or a method written as a literal is a
+    # literal somebody has to recognise.
+    - usestdlibvars
+    #
+    # intrange is deliberately absent. It reads `for turn := 0; turn <
+    # opts.MaxTurns+extra; turn++` in both scout drivers as a range loop,
+    # which it is not: the bound is re-read every iteration and the loop
+    # raises it, where a range evaluates it once. Taking its advice there
+    # would delete the turn a refused record is corrected in.
+
   settings:
     gosec:
       excludes:
@@ -35,5 +53,9 @@ linters:
       # permissions, subprocess args, and marker strings there are not a
       # threat model, and tests intentionally ignore some errors (e.g. a
       # background test HTTP server's Serve error).
-      - linters: [gosec, errcheck]
+      #
+      # bodyclose is here for a different reason: a test's response comes from
+      # httptest's recorder, which holds no connection to leak, and closing it
+      # would be a line that reads like it matters.
+      - linters: [gosec, errcheck, bodyclose]
         path: _test\.go$

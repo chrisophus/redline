@@ -48,6 +48,9 @@ jobs:
       - run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
       - run: go tool cover -func=coverage.out | tail -1
 
+      # The same version `make lint` names in GOLANGCI_VERSION, so a developer
+      # who runs the target locally runs this gate rather than a neighbouring
+      # one. internal/toolchain's test fails when the two drift.
       - uses: golangci/golangci-lint-action@v7
         with:
           version: v2.13.2

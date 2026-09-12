@@ -126,7 +126,7 @@ A reviewer proposed findings on this change. You rule on them, before any of
 them reaches the author. You did not write them, and you owe them nothing.
 
 Below the findings are the answers to the questions the reviewer asked about
-them: a cheap model ran each lookup and recorded what it found, as real lines
+them: a lookup pass ran each one and recorded what it found, as real lines
 from the repository. Rule on every finding, using one of five verdicts.
 
 - kept: the evidence supports it. Quote the line it rests on. For a finding
@@ -586,6 +586,13 @@ func combineRulings(cands, pending []Candidate, settled, model map[string]findin
 //     is in what the ruling was shown, the quote was invented, and a finding
 //     withdrawn or excused on invented evidence is the exact failure this pass
 //     exists to prevent.
+//
+// A kept verdict is measured against the same material and demoted for
+// nothing: the finding was written before this pass ran and stage one's own
+// confidence still carries it. What the check buys is the gate. A claim the
+// ruling confirmed against a line that is really there reaches the author even
+// when the reviewer said it was unsure, and one kept on a quote nobody can
+// find is left exactly where stage one put it.
 func sanitizeRulings(cands []Candidate, rulings map[string]findings.Ruling, corpus string) map[string]findings.Ruling {
 	byID := make(map[string]Candidate, len(cands))
 	shared := map[string]int{}
@@ -605,6 +612,8 @@ func sanitizeRulings(cands []Candidate, rulings map[string]findings.Ruling, corp
 				r = unverifiable("the checking pass called this already raised, but this pull request " +
 					"carries no earlier thread for it and no other finding asks the same question")
 			}
+		case findings.VerifiedKept:
+			r.Grounded = groundedEvidence(r.Evidence, corpus)
 		case findings.VerifiedWithdrawn, findings.VerifiedJustified:
 			if !groundedEvidence(r.Evidence, corpus) {
 				r = unverifiable("the checking pass gave evidence that is not in the material it was shown, " +

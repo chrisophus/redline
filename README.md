@@ -552,13 +552,17 @@ measurement is a fact about the change and the line is where the fact is. A
 finding whose own wording disqualifies it, "acceptable but worth noting" on a
 warning, is withheld the way an unsure one is.
 
-A reviewer finding that said it was unsure is not posted. The report folds
-those away behind a fold, and the pull request used to carry them as ordinary
-comments, so a guess the page hid arrived on the change looking like a
-measurement. The two readers now agree, and the body says how many were held
-back so a reviewer that withheld something can be told from one that had
-nothing to say. Only the reviewer's own findings: a pane's finding carries no
-confidence at all, so this can never withhold something that was measured.
+A reviewer finding that said it was unsure is not posted, unless the checking
+pass verified it. The report folds those away behind a fold, and the pull
+request used to carry them as ordinary comments, so a guess the page hid
+arrived on the change looking like a measurement. The exception is what the
+checking pass is for: a finding it kept on a line quoted out of the material
+it was shown has been checked since the confidence field was written, so the
+evidence decides and not the doubt that came before it. Otherwise the two
+readers agree, and the body says how many were held back so a reviewer that
+withheld something can be told from one that had nothing to say. Only the
+reviewer's own findings: a pane's finding carries no confidence at all, so
+this can never withhold something that was measured.
 A repository that would rather see them can set `body_include: low-confidence`,
 which folds them into a collapsed block on the pull request instead of holding
 them back; they still never open a line comment and never gate.

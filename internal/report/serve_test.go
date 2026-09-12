@@ -33,7 +33,7 @@ func TestServeDeliversReportHTML(t *testing.T) {
 		if err == nil {
 			body, _ = io.ReadAll(resp.Body)
 			resp.Body.Close()
-			if resp.StatusCode == 200 {
+			if resp.StatusCode == http.StatusOK {
 				break
 			}
 		}
@@ -260,7 +260,7 @@ func reportServer(t *testing.T) http.Handler {
 }
 
 func request(h http.Handler, host, path string) *http.Response {
-	req := httptest.NewRequest("GET", path, nil)
+	req := httptest.NewRequest(http.MethodGet, path, nil)
 	if host != "" {
 		req.Host = host
 	}

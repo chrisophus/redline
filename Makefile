@@ -58,15 +58,31 @@ fmt:
 	  echo "gofmt -w these files:"; echo "$$unformatted"; exit 1; \
 	fi
 
+# The version CI gates on. Named here because a local run that disagrees with
+# the gate is worse than no local run: it either passes what CI will fail or
+# fails what CI will pass. internal/toolchain's test holds this and
+# .github/workflows/ci.yml to the same number.
+GOLANGCI_VERSION := v2.13.2
+
 # golangci-lint reads .golangci.yml. Not installed is not an error here: a
 # missing tool darks this target the same way an unconfigured repo darks
 # redline's own lint-delta pane (README's "Lint" section) rather than
 # failing the build for a dev who hasn't installed it. CI installs it and
 # so gets the real gate.
+#
+# A version that is not the pinned one is a note rather than a refusal, for
+# the same reason, but it is said out loud: one built against an older Go
+# than .golangci.yml's `run.go` does not lint at all, it bails out during
+# type-checking, and the message it prints says nothing about how to fix it.
 lint:
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
-	  echo "skip: golangci-lint not on PATH (go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest)"; \
+	  echo "skip: golangci-lint not on PATH (go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION))"; \
 	  exit 0; \
+	fi
+	@have=v$$(golangci-lint version --short 2>/dev/null); \
+	if [ "$$have" != "$(GOLANGCI_VERSION)" ]; then \
+	  echo "note: golangci-lint $$have is on PATH and CI gates on $(GOLANGCI_VERSION)"; \
+	  echo "      go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)"; \
 	fi
 	golangci-lint run ./...
 

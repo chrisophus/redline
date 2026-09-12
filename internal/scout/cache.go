@@ -25,12 +25,20 @@ import (
 // priced at the cached rate, because that is what the wire will charge for
 // it; a governor that prices a cached brief at the full rate stops a run
 // three turns before its money is gone. It is evidence rather than
-// assumption: a prefix too short to cache reports no cached tokens, and the
-// full rate stands.
+// assumption: a prefix too short to cache reports no cached tokens.
+//
+// When it is nothing, the turn about to be sent is the one that writes the
+// cache, and a write bills a quarter above base input. The premium is added
+// rather than left out, because the turn it applies to is the first turn of
+// every run and the one this is always asked about. A prefix too short to
+// cache is overcharged by that quarter, which stops a run a little early
+// rather than letting one past its allowance.
 func overBudget(opts Options, spend Spend, params anthropic.MessageNewParams, cachedLast int64) (bool, string) {
 	next := estimateInput(params)
 	if cachedLast > 0 {
 		next -= cacheDiscount(estimatePrefix(params))
+	} else {
+		next += cacheWritePremium(estimatePrefix(params))
 	}
 	ceiling, ok := review.CeilingCost(opts.Model, next, opts.MaxTokens)
 	if !ok {
@@ -50,6 +58,13 @@ func overBudget(opts Options, spend Spend, params anthropic.MessageNewParams, ca
 // input price.
 func cacheDiscount(prefix int) int {
 	return prefix * 9 / 10
+}
+
+// cacheWritePremium is how much more writing a prefix of n tokens costs than
+// sending it uncached, in tokens at the full rate. A cache write is a quarter
+// above the input price.
+func cacheWritePremium(prefix int) int {
+	return prefix / 4
 }
 
 // estimatePrefix sizes the part of the request under the cache breakpoints:

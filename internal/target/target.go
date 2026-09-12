@@ -8,6 +8,7 @@ package target
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -305,7 +306,8 @@ func fetchPR(dir, ref string) (*PullRequest, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		detail := ""
-		if ee, ok := err.(*exec.ExitError); ok {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
 			detail = strings.TrimSpace(string(ee.Stderr))
 		}
 		return nil, fmt.Errorf("gh pr view %s: %s", ref, detail)
