@@ -29,8 +29,8 @@ So output dominates the clock and input dominates the bill, and any staging
 proposal trades input up to trade output down. Before any of it is built,
 `redline review --stats` has to say what this installation's distribution
 actually looks like: `Stats.MedianOutput` exists for exactly this question. If
-median output times five, the out-to-in rate ratio on Sonnet, does not beat
-median input, then no rearrangement of stages saves money and everything below
+median output, scaled by the model's output-to-input rate ratio (five on
+Sonnet, from `priceTable`), does not beat median input, then no rearrangement of stages saves money and everything below
 is a quality and latency argument rather than a cost one. It is still worth
 doing on those grounds. It is not worth selling as cheaper.
 
@@ -106,6 +106,17 @@ instead:
   because "every property is required" is already the house rule in
   `schema.go`. The guarantee that a model cannot quietly drop the field
   carrying the correlation survives the move intact.
+- Put the breakpoint on the last block of the *shared user-turn content*, not
+  on the system block. A breakpoint may sit on any content block, and one on
+  the system block caches the system block: a few thousand tokens of the
+  170,000 that matter. The shared content is one text block — the fixed block
+  and the envelope — and each stage's own instruction is a second text block
+  after it, which is the arrangement `ruleRequest` already uses for the
+  ruling's tail.
+
+Forced `tool_choice` returns 400 on Fable 5.1 and Mythos 5.1. On those models
+`staged` is refused with that reason rather than attempted; nothing in this
+document is affected at Sonnet 5 or Opus 5.
 
 Two rejected alternatives, recorded so they are not re-proposed. Asking for
 JSON in prose at the tail of the user turn genuinely does move the contract to
@@ -154,46 +165,123 @@ A 170k prefix on Sonnet 5 at $2/M input, six calls:
 | 5-minute TTL (1.25x write, 0.1x reads) | 297k | $0.60 |
 | 1-hour TTL (2x write, 0.1x reads) | 425k | $0.85 |
 
-The critical path is stage one, then the cohort reviews, then a scout per
-cohort, then the merge. Reviews here already run two to five minutes each, so
-the gap between the first write and the last read will routinely exceed five
-minutes and the 1-hour TTL is worth its heavier write to guarantee the last
-read lands. Both are configurable; the default should follow what the ledger
-shows about real pipeline wall time.
+Which TTL is a narrower question than it first looks. A cache read refreshes
+the entry's timer at no cost, and the lifetime is measured from the *start* of
+the request that wrote or last read it, with generation time counting against
+it. So what matters is not the span from first write to last read but the
+start-to-start gap between consecutive requests that share the prefix, and a
+pipeline whose consecutive calls start under five minutes apart keeps the
+5-minute entry warm indefinitely — the 1-hour TTL buys nothing there but the
+doubled write.
+
+Walk the critical path with that rule. Stage one writes; the cohort calls start
+the moment it returns, so their gap is stage one's generation time, and they
+read. The merge is the exposed call: its gap from the last cohort call's start
+is that cohort's generation plus the whole scout pass, and the scout refreshes
+nothing because it runs against its own prefix. That one gap is the number to
+watch. The default is 5 minutes; the ledger records the gap, and the 1-hour TTL
+becomes the default only when the recorded p95 of that gap reaches five
+minutes. A call after stage one that reports zero cache reads is a warning on
+the terminal and a column in the ledger, not a silent full-price line.
 
 The same fix pays before any of the pipeline exists. Today's review-then-ruling
 pair sends roughly 340k uncached; with one write and one read it is about 230k,
 a third off the input of shipped behaviour, and the `cache_read_input_tokens`
-field says whether it worked before anything is built on top of it.
+field says whether it worked before anything is built on top of it. That pair
+also has the same exposed gap the merge will have — the review's generation
+plus the scout pass, with no refreshing read between — so caching it measures
+the one number that decides the TTL before any new stage exists.
 
 ## The pipeline
 
 Stage zero is unchanged: what this pull request already heard, read back by
 `run` and frozen into the session.
 
-**Stage one — synopsis and cohorts.** One call over the fixed block: the pull
-request description and commit bodies, the file list, the prior findings, the
-diffs. Not the context envelope, which exists to support judgment rather than
-description. It emits the overview, one line per changed file, and a partition
-of the changed files into cohorts, each with a summary of what that group of
-files does together. This is the call that writes the cached prefix.
+One rule governs the shape of every call, and it is worth stating before the
+stages because the first draft of this plan violated it. **Every cached stage
+sees the whole shared prefix.** The prefix is the fixed block and the context
+envelope, in one text block, and it is byte-identical on every call or nothing
+is cached. So a stage cannot be given less than the prefix: a cohort call
+cannot be sent "only its own diff", because the prefix carries every diff, and
+stage one cannot be spared the envelope, because stage one is the call that
+writes the prefix the others read. Scoping is done by instruction, in the text
+block after the shared one, not by withholding input.
 
-**Stage two — one review per cohort, in parallel.** Each call gets the full
-diff for its own cohort, and for every other cohort only stage one's summary,
-plus the whole prior-findings list and the whole file list. The fan-out is the
-shape `runSamples` already implements: independent calls that share no state,
-so the money scales and the wall clock does not.
+**Stage one — synopsis and cohorts.** One call over the prefix, told to
+describe and not to judge, and told that the context blocks are there for a
+later pass and are not its concern. It emits the overview, exactly one line per
+shown file, and a partition of the shown files into cohorts — every shown file
+in exactly one cohort, no cohort empty — each with a summary of what that group
+of files does together. Shown files are the ones whose diffs the prompt
+carries; the tests and generated files held back today stay held back and
+belong to no cohort. This is the call that writes the cache, which is why it
+has to carry the envelope it is told to ignore: the write is paid once
+whichever call makes it, and only a write that lands before the fan-out is one
+the cohort calls can read.
 
-**The scout, per cohort.** Unchanged in kind. Note the governor: `DefaultMaxCostUSD`
-is documented as "the scout's whole allowance for one change" at $0.25, and one
-scout per cohort spends that allowance N times. It must be divided across
-cohorts or raised deliberately, or cohort four's lookups get starved by cohort
-one's and the rulings on its findings come back unverifiable for a reason that
-has nothing to do with the findings.
+**Stage two — one review per cohort, in parallel.** Each call reads the same
+prefix and is told which cohort is its job: the instruction names the cohort's
+files, carries the other cohorts' summaries when `cross-summaries` is on, and
+says to review its own cohort and raise anything it sees against another only
+as a correlation. The other cohorts' diffs are in front of it regardless, at a
+tenth of the rate, which is the consequence of the rule above and a better
+one than the first draft had: the correlation a cohort call can raise is
+grounded in lines it was shown, not in a summary. What the fan-out buys is not
+a smaller input per call but a smaller *task* per call, and whether that lowers
+per-call thinking is one of the things the arm measures rather than assumes.
+The calls go out together, as `runSamples` already does: independent, sharing
+no state, so the money scales and the wall clock does not.
 
-**Stage three — the merge.** Takes every cohort's findings and the answers, and
-writes the final review: dedup across cohorts, the ruling, the overview and the
-walkthrough assembled from stage one.
+**The scout, one per cohort, in parallel.** Unchanged in kind, and it runs
+against its own brief on its own prefix, so it neither reads this cache nor
+refreshes it. The governor needs a decision: `DefaultMaxCostUSD` is documented
+as "the scout's whole allowance for one change" at $0.25, and one scout per
+cohort would spend that allowance N times. Under `shared`, the default, each
+cohort's scout gets the allowance divided by the cohort count, so the whole run
+spends what one scout spends today. Under `per-cohort` each gets the full
+allowance and the bill is N times larger, knowingly. A scout that exhausts its
+share stops, and the findings it did not reach are ruled unverifiable, which
+is what happens today when the allowance runs out.
+
+**Stage three — the merge.** One call. It receives every cohort's findings,
+numbered across cohorts the way `Candidates` numbers them today, and the scout's
+answers, and it emits in one contract what two calls produce today: the rulings
+on every candidate, the deduplicated comments, and the final review with the
+overview and walkthrough carried over from stage one. Dedup across cohorts is by
+`UnionKey`, which already prefers the finding's question over its prose and is
+the identity the union of samples uses. With one cohort — a small change under
+`min-files`, or `--cohorts 1` — there is nothing to merge and the stage *is*
+the ruling: it degenerates to `Verify` as it ships today, over the one cohort's
+findings. Under `oneshot` with the synopsis on, there is likewise one review
+call and `Verify` after it; the only change from today is that the review's
+contract no longer carries the overview and the file lines, because stage one
+wrote them.
+
+### What fails, and what happens then
+
+The first draft of this plan said nothing about failure, which for a pipeline
+of five calls is the same as saying the whole review fails whenever any of them
+does. The shipped producer already has a rule about that — `Verify` "never
+fails the review", because a review that posts unchecked is the behaviour this
+tool had all along and an empty one is worse — and each stage takes the same
+stance.
+
+- **Stage one fails**, or returns something that is not a partition. The run
+  falls back to `oneshot` for that review, says so on the terminal, and the
+  ledger line records that it fell back. A partition that is merely imperfect
+  is repaired rather than rejected: a shown file placed in no cohort goes to the
+  first cohort, and one placed in two stays in the first that named it.
+- **One cohort call fails**, or truncates. It is recorded the way `runSamples`
+  records a failed sample — a count beside the cohort count, so a merge over
+  five of six is not read as a merge over six — and the merge proceeds over the
+  cohorts that answered. All of them failing is the review failing.
+- **The scout exhausts its share.** The findings it did not reach are ruled
+  unverifiable, as today when the allowance runs out.
+- **The merge fails.** The review is the union of the cohorts' findings, unruled,
+  and `VerifyFailed` says why, which is exactly what a failed ruling does today.
+- **A call after stage one reads no cache.** The prefix broke somewhere. It is
+  a warning naming the stage and a zero in the ledger's read column, and the run
+  continues at full price rather than stopping over money already spent.
 
 ### Why cohorts, and what they cost
 
@@ -224,13 +312,14 @@ fact. Neither pane can see the other." That correlation is exactly
 cross-cohort. Partition the change and the partition is drawn straight through
 it.
 
-Three things hold it, and none of them is free. Cohorts are grouped by what
-changed rather than by directory, which is the whole claim: correlated files
-land together or the grouping is worthless. Every cohort call carries the full
-prior-findings list and every other cohort's summary, so a call can see that a
-migration cohort exists and what it did, and raise a correlation against it
-from its own side. And stage three sees all of it, which is the one place the
-whole change is in front of one call again.
+Three things hold it. Cohorts are grouped by what changed rather than by
+directory, which is the whole claim: correlated files land together or the
+grouping is worthless. Every cohort call has every diff in front of it and the
+other cohorts' summaries beside them, so a call that notices the migration
+cohort's column while reviewing the struct's cohort can raise the correlation
+from lines it was shown, and the one cost of the rule above is the thing that
+makes this possible. And stage three sees all of it, which is the one place the
+whole change is in front of one call whose job is the whole change.
 
 That last point decides whether stage three shares the prefix. If it is a
 merger — dedup, rule, assemble — it needs the findings and the change section
@@ -276,7 +365,8 @@ review:
       effort: ""     # empty inherits --effort; varying it forfeits the cache
 
     cohorts:
-      enabled: false
+      # Cohorts are what staged means; there is no separate switch. max: 1
+      # is staged with no fan-out, which is one review and the ruling.
       max: 6         # upper bound on parallel review calls
       min-files: 3   # below this the change is reviewed as one cohort
       # Whether each cohort call carries the other cohorts' summaries. Off is
@@ -311,9 +401,10 @@ Flags, each overriding its config key:
 The paired-boolean form is the idiom `--verify` / `--no-verify` already
 established in `cmdReview`, and it exists for the same reason: a caller
 comparing against the old behaviour must be able to say so on the command line
-without editing a file.
+without editing a file. When both halves of a pair are given, the affirmative
+wins, which is what `cmdReview` already does for `--verify`.
 
-Three consistency rules the command enforces rather than discovers:
+Consistency rules the command enforces rather than discovers:
 
 - `--pipeline staged` with `--cache=false` is allowed and warns with the
   estimate, because someone will want to measure the uncached pipeline once. It
@@ -324,13 +415,20 @@ Three consistency rules the command enforces rather than discovers:
   to reach for without knowing what they cost.
 - `--pipeline staged` with `--mode explore` is refused. Explore already spends
   its budget on turns and the two are different answers to the same question.
+- `--pipeline staged` with `--samples` above one is refused, for the reason
+  explore refuses it today: cohorts already spend the budget on breadth, and
+  sampling a fan-out multiplies a fan-out.
+- `--pipeline staged` on a model where forced `tool_choice` is rejected is
+  refused with that reason, before anything is sent.
 
 The ledger needs a column for the shape. `ledger.go` already keeps `Batched`
 rows out of the distribution, on the grounds that a sweep of half-price
 fixtures would drag the average somewhere no interactive run can reach; a
 staged run against a oneshot run is the same problem. The `Entry` gains the
-pipeline shape, the cohort count, and cache read and write tokens, and
-`Summarize` reports per shape or refuses to mix them.
+pipeline shape, the cohort count and how many of them failed, cache read and
+write tokens, the merge's start-to-start gap from the last cohort call, and
+whether the run fell back to `oneshot`. `Summarize` groups by shape and reports
+each on its own; a mean across shapes is never printed.
 
 ## Measuring it
 
@@ -344,8 +442,10 @@ extras costs no model calls and has to land first.
 Then, per arm, against the frozen fixtures:
 
 - **Recall** on the labelled-defect fixtures. The headline.
-- **Correlation survival.** How many labelled correlation findings a cohorted
-  arm still produces. This is the bar cohorts can fail on, and an arm that
+- **Correlation survival.** The count of labelled correlation findings the
+  staged arm produces, against the count the oneshot arm produces on the same
+  fixtures at the same sample count; the bar is that the first is not below the
+  second. This is the bar cohorts can fail on, and an arm that
   gains recall while losing correlations has not improved anything: it has
   traded away the reason the producer exists. A drop here is a regression
   whatever else moves.
@@ -371,8 +471,9 @@ Then, per arm, against the frozen fixtures:
    `output_config.format` on both the anthropic and openai wires; `absorb`
    reads a `tool_use` block rather than `textOf`. No behaviour change, no new
    stage. **M**
-2. **Cache the shared prefix.** Breakpoint on the last system block, `--cache`
-   and `--cache-ttl`, cache tokens into the ledger. Verify on the existing
+2. **Cache the shared prefix.** Breakpoint on the last shared user-turn block —
+   not the system block — with `--cache` and `--cache-ttl`, and cache tokens
+   into the ledger. Verify on the existing
    review-then-ruling pair that `cache_read_input_tokens` is non-zero. This is
    about a third off the input of shipped behaviour and it de-risks everything
    after it. Amend the design doc's caching decision with the within-run
