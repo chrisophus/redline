@@ -184,8 +184,12 @@ func num(desc string) map[string]any { return map[string]any{"type": "integer", 
 
 func (ts *toolset) readLines() tool {
 	return tool{
-		name:        "read_lines",
-		description: "Read a range of lines from a file in the repository, with line numbers. Use it to look at code the diff does not show.",
+		name: "read_lines",
+		description: "Read a range of lines from a file in the repository, with line numbers. " +
+			"Use it to look at code the diff does not show. At most 200 lines come back per call: a " +
+			"wider range is cut to the first 200 from start_line, so ask for the declaration you want " +
+			"rather than the file. A path that does not exist, or a start_line past the end of the " +
+			"file, is an error rather than an empty result.",
 		schema: schema(map[string]any{
 			"path":       str("repository-relative path"),
 			"start_line": num("first line, 1-based"),
@@ -220,8 +224,13 @@ func (ts *toolset) readLines() tool {
 
 func (ts *toolset) grep() tool {
 	return tool{
-		name:        "grep",
-		description: "Search the repository for a regular expression. Returns matching lines with their file and line number, capped. Use it to find who mentions a changed symbol.",
+		name: "grep",
+		description: "Search the repository for a regular expression. Returns matching lines with " +
+			"their file and line number, at most 60 of them, walking the whole tree except .git, " +
+			"vendor, node_modules and build output. Use it to find who mentions a changed symbol. It " +
+			"matches text rather than types, so a hit may be a different thing with the same name; " +
+			"where gorefactor_context can answer instead, it resolves through the type checker and its " +
+			"callers are facts. Files over 1 MB are skipped, and it says so when it stops at the cap.",
 		schema: schema(map[string]any{
 			"pattern": str("Go regular expression, matched against one line at a time"),
 			"glob":    str("optional filter: only paths containing this text are searched, for example .go or internal/store/"),
@@ -351,8 +360,11 @@ const (
 func (ts *toolset) record() tool {
 	return tool{
 		name: recordTool,
-		description: "Put a range of code in front of the reviewer. You choose the range and the role; this program reads the bytes from the tree itself, so record the location rather than the code. " +
+		description: fmt.Sprintf("Put a range of code in front of the reviewer. You choose the range and the role; this program reads the bytes from the tree itself, so record the location rather than the code. "+
+			"A range longer than %d lines is cut to the first %d from start_line, so record the declaration rather than the file around it. "+
+			"Three calls are refused, and the error comes back to you to correct: a role the brief says another provider already covers, a test file, and any call past %d records, which the count on each successful call tracks for you. "+
 			"Roles: enclosing (the whole declaration a changed hunk sits in), caller (a call site of something the change touched), type (a type named in a changed signature), sibling (another implementation of an interface the change touches), history (what git says about those lines, for a deleted guard or a reverted fix), neighbor (a file of another kind the change is coupled to, such as a migration or a config file), guideline (a rule this repository wrote down that bears on this change: a house style, a convention, the paragraph of a design doc that says why something is the way it is).",
+			ts.limits.MaxLines, ts.limits.MaxLines, ts.limits.MaxRecords),
 		schema: schema(map[string]any{
 			"role":       str("enclosing, caller, type, sibling, history, neighbor or guideline"),
 			"file":       str("repository-relative path"),

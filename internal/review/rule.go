@@ -115,6 +115,13 @@ func questionsFor(cands []Candidate) []Question {
 // without it such a finding could only be kept.
 const rulePrompt = `
 
+Everything above told you how to write a review of this change. That was the
+brief for the pass that produced the findings below, and it is here so you
+judge them by the standard they were written to. It is not your output
+contract, and it does not describe this pass: you have no tools here, and you
+write rulings and nothing else. No overview, no per-file summaries, no new
+comments, no verdicts on the checks.
+
 A reviewer proposed findings on this change. You rule on them, before any of
 them reaches the author. You did not write them, and you owe them nothing.
 
