@@ -84,4 +84,13 @@ func TestTheInstallTargetTakesThePinnedVersion(t *testing.T) {
 	if named := regexp.MustCompile(`golangci-lint@v[0-9][^\s]*`).FindString(mk); named != "" {
 		t.Errorf("the Makefile names a golangci-lint version by hand (%s); use $(GOLANGCI_VERSION)", named)
 	}
+	// The same rule for the Go it is built with. A linter built against an
+	// older Go than .golangci.yml's run.go refuses to start, so the install
+	// has to follow go.mod rather than a number somebody typed once.
+	if !strings.Contains(mk, "GOTOOLCHAIN=$(GO_TOOLCHAIN)") {
+		t.Error("the install target does not build the linter with the Go go.mod declares")
+	}
+	if named := regexp.MustCompile(`GOTOOLCHAIN=go[0-9][^\s]*`).FindString(mk); named != "" {
+		t.Errorf("the Makefile names a Go toolchain by hand (%s); derive it from go.mod", named)
+	}
 }

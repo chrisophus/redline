@@ -59,6 +59,11 @@ fmt:
 	  echo "gofmt -w these files:"; echo "$$unformatted"; exit 1; \
 	fi
 
+# The Go the linter is built with, read from go.mod so this is not a third
+# place to keep a version in step. A toolchain name wants a patch number and
+# go.mod's directive usually has none, so a two-part version gets a .0.
+GO_TOOLCHAIN := $(shell awk '/^go /{v=$$2; if (split(v, p, ".") == 2) v = v ".0"; print "go" v; exit}' go.mod)
+
 # The version CI gates on. Named here because a local run that disagrees with
 # the gate is worse than no local run: it either passes what CI will fail or
 # fails what CI will pass. internal/toolchain's test holds this and
@@ -89,8 +94,15 @@ lint-bin:
 # Install the version CI gates on, from source through the module proxy, so
 # this needs nothing but the Go toolchain already required to build Redline.
 # It lands in GOPATH/bin, which is where lint-bin looks first.
+#
+# The toolchain is pinned to the one go.mod declares because the binary has to
+# be built with a Go at least as new as .golangci.yml's `run.go` or it refuses
+# to start, and golangci-lint's own go.mod floor can be older than the version
+# this repository targets: left alone, `go install` builds it with that floor
+# and produces a linter that cannot lint this tree. CI hits none of this,
+# because the action downloads the release binary rather than building one.
 lint-install:
-	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 	@echo "installed $$(go env GOPATH)/bin/golangci-lint"
 
 # golangci-lint reads .golangci.yml. Not installed is not an error here: a

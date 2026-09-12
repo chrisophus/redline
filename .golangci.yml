@@ -3,7 +3,7 @@ version: "2"
 # Must be <= the Go version the golangci-lint binary was built with, or it
 # bails out during type-checking. Keep this in sync with go.mod.
 run:
-  go: "1.26"
+  go: "1.27"
 
 linters:
   enable:
