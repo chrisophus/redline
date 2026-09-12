@@ -311,6 +311,19 @@ type Result struct {
 	// them folds it into CostUSD and records it apart, because it is a
 	// separate call on a separate model under its own governor.
 	ScoutCostUSD float64 `json:"scoutCostUSD,omitempty"`
+
+	// Candidates is what stage one found, as it wrote it, before any ruling
+	// touched it. Kept because the verifying pass writes its rulings onto the
+	// review in place and folds a finding it did not keep down to low
+	// confidence: after that there is no way to read back what the reviewer
+	// actually proposed, which is the first thing anyone asking why a review
+	// came back empty wants to see.
+	Candidates []Candidate `json:"-"`
+	// Questions is what was sent to the lookups, and Answers what came back.
+	// Both are nil when no answerer was wired up, and Answers is nil when the
+	// lookups failed, which VerifyFailed then says.
+	Questions []Question         `json:"-"`
+	Answers   *envelope.Envelope `json:"-"`
 }
 
 // Summary is the one line a run prints. Cost and wall time per review are

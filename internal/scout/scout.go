@@ -172,7 +172,8 @@ func (o Options) withDefaults() Options {
 	return o
 }
 
-// Spend is what one run cost, for the log line and the ledger.
+// Spend is what one run cost, for the log line and the ledger, and what it
+// did, for the reader afterwards.
 type Spend struct {
 	Usage     review.Usage `json:"usage"`
 	CostUSD   float64      `json:"costUSD"`
@@ -180,6 +181,16 @@ type Spend struct {
 	Turns     int          `json:"turns"`
 	Records   int          `json:"records"`
 	CapHit    bool         `json:"capHit"`
+	// Model and Effort are what actually ran, after the defaults were
+	// applied. A caller that named neither still has to be able to say what
+	// it paid for, and re-deriving the default outside this package is how
+	// the two answers drift apart.
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
+	// Log is every tool call the run made and every record it filed. See
+	// log.go for why the envelope alone cannot answer what the search did.
+	// A run that never reached the model leaves it empty.
+	Log Log `json:"log,omitzero"`
 }
 
 // Run drives the loop and returns the envelope it filled.
@@ -210,6 +221,7 @@ func Run(ctx context.Context, opts Options) (*envelope.Envelope, Spend, error) {
 	} else {
 		spend, err = driveAnthropic(ctx, opts, ts)
 	}
+	spend.Model, spend.Effort = opts.Model, opts.Effort
 	if err != nil {
 		// Turn-zero failure: nothing was fetched and nothing is known. The
 		// caller turns this into an absent provider, which is the honest
@@ -218,6 +230,7 @@ func Run(ctx context.Context, opts Options) (*envelope.Envelope, Spend, error) {
 	}
 	spend.Records = len(ts.records)
 	env := build(opts, ts)
+	spend.Log = logOf(ts, env)
 	return env, spend, nil
 }
 

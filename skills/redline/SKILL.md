@@ -54,6 +54,7 @@ stderr.
 redline review              # one model call over the run you just did
 redline review --dry-run    # print the prompt and its estimated price, call nothing
 redline review --stats      # the cost distribution of the reviews recorded so far
+redline postmortem          # what that review proposed, looked up, and ruled
 ```
 
 This is the one Redline command that calls a model. It reads the session
@@ -70,6 +71,12 @@ OpenAI-compatible proxy instead, pass `--api openai` with `--base-url`
 (or `OPENAI_BASE_URL`) and `OPENAI_API_KEY`, plus `--api-user` or
 `OPENAI_USER` when the proxy wants the caller in the bearer token; that
 path is one shot only.
+
+`redline postmortem` reads back the review that just ran: the findings
+before anything ruled on them, the question each one named, what the lookups
+filed against it, and the verdict. Use it when a review came back with less
+than you expected, because it separates a finding that was checked and
+withdrawn from one nothing was ever looked up for.
 
 Its findings are advisory, marked `source: llm`, and never reach the merge
 gate whatever severity they carry. Verdicts already in `review.json` are
