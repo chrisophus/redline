@@ -382,6 +382,25 @@ func TestSumBuildsTheComparisonTable(t *testing.T) {
 	}
 }
 
+// inputsFor is the review input each fixture stands for, in fixture order.
+// The batch arm needs every one of them before it sends anything, and the
+// live arm builds the same value one at a time; sharing the constructor is
+// what keeps the two arms reviewing the same thing.
+func inputsFor(fx []Fixture) []review.Input {
+	out := make([]review.Input, 0, len(fx))
+	for _, f := range fx {
+		in := review.Input{
+			Report: &f.Session.Report, Change: f.Session.Change,
+			Envelopes: f.Session.Envelopes, Absent: f.Session.ContextAbsent,
+		}
+		if os.Getenv("REDLINE_EVAL_NOCONTEXT") != "" {
+			in.Envelopes = nil
+		}
+		out = append(out, in)
+	}
+	return out
+}
+
 // TestSweep is the paid half. It calls a model once per fixture and prints the
 // comparison table, so it is opt-in: every model-side experiment costs money
 // and everything above this line costs nothing.
@@ -428,9 +447,61 @@ func TestSweep(t *testing.T) {
 		}
 		fx = kept
 	}
+	opts := review.Options{
+		Model:  model,
+		Effort: os.Getenv("REDLINE_EVAL_EFFORT"),
+	}
+	// The arm that measures the checking pass. Without it the sweep
+	// scores the producer as it was before any of this, which is the
+	// right baseline and is no longer the shipped default.
+	//
+	// No answerer is wired here, deliberately. Stage two runs the
+	// scout against a real tree, and a fixture's tree is gone: it is a
+	// frozen session, which is what makes it replayable. So this arm
+	// is the ruling with no lookups in front of it, and the number it
+	// answers is the dangerous one. A ruling that withdraws findings
+	// it could not check would show up here as lost labelled defects,
+	// and that is the failure mode worth paying to detect.
+	opts.Verify = os.Getenv("REDLINE_EVAL_VERIFY") != ""
+	// A model on another wire is an arm like any other. The key and
+	// base URL are read the same way the command reads them, so a
+	// sweep and a real review reach the same endpoint.
+	if os.Getenv("REDLINE_EVAL_API") == "openai" {
+		opts.API = review.APIOpenAI
+		opts.APIKey = os.Getenv("OPENAI_API_KEY")
+		opts.BaseURL = os.Getenv("OPENAI_BASE_URL")
+		opts.APIUser = os.Getenv("OPENAI_USER")
+	}
+
+	// Nobody waits on a sweep, so REDLINE_EVAL_BATCH sends it over the
+	// Message Batches tier at half price. That is worth having for its own
+	// sake and worth more than that: every question this sweep exists to
+	// answer is settled by running it repeatedly, and the discount is what
+	// makes repeating it affordable.
+	//
+	// The whole matrix cell goes out as one batch before the scoring loop
+	// and is read inside it, so the two arms score identically and only the
+	// wire differs. Order is sample-major so slot si*len(fx)+fi is fixture
+	// fi's sample si.
+	var batch []*review.Result
+	var batchErrs []error
+	if os.Getenv("REDLINE_EVAL_BATCH") != "" {
+		var reqs []review.Input
+		for range samples {
+			reqs = append(reqs, inputsFor(fx)...)
+		}
+		opts.Progress = func(line string) { t.Log(line) }
+		var err error
+		batch, batchErrs, err = review.RunBatch(context.Background(), reqs, opts)
+		if err != nil {
+			t.Fatalf("batch: %v", err)
+		}
+		opts.Progress = nil
+	}
+
 	var cards []Scorecard
 	var costs []float64
-	for _, f := range fx {
+	for fi, f := range fx {
 		in := review.Input{
 			Report: &f.Session.Report, Change: f.Session.Change,
 			Envelopes: f.Session.Envelopes, Absent: f.Session.ContextAbsent,
@@ -445,33 +516,15 @@ func TestSweep(t *testing.T) {
 		}
 		var revs []findings.Review
 		var cost float64
-		for range samples {
-			opts := review.Options{
-				Model:  model,
-				Effort: os.Getenv("REDLINE_EVAL_EFFORT"),
+		for si := range samples {
+			var out *review.Result
+			var err error
+			if batch != nil {
+				slot := si*len(fx) + fi
+				out, err = batch[slot], batchErrs[slot]
+			} else {
+				out, err = review.Run(context.Background(), in, opts)
 			}
-			// The arm that measures the checking pass. Without it the sweep
-			// scores the producer as it was before any of this, which is the
-			// right baseline and is no longer the shipped default.
-			//
-			// No answerer is wired here, deliberately. Stage two runs the
-			// scout against a real tree, and a fixture's tree is gone: it is a
-			// frozen session, which is what makes it replayable. So this arm
-			// is the ruling with no lookups in front of it, and the number it
-			// answers is the dangerous one. A ruling that withdraws findings
-			// it could not check would show up here as lost labelled defects,
-			// and that is the failure mode worth paying to detect.
-			opts.Verify = os.Getenv("REDLINE_EVAL_VERIFY") != ""
-			// A model on another wire is an arm like any other. The key and
-			// base URL are read the same way the command reads them, so a
-			// sweep and a real review reach the same endpoint.
-			if os.Getenv("REDLINE_EVAL_API") == "openai" {
-				opts.API = review.APIOpenAI
-				opts.APIKey = os.Getenv("OPENAI_API_KEY")
-				opts.BaseURL = os.Getenv("OPENAI_BASE_URL")
-				opts.APIUser = os.Getenv("OPENAI_USER")
-			}
-			out, err := review.Run(context.Background(), in, opts)
 			// A sample whose model has no rate makes the fixture's cost
 			// unknown rather than smaller. Summing CostUSD would report the
 			// arm as free, which is the number the whole comparison turns on.

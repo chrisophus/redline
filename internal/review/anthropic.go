@@ -59,22 +59,7 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 	// rate and no more. Explore mode keeps its breakpoints, where one growing
 	// conversation under one schema means a later turn really does read an
 	// earlier one.
-	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(opts.Model),
-		MaxTokens: opts.MaxTokens,
-		System:    []anthropic.TextBlockParam{{Text: res.System}},
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(res.Prompt)),
-		},
-		OutputConfig: anthropic.OutputConfigParam{
-			Format: anthropic.JSONOutputFormatParam{Schema: res.Schema},
-		},
-	}
-	if opts.Effort != "" {
-		params.OutputConfig.Effort = anthropic.OutputConfigEffort(opts.Effort)
-	}
-
-	stream := client.Messages.NewStreaming(ctx, params)
+	stream := client.Messages.NewStreaming(ctx, anthropicParams(opts, res))
 	// Next returning false at the end of the stream does not close the
 	// response body; only Close does. One per call here, so a deferred close
 	// is enough.
@@ -112,6 +97,29 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 		c.detail = string(msg.StopDetails.Category)
 	}
 	return c, nil
+}
+
+// anthropicParams is the request one review makes, without sending it.
+//
+// Split out so the batch path builds the identical request: a batched review
+// that differed from a streamed one in any field would make the eval's cheap
+// arm measure something other than what ships.
+func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
+	params := anthropic.MessageNewParams{
+		Model:     anthropic.Model(opts.Model),
+		MaxTokens: opts.MaxTokens,
+		System:    []anthropic.TextBlockParam{{Text: res.System}},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(res.Prompt)),
+		},
+		OutputConfig: anthropic.OutputConfigParam{
+			Format: anthropic.JSONOutputFormatParam{Schema: res.Schema},
+		},
+	}
+	if opts.Effort != "" {
+		params.OutputConfig.Effort = anthropic.OutputConfigEffort(opts.Effort)
+	}
+	return params
 }
 
 func textOf(msg anthropic.Message) string {
