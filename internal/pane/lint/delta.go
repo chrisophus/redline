@@ -152,7 +152,7 @@ func (p *Delta) Observe(rev pane.Revision) (pane.Observation, error) {
 		issues, rerr := t.run(dir)
 		if rerr != nil {
 			if rev.Name != "base" {
-				return nil, fmt.Errorf("%s at head: %v", t.name, rerr)
+				return nil, fmt.Errorf("%s at head: %w", t.name, rerr)
 			}
 			snap.Runs = append(snap.Runs, toolRun{Tool: t.name, Err: rerr.Error()})
 			continue

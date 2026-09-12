@@ -3,6 +3,7 @@ package lint
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -146,12 +147,13 @@ func runTool(dir string, name string, args ...string) (stdout string, stderr str
 		return "", "", 0, fmt.Errorf("%s did not finish within %s", name, toolTimeout)
 	}
 	exit = 0
-	if ee, ok := runErr.(*exec.ExitError); ok {
+	var ee *exec.ExitError
+	if errors.As(runErr, &ee) {
 		exit = ee.ExitCode()
 		runErr = nil
 	}
 	if runErr != nil {
-		return "", "", 0, fmt.Errorf("%s: %v", name, runErr)
+		return "", "", 0, fmt.Errorf("%s: %w", name, runErr)
 	}
 	return out.String(), errBuf.String(), exit, nil
 }
@@ -191,7 +193,7 @@ func runGolangci(dir string) ([]Issue, error) {
 	// start and ignores what follows, where Unmarshal would reject the
 	// whole stdout as malformed.
 	if jsonErr := json.NewDecoder(strings.NewReader(stdout)).Decode(&parsed); jsonErr != nil {
-		return nil, fmt.Errorf("golangci-lint output was not its JSON format: %v: %s", jsonErr, firstLine(stdout))
+		return nil, fmt.Errorf("golangci-lint output was not its JSON format: %w: %s", jsonErr, firstLine(stdout))
 	}
 	out := make([]Issue, 0, len(parsed.Issues))
 	for _, i := range parsed.Issues {
@@ -228,7 +230,7 @@ func runESLint(dir string) ([]Issue, error) {
 		} `json:"messages"`
 	}
 	if jsonErr := json.Unmarshal([]byte(stdout), &parsed); jsonErr != nil {
-		return nil, fmt.Errorf("eslint output was not its JSON format: %v: %s", jsonErr, firstLine(stdout))
+		return nil, fmt.Errorf("eslint output was not its JSON format: %w: %s", jsonErr, firstLine(stdout))
 	}
 	var out []Issue
 	for _, f := range parsed {
@@ -276,7 +278,7 @@ func runGorefactor(dir string) ([]Issue, error) {
 		} `json:"issues"`
 	}
 	if jsonErr := json.NewDecoder(strings.NewReader(stdout)).Decode(&parsed); jsonErr != nil {
-		return nil, fmt.Errorf("gorefactor output was not its JSON format: %v: %s", jsonErr, firstLine(stdout))
+		return nil, fmt.Errorf("gorefactor output was not its JSON format: %w: %s", jsonErr, firstLine(stdout))
 	}
 	mod := moduleImportPath(dir)
 	out := make([]Issue, 0, len(parsed.Issues))

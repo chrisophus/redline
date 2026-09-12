@@ -234,11 +234,11 @@ func (ts *toolset) readLines() tool {
 				EndLine   int    `json:"end_line"`
 			}
 			if err := json.Unmarshal(input, &in); err != nil {
-				return "", fmt.Errorf("bad arguments: %v", err)
+				return "", fmt.Errorf("bad arguments: %w", err)
 			}
 			lines, err := ts.res.read(in.Path)
 			if err != nil {
-				return "", fmt.Errorf("%s: %v", in.Path, err)
+				return "", fmt.Errorf("%s: %w", in.Path, err)
 			}
 			start, end := clamp(in.StartLine, in.EndLine, len(lines), maxReadLines)
 			if start == 0 {
@@ -276,11 +276,11 @@ func (ts *toolset) grep() tool {
 				Glob    string `json:"glob"`
 			}
 			if err := json.Unmarshal(input, &in); err != nil {
-				return "", fmt.Errorf("bad arguments: %v", err)
+				return "", fmt.Errorf("bad arguments: %w", err)
 			}
 			re, err := regexp.Compile(in.Pattern)
 			if err != nil {
-				return "", fmt.Errorf("bad pattern: %v", err)
+				return "", fmt.Errorf("bad pattern: %w", err)
 			}
 			return grepTree(ts.root, re, in.Glob, maxGrepMatches)
 		},
@@ -331,7 +331,7 @@ func (ts *toolset) gorefactorContext() tool {
 				Symbol string `json:"symbol"`
 			}
 			if err := json.Unmarshal(input, &in); err != nil {
-				return "", fmt.Errorf("bad arguments: %v", err)
+				return "", fmt.Errorf("bad arguments: %w", err)
 			}
 			return runCmd(ts.root, "gorefactor", "context", "--json", "--", in.Symbol)
 		},
@@ -352,7 +352,7 @@ func (ts *toolset) graphAffected() tool {
 				Depth int    `json:"depth"`
 			}
 			if err := json.Unmarshal(input, &in); err != nil {
-				return "", fmt.Errorf("bad arguments: %v", err)
+				return "", fmt.Errorf("bad arguments: %w", err)
 			}
 			if in.Depth < 1 || in.Depth > 2 {
 				in.Depth = 1
@@ -377,7 +377,7 @@ func (ts *toolset) graphPath() tool {
 				To   string `json:"to"`
 			}
 			if err := json.Unmarshal(input, &in); err != nil {
-				return "", fmt.Errorf("bad arguments: %v", err)
+				return "", fmt.Errorf("bad arguments: %w", err)
 			}
 			return runCmd(ts.root, "graphify", "path", "--graph", ts.graph, "--", in.From, in.To)
 		},
@@ -420,7 +420,7 @@ func (ts *toolset) record() tool {
 				Answers   string `json:"answers"`
 			}
 			if err := json.Unmarshal(input, &in); err != nil {
-				return "", fmt.Errorf("bad arguments: %v", err)
+				return "", fmt.Errorf("bad arguments: %w", err)
 			}
 			rec := record{
 				Role:      envelopeRole(in.Role),

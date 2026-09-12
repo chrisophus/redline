@@ -158,7 +158,7 @@ func (r *resolver) validate(rec record) error {
 	}
 	lines, err := r.read(rec.File)
 	if err != nil {
-		return fmt.Errorf("%s: %v", rec.File, err)
+		return fmt.Errorf("%s: %w", rec.File, err)
 	}
 	if rec.StartLine < 1 {
 		return fmt.Errorf("%s: start_line must be 1 or more", rec.File)

@@ -14,6 +14,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -197,12 +198,13 @@ func (c Config) Run(dir, baseSHA string) (*envelope.Envelope, error) {
 		return nil, fmt.Errorf("%s did not finish within %s", c.Name, runTimeout)
 	}
 	exit := 0
-	if ee, ok := runErr.(*exec.ExitError); ok {
+	var ee *exec.ExitError
+	if errors.As(runErr, &ee) {
 		exit = ee.ExitCode()
 		runErr = nil
 	}
 	if runErr != nil {
-		return nil, fmt.Errorf("%s: %v", c.Name, runErr)
+		return nil, fmt.Errorf("%s: %w", c.Name, runErr)
 	}
 	if !c.okExit(exit) {
 		return nil, fmt.Errorf("%s exited %d: %s", c.Name, exit, firstLine(errBuf.String()))
@@ -267,7 +269,7 @@ func Parse(stdout []byte) (*envelope.Envelope, error) {
 	}
 	var env envelope.Envelope
 	if err := json.Unmarshal(body, &env); err != nil {
-		return nil, fmt.Errorf("output was not an envelope: %v", err)
+		return nil, fmt.Errorf("output was not an envelope: %w", err)
 	}
 	if err := env.Validate(); err != nil {
 		return nil, err

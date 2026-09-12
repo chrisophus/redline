@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -552,7 +553,8 @@ func (r *Repo) diffNoIndex(path string) (string, error) {
 	if err == nil {
 		return stdout.String(), nil
 	}
-	if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 1 {
 		return stdout.String(), nil
 	}
 	msg := strings.TrimSpace(stderr.String())
