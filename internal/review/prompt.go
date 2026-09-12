@@ -121,10 +121,10 @@ the report and are not posted, so an uncertain finding costs the reader
 nothing and a withheld one costs them the finding.
 
 Every comment carries a question: the one check that would confirm or refute
-it, and what to look it up on. This is not paperwork. A cheap model runs these
-lookups after you, and a second pass rules on each finding with the answers in
-front of it, so the question is how a finding you cannot verify from here
-still gets verified before anyone reads it.
+it, and what to look it up on. This is not paperwork. A lookup pass runs these
+after you, and a second pass rules on each finding with the answers in front of
+it, so the question is how a finding you cannot verify from here still gets
+verified before anyone reads it.
 
 Pick the kind by what would actually settle the thing:
 

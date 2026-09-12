@@ -132,13 +132,17 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 
 	var spend Spend
 	var cachedLast int64
-	for turn := range opts.MaxTurns {
+	// extra is the one turn a closing turn spent entirely on refusals buys
+	// back, so a correction the scout was told to make has somewhere to go.
+	extra := 0
+	for turn := 0; turn < opts.MaxTurns+extra; turn++ {
 		// The last turn of the budget files rather than searches. A loop that
 		// simply stops at the limit throws away everything the turns before it
 		// paid to read, because nothing reaches the review except through
 		// record. Not on the first turn: a search that has read nothing has
-		// nothing to file.
-		if turn > 0 && turn == opts.MaxTurns-1 && !ts.done {
+		// nothing to file. Not twice either: a granted turn is a second
+		// closing turn and not a second closing message.
+		if turn > 0 && turn == opts.MaxTurns-1 && !ts.done && !ts.closing {
 			ts.closing = true
 			tools = ts.openAITools()
 			// The system prompt names the tools, so it is rendered again from
@@ -202,6 +206,7 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 			}
 			break
 		}
+		ts.startTurn()
 		// Every call in the turn gets a result, even after done, or the next
 		// request is malformed. dispatch is the same one the Anthropic path
 		// runs; the OpenAI protocol carries no failure flag, so an error rides
@@ -212,6 +217,11 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 		}
 		if ts.done {
 			break
+		}
+		if ts.closing && extra == 0 && ts.refusedEveryCall() {
+			// The closing turn filed nothing and was told why. Give it the
+			// turn the correction needs; see refusedEveryCall.
+			extra = 1
 		}
 	}
 	spend.CostUSD, spend.CostKnown = spend.Usage.Cost(opts.Model)

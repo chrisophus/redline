@@ -50,6 +50,10 @@ type toolset struct {
 	// answering is set when the run has questions. A record then wants an
 	// id to be filed against, and one without gets told so.
 	answering bool
+	// calls and refused count the tool calls of the turn being dispatched.
+	// The drivers reset them before each turn and read them after, to tell a
+	// turn that did something from one that spent itself being corrected.
+	calls, refused int
 
 	res    *resolver
 	root   string
@@ -123,9 +127,15 @@ func (ts *toolset) params() []anthropic.ToolUnionParam {
 // dispatch runs one tool call and returns the result text and whether it
 // failed.
 func (ts *toolset) dispatch(name string, input json.RawMessage) (out string, failed bool) {
-	if ts.debug != nil {
-		defer func() { ts.debug(fmt.Sprintf("tool %s(%s) → %s", name, toolArgs(input), toolResult(out, failed))) }()
-	}
+	ts.calls++
+	defer func() {
+		if failed {
+			ts.refused++
+		}
+		if ts.debug != nil {
+			ts.debug(fmt.Sprintf("tool %s(%s) → %s", name, toolArgs(input), toolResult(out, failed)))
+		}
+	}()
 	t, ok := ts.byName[name]
 	if !ok {
 		return fmt.Sprintf("no tool named %q", name), true
@@ -161,6 +171,18 @@ func toolResult(out string, failed bool) string {
 	}
 	return fmt.Sprintf("%d bytes", len(out))
 }
+
+// startTurn opens a turn's accounting. Called by both drivers before the tool
+// calls of that turn are dispatched.
+func (ts *toolset) startTurn() { ts.calls, ts.refused = 0, 0 }
+
+// refusedEveryCall reports that the turn just dispatched did nothing but get
+// corrected. A refusal is a correction the scout is meant to act on, and on
+// the closing turn there is no turn left to act in: on PR #38 two records were
+// refused on the last turn, the transcript ended there, and a finding came
+// back unverifiable on evidence that had already been found. The drivers buy
+// one more filing turn when this is true, once.
+func (ts *toolset) refusedEveryCall() bool { return ts.calls > 0 && ts.refused == ts.calls }
 
 // Names is what the prompt tells the model it has, so it reads from the tools
 // actually offered: on the closing turn a prompt still ending "Your tools:
@@ -237,10 +259,12 @@ func (ts *toolset) grep() tool {
 		name: "grep",
 		description: fmt.Sprintf("Search the repository for a regular expression. Returns matching lines with "+
 			"their file and line number, at most %d of them, walking the whole tree except .git, "+
-			"vendor, node_modules and build output. Use it to find who mentions a changed symbol. It "+
-			"matches text rather than types, so a hit may be a different thing with the same name; "+
-			"where gorefactor_context can answer instead, it resolves through the type checker and its "+
-			"callers are facts. Files over 1 MB are skipped, and it says so when it stops at the cap.",
+			"vendor, node_modules and build output. It searches this repository and nothing else: a "+
+			"dependency's own source is not in the tree, so no pattern will find it there. Use it to "+
+			"find who mentions a changed symbol. It matches text rather than types, so a hit may be a "+
+			"different thing with the same name; where gorefactor_context can answer instead, it "+
+			"resolves through the type checker and its callers are facts. Files over 1 MB are "+
+			"skipped, and it says so when it stops at the cap.",
 			maxGrepMatches),
 		schema: schema(map[string]any{
 			"pattern": str("Go regular expression, matched against one line at a time"),
@@ -604,7 +628,13 @@ func grepTree(root string, re *regexp.Regexp, glob string, max int) (string, err
 		}
 	}
 	if matches == 0 {
-		return "no matches", nil
+		// An empty search is an answer, and it has to say what it searched.
+		// A question about a dependency's behaviour lands here, and a bare
+		// "no matches" reads as "this is nowhere in the code" when what
+		// happened is that the code is outside the tree: the module cache and
+		// everything else off the repository is not walked.
+		return "no matches in this repository, which is the whole of what this searches; " +
+			"code in a dependency is outside it and cannot be found from here", nil
 	}
 	if matches >= max {
 		fmt.Fprintf(&b, "(stopped at %d matches; narrow the pattern or the glob)\n", max)

@@ -78,7 +78,9 @@ How to answer each kind:
 - caller: what calls or reads the thing that changed? Use gorefactor when the
   language is Go and it is available, because its callers are resolved rather
   than matched by name. Otherwise grep. Record the call sites that would
-  actually break if the claim is right.
+  actually break if the claim is right. When the question is what the called
+  thing does with what it is given, the answer is in the callee and the call
+  site only says where to look: record the body that uses it.
 - rule: did the team write this down? Look in the repository's own rules and
   design notes with list_docs and read_lines, and record the specific lines
   that bear on the claim, not the whole file.
@@ -98,6 +100,14 @@ whole tree" and a silence are read very differently: the first is an answer.
 Start every note with the id of the question it is about, in brackets, the
 way the brief writes it: the ruling reads the notes beside the findings and
 a note that names no finding is a note it cannot place.
+
+Some questions are about code that is not in this repository: what a library
+does with what it is handed, what a dependency's type can hold. Your tools
+search this tree and nothing else, so an empty grep says nothing either way
+about any of that. Say which it is in the note, in as many words: "this is in
+anthropic-sdk-go, outside the tree, so it could not be checked here" is an
+answer the ruling can use, and an empty search reported as a negative is one
+it cannot.
 
 Tag every record with the id of the question it answers. A record with no id
 reaches the ruling as something found but tied to nothing, and a finding it
@@ -197,7 +207,7 @@ func oneLine(s string) string {
 // rather than reviewing, and what it most needs to know is that an absent
 // answer is not a negative one.
 const answeringPromptFragment = `The context tagged scout was gathered to check
-particular findings. A cheap model was given each finding and the lookup its
+particular findings. A lookup pass was given each finding and the lookup its
 author said would settle it, and it went and ran them. Every block is the real
 file, copied from the repository at the revision under review, so the code is
 exactly what is there. What is a judgement is the selection: which lines it

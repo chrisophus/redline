@@ -824,3 +824,35 @@ func TestThePriorConversationIsPriced(t *testing.T) {
 			with.FixedEstimate, without.FixedEstimate)
 	}
 }
+
+// The tripwire prices what the run will actually send. A verified run sends
+// the ruling too, and the ledger measured verified runs recording 1.5x to 1.8x
+// the input their estimate had been checked against, so a guard that prices
+// stage one alone waves through a run it was asked to stop.
+func TestTheTripwirePricesTheCheckingPassItIsAboutToRun(t *testing.T) {
+	in := smallInput()
+	opts := Options{Model: "claude-sonnet-5", MaxTokens: 8000}
+	one, err := Assemble(in, opts.withDefaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !one.CostKnown {
+		t.Fatal("the test model is unpriced, so this proves nothing")
+	}
+	extra := verifyCeilingCost(Options{Verify: true, Model: opts.Model}.withDefaults(), one)
+	if extra <= 0 {
+		t.Fatal("the checking pass was priced at nothing")
+	}
+	if got := verifyCeilingCost(opts.withDefaults(), one); got != 0 {
+		t.Errorf("a run that will not check anything was charged %v for it", got)
+	}
+
+	// A cap between the two: enough for stage one, not enough for the pass
+	// that follows it.
+	opts.MaxCostUSD = one.CostCeilingUSD + extra/2
+	opts.Verify = true
+	if _, err := Run(context.Background(), in, opts); err == nil ||
+		!strings.Contains(err.Error(), "tripwire") {
+		t.Fatalf("a run whose two calls are over the cap was allowed: %v", err)
+	}
+}

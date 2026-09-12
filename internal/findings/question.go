@@ -13,8 +13,8 @@ import "strings"
 // of the repository does was a guess with a confidence label on it. The reader
 // checked in seconds, because the reader had the repository open.
 //
-// So the reviewer names the check rather than performing it. A cheap model
-// runs the lookups afterwards, and a second pass rules on each finding with
+// So the reviewer names the check rather than performing it. A lookup pass
+// runs the checks afterwards, and a second pass rules on each finding with
 // the answers in front of it. Naming the check is also a filter on its own: a
 // model asked how its claim could be falsified writes fewer claims that cannot
 // be.
@@ -155,6 +155,11 @@ type Ruling struct {
 	// Analysis is the reasoning the ruling wrote before it chose the verdict,
 	// kept so the report can show the working rather than only the conclusion.
 	Analysis string `json:"analysis,omitempty"`
+	// Grounded says the evidence above was found in the material the ruling
+	// was shown, rather than written from memory. The verifying pass sets it;
+	// a ruling that arrived any other way leaves it false, and false is read
+	// as unchecked rather than as refuted.
+	Grounded bool `json:"grounded,omitempty"`
 }
 
 // Posts reports whether a comment carrying this ruling should reach the

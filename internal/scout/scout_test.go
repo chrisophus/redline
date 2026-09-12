@@ -461,3 +461,42 @@ func TestNoCoveredRolesSaysNothingAboutCoverage(t *testing.T) {
 		t.Errorf("coveredBrief = %q, want nothing when no role is covered", got)
 	}
 }
+
+// A refusal is a correction, and a correction needs a turn to be made in. On
+// the closing turn there is none, so the run ends with the refused evidence
+// unfiled: on PR #38 two records were refused on the last turn and the finding
+// they answered came back unverifiable. One more filing turn is granted when
+// the closing turn was spent entirely on refusals.
+func TestARefusedClosingTurnBuysTheTurnItsCorrectionNeeds(t *testing.T) {
+	api := serve(t,
+		msg("tool_use", toolUse("tu_1", "grep", map[string]any{"pattern": "Insert"})),
+		msg("tool_use", toolUse("tu_2", "record", map[string]any{
+			"role": "precedent-ish", "file": "internal/store/user.go",
+			"start_line": 6, "end_line": 8, "symbol": "Store.Insert",
+		})),
+		msg("tool_use", recordCall("tu_3")),
+	)
+	env, spend, err := runScout(t, api, Options{MaxTurns: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spend.Turns != 3 {
+		t.Fatalf("turns = %d, want the refused closing turn to buy one more", spend.Turns)
+	}
+	if len(env.Expansions) != 1 {
+		t.Fatalf("the corrected record never landed: %d expansion(s)", len(env.Expansions))
+	}
+	// Granted once. A loop that renews it on every refusal has no turn limit
+	// left, and the closing message must not be sent twice either.
+	var closings int
+	messages, _ := api.requests[2]["messages"].([]any)
+	for _, m := range messages {
+		mm, _ := m.(map[string]any)
+		if strings.Contains(fmt.Sprint(mm["content"]), "That is the last of the turns") {
+			closings++
+		}
+	}
+	if closings > 1 {
+		t.Errorf("the closing message was sent %d times", closings)
+	}
+}
