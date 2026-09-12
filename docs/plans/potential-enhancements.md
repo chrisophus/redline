@@ -200,6 +200,27 @@ lookup half, not the reviewer.
 | **Sweeps now cost half** | The Message Batches tier takes 50% off every token in both directions. Its twenty-four-hour window is an expiry rather than a promise, which rules it out for `redline review`, and fits the eval sweep exactly. `RunBatch` refuses what has no batched form — explore, `--samples`, the checking pass — rather than discovering it on the wire, and prices the tripwire at the tier that will bill it. The effort sweep above cost $2.27 where it would have cost $4.54. This is what makes the repeated sweeps affordable that every other cost question needs. | done |
 | **The batch path is the least-tested code in the tool** | A fake batch endpoint over `Options.BaseURL` covers the path past the guards. Results returned in reverse are placed by `custom_id`, and the test fails on a positional pairing rather than passing either way; a canceled item reports in its own slot, with a reason, without failing the requests that were paid for beside it; an unknown `custom_id` refuses the whole pairing; and a slot with no result is named rather than read as a clean review. `verifyCeilingCost` is covered from both sides of a cap that fits stage one and not the pass after it. | done |
 
+## Measured defects (dogfood, 2026-09-13)
+
+Two `redline review` runs over this repository's own PR #41 — the caching
+change — traced end to end in `postmortem.json`. Six findings produced, **none
+posted**: three withdrawn, one justified, two unverifiable, at $0.89 and $0.32
+a run. The refutation half did its job and the rows below are not about it: no
+false finding reached the pull request, and the ruling withdrew the same claim
+twice on lookups that genuinely disproved it. What neither run produced was a
+finding about the change's subject. Every comment was about whether the SDK
+does what the diff assumes; the live 400 on forced `tool_choice`, the
+invalidation table in `staged-review.md` contradicting its own step 2, and
+`Result.Prompt` being one concatenated block that no breakpoint can split were
+all missed, and the first two were found by hand within minutes.
+
+| Item | What | Effort |
+|------|------|--------|
+| **A `diff` question is self-certified and never checked** | `rule.go:266` reads `QuestionDiff` as "you said the material already shown settles this" and skips the lookup — `asked=false` in the postmortem, no scout turn spent. Nothing validates that claim against what was actually shown. On c3 the reviewer asked, as kind `diff`, whether `outputSchema()` and `ruleSchema()` close every object and require every property; neither function is touched by this change, so neither was in the diff it said would settle it. The ruling then had nothing, reached for evidence it had not been given, and the #35 guard demoted it to `unverifiable` — the correct end to a question that a two-line grep answers, and that the scout had answered from the same repository on the previous day's run. A `diff` question whose subject does not appear in the shown material should be promoted to a lookup, not trusted. | S |
+| **Every finding was a conditional, not a claim** | Six findings over two runs, all six of the form "if the SDK does X then this breaks": *if* the batch type does not honour forced `tool_choice`, *if* a schema has an open object, *if* `ToolInputSchemaParam` has no implicit type. That shape is what the verify pass is for, but it also means stage one is spending its budget enumerating what it cannot check rather than asserting what the change does. Worth measuring as a column: the fraction of findings whose body is conditional on a fact the producer could not reach, per run. A reviewer that only produces conditionals has moved the whole burden onto a lookup pass that is priced at a sixth of it. | S |
+| **Nothing in the pipeline can run the code** | Three of the four questions on the second run were settled in minutes by marshalling `anthropicParams` and printing the JSON, and by sending one probe request: `type: object` is emitted by the SDK's `constant.Object` default, `strict: true` with closed objects returns 200 on four models, and a switched `tool_choice` reads a breakpointed prefix back whole. Read and grep cannot reach any of that. The worktrees under `~/.redline/worktrees` are already checkouts at the reviewed revision, so a bounded execution step — build, run one test, marshal one request — is a reachable class of evidence and is the class this change's real risks lived in. | M |
+| **The ruling settles on precedent when the answer is one file away** | c2 asked whether dropping the schema's `type` key loses `"type": "object"` on the wire. Ruled `justified` because `internal/scout/tools.go:212-214` builds the same SDK type the same way — a repository habit, offered as proof of an API's behaviour. The definitive answer is `anthropic-sdk-go@v1.71.0/message.go:9436`: `Type constant.Object json:"type" default:"object"`, with the comment saying it marshals its zero value as `object`. Right verdict, wrong reason, and a reader of the report learns the wrong reason. The answering brief already ranks evidence against a finding above evidence for it; it does not rank a declaration above a sibling call site. | S |
+
 ## Review quality (Copilot comparison, MKT-1360)
 
 Held against GitHub Copilot on the same PR (NetApp/marketplace-cp #1360), the

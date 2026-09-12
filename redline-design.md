@@ -296,11 +296,13 @@ That reasoning is about caching across runs and it still holds. It is not the
 whole question: the producer is already two calls over one prefix, and
 `verifyCeilingCost` records that the ruling re-sends stage one's whole prompt
 at full rate. Several calls sharing a prefix seconds apart is the opposite
-arithmetic — one write, then reads at a tenth — and what stops it today is not
-the frequency argument above but the response schema, which renders ahead of
-the system block and differs per stage. Worked out in
-[docs/plans/staged-review.md](docs/plans/staged-review.md); this decision
-stands until that ships.
+arithmetic — one write, then reads at a tenth. What used to stop it was the
+response schema, which rendered ahead of the system block and differed per
+stage. That is gone: the contract now goes as a constant tool array selected
+by `tool_choice`, and a switched `tool_choice` was measured reading a
+breakpointed prefix back whole. What stops it today is that nothing marks one.
+Worked out in [docs/plans/staged-review.md](docs/plans/staged-review.md); this
+decision stands until that ships.
 
 ## The product
 

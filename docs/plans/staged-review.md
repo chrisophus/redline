@@ -79,9 +79,28 @@ The API's three cache tiers, and what survives a change to each:
 | Tool definitions (add / remove / reorder) | ✗ | ✗ | ✗ |
 | Model switch | ✗ | ✗ | ✗ |
 | System prompt content | ✓ | ✗ | ✗ |
-| `tool_choice` | ✓ | ✓ | ✗ |
+| `tool_choice` | ✓ | ✓ | ✓ (measured; the docs say ✗) |
 | Message content | ✓ | ✓ | ✗ |
 | `thinking` or `effort` change | model-specific | model-specific | ✗ |
+
+The `tool_choice` row is measured, and it disagrees with the documentation.
+Anthropic's invalidation table and its troubleshooting note both say a
+`tool_choice` change invalidates the message blocks. If that were true, step 2
+would have nothing left but the system tier — the few thousand tokens this
+document rejects below as not worth caching — and the whole sequencing would
+be pointless. On the wire it holds: one 86,639-token user block under a
+breakpoint on `claude-sonnet-5`, tools and system constant, three calls
+seconds apart.
+
+| call | `tool_choice` | write | read |
+|---|---|---:|---:|
+| 1 | `review` | 86,639 | 0 |
+| 2 | `review` | 0 | 86,639 |
+| 3 | `ruling` | 0 | 86,639 |
+
+Step 1 buys nothing without that third row, so it is measured here rather than
+cited, and it is the first thing to re-check on another model or if a cache
+read comes back zero.
 
 ### The schema cannot be moved, and does not need to be
 
@@ -102,8 +121,8 @@ instead:
 - Drop `output_config.format`. Declare every stage's output contract as a tool
   in one tools array that is byte-identical on every request.
 - Select the stage with `tool_choice`, which is the one row above that changes
-  what the model emits while preserving both the tools and the system cache. It
-  is GA, needs no beta header, and works on Sonnet 5.
+  what the model emits without invalidating any of the three caches. It is GA,
+  needs no beta header, and works on Sonnet 5.
 - Set `strict: true` on each tool. It requires `additionalProperties: false`
   plus `required`, which every object `outputSchema()` builds already satisfies,
   because "every property is required" is already the house rule in

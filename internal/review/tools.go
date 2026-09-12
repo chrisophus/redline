@@ -26,11 +26,18 @@ import (
 // It does not have to move. Position is not the problem, variance at that
 // position is. So every stage's contract is declared here as a tool, the array
 // goes out whole on every request whichever stage is being asked for, and the
-// selection moves to tool_choice, which changes what the model emits without
-// touching the tools or system caches. What varies is a name.
+// selection moves to tool_choice, which changes what the model emits while
+// every cache tier survives it. What varies is a name.
 //
 // Nothing reads a cache yet. This only makes one possible, and the invariant
 // it rests on is that these bytes do not move between two calls of one run.
+//
+// That last part is measured, not cited: the documented invalidation table
+// says a tool_choice change costs the message blocks, which is where the
+// 170,000 tokens are. On the wire it does not. An 86,639-token user block
+// under a breakpoint on claude-sonnet-5 was written once and read back whole
+// on the next call with tool_choice switched from review to ruling. If a
+// breakpoint ever lands and reads come back zero, re-run that probe first.
 const (
 	StageReview = "review"
 	StageRuling = "ruling"
