@@ -58,6 +58,7 @@ uncommitted work, and on an open pull request. `--pr` fetches via `gh`
 | Deterministic UI capture | not started |
 | Context envelope and provider registry | shipped |
 | `redline review`: one model call over the run's own output | shipped |
+| `redline postmortem`: what the review proposed, what the lookups found, what was ruled | shipped |
 | Migration adds a NOT NULL column with no default | shipped |
 | Provider parity: a capability added to one of a set of parallel implementations | shipped |
 | Regeneration verification (run the generator, diff) | not started |
@@ -103,6 +104,7 @@ go build ./cmd/redline
 ./redline post --pr 123           # post the session's findings as one PR review
 ./redline post --pr 123 --profile .github/redline-review.yml
 ./redline post --pr 123 --dry-run # print the review payload instead of posting
+./redline postmortem              # read back what the last review did
 ./redline open                    # serve and open http://127.0.0.1:8765/report.html
 ./redline serve --stop            # stop the server for this .redline
 ./redline gc                      # remove this repo's cached review worktrees
@@ -334,6 +336,43 @@ whole prompt, so they carry the diff.
 
 Credentials come from `ANTHROPIC_API_KEY` or an `ant auth login` profile.
 Without one, every other command still works.
+
+### Reading back what a review did
+
+`redline review` runs three things: a reviewer that proposes findings, the
+lookups that answer their questions, and a ruling that decides which reach the
+author. Only the last leaves a file behind, and the outcome is what a reader
+already has. `redline postmortem` prints the rest of it.
+
+```
+./redline postmortem              # the last review, stage by stage
+./redline postmortem --format json  # the trace as it was written
+```
+
+For each finding it shows what the reviewer wrote before anything ruled on it,
+the question the finding named, the ranges the scout filed against that
+question, and the verdict with its quoted evidence. Then the search end to
+end: every tool call in the turn it was made in, every refusal the scout was
+corrected by, and the notes it wrote about what it could not find.
+
+It also says where each ruling's quoted line came from: a range the lookups
+filed, or the diff the reviewer already had. That is the narrower question the
+second stage is paid for. A run where no ruling rested on a lookup either had a
+change the diff settled by itself or had a scout that fetched the wrong things.
+
+The question it answers is which of two things went wrong. A review that
+proposes nine findings and posts two looks the same either way, and the two
+causes are opposite: the reviewer is noisy, or the lookups did not find the
+code that would have confirmed what it wrote. A finding with no range filed
+against it could only be ruled unverifiable, whatever it said, and the
+postmortem lists those separately.
+
+The trace is written on every review rather than under a flag, to
+`.redline/postmortem.json`. The interesting run is always the one that already
+happened. It records locations, questions, verdicts and bounded tool-call
+lines, not prompts or model output beyond the findings themselves; `--debug`
+is still what writes the full requests and responses, and those carry the
+diff.
 
 ### Sending the call through a proxy
 
@@ -691,6 +730,7 @@ internal/pane/parity       capabilities added to one of a set of parallel
                            implementations and not its siblings
 internal/post         the PR review payload and merge-gate profile
 internal/provider     finding and running language context providers
+internal/postmortem   what a review did, kept for `redline postmortem`
 internal/review       the one model call: prompt, schema, cost
 internal/report       markdown and self-contained HTML
 internal/run          dispatcher

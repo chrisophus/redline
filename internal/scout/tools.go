@@ -54,6 +54,11 @@ type toolset struct {
 	// The drivers reset them before each turn and read them after, to tell a
 	// turn that did something from one that spent itself being corrected.
 	calls, refused int
+	// turn is which turn is being dispatched, counting from one, and log is
+	// every call of every turn. Neither steers the run: they are what the
+	// postmortem reads afterwards to say what the search actually did.
+	turn int
+	log  []Call
 
 	res    *resolver
 	root   string
@@ -132,8 +137,12 @@ func (ts *toolset) dispatch(name string, input json.RawMessage) (out string, fai
 		if failed {
 			ts.refused++
 		}
+		args, result := toolArgs(input), toolResult(out, failed)
+		ts.log = append(ts.log, Call{
+			Turn: ts.turn, Tool: name, Args: args, Result: result, Failed: failed,
+		})
 		if ts.debug != nil {
-			ts.debug(fmt.Sprintf("tool %s(%s) → %s", name, toolArgs(input), toolResult(out, failed)))
+			ts.debug(fmt.Sprintf("tool %s(%s) → %s", name, args, result))
 		}
 	}()
 	t, ok := ts.byName[name]
@@ -174,7 +183,10 @@ func toolResult(out string, failed bool) string {
 
 // startTurn opens a turn's accounting. Called by both drivers before the tool
 // calls of that turn are dispatched.
-func (ts *toolset) startTurn() { ts.calls, ts.refused = 0, 0 }
+func (ts *toolset) startTurn() {
+	ts.turn++
+	ts.calls, ts.refused = 0, 0
+}
 
 // refusedEveryCall reports that the turn just dispatched did nothing but get
 // corrected. A refusal is a correction the scout is meant to act on, and on

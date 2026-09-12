@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,9 +16,11 @@ import (
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/post"
+	"github.com/chrisophus/redline/internal/postmortem"
 	"github.com/chrisophus/redline/internal/report"
 	"github.com/chrisophus/redline/internal/review"
 	"github.com/chrisophus/redline/internal/run"
+	"github.com/chrisophus/redline/internal/scout"
 	"github.com/chrisophus/redline/internal/target"
 )
 
@@ -687,4 +692,208 @@ func TestTheScoutFlagsWinForTheCheckingPass(t *testing.T) {
 	if one.Model != "claude-haiku-4-5" || one.Effort != "high" {
 		t.Errorf("settings = %+v, want the scout model with the review's effort", one)
 	}
+}
+
+// The trace is what `redline review` leaves behind for `redline postmortem`,
+// and writeTrace is the one place the three stages are collected: the findings
+// stage one proposed, the questions they named, and what the search did about
+// them.
+func TestTheTraceRecordsAllThreeStages(t *testing.T) {
+	dir := worktreeSession(t)
+	res, err := run.LoadSession(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposed := findings.Review{Comments: []findings.ReviewComment{
+		{File: "a.go", Line: 1, Body: "the lock is never released",
+			Question: findings.Question{Kind: findings.QuestionCaller, Subject: "Lock"}},
+	}}
+	out := &review.Result{
+		API: "anthropic", Model: "claude-sonnet-5", Verified: true,
+		Review:     proposed,
+		Candidates: review.Candidates(proposed),
+		Questions:  []review.Question{{ID: "c1", Kind: "caller", Subject: "Lock"}},
+	}
+	tally := &scoutTally{ran: true, known: true, turns: 2, model: "claude-sonnet-5", effort: "low"}
+	tally.log.Calls = []scout.Call{{Turn: 1, Tool: "grep", Args: `{"pattern":"Lock"}`, Result: "0 bytes"}}
+	tally.log.Notes = []string{"nothing in the tree calls Lock"}
+
+	if err := writeTrace(opts{out: dir}, res, out, tally); err != nil {
+		t.Fatal(err)
+	}
+	tr, err := postmortem.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.Findings) != 1 || !tr.Findings[0].Asked {
+		t.Fatalf("findings = %+v, want the proposed one and that it was looked up", tr.Findings)
+	}
+	if tr.Revision == "" {
+		t.Error("the trace does not say which change it is about, so a later run cannot tell it is stale")
+	}
+	if len(tr.Lookup.Calls) != 1 || tr.Lookup.Turns != 2 {
+		t.Errorf("the search was not recorded: %+v", tr.Lookup)
+	}
+
+	printed := captureStdout(t, func() {
+		if err := cmdPostmortem(opts{out: dir, format: "report"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(printed, "the lock is never released") {
+		t.Errorf("the command did not render the review it was given:\n%s", printed)
+	}
+	if !strings.Contains(printed, "nothing was filed against this question") {
+		t.Errorf("the command did not say the lookups answered nothing:\n%s", printed)
+	}
+}
+
+// Nothing to look back on is the normal state of a directory nobody has
+// reviewed in, and the error says which command produces one.
+func TestPostmortemWithoutAReviewSaysSo(t *testing.T) {
+	err := cmdPostmortem(opts{out: t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "redline review") {
+		t.Fatalf("err = %v, want the command that would write a trace", err)
+	}
+}
+
+// The whole pipeline, end to end over a stub endpoint: the reviewer proposes a
+// finding, the scout answers the question it named out of a real tree, and the
+// ruling decides with that answer in front of it. What the trace has to hold is
+// the part no other file keeps, which is everything between the first call and
+// the last.
+func TestAReviewLeavesATraceOfAllThreeStages(t *testing.T) {
+	tree := t.TempDir()
+	const source = "package store\n\nfunc (u *User) Name() string { return u.name }\n"
+	if err := os.WriteFile(filepath.Join(tree, "user.go"), []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := reportDir(t)
+	res := &run.Result{
+		Report: findings.Report{BaseRef: "origin/main", BaseSHA: "abc123"},
+		Change: &change.Set{
+			Target: &target.Target{Kind: target.KindWorktree, Dir: tree},
+			Files:  []change.File{{Path: "user.go", Diff: "@@ -0,0 +1,3 @@\n+func (u *User) Name() string { return u.name }\n"}},
+		},
+	}
+	if err := run.SaveSession(dir, res); err != nil {
+		t.Fatal(err)
+	}
+	// Read back the way `redline review` does, because that is what fills in
+	// the target the lookups are run against.
+	loaded, err := run.LoadSession(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res = loaded
+
+	var scoutTurn int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch forcedFunction(t, r) {
+		case "review":
+			writeOACall(w, "review", `{"overview":"o","files":[],"comments":[
+				{"file":"user.go","line":3,"severity":"info","confidence":"high","category":"review",
+				 "relatedFindings":[],"body":"a getter is not this repository's style",
+				 "question":{"kind":"precedent","ask":"does this repository write getters elsewhere?","subject":"getters"}}],
+				"verdicts":[]}`)
+		case "rulings":
+			writeOACall(w, "rulings", `{"rulings":[{"analysis":"the tree has one","finding":"c1",
+				"verdict":"kept","evidence":"func (u *User) Name() string { return u.name }",
+				"why":"the range the lookup filed is a getter"}]}`)
+		default:
+			// The scout's own loop: file the range, then finish.
+			scoutTurn++
+			if scoutTurn == 1 {
+				writeOACall(w, "record", `{"role":"caller","file":"user.go","start_line":1,"end_line":3,
+					"symbol":"Name","found_via":"grep","answers":"c1"}`)
+				return
+			}
+			writeOACall(w, "done", `{"notes":["only the one getter in the tree"]}`)
+		}
+	}))
+	defer srv.Close()
+
+	ropts := review.Options{
+		API: review.APIOpenAI, BaseURL: srv.URL, APIKey: "sk-test",
+		Model: "gpt-5", Verify: true,
+	}
+	tally := &scoutTally{known: true}
+	ropts.Answer = scoutAnswerer(res, ropts, scoutSettings{}, tally)
+	out, err := review.Run(context.Background(), review.Input{Report: &res.Report, Change: res.Change}, ropts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeTrace(opts{out: dir}, res, out, tally); err != nil {
+		t.Fatal(err)
+	}
+
+	tr, err := postmortem.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tr.Findings) != 1 {
+		t.Fatalf("findings = %+v, want the one the reviewer proposed", tr.Findings)
+	}
+	got := tr.Findings[0]
+	if got.Body != "a getter is not this repository's style" || !got.Asked {
+		t.Errorf("finding = %+v, want stage one's wording and that it was looked up", got)
+	}
+	if got.Ruling.Verdict != findings.VerifiedKept || !got.Ruling.Grounded {
+		t.Errorf("ruling = %+v, want it kept on evidence found in what it was shown", got.Ruling)
+	}
+	if len(tr.Lookup.Calls) != 2 || tr.Lookup.Calls[0].Tool != "record" {
+		t.Fatalf("calls = %+v, want the record and the done", tr.Lookup.Calls)
+	}
+	if len(tr.Lookup.Resolved) != 1 || tr.Lookup.Resolved[0].Answers != "c1" {
+		t.Fatalf("resolved = %+v, want the range tied to the finding it answers", tr.Lookup.Resolved)
+	}
+	if !tr.Lookup.Ran || tr.Lookup.Turns != 2 {
+		t.Errorf("lookup = %+v, want the two turns it took", tr.Lookup)
+	}
+	rendered := tr.Render()
+	if got.EvidenceFrom != postmortem.FromLookup {
+		t.Errorf("evidence came from %q, want the range the lookups filed", got.EvidenceFrom)
+	}
+	for _, want := range []string{"caller user.go:1-3", "kept and posted",
+		"from a range the lookups filed", "only the one getter"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("the postmortem does not say %q:\n%s", want, rendered)
+		}
+	}
+}
+
+// forcedFunction is which call this is. The review and the ruling each force
+// one function by name; the scout offers its whole toolset and forces nothing.
+func forcedFunction(t *testing.T, r *http.Request) string {
+	t.Helper()
+	var body struct {
+		ToolChoice struct {
+			Function struct {
+				Name string `json:"name"`
+			} `json:"function"`
+		} `json:"tool_choice"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		t.Fatalf("the stub endpoint was sent something it could not read: %v", err)
+	}
+	return body.ToolChoice.Function.Name
+}
+
+// writeOACall answers one chat completion with a single tool call, which is
+// how all three stages return their structured output on this wire.
+func writeOACall(w http.ResponseWriter, name, args string) {
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"choices": []map[string]any{{
+			"message": map[string]any{
+				"role": "assistant",
+				"tool_calls": []map[string]any{{
+					"id": "call_1", "type": "function",
+					"function": map[string]any{"name": name, "arguments": args},
+				}},
+			},
+			"finish_reason": "tool_calls",
+		}},
+		"usage": map[string]any{"prompt_tokens": 100, "completion_tokens": 20},
+	})
 }

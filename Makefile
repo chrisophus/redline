@@ -33,7 +33,8 @@ DATE     := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS  := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 
 .PHONY: all build test vet fmt check boundary install install-bin install-skill \
-        install-repo uninstall clean lint gorefactor-lint gorefactor-doctor \
+        install-repo uninstall clean lint lint-bin lint-install \
+        gorefactor-lint gorefactor-doctor \
         coverage bench mutate mutate-full mutants snapshot release
 
 all: build
@@ -58,11 +59,52 @@ fmt:
 	  echo "gofmt -w these files:"; echo "$$unformatted"; exit 1; \
 	fi
 
+# The Go the linter is built with, read from go.mod so this is not a third
+# place to keep a version in step. go.mod's toolchain directive wins when it
+# is there, because it names a release; the go directive names a language
+# version, and a toolchain name derived from it can only be the .0 patch.
+GO_TOOLCHAIN := $(shell awk '/^go /{g=$$2} /^toolchain /{t=$$2} END{if (t != "") {print t} else {if (split(g, p, ".") == 2) g = g ".0"; print "go" g}}' go.mod)
+
 # The version CI gates on. Named here because a local run that disagrees with
 # the gate is worse than no local run: it either passes what CI will fail or
 # fails what CI will pass. internal/toolchain's test holds this and
 # .github/workflows/ci.yml to the same number.
 GOLANGCI_VERSION := v2.13.2
+
+# lint-bin prints the golangci-lint this repository would run: the pinned one
+# `make lint-install` puts in GOPATH/bin when it is there, and whatever is
+# first on PATH otherwise.
+#
+# The pinned one wins on purpose. A container image or a package manager that
+# ships its own golangci-lint shadows the install, and the older binary either
+# checks less than CI does or, built against an older Go than .golangci.yml's
+# `run.go`, does not lint at all: it bails out during type-checking with a
+# message about Go versions that says nothing about how to fix it. An image
+# shipping v2.5.0 is what surfaced this: the lint target printed a note about
+# the pin and then linted nothing, and the note read as advice rather than as
+# the reason there was no output.
+lint-bin:
+	@gopath=$$(go env GOPATH); \
+	pinned="$$gopath/bin/golangci-lint"; \
+	if [ -x "$$pinned" ] && [ "v$$($$pinned version --short 2>/dev/null)" = "$(GOLANGCI_VERSION)" ]; then \
+	  echo "$$pinned"; \
+	elif command -v golangci-lint >/dev/null 2>&1; then \
+	  command -v golangci-lint; \
+	fi
+
+# Install the version CI gates on, from source through the module proxy, so
+# this needs nothing but the Go toolchain already required to build Redline.
+# It lands in GOPATH/bin, which is where lint-bin looks first.
+#
+# The toolchain is pinned to the one go.mod declares because the binary has to
+# be built with a Go at least as new as .golangci.yml's `run.go` or it refuses
+# to start, and golangci-lint's own go.mod floor can be older than the version
+# this repository targets: left alone, `go install` builds it with that floor
+# and produces a linter that cannot lint this tree. CI hits none of this,
+# because the action downloads the release binary rather than building one.
+lint-install:
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+	@echo "installed $$(go env GOPATH)/bin/golangci-lint"
 
 # golangci-lint reads .golangci.yml. Not installed is not an error here: a
 # missing tool darks this target the same way an unconfigured repo darks
@@ -71,36 +113,45 @@ GOLANGCI_VERSION := v2.13.2
 # so gets the real gate.
 #
 # A version that is not the pinned one is a note rather than a refusal, for
-# the same reason, but it is said out loud: one built against an older Go
-# than .golangci.yml's `run.go` does not lint at all, it bails out during
-# type-checking, and the message it prints says nothing about how to fix it.
+# the same reason, but it is said out loud, and it names the target that
+# fixes it rather than the command behind it.
 lint:
-	@if ! command -v golangci-lint >/dev/null 2>&1; then \
-	  echo "skip: golangci-lint not on PATH (go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION))"; \
+	@bin=$$($(MAKE) -s lint-bin); \
+	if [ -z "$$bin" ]; then \
+	  echo "skip: golangci-lint not installed (make lint-install)"; \
 	  exit 0; \
-	fi
-	@have=v$$(golangci-lint version --short 2>/dev/null); \
+	fi; \
+	have=v$$($$bin version --short 2>/dev/null); \
 	if [ "$$have" != "$(GOLANGCI_VERSION)" ]; then \
-	  echo "note: golangci-lint $$have is on PATH and CI gates on $(GOLANGCI_VERSION)"; \
-	  echo "      go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)"; \
-	fi
-	golangci-lint run ./...
+	  echo "note: golangci-lint $$have is what this would run and CI gates on $(GOLANGCI_VERSION)"; \
+	  echo "      make lint-install"; \
+	fi; \
+	echo "$$bin run ./..."; \
+	$$bin run ./...
 
 # gorefactor (github.com/chrisophus/gorefactor) is a separate project's
 # structural linter; it is not a dependency of Redline and self-skips when
 # absent, same reasoning as the golangci-lint target above.
+#
+# The skip and the run are one recipe line because make gives each line its
+# own shell: an `exit 0` on the first line ends that shell and make starts the
+# next one, so the skip printed its message and then ran the tool anyway. On a
+# checkout without gorefactor that was `make check` failing with "No such file
+# or directory" after saying it would skip.
 gorefactor-lint:
 	@if ! command -v gorefactor >/dev/null 2>&1; then \
 	  echo "skip: gorefactor not on PATH"; \
 	  exit 0; \
-	fi
+	fi; \
+	echo "gorefactor lint ."; \
 	gorefactor lint .
 
 gorefactor-doctor:
 	@if ! command -v gorefactor >/dev/null 2>&1; then \
 	  echo "skip: gorefactor not on PATH"; \
 	  exit 0; \
-	fi
+	fi; \
+	echo "gorefactor doctor"; \
 	gorefactor doctor
 
 # The coverage profile this repo's own diff-coverage pane (internal/cover)
