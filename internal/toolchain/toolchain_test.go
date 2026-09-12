@@ -1,16 +1,21 @@
 // Package toolchain holds the checks that keep the gate a developer runs and
 // the gate CI runs from drifting apart.
 //
-// Three files have to agree about two numbers, and nothing but a comment said
-// so. .golangci.yml's `run.go` must not be ahead of the Go the linter binary
-// was built with, which in practice means it tracks go.mod; and `make lint`
-// and the CI step have to install the same golangci-lint, because a lint run
-// that disagrees with the gate is worse than no lint run.
+// Several files have to agree about two numbers, and nothing but a comment
+// said so. .golangci.yml's `run.go` must not be ahead of the Go the linter
+// binary was built with, which in practice means it tracks go.mod; and the
+// local install and the CI step have to install the same golangci-lint,
+// because a lint run that disagrees with the gate is worse than no lint run.
 //
 // Both are cheap to state and neither fails loudly on its own. A `run.go`
 // ahead of the binary does not lint at all, it bails out during type-checking
 // with a message about Go versions, and a local binary older than the pin
 // quietly checks less than CI will.
+//
+// The version lives in the Makefile and everything else reads it from there,
+// the session hook that installs it in a fresh container included. These
+// checks are also what stops the next place that needs it from writing it
+// down again.
 package toolchain
 
 import (
@@ -92,5 +97,26 @@ func TestTheInstallTargetTakesThePinnedVersion(t *testing.T) {
 	}
 	if named := regexp.MustCompile(`GOTOOLCHAIN=go[0-9][^\s]*`).FindString(mk); named != "" {
 		t.Errorf("the Makefile names a Go toolchain by hand (%s); derive it from go.mod", named)
+	}
+}
+
+// The session hook installs the linter into a fresh Claude Code on the web
+// container, which makes it a fourth file that could carry the version. It
+// reads the pin out of the Makefile instead, and this is what says so.
+func TestTheSessionHookReadsThePinRatherThanRepeatingIt(t *testing.T) {
+	const path = ".claude/hooks/session-start.sh"
+	data, err := os.ReadFile("../../" + path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("no session hook in this checkout, so there is nothing to keep in step")
+		}
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	hook := string(data)
+	if !strings.Contains(hook, "GOLANGCI_VERSION") {
+		t.Errorf("%s does not read the pin from the Makefile", path)
+	}
+	if named := regexp.MustCompile(`v2\.\d+\.\d+`).FindString(hook); named != "" {
+		t.Errorf("%s names golangci-lint %s by hand; read GOLANGCI_VERSION from the Makefile", path, named)
 	}
 }
