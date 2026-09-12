@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -124,18 +125,27 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 		got.Messages[1].Role != "user" || got.Messages[1].Content != res.Prompt {
 		t.Fatal("the system block and the prompt must be sent exactly as assembled and priced")
 	}
-	// The schema goes as one function the model is forced to call, not as
-	// response_format, which this gateway class does not enforce.
-	if len(got.Tools) != 1 || got.Tools[0].Type != "function" || got.Tools[0].Function.Name != "review" {
-		t.Fatalf("the reply must be asked for as one function call, got %+v", got.Tools)
+	// The schemas go as functions the model is forced to choose between, not
+	// as response_format, which this gateway class does not enforce. Every
+	// stage is offered on every call and the stage is picked by name, so the
+	// request is the same request the Anthropic wire builds.
+	var names []string
+	for _, tool := range got.Tools {
+		if tool.Type != "function" {
+			t.Fatalf("every contract goes as a function, got %q", tool.Type)
+		}
+		if _, ok := tool.Function.Parameters.(map[string]any); !ok {
+			t.Fatalf("the schema itself must be the function parameters, got %T", tool.Function.Parameters)
+		}
+		names = append(names, tool.Function.Name)
 	}
-	if _, ok := got.Tools[0].Function.Parameters.(map[string]any); !ok {
-		t.Fatalf("the schema itself must be the function parameters, got %T", got.Tools[0].Function.Parameters)
+	if !slices.Equal(names, []string{"review", "ruling"}) {
+		t.Fatalf("every stage's contract goes on every call, in a fixed order, got %v", names)
 	}
 	tc, _ := got.ToolChoice.(map[string]any)
 	fnsel, _ := tc["function"].(map[string]any)
 	if tc["type"] != "function" || fnsel["name"] != "review" {
-		t.Fatalf("the model must be forced to call the function, got %v", got.ToolChoice)
+		t.Fatalf("the model must be forced to call the review function, got %v", got.ToolChoice)
 	}
 
 	if res.API != APIOpenAI || res.Turns != 1 || res.StopReason != "tool_calls" {

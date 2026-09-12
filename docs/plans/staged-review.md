@@ -7,9 +7,11 @@ what the change is, and it says what is wrong with it. This is the case for
 splitting those, running the judgment per cohort, and paying for the shared
 material once instead of once per call.
 
-Status: **planned**. Nothing here has shipped. The cache finding in the first
-section is measured and is the reason the rest is affordable; everything after
-it is a design that has to be scored before it becomes a default.
+Status: **step 1 shipped, the rest planned**. The contract now goes as a
+constant tool array selected by `tool_choice`, which is what makes a shared
+prefix cacheable; nothing yet marks one. The cache finding in the first section
+is measured and is the reason the rest is affordable, and everything after it
+is a design that has to be scored before it becomes a default.
 
 ## The premise, and how to check it before building on it
 
@@ -30,9 +32,10 @@ proposal trades input up to trade output down. Before any of it is built,
 `redline review --stats` has to say what this installation's distribution
 actually looks like: `Stats.MedianOutput` exists for exactly this question. If
 median output, scaled by the model's output-to-input rate ratio (five on
-Sonnet, from `priceTable`), does not beat median input, then no rearrangement of stages saves money and everything below
-is a quality and latency argument rather than a cost one. It is still worth
-doing on those grounds. It is not worth selling as cheaper.
+Sonnet, from `priceTable`), does not beat median input, then no rearrangement
+of stages saves money and everything below is a quality and latency argument
+rather than a cost one. It is still worth doing on those grounds. It is not
+worth selling as cheaper.
 
 ## The finding that makes staging affordable
 
@@ -54,7 +57,7 @@ nothing about several calls sharing one prefix *inside* a single run, seconds
 apart, which is the opposite arithmetic: one write at 1.25x, then N reads at
 0.1x each.
 
-### Why the shared prefix does not cache today
+### Why the shared prefix did not cache
 
 It was tried and it missed. `ruleRequest` deliberately keeps the system block
 byte-identical (`out.System = r.System`) and appends the ruling instruction to
@@ -65,9 +68,9 @@ the whole prefix twice and read none of it. `anthropic.go` has the numbers:
 one, zero read either time.
 
 The system block is therefore ruled out, and the only remaining difference
-between the two requests is `out.Schema = ruleSchema()`. The response schema
+between the two requests was `out.Schema = ruleSchema()`. The response schema
 behaves as a tools-tier object: it renders ahead of the system block and a
-change to it forces a full rebuild.
+change to it forces a full rebuild. That is what step 1 removed.
 
 The API's three cache tiers, and what survives a change to each:
 
@@ -117,6 +120,24 @@ instead:
 Forced `tool_choice` returns 400 on Fable 5.1 and Mythos 5.1. On those models
 `staged` is refused with that reason rather than attempted; nothing in this
 document is affected at Sonnet 5 or Opus 5.
+
+### What building it changed
+
+The OpenAI wire needed almost none of this. It never used `response_format`:
+`completeOpenAI` already sent the schema as one forced function call, because a
+gateway that serves one vendor's model over another's protocol does not enforce
+`response_format`, and one review in four came back unparseable when it tried.
+So that wire only had to grow the array from one function to all of them and
+take the name from the stage. The plan billed this as work on two wires and it
+was work on one.
+
+The catalogue is priced input now, and it was not before. Every call carries
+every stage's schema, which is 1,893 tokens for the two that exist, against
+roughly a thousand for the single schema a call used to carry. `Assemble` adds
+it to `FixedEstimate` rather than leaving it out, for the reason the system
+block is priced there: a ceiling that admits a request smaller than the one
+that goes out is a ceiling that gets quoted and is wrong. So the visible
+estimate went up by more than the real cost did, and both moved.
 
 Two rejected alternatives, recorded so they are not re-proposed. Asking for
 JSON in prose at the tail of the user turn genuinely does move the contract to
@@ -467,10 +488,9 @@ Then, per arm, against the frozen fixtures:
 0. **Settle the premise.** `redline review --stats` on a real ledger. If the
    distribution is input-bound, say so in this document and stop selling the
    rest as a cost win. Costs nothing. **S**
-1. **One tools array, `tool_choice` to select, `strict: true`.** Replace
-   `output_config.format` on both the anthropic and openai wires; `absorb`
-   reads a `tool_use` block rather than `textOf`. No behaviour change, no new
-   stage. **M**
+1. **One tools array, `tool_choice` to select, `strict: true`.** Shipped, in
+   `internal/review/tools.go`. Two things it turned out differently from the
+   plan are below. **M**
 2. **Cache the shared prefix.** Breakpoint on the last shared user-turn block —
    not the system block — with `--cache` and `--cache-ttl`, and cache tokens
    into the ledger. Verify on the existing

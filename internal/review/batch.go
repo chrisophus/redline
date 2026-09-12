@@ -32,6 +32,28 @@ import (
 // that finishes in ten minutes loses nothing by learning about it within one.
 const batchPollInterval = 30 * time.Second
 
+// batchParams restates one request for the batch tier, which takes its own
+// params type rather than the one anthropicParams builds.
+//
+// It is a named function rather than a literal at the call site because the
+// copy is field by field, and a field added to anthropicParams and forgotten
+// here makes the cheap arm measure a request the interactive path never sends.
+// That is not hypothetical: the tools array was added and forgotten once, and
+// a request with no tools carries no output contract at all and comes back as
+// prose that only happens to parse. One place to update, and a test in
+// tools_test.go that says whether it was.
+func batchParams(p anthropic.MessageNewParams) anthropic.MessageBatchNewParamsRequestParams {
+	return anthropic.MessageBatchNewParamsRequestParams{
+		Model:        p.Model,
+		MaxTokens:    p.MaxTokens,
+		System:       p.System,
+		Messages:     p.Messages,
+		Tools:        p.Tools,
+		ToolChoice:   p.ToolChoice,
+		OutputConfig: p.OutputConfig,
+	}
+}
+
 // RunBatch reviews a set of changes as one Message Batch, at half the price
 // of the same reviews sent one at a time.
 //
@@ -110,16 +132,9 @@ func RunBatch(ctx context.Context, ins []Input, opts Options) ([]*Result, []erro
 
 	reqs := make([]anthropic.MessageBatchNewParamsRequest, len(results))
 	for i, res := range results {
-		p := anthropicParams(opts, res)
 		reqs[i] = anthropic.MessageBatchNewParamsRequest{
 			CustomID: strconv.Itoa(i),
-			Params: anthropic.MessageBatchNewParamsRequestParams{
-				Model:        p.Model,
-				MaxTokens:    p.MaxTokens,
-				System:       p.System,
-				Messages:     p.Messages,
-				OutputConfig: p.OutputConfig,
-			},
+			Params:   batchParams(anthropicParams(opts, res)),
 		}
 	}
 
@@ -170,7 +185,7 @@ func RunBatch(ctx context.Context, ins []Input, opts Options) ([]*Result, []erro
 		case anthropic.MessageBatchSucceededResult:
 			msg := item.Result.Message
 			c := completion{
-				text:       textOf(msg),
+				text:       structuredOf(msg),
 				stopReason: string(msg.StopReason),
 				usage: Usage{
 					InputTokens:      msg.Usage.InputTokens,

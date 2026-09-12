@@ -244,16 +244,17 @@ type Result struct {
 	// System is the assembled system block actually sent: the harness prompt
 	// plus every provider's language fragment.
 	System string `json:"-"`
-	// Schema is the output contract this request is constrained to. Carried on
-	// the result rather than reached for by the wire code, because the
-	// verifying pass sends the same shape of request under a different
-	// contract and both go over the same two wires.
-	Schema map[string]any `json:"-"`
+	// Stage names the output contract this request is constrained to, and so
+	// which tool the wire forces. Carried on the result rather than worked out
+	// by the wire code, because the verifying pass sends the same shape of
+	// request under a different contract and both go over the same two wires.
+	// Empty means the review, which is what a caller that never set it wants.
+	Stage string `json:"-"`
 	// InputEstimate is the pre-call token estimate for the whole request.
 	InputEstimate int `json:"inputEstimate"`
 	// FixedEstimate is what the parts a review cannot do without cost: the
-	// whole system block, language fragments included, plus the change, the
-	// priors, and the diff.
+	// tool catalogue, the whole system block with its language fragments, and
+	// the change, the priors and the diff.
 	FixedEstimate int `json:"fixedEstimate"`
 	// ContextRoom is what was left for the context block after those.
 	ContextRoom int `json:"contextRoom"`
@@ -375,7 +376,7 @@ func (r *Result) Summary() string {
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
 	system := systemPrompt + oneShotAddendum + languageFragments(in.Envelopes)
-	fixed := envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
+	fixed := toolsTokens() + envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
 		// The block's own header is written after FitAll has fitted the
 		// expansions, so it has to be reserved here or the assembled prompt
@@ -408,7 +409,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	return &Result{
 		API:            opts.API,
 		Model:          opts.Model,
-		Schema:         outputSchema(),
+		Stage:          StageReview,
 		Budget:         budget,
 		Prompt:         prompt,
 		System:         system,
@@ -542,7 +543,10 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			"api": opts.API, "model": opts.Model, "stage": stage,
 			"effort": opts.Effort, "maxTokens": opts.MaxTokens,
 			"inputTokensEstimate": res.InputEstimate,
-			"system":              res.System, "prompt": res.Prompt, "schema": res.Schema,
+			"system":              res.System, "prompt": res.Prompt,
+			// The whole array, because the whole array is what was sent and
+			// its bytes are what a cache read depends on.
+			"tools": stageTools(), "toolChoice": stage,
 		}, "", "  ")
 		opts.Capture(stage+".request.json", req)
 	}
@@ -665,14 +669,14 @@ func debugBody(s string) string {
 	return s
 }
 
-// stage names which of the two calls a Result is carrying, which is what the
-// debug lines and the captured files are labelled with. The output contract
-// decides it: one wire, two stages.
+// stage names which of the two calls a Result is carrying. It is the tool the
+// request forces, and it is what the debug lines and the captured files are
+// labelled with.
 func (r *Result) stage() string {
-	if r.rulesRatherThanReviews() {
-		return "ruling"
+	if r == nil || r.Stage == "" {
+		return StageReview
 	}
-	return "review"
+	return r.Stage
 }
 
 // captureResponse renders what came back, for a reader who has only the file

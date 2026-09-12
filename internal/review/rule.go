@@ -521,16 +521,20 @@ func (r *Result) ruleRequest(in Input, opts Options, cands []Candidate, answers 
 	out := r.clone()
 	// The system block is left byte-identical to stage one and the ruling
 	// instruction goes at the tail of the user turn, beside the findings it
-	// refers to. This once bought a prompt-cache hit as well, until the wire
-	// showed the schema in front of the cached prefix: a ruling sends its own
-	// schema, so it never reads the review's entry however the two prompts are
-	// arranged. What is left is the reason that still holds - a judge of these
-	// findings works under the rules the review was given.
+	// refers to. Two reasons, and both hold again. A judge of these findings
+	// works under the rules the review was given. And everything ahead of that
+	// tail is now the same bytes the review sent, tools included, so a cache
+	// breakpoint on the shared part would be read back here rather than
+	// rewritten: what used to break that was the schema, and the schema no
+	// longer varies.
 	out.System = r.System
 	out.Prompt = r.Prompt + "\n" + candidatesSection(cands) +
 		boundAnswers(answersSection(answers)) + rulePrompt
-	out.Schema = ruleSchema()
-	out.InputEstimate = envelope.EstimateTokens(out.System) + envelope.EstimateTokens(out.Prompt)
+	out.Stage = StageRuling
+	// The catalogue rides on this call as it does on the review's, so it is
+	// counted here as Assemble counts it. Left out, the ruling would report an
+	// estimate short by the whole tool array against a request that carries it.
+	out.InputEstimate = toolsTokens() + envelope.EstimateTokens(out.System) + envelope.EstimateTokens(out.Prompt)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedRulingTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)
 	return out
@@ -688,15 +692,10 @@ func verifyCorpus(prompt string, answers *envelope.Envelope) string {
 const ExpectedRulingTokens int64 = 2000
 
 // rulesRatherThanReviews reports which contract this request went out under.
-// The schema is the honest place to ask: it is what the endpoint was told to
-// constrain the answer to, so it cannot disagree with what came back.
+// The stage is the honest place to ask: it is the tool the endpoint was forced
+// to call, so it cannot disagree with what came back.
 func (r *Result) rulesRatherThanReviews() bool {
-	if r == nil || r.Schema == nil {
-		return false
-	}
-	props, _ := r.Schema["properties"].(map[string]any)
-	_, ok := props["rulings"]
-	return ok
+	return r != nil && r.Stage == StageRuling
 }
 
 // parseRulings reads the verifying pass's response.

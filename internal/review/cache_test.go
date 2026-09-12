@@ -7,20 +7,21 @@ import (
 	"testing"
 )
 
-// Neither one-shot stage marks a prefix for the cache. A schema is part of
-// the cached prefix and the ruling's differs from the review's, so a write
-// here is a quarter above base input for an entry no later call can read.
+// Neither one-shot stage marks a prefix for the cache yet. The two now send
+// the same bytes ahead of the prompt, so a breakpoint would be read back, but
+// nothing sets one and an unread write costs a quarter above base input.
+// Marking one is its own change; this holds the line until then.
 func TestTheOneShotCallMarksNothingForTheCache(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		res    *Result
 		blocks int
 	}{
-		{"review", &Result{System: "the system prompt", Prompt: "the whole prompt", Schema: outputSchema()}, 1},
+		{"review", &Result{System: "the system prompt", Prompt: "the whole prompt", Stage: StageReview}, 1},
 		{"ruling", &Result{
 			System: "the system prompt",
 			Prompt: "the review prompt\n## The findings to rule on\n",
-			Schema: ruleSchema(),
+			Stage:  StageRuling,
 		}, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

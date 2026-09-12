@@ -791,14 +791,14 @@ func TestAReviewLeavesATraceOfAllThreeStages(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch forcedFunction(t, r) {
-		case "review":
-			writeOACall(w, "review", `{"overview":"o","files":[],"comments":[
+		case review.StageReview:
+			writeOACall(w, review.StageReview, `{"overview":"o","files":[],"comments":[
 				{"file":"user.go","line":3,"severity":"info","confidence":"high","category":"review",
 				 "relatedFindings":[],"body":"a getter is not this repository's style",
 				 "question":{"kind":"precedent","ask":"does this repository write getters elsewhere?","subject":"getters"}}],
 				"verdicts":[]}`)
-		case "rulings":
-			writeOACall(w, "rulings", `{"rulings":[{"analysis":"the tree has one","finding":"c1",
+		case review.StageRuling:
+			writeOACall(w, review.StageRuling, `{"rulings":[{"analysis":"the tree has one","finding":"c1",
 				"verdict":"kept","evidence":"func (u *User) Name() string { return u.name }",
 				"why":"the range the lookup filed is a getter"}]}`)
 		default:
