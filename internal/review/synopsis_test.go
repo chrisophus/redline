@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/chrisophus/redline/internal/change"
 )
 
 const synopsisBody = `{"overview":"Queue drops the nil guard.","files":[` +
@@ -175,12 +177,39 @@ func TestTheTripwireCountsTheDescribingCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	off := synopsisCeilingCost(Options{Model: "claude-sonnet-5", MaxTokens: 64_000}, one)
+	off := synopsisCeilingCost(Options{Model: "claude-sonnet-5", MaxTokens: 64_000}, in, one)
 	if off != 0 {
 		t.Errorf("with the stage off the ceiling must count nothing, got %f", off)
 	}
-	on := synopsisCeilingCost(Options{Model: "claude-sonnet-5", MaxTokens: 64_000, Synopsis: true}, one)
+	on := synopsisCeilingCost(Options{Model: "claude-sonnet-5", MaxTokens: 64_000, Synopsis: true}, in, one)
 	if on <= 0 {
 		t.Fatal("with the stage on the ceiling must count the second call")
+	}
+}
+
+// The describing call writes a line per file, and the change section names
+// held-back test files with their line counts and no diff, which reads as a
+// file to write a line about: the first fixture sweep came back with ten such
+// lines and every invented line in the run was one. Prose did not stop it -
+// the instruction already said "none of the files held back" - so the tail
+// carries the roster.
+func TestTheDescribingTurnNamesTheFilesItMayDescribe(t *testing.T) {
+	in := exploreInput()
+	in.Change.Files = append(in.Change.Files, change.File{
+		Path: "internal/queue/q_test.go", Added: 40,
+	})
+	tail := synopsisTail(in)
+	if !strings.Contains(tail, "- internal/queue/q.go\n") {
+		t.Errorf("the roster must name the file whose diff was sent:\n%s", tail)
+	}
+	if strings.Contains(tail, "q_test.go") {
+		t.Errorf("the roster must not name a file whose diff was held back:\n%s", tail)
+	}
+	// The same set the score reads, which is the point of taking it from the
+	// producer's own predicate: a roster and a measurement that disagree
+	// would report the model wrong for obeying the instruction.
+	shown := in.ShownFiles()
+	if len(shown) != 1 || !shown["internal/queue/q.go"] {
+		t.Fatalf("the shown set and the roster are built from one predicate: %v", shown)
 	}
 }

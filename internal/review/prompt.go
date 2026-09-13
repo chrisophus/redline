@@ -216,13 +216,46 @@ const synopsisPrompt = `
 Describe this change. Do not judge it.
 
 Call the synopsis tool and nothing else. Write the overview, and one line for
-every file whose diff you were shown above - every one of them, and none of
-the files held back. Another pass over this same material writes the comments,
-the questions and the verdicts, so a defect you notice here is that pass's to
-report and yours to leave out.
+every file on the list below - every one of them, and nothing outside it.
+Another pass over this same material writes the comments, the questions and the
+verdicts, so a defect you notice here is that pass's to report and yours to
+leave out.
 
 The context blocks above are there for that pass. You do not need them to say
 what the change is.`
+
+// synopsisTail is the describing turn plus the roster of files it may write a
+// line for.
+//
+// The roster is here because prose was not enough. The instruction already
+// said "none of the files held back" and the first sweep still came back with
+// ten lines about held-back test files - every invented line in the run was
+// one. The change section names those files with their line counts and sends
+// no diff, which reads to a model asked for a line per file as a file to
+// write a line about. A list it can match against leaves nothing to infer.
+//
+// It costs paths, it goes in the tail behind the cache breakpoint, and it is
+// built from the same predicate the score reads, so a change to what the
+// prompt holds back moves the instruction, the diff and the measurement
+// together.
+func synopsisTail(in Input) string {
+	shown := in.ShownFiles()
+	if len(shown) == 0 {
+		return synopsisPrompt
+	}
+	paths := make([]string, 0, len(shown))
+	for path := range shown {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	var b strings.Builder
+	b.WriteString(synopsisPrompt)
+	b.WriteString("\n\n### The files to describe\n\n")
+	for _, path := range paths {
+		b.WriteString("- " + path + "\n")
+	}
+	return b.String()
+}
 
 // findingsPrompt is the judging stage's turn when a synopsis already ran. The
 // system block still describes the whole review, walkthrough included, because

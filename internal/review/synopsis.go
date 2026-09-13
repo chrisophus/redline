@@ -33,11 +33,11 @@ const ExpectedSynopsisTokens int64 = 3000
 
 // synopsisRequest is the describing call, assembled from the review's own
 // prefix. Everything ahead of the tail is stage one's bytes exactly.
-func (r *Result) synopsisRequest(opts Options) *Result {
+func (r *Result) synopsisRequest(opts Options, in Input) *Result {
 	out := r.clone()
 	out.Stage = StageSynopsis
-	out.Tail = synopsisPrompt
-	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(synopsisPrompt)
+	out.Tail = synopsisTail(in)
+	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedSynopsisTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)
 	return out
@@ -46,11 +46,11 @@ func (r *Result) synopsisRequest(opts Options) *Result {
 // synopsisCeilingCost is what the describing call could cost at worst, for the
 // tripwire that decides whether to send anything at all. Zero when the stage
 // is off, the same shape verifyCeilingCost uses for the ruling.
-func synopsisCeilingCost(opts Options, res *Result) float64 {
+func synopsisCeilingCost(opts Options, in Input, res *Result) float64 {
 	if !opts.Synopsis || res == nil {
 		return 0
 	}
-	cost, ok := CeilingCost(opts.Model, res.synopsisRequest(opts).InputEstimate, opts.MaxTokens)
+	cost, ok := CeilingCost(opts.Model, res.synopsisRequest(opts, in).InputEstimate, opts.MaxTokens)
 	if !ok {
 		return 0
 	}
@@ -72,7 +72,7 @@ func describe(ctx context.Context, in Input, opts Options, res *Result) (finding
 	if opts.Progress != nil {
 		opts.Progress("describing the change before judging it")
 	}
-	out, err := runOnce(ctx, in, opts, res.synopsisRequest(opts))
+	out, err := runOnce(ctx, in, opts, res.synopsisRequest(opts, in))
 	usage, written := out.Usage, out.Usage.OutputTokens
 	// The describing call's output is not the review's output. Usage carries
 	// input, which is real either way; the output count is returned apart so

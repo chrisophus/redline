@@ -79,6 +79,9 @@ func RunBatch(ctx context.Context, ins []Input, opts Options) ([]*Result, []erro
 	if opts.Verify {
 		return nil, nil, fmt.Errorf("the checking pass reads stage one's findings, so it cannot go out in the same batch as them; run the batch unverified")
 	}
+	if opts.Synopsis {
+		return nil, nil, fmt.Errorf("the judging call reads the walkthrough the describing call wrote, so the two cannot go out in the same batch; run the synopsis arm interactively")
+	}
 	// No breakpoint on this tier, whatever the caller asked for. Each request
 	// of a batch is its own prefix and the results arrive over a
 	// twenty-four-hour window, so a five-minute entry expires long before

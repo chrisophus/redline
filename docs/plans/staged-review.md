@@ -561,11 +561,34 @@ Then, per arm, against the frozen fixtures:
 
    Walkthrough completeness is now scored with no model call: `Score` counts
    the files whose diffs the prompt carried against the lines that came back,
-   using the producer's own `ShownFiles` rather than a copy of the rule. The
-   first comparison, one session, `claude-sonnet-5`: with the stage, 10 of 10
-   shown files described and nothing else; without it, the same 10 plus two
-   lines about held-back test files whose diffs were never sent. That second
-   number is the `Invented` column, and it was invisible before this. **M**
+   using the producer's own `ShownFiles` rather than a copy of the rule.
+
+   Scored on the ten fixtures, `claude-sonnet-5`, one sample each, both arms
+   interactive with the cache on:
+
+   | Arm | Median cost | Caught | False positives | Walkthrough |
+   |---|---|---|---|---|
+   | `oneshot` | $0.0894 | 6/35 | 1 | 20/54 |
+   | `--synopsis` | $0.1367 | 5/35 | 0 | 53/54 |
+
+   **The walkthrough was 37% complete and is now 98%.** That is the number
+   this step exists to move and it moved by more than the spread between two
+   runs of the same arm. Recall did not move: 6, 6, 4 and 5 of 35 across the
+   four sweeps run here, which is the noise this fixture set has at one
+   sample and the reason step 7 waits for `--samples 3`. Cost is 1.53x, not
+   the 2x of a second call, because the judging call reads the prefix the
+   describing one wrote.
+
+   Two things the sweep caught that a live pair had not. The first synopsis
+   arm wrote ten lines about files whose diffs were never sent, and all ten
+   were held-back test files: the change section names them with their line
+   counts, which reads to a call asked for a line per file as a file to write
+   a line about. The instruction already said not to and prose was not
+   enough, so the describing turn now carries the roster of paths it may
+   describe, built from the predicate the score reads. `Invented` went to
+   zero. The second was in the harness, not the producer: the sweep built
+   `review.Options` without `Cache`, so the arm it billed at 2.1x was a
+   configuration the command never runs. **M**
 5. **Cohort fan-out.** `--cohorts`, the per-cohort prompt with cross-summaries,
    the scout budget split. Score against every column above, with correlation
    survival as the bar. **L**
