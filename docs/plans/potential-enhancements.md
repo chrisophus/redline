@@ -420,3 +420,118 @@ can and reaches the ruling as silence:
     what is outside the tree, so the ruling reads an answer where it used to
     read a silence. Putting the module cache in scope is still open, and it
     is the half that would actually answer the question.
+
+## The pipeline against the same model in an agent loop (2026-09-13)
+
+The premise test showed an agent reading the packet beat the diff alone. The
+obvious next question was whether it also beat `redline review`, and whether
+the difference was the model: the agent arms ran `claude-opus-5`, and
+`DefaultModel` is `claude-sonnet-5`.
+
+Holding the model at `claude-opus-5` and the packet and prompt constant —
+both arms assemble through `review.Assemble`, so the system text is the same
+bytes — on the same eleven fixtures, one sample each:
+
+| arm | model | caught | cost/review | clean rate |
+| --- | --- | --- | --- | --- |
+| agent loop | claude-opus-5 | 18/37 | ~$0.26 (token estimate) | - |
+| `redline review` one-shot | claude-opus-5 | 2/38 | $0.2797 | 64% (7/11) |
+| `redline review` one-shot | claude-sonnet-5 | 6/38 | $0.1031 | 18% (2/11) |
+
+Opus through the pipeline scores worse than Sonnet through the pipeline, at
+2.7x the price, while the same Opus reading the same bytes in an agent loop
+scores nine times higher. So the gap is not the model, not the packet, and
+not the prompt.
+
+What it looks like from inside: on `gorefactor-changectx`, which carries
+fourteen annotated defects, the Opus one-shot returned fourteen file
+summaries, zero comments, and an overview whose last sentence was "The
+findings below concern parsing of diff hunk headers, ref quoting for `git
+log -L`, and a couple of paths where an expansion can be emitted with a
+nil-derived or wrong span." The tool call was complete and well formed. It
+announced findings and emitted an empty array. It did not take the sanctioned
+silence path either, which the prompt describes as saying so in the overview.
+
+Reasoning before the emission is not the difference either. Opus at
+`effort=high` across the same eleven fixtures caught 2/38 at $0.2649 a
+review, with the clean rate rising from 64% to 73%: the dial made it quieter,
+not better.
+
+### The ladder: what each layer is worth
+
+Four paid sweeps eliminated the model, the prompt, the describing split and
+the reasoning dial without naming a cause, which is the cost of debugging a
+pipeline by subtraction. `TestLadder` builds one up instead, a layer at a
+time, scored by `eval.Score` on the same eleven fixtures at one sample on
+`claude-sonnet-5`:
+
+| rung | layers | caught | unlabelled | false positives |
+| --- | --- | --- | --- | --- |
+| 0 | raw diff + a forty-line instruction | **12/38** | 25 | 0 |
+| 1 | the shipped packet + the same instruction | **11/38** | 16 | 1 |
+| shipped | packet + system prompt + strict tools | 6/38 | 15 | 0 |
+
+A forty-line instruction and the raw diff, with no panes, no envelopes, no
+context and no schema, catches twice what the product catches on the same
+model and the same fixtures. Everything the pipeline adds past the diff, in
+aggregate, halves recall.
+
+Rung 1 is the honest measurement of the packet on this set, and it is not the
+premise test's: 12 caught against 11 is no recall gain, while unlabelled
+comments fall from 25 to 16. The packet buys quiet, not catches. The premise
+test's 18 against 14 was one sample on a different model through an agent
+loop, so one of the two numbers is sampling noise and the fixture set cannot
+say which.
+
+Rung 2 — the shipped system prompt with the packet, free-form — is not
+reported here because four of eleven fixtures failed to parse: the shipped
+prompt requires a `question` object per comment, which the rung's output
+contract did not describe, so the model emitted `question` as a string. That
+is a harness gap, not a result, and it leaves the prompt's own contribution
+the one layer still unmeasured.
+
+Two things found while building the rungs are worth keeping:
+
+- The shipped system prompt never says to reply with JSON. That contract
+  lives entirely in the tool schema, so a prompt sent without its tool
+  answers in markdown. The prompt is not self-sufficient; it only works
+  welded to the grammar.
+- Thinking is on by default. On the larger fixtures it spent the entire 32k
+  output budget before emitting one text token and returned
+  `stop=max_tokens blocks=[thinking]` — an empty reply that reads as a silent
+  model and is not one. Non-streaming calls made it worse by returning no
+  content and no error at all.
+
+### What this does not support
+
+Splitting the describing call off is not the fix, and an earlier reading here
+that said it was compared `--synopsis` on Sonnet against one-shot on Opus,
+which is a model difference wearing a pipeline label. With the model held at
+`claude-sonnet-5` across all eleven fixtures at one sample:
+
+| arm | caught | cost/review | unlabelled | walkthrough |
+| --- | --- | --- | --- | --- |
+| one-shot | 6/38 | $0.1031 | 15 | 52/66 (+10 unsent) |
+| `--synopsis` | 6/38 | $0.1175 | 13 | 66/66 |
+
+A tie on recall. The describing split buys a complete walkthrough and two
+fewer unlabelled comments for 14% more, which is worth having and is not a
+recall fix, so the default stays where it is on this evidence.
+
+The two arms catch nearly disjoint sets, though: one-shot took four
+caller/test-role items on `changectx` and nothing on `nil-rules`,
+`harness-injected-config` or `staged-empty-partition`, while `--synopsis`
+took `empty-roles-are-silent`, `condition-checked-before-facts-invalidated`,
+`nil-prepared-map` and `empty-partition-indexes-failures` — the panic. Their
+union is about 11/38, near double either arm. At one sample the sampling
+noise is larger than the shape effect, which is the same limit the ×3 sweeps
+ran into and the reason neither arm can referee the other.
+
+### Fixed here
+
+The system prompt still told the model that "an uncertain finding costs the
+reader nothing", the same false claim corrected in `commentSchema()` on
+2026-09-12 — the correction landed in the schema description and missed the
+prompt, which says the same thing twice. `post.go:172` withholds
+low-confidence findings, so an uncertain finding costs the reader the
+finding. Both now say so.
