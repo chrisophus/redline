@@ -85,15 +85,15 @@ func cmdReview(o opts) error {
 		ExpectedOutput: expected,
 		DryRun:         o.dryRun,
 	}
-	// The checking pass is on unless it is turned off. A review that posts
-	// what it cannot point at is the failure this producer was measured
-	// against in the field, so the safe default is the one that checks, and
-	// --no-verify is there for a caller comparing against the old behaviour
-	// or paying for one call rather than two.
-	ropts.Verify = !o.noVerify && o.mode != review.ModeExplore
-	if o.verify {
-		ropts.Verify = true
-	}
+	// The checking pass is off unless it is asked for. It ran by default for
+	// most of this tool's life and was never scored: no eval arm has ever set
+	// it, so the scout's five lookup turns and the ruling that reads them are
+	// unmeasured cost on every review. The one trace that exists points the
+	// wrong way - on this repository's PR #46, nine of the ten findings that
+	// never reached the reader came back unverifiable from the ruling, six of
+	// those on questions the review had certified itself. --verify turns it
+	// back on; when an arm measures it, this default is the line to revisit.
+	ropts.Verify = o.verify && o.mode != review.ModeExplore
 	// The breakpoint is on unless it is turned off, for the same shape of
 	// reason: a run that pays two full-rate calls over one prefix is paying
 	// for nothing, and the measured saving on the pair is about a quarter of
@@ -127,18 +127,36 @@ func cmdReview(o opts) error {
 		return fmt.Errorf("--pipeline is %s or %s, not %q",
 			review.PipelineOneShot, review.PipelineStaged, o.pipeline)
 	}
-	// One call, the short prompt, no tool grammar. It is exclusive with the
-	// staged and describing shapes rather than merged with them: those stages
-	// are defined by their tool contracts - the partition arrives as one -
-	// and a brief review sends no tools at all.
-	ropts.Brief = o.brief
-	if o.brief {
-		if ropts.Pipeline == review.PipelineStaged {
+	// One call, the short prompt, no tool grammar, and this is the default.
+	//
+	// It is the simplest shape that reviews anything and it was measured
+	// against the shapes built on top of it. On the two probe fixtures
+	// carrying 31 of the 38 annotated expectations: this caught 5 at $0.13 a
+	// review, the long prompt under the strict tools caught 4 at $0.10, and
+	// the same cost per catch. It is not worse on either axis and there is
+	// less of it, so it goes first and everything else has to earn its place
+	// against it.
+	//
+	// The richer shapes are not merged with it, they replace it: staged,
+	// explore and the describing split are each defined by a tool contract
+	// briefPrompt does not describe. Asking for one of those turns this off
+	// rather than failing, because a caller who typed --pipeline staged said
+	// what they wanted. Only an explicit --brief beside them is a
+	// contradiction worth refusing.
+	explicit := o.brief
+	ropts.Brief = !o.noBrief &&
+		ropts.Pipeline != review.PipelineStaged &&
+		!ropts.Synopsis &&
+		o.mode != review.ModeExplore
+	if explicit {
+		switch {
+		case ropts.Pipeline == review.PipelineStaged:
 			return fmt.Errorf("--brief runs one call with no tools, so it cannot draw the %s partition; pass one or the other",
 				review.PipelineStaged)
-		}
-		if ropts.Synopsis {
+		case ropts.Synopsis:
 			return fmt.Errorf("--brief writes the walkthrough in the same call, so --synopsis has nothing to add; pass one or the other")
+		case o.mode == review.ModeExplore:
+			return fmt.Errorf("--brief sends no tools and --mode explore is a tool loop; pass one or the other")
 		}
 	}
 	ropts.Cohorts = o.cohorts

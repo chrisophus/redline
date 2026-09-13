@@ -139,6 +139,18 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		params.Tools = anthropicTools(opts)
 		params.ToolChoice = anthropic.ToolChoiceParamOfTool(res.stage())
 	}
+	if opts.Brief && res.stage() == StageReview {
+		// Thinking is on by default, and a free-form reply has no grammar
+		// bounding its length, so the two together spend the output budget
+		// twice over: a brief review measured $0.4405 and $0.4975 on the two
+		// probe fixtures against the default shape's $0.10. The ladder ran
+		// this same shape with thinking off and caught 8 of those 31
+		// expectations against the product's 7, so the reasoning tokens were
+		// not what found the defects.
+		params.Thinking = anthropic.ThinkingConfigParamUnion{
+			OfDisabled: &anthropic.ThinkingConfigDisabledParam{},
+		}
+	}
 	if opts.Effort != "" {
 		params.OutputConfig.Effort = anthropic.OutputConfigEffort(opts.Effort)
 	}

@@ -102,8 +102,15 @@ flags:
   --verify          with review: look up what each finding said would settle
                     it, then rule on every finding with the answers in hand.
                     Only findings the ruling keeps are posted; the rest stay
-                    on the report with the reason. On by default when a key
-                    is present; --no-verify turns it off.
+                    on the report with the reason. Off by default as of the
+                    2026-09-13 measurements: it ran by default for most of
+                    this tool's life and no eval arm has ever scored it, so
+                    the scout's lookup turns and the ruling that reads them
+                    were unmeasured cost on every review. The one trace that
+                    exists points the wrong way - on this repository's PR #46
+                    nine of the ten findings that never reached the reader
+                    came back unverifiable from the ruling, six of those on
+                    questions the review had certified itself.
   --cache           with review: mark the prompt the review and the ruling
                     share for the prompt cache, so the second call reads it
                     back instead of paying for it again. On by default;
@@ -123,15 +130,19 @@ flags:
                     walkthrough that covers every shown file and an output
                     cap the findings no longer share with fifty file
                     summaries.
-  --brief           with review: one call, a forty-line prompt, and no tool
-                    grammar - the review comes back as JSON in a text reply.
-                    Measured on eleven fixtures at one sample: 11 of 38
-                    annotated defects against the default shape's 6, and
-                    against 2 for the short prompt with the tools still on.
-                    The prompt and the free-form reply only win together, so
-                    this flag is the pair and neither half is separable.
-                    Exclusive with --pipeline staged and --synopsis, whose
-                    stages are defined by the tool contracts this drops.
+  --no-brief        with review: the long prompt under the strict tool
+                    contracts. The default is the other way round: one call,
+                    a forty-line prompt, no tool grammar, and the review
+                    arrives as JSON in a text reply. That shape is the
+                    simplest thing that reviews anything and it was measured
+                    against what is built on top of it - on the two probe
+                    fixtures carrying 31 of the 38 annotated expectations it
+                    caught 5 at $0.13 a review against the long prompt's 4 at
+                    $0.10, the same cost per catch with less in the path. The
+                    richer shapes replace it rather than combine with it:
+                    --pipeline staged, --synopsis and --mode explore each
+                    turn it off, because each is defined by a tool contract
+                    the short prompt does not describe.
   --pipeline SHAPE  with review: oneshot (default) is one call that judges
                     the whole change. staged describes it first, splits the
                     shown files into cohorts, and reviews each cohort in its
@@ -200,7 +211,7 @@ type opts struct {
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
 	stats, verify, noVerify, debug, cache, noCache                    bool
 	synopsis, noSynopsis                                              bool
-	brief                                                             bool
+	brief, noBrief                                                    bool
 	port, ceiling, maxTokens, maxTurns, samples                       int
 	cohorts, minCohortFiles                                           int
 	maxCost                                                           float64
@@ -256,7 +267,8 @@ func runMain(args []string) error {
 	fs.BoolVar(&o.noCache, "no-cache", false, "with review: send every call at full input rate")
 	fs.BoolVar(&o.synopsis, "synopsis", false, "with review: describe the change in its own call before judging it")
 	fs.BoolVar(&o.noSynopsis, "no-synopsis", false, "with review: one call writes the walkthrough and the findings together")
-	fs.BoolVar(&o.brief, "brief", false, "with review: one call, the short prompt, no tool grammar - measured to catch more than the default")
+	fs.BoolVar(&o.brief, "brief", false, "with review: one call, the short prompt, no tool grammar (on by default)")
+	fs.BoolVar(&o.noBrief, "no-brief", false, "with review: the long prompt under the strict tool contracts")
 	fs.StringVar(&o.cacheTTL, "cache-ttl", "", "with review: how long the cached prefix lives, 5m or 1h")
 	fs.StringVar(&o.pipeline, "pipeline", "", "with review: oneshot, or staged to split the change into cohorts and review each")
 	fs.IntVar(&o.cohorts, "cohorts", 0, "with review: upper bound on parallel cohort reviews under --pipeline staged (default 6)")
