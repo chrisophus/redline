@@ -30,8 +30,7 @@
         "after the finding",
         "already emitted",
         "left to right",
-        "short-circuit",
-        "order"
+        "short-circuit"
       ]
     },
     {
@@ -183,9 +182,7 @@
         "staticcheck",
         "golangci",
         "double-count",
-        "double count",
-        "twice",
-        "duplicate"
+        "double count"
       ],
       "file": "",
       "all_of": []

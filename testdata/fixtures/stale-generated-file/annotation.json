@@ -9,7 +9,7 @@
       "key": "generated-file-not-regenerated",
       "what": "schema.proto gained tenant_id and schema.pb.go was not regenerated.",
       "file": "api/schema.proto",
-      "any_of": ["regenerat", "generated", "stale", "pb.go", "out of date"],
+      "any_of": ["regenerat", "pb.go", "out of date", "not been regenerated", "schema.pb"],
       "known_gap": "No regeneration check ships yet. Deterministic verification belongs in a provider, which knows how to run the generator; see docs/context-envelope.md."
     }
   ],
