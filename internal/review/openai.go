@@ -231,6 +231,7 @@ func readOpenAIResponse(raw []byte) (completion, error) {
 	for _, tc := range ch.Message.ToolCalls {
 		if strings.TrimSpace(tc.Function.Arguments) != "" {
 			c.text = tc.Function.Arguments
+			c.fromTool = true
 			break
 		}
 	}

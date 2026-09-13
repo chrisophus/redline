@@ -533,6 +533,38 @@ for it - which is a real change to `anthropicTools` and `absorb`, not a flag.
 It is also the one the agent arms have been passing all along, since an agent
 writing `review.json` is exactly a free-form emission scored by `Score`.
 
+#### That experiment ran, and the table above did not survive it
+
+Free-form shipped behind `Options.Brief` and was then measured against the
+same prompt under the grammar, three samples over all eleven fixtures:
+
+| prompt | emission | caught | false positives | mean cost |
+| --- | --- | --- | --- | --- |
+| brief, 40 lines | free-form | 17/38 | 2 | $0.1432 |
+| brief, 40 lines | strict tools | 15/38 | 1 | $0.1499 |
+
+Two points at 38 expectations and three samples is inside a noise floor of
+about 3.6. The whole difference sat in one fixture,
+`staged-empty-partition`, which was rerun on both arms at five samples and
+caught 1/3 against 0/3: one hit in fifteen trials. The 2/38 cell in the
+table above did not reproduce, and at one sample it was never separable
+from the 6/38 beside it.
+
+So the short prompt is what the recall follows, and nothing measurable
+attaches to the emission. That settles the emission on a different question.
+`completeOpenAI` sends the tool catalogue on every call and has no way to be
+told otherwise, so free-form only ever existed on the Anthropic wire, and
+`--brief` over an OpenAI-protocol proxy was silently a different review from
+`--brief` against the API. Brief now runs the short prompt over the grammar
+and both wires send the same request.
+
+Three defects fell out of pairing the two, none of which any test covered
+because none paired `Brief` with `APIOpenAI`: the context budget zeroed its
+tool reservation for every brief run while one wire went on sending the
+catalogue, the output format added to bound free-form replies was ignored by
+gateways on the wire that most needed it, and the reply-narrowing step keyed
+on `Brief` rather than on whether the body arrived in a tool call.
+
 Every number in this section is one sample. The one-shot arm has measured 4,
 5, 6 and 2 across today's sweeps on nearly the same material, so a two-point
 difference is inside the noise and only the large gaps - 11 against 5, and

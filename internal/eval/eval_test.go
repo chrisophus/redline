@@ -503,10 +503,6 @@ func TestSweep(t *testing.T) {
 		opts.Pipeline != review.PipelineStaged &&
 		!opts.Synopsis &&
 		opts.Mode != review.ModeExplore
-	// The arm that separates the two halves of Brief. They have only ever been
-	// measured together, and the OpenAI wire can run one of them and not the
-	// other, so which one earns the recall decides what both wires do.
-	opts.BriefKeepsTools = opts.Brief && os.Getenv("REDLINE_EVAL_BRIEF_TOOLS") != ""
 	// Off by default because it prints a response body per call, and a sweep
 	// that prints thirty-three of them buries its own result table. On when a
 	// run is being read rather than scored: a reply that fails to parse is
@@ -690,9 +686,6 @@ func TestSweep(t *testing.T) {
 	// without it.
 	if os.Getenv("REDLINE_EVAL_NO_BRIEF") != "" {
 		label += " no-brief"
-	}
-	if opts.BriefKeepsTools {
-		label += " brief+tools"
 	}
 	if samples > 1 {
 		label += fmt.Sprintf(" ×%d", samples)

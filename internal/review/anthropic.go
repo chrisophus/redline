@@ -24,6 +24,12 @@ type completion struct {
 	// usage is filled on every path, including the ones that fail, because
 	// the input is billed as soon as the request is accepted.
 	usage Usage
+	// fromTool records that the body came out of a tool call rather than the
+	// content channel. Every stage forces a call, so false means something
+	// declined to honour that: a gateway that dropped tool_choice, or a model
+	// that answered in prose. The body is then unconstrained and has to be
+	// narrowed to its JSON object before it is parsed.
+	fromTool bool
 	// refused is set when the model declined the request. detail says why,
 	// when the API said.
 	refused bool
@@ -89,8 +95,10 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 	if err := stream.Err(); err != nil {
 		return completion{usage: usage()}, err
 	}
+	body, fromTool := structuredOf(msg)
 	c := completion{
-		text:       structuredOf(msg),
+		text:       body,
+		fromTool:   fromTool,
 		stopReason: string(msg.StopReason),
 		usage:      usage(),
 		truncated:  msg.StopReason == anthropic.StopReasonMaxTokens,
@@ -128,17 +136,16 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		System:    []anthropic.TextBlockParam{{Text: res.System}},
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(blocks...)},
 	}
-	if !opts.Brief || opts.BriefKeepsTools || res.stage() != StageReview {
-		// The whole catalogue, every time, with the stage chosen by name. See
-		// tools.go for why the contract cannot be a per-call output format.
-		//
-		// A brief review is the exception: briefPrompt carries the contract in
-		// prose and the reply comes back as text, which is the emission the
-		// measurement favoured. Every other stage keeps its tool, so the
-		// ruling and the partition still parse.
-		params.Tools = anthropicTools(opts)
-		params.ToolChoice = anthropic.ToolChoiceParamOfTool(res.stage())
-	}
+	// The whole catalogue, every time, with the stage chosen by name. See
+	// tools.go for why the contract cannot be a per-call output format.
+	//
+	// A brief review used to be the exception, dropping the tools so the reply
+	// came back as free text. That shape was measurable here and nowhere else:
+	// completeOpenAI sends the catalogue on every call. Measured apart, the two
+	// emissions did not separate, so the exception is gone and both wires send
+	// the same request.
+	params.Tools = anthropicTools(opts)
+	params.ToolChoice = anthropic.ToolChoiceParamOfTool(res.stage())
 	if opts.Brief && res.stage() == StageReview {
 		// Thinking is on by default, and a free-form reply has no grammar
 		// bounding its length, so the two together spend the output budget
@@ -150,31 +157,13 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		params.Thinking = anthropic.ThinkingConfigParamUnion{
 			OfDisabled: &anthropic.ThinkingConfigDisabledParam{},
 		}
-		// The contract, declared rather than asked for in prose.
-		//
-		// tools.go explains why the other stages cannot carry a per-call output
-		// format: it renders ahead of the system block, so a run whose stages
-		// ask for different contracts moves bytes in front of the shared prefix
-		// and every later call reads nothing. That argument is about variance
-		// between calls in one run, and this arm has none to have. A brief run
-		// asks for the review contract and no other.
-		//
-		// What it buys is the thing prose could not promise. Nothing bounded
-		// this reply before, and the model picked a different wrapper on every
-		// sample: <think>, <report>, <looking at the code>, a bold prose
-		// heading, or the bare object. jsonObjectOf guessed which, and measured
-		// across four runs of one fixture at three samples it guessed right
-		// 0, 2, 1 and 3 times out of 3.
-		//
-		// Not when the arm kept its tools. The grammar already carries the
-		// contract, and sending both would mean the arm that keeps the tools
-		// differs from the one that drops them in two ways at once, which is
-		// the thing this comparison exists to avoid.
-		if !opts.BriefKeepsTools {
-			params.OutputConfig.Format = anthropic.JSONOutputFormatParam{
-				Schema: outputSchema(),
-			}
-		}
+		// No output format here. It existed to bound a reply nothing else
+		// bounded, back when this call sent no tools and the model picked a
+		// different wrapper on every sample. The tool grammar carries the
+		// contract now, and it is the same contract on both wires, which the
+		// format could never be: tools.go records that a gateway serving one
+		// vendor's model over another's protocol ignored response_format on one
+		// review in four.
 	}
 	if opts.Effort != "" {
 		params.OutputConfig.Effort = anthropic.OutputConfigEffort(opts.Effort)
@@ -183,20 +172,21 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 }
 
 // structuredOf is the body the parser is handed: the arguments of the tool
-// call the request forced.
+// call the request forced. The second return says whether that is what it
+// found, so the caller knows whether anything constrained the body.
 //
 // It falls back to the text blocks when no tool call came back. A model that
 // answers a forced tool_choice in prose is a broken contract, not a review
 // with no findings, and the parse below will say so with the body in front of
 // it. Returning nothing here would report it as an empty response instead,
 // which is the one thing this producer must not do.
-func structuredOf(msg anthropic.Message) string {
+func structuredOf(msg anthropic.Message) (string, bool) {
 	for _, block := range msg.Content {
 		if t, ok := block.AsAny().(anthropic.ToolUseBlock); ok {
-			return string(t.Input)
+			return string(t.Input), true
 		}
 	}
-	return textOf(msg)
+	return textOf(msg), false
 }
 
 func textOf(msg anthropic.Message) string {

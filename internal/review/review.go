@@ -103,23 +103,21 @@ type Input struct {
 type Options struct {
 	Model  string
 	Effort string
-	// Brief runs the review stage under briefPrompt with no tools, parsing
-	// the JSON out of a text reply. The pair is what was measured better;
-	// see briefPrompt for the numbers and for why neither half ships alone.
-	Brief bool
-	// BriefKeepsTools runs briefPrompt over the tool grammar instead of a text
-	// reply. It exists to separate the two halves of Brief, which have only
-	// ever been measured together: the short prompt caught 17/38 where the
-	// shipped prompt under the same grammar caught 6/38, and nothing says
-	// whether the prompt or the free-form emission earned that.
+	// Brief runs the review stage under briefPrompt, carried by the same tool
+	// grammar as every other stage.
 	//
-	// The answer decides how the two wires converge. completeOpenAI sends the
-	// catalogue on every call and cannot be talked out of it by an Anthropic
-	// output format, so if the prompt is what matters, this shape is what both
-	// wires can run. It is an arm rather than a flag until that is measured.
-	BriefKeepsTools bool
-	Ceiling         int
-	MaxTokens       int64
+	// It used to drop the tools and parse JSON out of a text reply, which only
+	// the Anthropic wire could do: completeOpenAI sends the catalogue on every
+	// call and has no way to be told otherwise. The two halves were measured
+	// apart on eleven fixtures at three samples and came out 17/38 free-form
+	// against 15/38 over the grammar, inside a noise floor of about 3.6
+	// expectations. The one fixture that separated them, staged-empty-partition,
+	// was rerun at five samples and scored 1/3 against 0/3, one catch in
+	// fifteen trials. Nothing there distinguishes the two emissions, so the
+	// short prompt is what Brief is now, and both wires run it.
+	Brief     bool
+	Ceiling   int
+	MaxTokens int64
 	// MaxCostUSD refuses to send a request whose estimated cost exceeds it.
 	// Enforcement is before the call, against an estimate of the request
 	// about to be sent, which is the only enforcement point a single-turn
@@ -323,19 +321,6 @@ const (
 // silently, which is the failure this whole change is about noticing.
 func (o Options) cacheOn() bool {
 	return o.Cache && o.API != APIOpenAI && o.Samples <= 1
-}
-
-// briefSendsNoTools reports whether the review call really goes out without the
-// catalogue, which is a narrower question than whether Brief is set.
-//
-// Brief drops the tools in anthropicParams alone. completeOpenAI reads Brief
-// nowhere and sends every stage's function on every call, so a brief review
-// over that wire still pays for the schemas. BriefKeepsTools asks for them
-// back on the wire that would have dropped them. Anything that prices or
-// reserves on behalf of the request has to ask this rather than ask for Brief,
-// or it reserves nothing for bytes the wire is about to send.
-func (o Options) briefSendsNoTools() bool {
-	return o.Brief && !o.BriefKeepsTools && o.API != APIOpenAI
 }
 
 // Result is one review and what it cost.
@@ -542,15 +527,12 @@ func (r *Result) Summary() string {
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
 	system := systemFor(opts, StageReview) + oneShotAddendum + languageFragments(in.Envelopes)
-	// A brief review sends no tools, so pricing their schemas into the fixed
-	// cost would reserve context nothing occupies. On the OpenAI wire it does
-	// send them, and zeroing there under-reserves the prompt by the whole
-	// catalogue and overfills the context by that much.
-	tools := toolsTokens(opts)
-	if opts.briefSendsNoTools() {
-		tools = 0
-	}
-	fixed := tools + envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
+	// Every stage sends the catalogue on both wires, so it is reserved for
+	// unconditionally. This was once zeroed for a brief run, which was right on
+	// the one wire that dropped the tools and wrong on the other: the OpenAI
+	// wire sent them anyway, and the reservation came up short by the whole
+	// catalogue and overfilled the context by that much.
+	fixed := toolsTokens(opts) + envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
 		// The block's own header is written after FitAll has fitted the
 		// expansions, so it has to be reserved here or the assembled prompt
@@ -888,11 +870,19 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 	if strings.TrimSpace(body) == "" {
 		return fmt.Errorf("the model returned no content (stop reason %q)", c.stopReason)
 	}
-	if opts.Brief && stage == StageReview {
-		// No tool constrained this reply, so the object can arrive fenced or
+	if !c.fromTool {
+		// Every stage forces a tool call, so arriving here means the reply came
+		// back in the content channel instead: a gateway that dropped
+		// tool_choice, or a model that answered a forced call in prose. Either
+		// way nothing constrained the body, so the object can arrive fenced or
 		// behind a sentence about what the model is going to check. Narrowing
 		// to the object is this path's job; a malformed one still reaches
 		// parseReview and fails there with the body in the message.
+		//
+		// This used to ask whether the run was brief, back when a brief review
+		// was the one call that sent no tools. It sends them now, so that
+		// question no longer picks out the unconstrained replies, and the
+		// gateway case it was accidentally covering is the one that remains.
 		body = jsonObjectOf(body)
 	}
 	// Which shape came back is decided by which contract went out, so the
