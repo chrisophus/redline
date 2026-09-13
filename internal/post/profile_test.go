@@ -9,7 +9,7 @@ import (
 )
 
 func TestLoadProfileDefaultsBlockErrorAndWarning(t *testing.T) {
-	path := writeProfile(t, "review_marker: mct-agent-review:v1\nfinding_marker: mct-agent-finding:v1\n")
+	path := writeProfile(t, "review_marker: example-agent-review:v1\nfinding_marker: example-agent-finding:v1\n")
 	p, err := LoadProfile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -34,8 +34,8 @@ func TestLoadProfileRequiresMarkers(t *testing.T) {
 
 func TestGateVerdictWarningIsFail(t *testing.T) {
 	p := &Profile{
-		ReviewMarker:  "mct-agent-review:v1",
-		FindingMarker: "mct-agent-finding:v1",
+		ReviewMarker:  "example-agent-review:v1",
+		FindingMarker: "example-agent-finding:v1",
 		Blocking:      []findings.Severity{findings.SeverityError, findings.SeverityWarning},
 	}
 	rep := &findings.Report{Findings: []findings.Finding{{
@@ -69,10 +69,10 @@ func TestGateVerdictFailedPaneIsFail(t *testing.T) {
 }
 
 func TestAttestedVerdictReadsLastForHead(t *testing.T) {
-	fail := "<!-- mct-agent-review:v1 verdict=fail head=deadbeef -->"
-	pass := "<!-- mct-agent-review:v1 verdict=pass head=deadbeef -->"
-	other := "<!-- mct-agent-review:v1 verdict=fail head=cafef00d -->"
-	got := AttestedVerdict([]string{fail, other, pass}, "mct-agent-review:v1", "deadbeef")
+	fail := "<!-- example-agent-review:v1 verdict=fail head=deadbeef -->"
+	pass := "<!-- example-agent-review:v1 verdict=pass head=deadbeef -->"
+	other := "<!-- example-agent-review:v1 verdict=fail head=cafef00d -->"
+	got := AttestedVerdict([]string{fail, other, pass}, "example-agent-review:v1", "deadbeef")
 	if got != "pass" {
 		t.Fatalf("got %q", got)
 	}

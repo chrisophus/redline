@@ -7,9 +7,10 @@ description: Observe a change with Redline — the working tree, the latest comm
 
 Redline measures a change and reports evidence: migration hygiene, API
 contract breaking changes, diff coverage, what was examined and what was
-not. It runs no model itself; it measures, and it carries your review —
-comments and verdicts you write merge into the same report, marked as
-yours. Redline exists so you do not spend your context re-deriving what a
+not. The measuring calls no model. `redline review` can make one call over
+what was measured, and it is the only command that does. Redline also
+carries your review: comments and verdicts you write merge into the same
+report, marked as yours. Redline exists so you do not spend your context re-deriving what a
 deterministic check already established.
 
 ## When to use
@@ -40,9 +41,9 @@ profile; the report still records it as unknown. Profiles without produce
 (for example mutation) must be produced by hand. When a profile is not
 configured, redline ignores that artifact entirely.
 For mutation (gomutants), add a harness profile with `path: mutants.json`
-when you want it required; run the repository's mutate target first (`make
-mutate` in MCT; needs `eval $(make db-dsns)` when data packages are in
-scope). Mutation is never part of `--prepare`.
+when you want it required; run the repository's own mutate target first,
+along with whatever it needs in the environment, such as database DSNs when
+data packages are in scope. Mutation is never part of `--prepare`.
 
 This writes `findings.json`, `report.md`, and `report.html` under
 `.redline/`, prints the markdown report, and prints `Report: <url>` on
@@ -58,9 +59,9 @@ redline postmortem          # what that review proposed, looked up, and ruled
 ```
 
 This is the one Redline command that calls a model. It reads the session
-`run` wrote, sends one request with no tools, writes `.redline/review.json`,
-and re-renders the report. It observes nothing itself, so it sees exactly
-what you can see in `findings.json`.
+`run` wrote, sends one request, writes `.redline/review.json`, and
+re-renders the report. It observes nothing itself, so it sees exactly what
+you can see in `findings.json`.
 
 Use it when you want a second reading beside your own, or when you are
 driving Redline unattended. Skip it when you are reviewing the change
@@ -99,8 +100,7 @@ preserved, so running it does not discard judgments you recorded.
   `mutation` carries the survivors on the changed lines: lines a test runs but nothing fails when they
   change, each naming the `original -> replacement` that went uncaught. That is
   the assertion a test is missing. Produce one with the repository's mutate
-  target (`make mutate` in MCT) or `gomutants --changed-since <base> -o
-  mutants.json <packages>`. Redline reads the report from the checkout you
+  target or `gomutants --changed-since <base> -o mutants.json <packages>`. Redline reads the report from the checkout you
   run in, not from a detached PR worktree. Use gomutants v0.6.0 or later:
   older reports carry no mutant ids and no `INFRA_ERROR` status, so a mutant
   whose test run died on the runner is indistinguishable from one the tests
@@ -176,9 +176,9 @@ When you receive it:
 
 If you produce a review of the change, an overview, a per-file summary, and line
 comments, write it to `.redline/review.json` and Redline folds it into the
-report on the next run. This is the same file MCT publishes to GitHub via
-`scripts/publish-agent-review.sh --reviewer …` and the same file the verdicts
-below live in. Redline renders what you wrote, marked as yours.
+report on the next run. It is the same file the verdicts below live in, and
+the file a repository's own publisher reads when it posts the review to
+GitHub. Redline renders what you wrote, marked as yours.
 
 ```json
 {
@@ -200,8 +200,8 @@ below live in. Redline renders what you wrote, marked as yours.
 - `overview` renders as a Review section at the top of the report. `what_it_does`
   is accepted as an alias.
 - `files` is a list of `{path, summary}` (preferred) or a map of path to
-  one-line summary. MCT's publisher fills any PR diff path missing from the list
-  with "No notes."
+  one-line summary. A publisher that posts the review may fill any diff path
+  missing from the list with a placeholder, so name every file you reviewed.
 - `comments` become findings on their line, marked `source: llm`. `findings` is
   accepted as an alias; `path` aliases `file`. `severity` is `error`, `warning`,
   or `info` (aliases `high`, `medium`, `low` accepted on ingest).
