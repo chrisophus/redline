@@ -479,6 +479,19 @@ func TestSweep(t *testing.T) {
 	if opts.Synopsis && os.Getenv("REDLINE_EVAL_BATCH") != "" {
 		t.Fatal("REDLINE_EVAL_SYNOPSIS and REDLINE_EVAL_BATCH ask for two calls that read each other over a tier that cannot pair them; drop the batch")
 	}
+	// The shipped shape TestLadder measured better than the default: the
+	// short prompt and a free-form reply, which only win as a pair.
+	opts.Brief = os.Getenv("REDLINE_EVAL_BRIEF") != ""
+	// The multi-turn arm. Explore ships behind --mode explore and has never
+	// been scored: it hands the reviewer a catalogue and a fetch tool instead
+	// of the expansions themselves, so it relaxes the one-pass rule without
+	// giving the review anything the packet did not already resolve.
+	if mode := os.Getenv("REDLINE_EVAL_MODE"); mode != "" {
+		opts.Mode = mode
+		if opts.Brief {
+			t.Fatal("REDLINE_EVAL_BRIEF sends no tools and explore is a tool loop; pick one")
+		}
+	}
 	// The fan-out arm. Same reason it cannot be batched as the synopsis arm:
 	// the cohort calls read what stage one wrote.
 	if os.Getenv("REDLINE_EVAL_PIPELINE") == review.PipelineStaged {
