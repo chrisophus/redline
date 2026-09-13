@@ -199,6 +199,16 @@ type Options struct {
 	// minutes, which is a measurement this installation's ledger can make
 	// and this default will not guess at.
 	CacheTTL string
+	// Synopsis splits the description off the judgment. One call over the
+	// shared prefix writes the overview and the line per file, and the call
+	// after it writes only the comments and the verdicts.
+	//
+	// It buys two things that were measured before it existed. The two halves
+	// shared one output cap and the description lost: on large changes the
+	// walkthrough came back sparse or absent. And whole reviews were lost to
+	// that cap with fifty file summaries in front of the findings. The price
+	// is one more call over a prefix the first one has already paid to cache.
+	Synopsis bool
 }
 
 func (o Options) withDefaults() Options {
@@ -373,6 +383,18 @@ type Result struct {
 	// them folds it into CostUSD and records it apart, because it is a
 	// separate call on a separate model under its own governor.
 	ScoutCostUSD float64 `json:"scoutCostUSD,omitempty"`
+	// Synopsis records that the describing stage ran and its walkthrough is
+	// the one on this review; SynopsisFailed says why the run fell back to
+	// the one-shot contract when it did not. Same distinction the verifying
+	// pass makes: a review whose description came from the judging call and
+	// one whose describing call broke look identical without it.
+	Synopsis       bool   `json:"synopsis,omitempty"`
+	SynopsisFailed string `json:"synopsisFailed,omitempty"`
+	// SynopsisOutputTokens is what the describing stage wrote, kept out of
+	// Usage for the reason RulingOutputTokens is: the ledger's output median
+	// prices the next review's judging call, and folding a walkthrough into
+	// it would inflate every estimate after it.
+	SynopsisOutputTokens int64 `json:"synopsisOutputTokens,omitempty"`
 
 	// Candidates is what stage one found, as it wrote it, before any ruling
 	// touched it. Kept because the verifying pass writes its rulings onto the
@@ -529,8 +551,12 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	// The tripwire measures the worst case, not the expected one. Its whole
 	// job is the run where the model does spend its entire allowance, and with
 	// --samples that run happens N times: the samples go out together over the
-	// same prompt, so the worst case is N full-price calls, not one.
-	worst := res.CostCeilingUSD*float64(opts.Samples) + verifyCeilingCost(opts, res)
+	// same prompt, so the worst case is N full-price calls, not one. The
+	// describing and ruling calls are counted where they are turned on, at
+	// their own worst case, because a run refused after paying for two of
+	// three calls is the failure this guard exists to prevent.
+	worst := res.CostCeilingUSD*float64(opts.Samples) +
+		synopsisCeilingCost(opts, res) + verifyCeilingCost(opts, res)
 	if res.CostKnown && worst > opts.MaxCostUSD {
 		return res, fmt.Errorf(
 			"worst-case cost %s across %d sample(s) exceeds the %s tripwire (expected %s): %d input tokens against a %d-token ceiling. "+
@@ -562,14 +588,39 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 			return res, fmt.Errorf("--samples is for the one-shot producer; " +
 				"explore already spends its budget on turns, so sampling it multiplies a loop")
 		}
+		if opts.Synopsis {
+			return res, fmt.Errorf("--synopsis splits one call in two, and explore's call is a " +
+				"loop that already writes its walkthrough over several turns; use --mode oneshot")
+		}
 		res.Turns = 0
 		return runExplore(ctx, in, opts, res)
+	}
+	// The describing stage runs first, because it is the call that writes the
+	// cache the judging call reads, and because the judging call's contract
+	// depends on whether it succeeded: with a walkthrough in hand it is asked
+	// for findings alone, and without one it is asked for the whole review, as
+	// it always was.
+	var walkthrough findings.Review
+	var synUsage Usage
+	var synWritten int64
+	var synFailed string
+	if opts.Synopsis {
+		walkthrough, synUsage, synWritten, synFailed = describe(ctx, in, opts, res)
+		if synFailed == "" {
+			res.Stage, res.Tail = StageFindings, findingsPrompt
+		} else if opts.Progress != nil {
+			opts.Progress("the describing call did not produce a walkthrough (" + synFailed +
+				"); this review writes its own")
+		}
 	}
 	var out *Result
 	if opts.Samples > 1 {
 		out, err = runSamples(ctx, in, opts, res)
 	} else {
 		out, err = runOnce(ctx, in, opts, res)
+	}
+	if opts.Synopsis {
+		applySynopsis(out, opts.Model, walkthrough, synUsage, synWritten, synFailed)
 	}
 	if err != nil || !opts.Verify {
 		return out, err

@@ -39,8 +39,10 @@ import (
 // on the next call with tool_choice switched from review to ruling. If a
 // breakpoint ever lands and reads come back zero, re-run that probe first.
 const (
-	StageReview = "review"
-	StageRuling = "ruling"
+	StageReview   = "review"
+	StageRuling   = "ruling"
+	StageSynopsis = "synopsis"
+	StageFindings = "findings"
 )
 
 // stageTool is one stage's output contract, named so the model can be pointed
@@ -76,6 +78,18 @@ func stageTools() []stageTool {
 			Description: "Return a ruling on every finding you were given. " +
 				"Call this and nothing else.",
 			Schema: ruleSchema(),
+		},
+		{
+			Name: StageSynopsis,
+			Description: "Return what this change is: the overview and one line per file " +
+				"you were shown. Call this and nothing else.",
+			Schema: synopsisSchema(),
+		},
+		{
+			Name: StageFindings,
+			Description: "Return the comments and the verdicts for this change, for a run " +
+				"whose overview and file lines are already written. Call this and nothing else.",
+			Schema: findingsSchema(),
 		},
 	}
 }

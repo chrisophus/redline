@@ -7,11 +7,67 @@ package review
 // drop the one that carries the correlation, and an empty array is a clearer
 // answer than an absent key.
 
-// outputSchema is the JSON schema the model's response is constrained to. It
-// mirrors findings.Review, which is the file a reviewer writes and Redline
-// already knows how to render, so the producer emits the contract it will be
-// read back through rather than a shape of its own.
+// The contracts a stage's output may be constrained to. All three mirror
+// findings.Review, which is the file a reviewer writes and Redline already
+// knows how to render, so a producer emits the contract it will be read back
+// through rather than a shape of its own.
+
+// outputSchema is the whole review in one object: the walkthrough and the
+// findings together. It is what the one-shot producer emits when nothing else
+// wrote the walkthrough for it.
 func outputSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"overview", "files", "comments", "verdicts"},
+		"properties": map[string]any{
+			"overview": overviewSchema(),
+			"files":    map[string]any{"type": "array", "items": fileSchema()},
+			"comments": map[string]any{"type": "array", "items": commentSchema()},
+			"verdicts": map[string]any{"type": "array", "items": verdictSchema()},
+		},
+	}
+}
+
+// synopsisSchema is the describing stage's half: what the change is, and one
+// line per shown file. No comments and no verdicts, because a stage told to
+// describe and not to judge cannot be given somewhere to judge.
+func synopsisSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"overview", "files"},
+		"properties": map[string]any{
+			"overview": overviewSchema(),
+			"files":    map[string]any{"type": "array", "items": fileSchema()},
+		},
+	}
+}
+
+// findingsSchema is the judging stage's half, for a run whose walkthrough was
+// already written. Dropping the two description fields is the point rather
+// than tidiness: they and the findings shared one output cap, and on measured
+// runs the file summaries took enough of it to truncate the findings away.
+func findingsSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"comments", "verdicts"},
+		"properties": map[string]any{
+			"comments": map[string]any{"type": "array", "items": commentSchema()},
+			"verdicts": map[string]any{"type": "array", "items": verdictSchema()},
+		},
+	}
+}
+
+func overviewSchema() map[string]any {
+	return map[string]any{
+		"type":        "string",
+		"description": "One or two paragraphs on what this change is and why it exists.",
+	}
+}
+
+func commentSchema() map[string]any {
 	comment := map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
@@ -88,7 +144,11 @@ func outputSchema() map[string]any {
 			},
 		},
 	}
-	file := map[string]any{
+	return comment
+}
+
+func fileSchema() map[string]any {
+	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
 		"required":             []string{"path", "summary"},
@@ -97,16 +157,19 @@ func outputSchema() map[string]any {
 			"summary": map[string]any{"type": "string", "description": "One line on what this file's change does."},
 		},
 	}
-	// verdict is a ruling on one finding a deterministic check already made.
-	// The three words are the ones the report already renders and the skill
-	// already documents for an agent writing review.json; this is the same
-	// vocabulary reaching the same fields from the one command that calls a
-	// model, rather than a second vocabulary meaning the same things.
-	//
-	// It is an array here and a map keyed by fingerprint on disk. A strict
-	// output schema cannot describe an object whose keys are not known in
-	// advance, and the fingerprints are not: parseReview does the conversion.
-	verdict := map[string]any{
+}
+
+// verdictSchema is a ruling on one finding a deterministic check already made.
+// The three words are the ones the report already renders and the skill
+// already documents for an agent writing review.json; this is the same
+// vocabulary reaching the same fields from the one command that calls a
+// model, rather than a second vocabulary meaning the same things.
+//
+// It is an array here and a map keyed by fingerprint on disk. A strict
+// output schema cannot describe an object whose keys are not known in
+// advance, and the fingerprints are not: parseReview does the conversion.
+func verdictSchema() map[string]any {
+	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
 		"required":             []string{"finding", "ruling", "rationale", "fix"},
@@ -130,20 +193,6 @@ func outputSchema() map[string]any {
 				"type":        "string",
 				"description": "How to resolve it, one or two lines. Empty unless the ruling is should-fix.",
 			},
-		},
-	}
-	return map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"required":             []string{"overview", "files", "comments", "verdicts"},
-		"properties": map[string]any{
-			"verdicts": map[string]any{"type": "array", "items": verdict},
-			"overview": map[string]any{
-				"type":        "string",
-				"description": "One or two paragraphs on what this change is and why it exists.",
-			},
-			"files":    map[string]any{"type": "array", "items": file},
-			"comments": map[string]any{"type": "array", "items": comment},
 		},
 	}
 }

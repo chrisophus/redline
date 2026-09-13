@@ -201,6 +201,42 @@ const oneShotAddendum = `
 
 You have no tools in this pass. Everything you get to see is below.`
 
+// synopsisPrompt is the describing stage's own turn, appended after the shared
+// prefix so the block the cache is keyed on does not move.
+//
+// It says what not to do twice, because the system block above spends most of
+// its length teaching this model to find defects and a stage told to describe
+// is being asked to ignore the bulk of its instructions. What it must not do
+// is hedge the description into a review: a synopsis with findings in it
+// spends the output budget this stage exists to free.
+const synopsisPrompt = `
+
+## This pass
+
+Describe this change. Do not judge it.
+
+Call the synopsis tool and nothing else. Write the overview, and one line for
+every file whose diff you were shown above - every one of them, and none of
+the files held back. Another pass over this same material writes the comments,
+the questions and the verdicts, so a defect you notice here is that pass's to
+report and yours to leave out.
+
+The context blocks above are there for that pass. You do not need them to say
+what the change is.`
+
+// findingsPrompt is the judging stage's turn when a synopsis already ran. The
+// system block still describes the whole review, walkthrough included, because
+// it is shared with the synopsis call byte for byte and a system block that
+// varied per stage would cost the cache.
+const findingsPrompt = `
+
+## This pass
+
+The overview and the per-file lines for this change are already written, by a
+pass over this same material that was told to describe and not to judge. Yours
+is the judging half: call the findings tool with the comments and the
+verdicts, and nothing else. Do not restate what the change does.`
+
 // hidesTests reports whether the request holds the change's test files back.
 //
 // Test code is the biggest thing a review can be sent that it was not asked
@@ -226,6 +262,31 @@ func (in Input) hidesTests() bool {
 		}
 	}
 	return false
+}
+
+// ShownFiles is the set of paths whose diffs the prompt actually carries,
+// which is the set a walkthrough is expected to have a line for and no more.
+//
+// Exported because the score for walkthrough completeness is the share of
+// these that came back with a summary, and a scorer with its own copy of
+// "which files were shown" would eventually measure a rule the prompt does not
+// have. There is one predicate and both sides read it.
+func (in Input) ShownFiles() map[string]bool {
+	if in.Change == nil {
+		return nil
+	}
+	hideTests := in.hidesTests()
+	shown := make(map[string]bool, len(in.Change.Files))
+	for _, f := range in.Change.Files {
+		if f.Diff == "" && f.Head == "" {
+			continue
+		}
+		if hideTests && change.IsTestCode(f.Path) {
+			continue
+		}
+		shown[f.Path] = true
+	}
+	return shown
 }
 
 // contextFilter keeps test code out of the context block too. A provider
@@ -917,14 +978,12 @@ func (in Input) diffSection() string {
 		"The invariant a change breaks usually lives in the part of the file the change did " +
 		"not touch, and the added lines are already in the file, so repeating them as a diff " +
 		"would only send them twice. Larger files are shown as a diff instead.\n\n")
-	hideTests := in.hidesTests()
+	shown := in.ShownFiles()
 	for _, f := range in.Change.Files {
-		if f.Diff == "" && f.Head == "" {
-			continue
-		}
-		if hideTests && change.IsTestCode(f.Path) {
-			// Named in the change section with its line counts, and that is
-			// all a review of the code under test needs from it.
+		if !shown[f.Path] {
+			// Either nothing to show, or test code named in the change
+			// section with its line counts, which is all a review of the
+			// code under test needs from it.
 			continue
 		}
 		fmt.Fprintf(&b, "### %s\n\n", f.Path)

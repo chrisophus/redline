@@ -349,6 +349,13 @@ the LLM truncates or sparse-fills `files`." Description and judgment compete
 inside one output budget and judgment wins, which is the right outcome for the
 wrong reason — the reader loses the orientation block entirely.
 
+The describing stage is the direct answer to that one and it ships ahead of
+cohorts. What the first measured pair showed was a second failure the column
+did not exist to see: the one-shot call wrote a line for every shown file and
+two more for test files it had been told were held back and whose diffs it was
+never sent. Judgment does not only crowd the description out, it invents it.
+The describing call, asked for nothing else, wrote 10 of 10 and stopped.
+
 Whole reviews are lost to the cap. `review.go` records three of seven real
 reviews producing nothing at 16,000 and three of the next six truncating to
 zero findings at 32,000. The cap is shared between fifty-odd file summaries and
@@ -541,11 +548,24 @@ Then, per arm, against the frozen fixtures:
    arm recorded at 3 of 14 was catching 6 of 17. Nothing after this is
    measurable without it, and the correlation survival bar the cohort arm has
    to clear now has a label to be measured against. **S**
-4. **The synopsis stage, under `oneshot`.** Overview, per-file summaries and
-   cohorts emitted by their own call; `post` and the report read the
-   walkthrough from it. Ships value alone: the walkthrough stops being sparse
-   and the judging call's output cap stops being shared with fifty file
-   summaries. Score walkthrough completeness and the truncation rate. **M**
+4. **The synopsis stage, under `oneshot`.** Shipped as `--synopsis`, off by
+   default. One call writes the overview and the line per file under its own
+   contract; the call after it is forced to a findings-only contract and told
+   the walkthrough exists. Both share the prefix, so the second reads what the
+   first wrote and the third — the ruling — reads it again: one write and two
+   reads on the measured run.
+
+   Cohorts are not in the contract yet. The plan had stage one emit the
+   partition too, and a field nothing reads is not a contract, so it arrives
+   with the fan-out that consumes it.
+
+   Walkthrough completeness is now scored with no model call: `Score` counts
+   the files whose diffs the prompt carried against the lines that came back,
+   using the producer's own `ShownFiles` rather than a copy of the rule. The
+   first comparison, one session, `claude-sonnet-5`: with the stage, 10 of 10
+   shown files described and nothing else; without it, the same 10 plus two
+   lines about held-back test files whose diffs were never sent. That second
+   number is the `Invented` column, and it was invisible before this. **M**
 5. **Cohort fan-out.** `--cohorts`, the per-cohort prompt with cross-summaries,
    the scout budget split. Score against every column above, with correlation
    survival as the bar. **L**

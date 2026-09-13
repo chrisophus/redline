@@ -115,6 +115,14 @@ flags:
                     against the five minutes' 1.25x, and is worth it only
                     when the gap between the two calls runs past five
                     minutes.
+  --synopsis        with review: describe the change in its own call, then
+                    judge it in a second one that writes only the comments
+                    and the verdicts. The two share a prefix, so the second
+                    reads what the first cached. Off by default;
+                    --no-synopsis is the explicit off. What it buys is a
+                    walkthrough that covers every shown file and an output
+                    cap the findings no longer share with fifty file
+                    summaries.
   --ceiling N       with review: token ceiling for the whole request
                     (default 250000). A tail bound, not a per-review budget:
                     a change whose diff and findings alone exceed it is
@@ -164,6 +172,7 @@ type opts struct {
 	scoutModel, scoutEffort                                           string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
 	stats, verify, noVerify, debug, cache, noCache                    bool
+	synopsis, noSynopsis                                              bool
 	port, ceiling, maxTokens, maxTurns, samples                       int
 	maxCost                                                           float64
 	cacheTTL                                                          string
@@ -215,6 +224,8 @@ func runMain(args []string) error {
 	fs.BoolVar(&o.noVerify, "no-verify", false, "with review: skip the checking pass")
 	fs.BoolVar(&o.cache, "cache", false, "with review: mark the shared prefix for the prompt cache (on by default)")
 	fs.BoolVar(&o.noCache, "no-cache", false, "with review: send every call at full input rate")
+	fs.BoolVar(&o.synopsis, "synopsis", false, "with review: describe the change in its own call before judging it")
+	fs.BoolVar(&o.noSynopsis, "no-synopsis", false, "with review: one call writes the walkthrough and the findings together")
 	fs.StringVar(&o.cacheTTL, "cache-ttl", "", "with review: how long the cached prefix lives, 5m or 1h")
 	fs.BoolVar(&o.debug, "debug", false, "with review: log each model request, response, and scout tool call to stderr")
 	fs.IntVar(&o.ceiling, "ceiling", 0, "with review: token ceiling for the whole request")
