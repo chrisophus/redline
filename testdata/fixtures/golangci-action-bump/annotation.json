@@ -9,7 +9,25 @@
     {
       "about": "speculating about the major version bump",
       "note": "There is nothing here to review. Asking whether v7 has breaking changes, or suggesting the version be pinned to a SHA, is padding.",
-      "matches_without_correlation": ["breaking", "pin", "sha", "consider", "may want"]
+      "matches_without_correlation": [
+        "breaking",
+        "pin",
+        "sha",
+        "consider",
+        "may want"
+      ]
+    }
+  ],
+  "reject": [
+    {
+      "key": "fetch-depth-is-not-this-change",
+      "what": "A comment on the test job's `fetch-depth: 0`, arguing the full clone is unused because only-new-issues is not set on the golangci-lint step and `gremlins --diff` runs in the mutate job, and recommending that only-new-issues be enabled or the depth override dropped.",
+      "why": "The change is one line moving golangci-lint-action from v6 to v7. The depth override, the comment above it and both steps it cites are untouched, so this reviews the file rather than the change. Whether the remark is true of the workflow is beside the point: it is the first invented problem on a clean change, which is the failure this fixture exists to catch.",
+      "source": "fixture",
+      "file": ".github/workflows/ci.yml",
+      "all_of": [
+        "fetch-depth"
+      ]
     }
   ]
 }
