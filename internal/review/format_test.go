@@ -53,3 +53,46 @@ func TestOtherStagesCarryNoOutputFormat(t *testing.T) {
 		})
 	}
 }
+
+// BriefKeepsTools is the arm that separates the two halves of Brief. The whole
+// value of the comparison rests on it differing from the brief arm in exactly
+// one way: the grammar comes back and the output format goes away, so what is
+// varied is the emission and nothing else. If the prompt, the thinking setting
+// or anything else moves with it, the run measures two changes and settles
+// neither.
+func TestTheBriefWithToolsArmDiffersOnlyInItsEmission(t *testing.T) {
+	base := Options{Model: "claude-sonnet-5", MaxTokens: 100, Brief: true}
+	withTools := base
+	withTools.BriefKeepsTools = true
+
+	free := anthropicParams(base, &Result{Stage: StageReview})
+	grammar := anthropicParams(withTools, &Result{Stage: StageReview})
+
+	if len(grammar.Tools) == 0 {
+		t.Error("the arm that keeps its tools sent none, so it is not the arm it claims to be")
+	}
+	if grammar.OutputConfig.Format.Schema != nil {
+		t.Error("this arm sent the grammar and an output format together, which is two contracts and two differences")
+	}
+	if len(free.Tools) != 0 || free.OutputConfig.Format.Schema == nil {
+		t.Error("the brief arm is no longer free-form, so the comparison has lost its other side")
+	}
+	// Thinking is disabled on both, or the emission is not the only thing that
+	// moved between them.
+	if grammar.Thinking.OfDisabled == nil || free.Thinking.OfDisabled == nil {
+		t.Error("thinking is not disabled on both arms")
+	}
+	// Same prompt on both, which systemFor gives them by keying on Brief alone.
+	if systemFor(base, StageReview) != systemFor(withTools, StageReview) {
+		t.Error("the two arms are running different prompts, so the comparison is not about the emission")
+	}
+}
+
+// The reservation asks about the wire and the arm together, because either one
+// can put the catalogue back on the request.
+func TestBriefWithToolsReservesItsTools(t *testing.T) {
+	o := Options{Brief: true, BriefKeepsTools: true, API: APIAnthropic}
+	if o.briefSendsNoTools() {
+		t.Error("this arm keeps its tools, so the budget has to reserve for them")
+	}
+}

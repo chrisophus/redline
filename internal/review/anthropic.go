@@ -128,7 +128,7 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		System:    []anthropic.TextBlockParam{{Text: res.System}},
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(blocks...)},
 	}
-	if !opts.Brief || res.stage() != StageReview {
+	if !opts.Brief || opts.BriefKeepsTools || res.stage() != StageReview {
 		// The whole catalogue, every time, with the stage chosen by name. See
 		// tools.go for why the contract cannot be a per-call output format.
 		//
@@ -165,8 +165,15 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		// heading, or the bare object. jsonObjectOf guessed which, and measured
 		// across four runs of one fixture at three samples it guessed right
 		// 0, 2, 1 and 3 times out of 3.
-		params.OutputConfig.Format = anthropic.JSONOutputFormatParam{
-			Schema: outputSchema(),
+		//
+		// Not when the arm kept its tools. The grammar already carries the
+		// contract, and sending both would mean the arm that keeps the tools
+		// differs from the one that drops them in two ways at once, which is
+		// the thing this comparison exists to avoid.
+		if !opts.BriefKeepsTools {
+			params.OutputConfig.Format = anthropic.JSONOutputFormatParam{
+				Schema: outputSchema(),
+			}
 		}
 	}
 	if opts.Effort != "" {

@@ -106,9 +106,20 @@ type Options struct {
 	// Brief runs the review stage under briefPrompt with no tools, parsing
 	// the JSON out of a text reply. The pair is what was measured better;
 	// see briefPrompt for the numbers and for why neither half ships alone.
-	Brief     bool
-	Ceiling   int
-	MaxTokens int64
+	Brief bool
+	// BriefKeepsTools runs briefPrompt over the tool grammar instead of a text
+	// reply. It exists to separate the two halves of Brief, which have only
+	// ever been measured together: the short prompt caught 17/38 where the
+	// shipped prompt under the same grammar caught 6/38, and nothing says
+	// whether the prompt or the free-form emission earned that.
+	//
+	// The answer decides how the two wires converge. completeOpenAI sends the
+	// catalogue on every call and cannot be talked out of it by an Anthropic
+	// output format, so if the prompt is what matters, this shape is what both
+	// wires can run. It is an arm rather than a flag until that is measured.
+	BriefKeepsTools bool
+	Ceiling         int
+	MaxTokens       int64
 	// MaxCostUSD refuses to send a request whose estimated cost exceeds it.
 	// Enforcement is before the call, against an estimate of the request
 	// about to be sent, which is the only enforcement point a single-turn
@@ -319,11 +330,12 @@ func (o Options) cacheOn() bool {
 //
 // Brief drops the tools in anthropicParams alone. completeOpenAI reads Brief
 // nowhere and sends every stage's function on every call, so a brief review
-// over that wire still pays for the schemas. Anything that prices or reserves
-// on behalf of the request has to ask this rather than ask for Brief, or it
-// reserves nothing for bytes the wire is about to send.
+// over that wire still pays for the schemas. BriefKeepsTools asks for them
+// back on the wire that would have dropped them. Anything that prices or
+// reserves on behalf of the request has to ask this rather than ask for Brief,
+// or it reserves nothing for bytes the wire is about to send.
 func (o Options) briefSendsNoTools() bool {
-	return o.Brief && o.API != APIOpenAI
+	return o.Brief && !o.BriefKeepsTools && o.API != APIOpenAI
 }
 
 // Result is one review and what it cost.
