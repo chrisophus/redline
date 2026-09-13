@@ -13,10 +13,16 @@ package eval_test
 //	shipped adds the strict tool grammar, and is TestSweep's one-shot arm
 //
 // Measured 2026-09-13 on claude-sonnet-5, eleven fixtures, one sample: rung 0
-// caught 12/38, rung 1 caught 11/38, and the shipped pipeline caught 6/38.
-// The layers the product adds past the diff halve recall, and the packet's
-// measurable contribution on this set is noise rather than catches: 25
-// unlabelled comments at rung 0 against 16 at rung 1.
+// caught 12/38, rung 1 caught 11/38, and the one-shot arm caught 6/38. The
+// packet's measurable contribution on this set is quiet rather than catches:
+// 25 unlabelled comments at rung 0 against 16 at rung 1.
+//
+// The comparison is against one-shot only, which is the weakest shipped arm.
+// No rung carries the cohort partition, the scout's lookups or the ruling,
+// and `--pipeline staged` at three samples caught 16/35, above rung 0's
+// 12/38. Nothing here says a rung beats the pipeline; it says the one-shot
+// default is the shape that loses most. The rungs are unpriced, so no cost
+// claim follows from them either.
 //
 // Every rung asks for free-form JSON and parses it with findings.LoadReview,
 // which is the same path an agent's review.json takes, so a rung is scored
