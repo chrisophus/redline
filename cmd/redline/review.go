@@ -127,6 +127,20 @@ func cmdReview(o opts) error {
 		return fmt.Errorf("--pipeline is %s or %s, not %q",
 			review.PipelineOneShot, review.PipelineStaged, o.pipeline)
 	}
+	// One call, the short prompt, no tool grammar. It is exclusive with the
+	// staged and describing shapes rather than merged with them: those stages
+	// are defined by their tool contracts - the partition arrives as one -
+	// and a brief review sends no tools at all.
+	ropts.Brief = o.brief
+	if o.brief {
+		if ropts.Pipeline == review.PipelineStaged {
+			return fmt.Errorf("--brief runs one call with no tools, so it cannot draw the %s partition; pass one or the other",
+				review.PipelineStaged)
+		}
+		if ropts.Synopsis {
+			return fmt.Errorf("--brief writes the walkthrough in the same call, so --synopsis has nothing to add; pass one or the other")
+		}
+	}
 	ropts.Cohorts = o.cohorts
 	ropts.MinCohortFiles = o.minCohortFiles
 	// On unless the off flag is given, the way the cache is: the summaries

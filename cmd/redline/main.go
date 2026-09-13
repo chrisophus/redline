@@ -123,6 +123,15 @@ flags:
                     walkthrough that covers every shown file and an output
                     cap the findings no longer share with fifty file
                     summaries.
+  --brief           with review: one call, a forty-line prompt, and no tool
+                    grammar - the review comes back as JSON in a text reply.
+                    Measured on eleven fixtures at one sample: 11 of 38
+                    annotated defects against the default shape's 6, and
+                    against 2 for the short prompt with the tools still on.
+                    The prompt and the free-form reply only win together, so
+                    this flag is the pair and neither half is separable.
+                    Exclusive with --pipeline staged and --synopsis, whose
+                    stages are defined by the tool contracts this drops.
   --pipeline SHAPE  with review: oneshot (default) is one call that judges
                     the whole change. staged describes it first, splits the
                     shown files into cohorts, and reviews each cohort in its
@@ -191,6 +200,7 @@ type opts struct {
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
 	stats, verify, noVerify, debug, cache, noCache                    bool
 	synopsis, noSynopsis                                              bool
+	brief                                                             bool
 	port, ceiling, maxTokens, maxTurns, samples                       int
 	cohorts, minCohortFiles                                           int
 	maxCost                                                           float64
@@ -246,6 +256,7 @@ func runMain(args []string) error {
 	fs.BoolVar(&o.noCache, "no-cache", false, "with review: send every call at full input rate")
 	fs.BoolVar(&o.synopsis, "synopsis", false, "with review: describe the change in its own call before judging it")
 	fs.BoolVar(&o.noSynopsis, "no-synopsis", false, "with review: one call writes the walkthrough and the findings together")
+	fs.BoolVar(&o.brief, "brief", false, "with review: one call, the short prompt, no tool grammar - measured to catch more than the default")
 	fs.StringVar(&o.cacheTTL, "cache-ttl", "", "with review: how long the cached prefix lives, 5m or 1h")
 	fs.StringVar(&o.pipeline, "pipeline", "", "with review: oneshot, or staged to split the change into cohorts and review each")
 	fs.IntVar(&o.cohorts, "cohorts", 0, "with review: upper bound on parallel cohort reviews under --pipeline staged (default 6)")
