@@ -63,6 +63,20 @@ type Entry struct {
 	// count.
 	Synopsis             bool  `json:"synopsis,omitempty"`
 	SynopsisOutputTokens int64 `json:"synopsisOutputTokens,omitempty"`
+	// Pipeline is the shape the run came out of, Cohorts how many calls the
+	// fan-out made and CohortsFailed how many did not answer, and FellBack
+	// the reason a staged run finished as a one-shot review.
+	//
+	// The shape is recorded because a cost mean across shapes is not a
+	// number: a staged row is a call per cohort and a one-shot row is one
+	// call, which is the same reason Batched rows are kept out of the
+	// distribution. FellBack is what stops a run that paid for a failed
+	// stage one and then reviewed in one call from reading as a cheap
+	// staged run.
+	Pipeline      string `json:"pipeline,omitempty"`
+	Cohorts       int    `json:"cohorts,omitempty"`
+	CohortsFailed int    `json:"cohortsFailed,omitempty"`
+	FellBack      string `json:"fellBack,omitempty"`
 	// Ceiling and InputEstimate record what the request was allowed and what
 	// it used, so a run that was trimmed can be told from one that fit.
 	Ceiling       int  `json:"ceiling"`
@@ -98,6 +112,8 @@ func Record(dir string, r *Result, effort string) error {
 		StopReason: r.StopReason, Truncated: r.Truncated,
 		Batched: r.Batched, Cached: r.Cached,
 		Synopsis: r.Synopsis, SynopsisOutputTokens: r.SynopsisOutputTokens,
+		Pipeline: r.Pipeline, Cohorts: len(r.Cohorts),
+		CohortsFailed: r.CohortsFailed, FellBack: r.FellBack,
 		Ceiling: r.Ceiling, InputEstimate: r.InputEstimate, OverCeiling: r.OverCeiling,
 		Samples: r.Samples, SamplesFailed: r.SamplesFailed,
 		RulingOutputTokens: r.RulingOutputTokens, ScoutCostUSD: r.ScoutCostUSD,

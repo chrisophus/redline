@@ -98,6 +98,24 @@ func cmdReview(o opts) error {
 	// has to show is a walkthrough that covers every shown file and a judging
 	// call that stops losing findings to the output cap.
 	ropts.Synopsis = o.synopsis && !o.noSynopsis
+	// The pipeline shape. Staged implies the describing call - it is the call
+	// that draws the partition - so --synopsis is not also required, and
+	// --no-synopsis does not switch it off: a run asked to fan out cannot be
+	// given nothing to fan out over.
+	switch o.pipeline {
+	case "", review.PipelineOneShot, review.PipelineStaged:
+		ropts.Pipeline = o.pipeline
+	default:
+		return fmt.Errorf("--pipeline is %s or %s, not %q",
+			review.PipelineOneShot, review.PipelineStaged, o.pipeline)
+	}
+	ropts.Cohorts = o.cohorts
+	ropts.MinCohortFiles = o.minCohortFiles
+	// On unless the off flag is given, the way the cache is: the summaries
+	// are what a cohort call knows about its neighbours, and a fan-out with
+	// none of them gives up every cross-cohort correlation from the cohort
+	// side. Turning them off is an arm to measure, not a default.
+	ropts.CrossSummaries = !o.noCrossSummaries || o.crossSummaries
 	// On the OpenAI wire the credentials are read here, in the vendor's own
 	// env names, before the checking pass is wired up: the scout that runs
 	// inside it now goes over the same wire and needs them. The flag wins over

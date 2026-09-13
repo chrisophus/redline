@@ -270,6 +270,73 @@ pass over this same material that was told to describe and not to judge. Yours
 is the judging half: call the findings tool with the comments and the
 verdicts, and nothing else. Do not restate what the change does.`
 
+// cohortsTail is stage one's turn when the run fans out: describe, and draw
+// the partition the fan-out reviews.
+//
+// The bound is stated rather than left to judgement because the tripwire
+// priced the run at it. A stage one free to return nine cohorts would commit
+// the run to nine calls it refused to pay for.
+func cohortsTail(in Input, bound int) string {
+	var b strings.Builder
+	b.WriteString(synopsisTail(in))
+	fmt.Fprintf(&b, `
+
+### The cohorts
+
+Also split the files above into at most %d group(s) of files that are best
+reviewed together, and call the cohorts tool rather than the synopsis one.
+Every file on that list belongs to exactly one group and no group is empty.
+
+Group by what a reviewer would have to hold in mind at once - a schema change
+and the code that reads it belong together even in different directories, and
+two unrelated fixes in one package do not. Each group's summary is what the
+reviewers of the other groups will be shown of this one, so write it for
+somebody who cannot see these lines.`, bound)
+	return b.String()
+}
+
+// cohortTail is one stage-two call's turn: the same prefix as every other
+// call, scoped by instruction to one cohort.
+//
+// Scoping is by instruction because it cannot be by input. The prefix carries
+// every diff and is byte-identical on every call or nothing is cached, so a
+// cohort call is told which files are its own while the rest stay in front of
+// it at a tenth of the rate. That is the better arrangement anyway: a
+// correlation this call raises against another cohort is grounded in lines it
+// was shown rather than in somebody's summary of them.
+func cohortTail(mine Cohort, all []Cohort, crossSummaries bool) string {
+	var b strings.Builder
+	b.WriteString(findingsPrompt)
+	fmt.Fprintf(&b, "\n\n### Your cohort: %s\n\n%s\n\nReview these files and only these:\n\n",
+		mine.Name, strings.TrimSpace(mine.Summary))
+	for _, path := range mine.Files {
+		b.WriteString("- " + path + "\n")
+	}
+	others := make([]Cohort, 0, len(all))
+	for _, c := range all {
+		if c.Name != mine.Name {
+			others = append(others, c)
+		}
+	}
+	if len(others) == 0 {
+		return b.String()
+	}
+	if !crossSummaries {
+		b.WriteString("\nOther reviewers have the rest of this change. " +
+			"A defect outside your files is theirs to report.\n")
+		return b.String()
+	}
+	b.WriteString("\n### The rest of the change\n\n" +
+		"Another reviewer has each of these, and a defect inside one is theirs to report. " +
+		"Their diffs are above and you may read them. Raise one only where it bears on " +
+		"your own files - a call your files make, an assumption they rely on - and say so " +
+		"as a correlation against the file of yours that it affects.\n\n")
+	for _, c := range others {
+		fmt.Fprintf(&b, "- **%s** (%d file(s)): %s\n", c.Name, len(c.Files), strings.TrimSpace(c.Summary))
+	}
+	return b.String()
+}
+
 // hidesTests reports whether the request holds the change's test files back.
 //
 // Test code is the biggest thing a review can be sent that it was not asked

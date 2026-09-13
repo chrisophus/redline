@@ -604,9 +604,46 @@ Then, per arm, against the frozen fixtures:
    zero. The second was in the harness, not the producer: the sweep built
    `review.Options` without `Cache`, so the arm it billed at 2.1x was a
    configuration the command never runs. **M**
-5. **Cohort fan-out.** `--cohorts`, the per-cohort prompt with cross-summaries,
-   the scout budget split. Score against every column above, with correlation
-   survival as the bar. **L**
+5. **Cohort fan-out.** Shipped as `--pipeline staged`, off by default. Stage
+   one describes the change and partitions the shown files; one call per
+   cohort judges its own part over the same cached prefix; the findings are
+   unioned by `UnionKey` and the ruling runs behind them as it always has.
+   `--cohorts` bounds the fan-out, `--min-cohort-files` keeps small changes
+   whole, `--no-cross-summaries` is the arm that withholds the neighbours.
+
+   Proven on a real change - this repository's own PR #44, 13 files - at
+   $0.3286: five cohorts drawn, five calls made, 366,240 tokens read from
+   cache against 10,251 billed at base rate, ten findings, one kept by the
+   ruling.
+
+   Three things it turned out to need that this document did not say.
+
+   **The constant tool array has a ceiling.** Declaring the partition
+   contract alongside the other four got a 400 from the endpoint - "the
+   compiled grammar is too large ... reduce the number of strict tools" - on
+   the first live run. Probed: `review + ruling + findings + cohorts` is
+   refused, `ruling + findings + cohorts` is accepted. So the array carries
+   the contracts the run's *shape* can ask for rather than every contract
+   there is. The cache invariant was never "the same array forever", it was
+   "the same array between two calls of one run", and that still holds.
+
+   **The fallback reassembles.** A staged run that loses stage one falls back
+   to one call, and the review contract it needs is the one the staged array
+   cannot carry, so the fallback call goes out under the one-shot shape and
+   reads no cache. That costs nothing: the run it is rescuing has already
+   lost the call that would have written one. The failure model held up on
+   the wire before it was ever tested - the 400 above is what exercised it,
+   and the review still came back.
+
+   **The tripwire needed a sentence, not a number.** A staged run's worst
+   case is stage one plus the bound, at the full response cap each, which on
+   a 57k-token change is $6.35 against a $2 default. The refusal now names
+   the shape rather than reading as a change too large to review.
+
+   Not scored yet. The arm exists and the sweep can select it
+   (`REDLINE_EVAL_PIPELINE=staged`); correlation survival is the bar and
+   `--samples 3` is what it has to be read at, because n=1 on this fixture
+   set is a coin flip. **L**
 6. **The merge stage.** `--merge-context`, dedup across cohorts, the ruling
    moved behind it. **M**
 7. **Retune the defaults.** Only once 4 through 6 have been scored on the

@@ -479,6 +479,15 @@ func TestSweep(t *testing.T) {
 	if opts.Synopsis && os.Getenv("REDLINE_EVAL_BATCH") != "" {
 		t.Fatal("REDLINE_EVAL_SYNOPSIS and REDLINE_EVAL_BATCH ask for two calls that read each other over a tier that cannot pair them; drop the batch")
 	}
+	// The fan-out arm. Same reason it cannot be batched as the synopsis arm:
+	// the cohort calls read what stage one wrote.
+	if os.Getenv("REDLINE_EVAL_PIPELINE") == review.PipelineStaged {
+		opts.Pipeline = review.PipelineStaged
+		opts.CrossSummaries = os.Getenv("REDLINE_EVAL_NO_CROSS_SUMMARIES") == ""
+		if os.Getenv("REDLINE_EVAL_BATCH") != "" {
+			t.Fatal("a staged run is a call per cohort over what stage one wrote; the batch tier cannot pair them")
+		}
+	}
 	// A model on another wire is an arm like any other. The key and
 	// base URL are read the same way the command reads them, so a
 	// sweep and a real review reach the same endpoint.
@@ -618,6 +627,12 @@ func TestSweep(t *testing.T) {
 	}
 	if os.Getenv("REDLINE_EVAL_SYNOPSIS") != "" {
 		label += " synopsis"
+	}
+	if os.Getenv("REDLINE_EVAL_PIPELINE") == review.PipelineStaged {
+		label += " staged"
+		if os.Getenv("REDLINE_EVAL_NO_CROSS_SUMMARIES") != "" {
+			label += " no-cross"
+		}
 	}
 	if samples > 1 {
 		label += fmt.Sprintf(" ×%d", samples)

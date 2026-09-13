@@ -129,7 +129,7 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(blocks...)},
 		// The whole catalogue, every time, with the stage chosen by name. See
 		// tools.go for why the contract cannot be a per-call output format.
-		Tools:      anthropicTools(),
+		Tools:      anthropicTools(opts),
 		ToolChoice: anthropic.ToolChoiceParamOfTool(res.stage()),
 	}
 	if opts.Effort != "" {
