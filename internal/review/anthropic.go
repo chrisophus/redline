@@ -127,10 +127,17 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		MaxTokens: opts.MaxTokens,
 		System:    []anthropic.TextBlockParam{{Text: res.System}},
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(blocks...)},
+	}
+	if !opts.Brief || res.stage() != StageReview {
 		// The whole catalogue, every time, with the stage chosen by name. See
 		// tools.go for why the contract cannot be a per-call output format.
-		Tools:      anthropicTools(opts),
-		ToolChoice: anthropic.ToolChoiceParamOfTool(res.stage()),
+		//
+		// A brief review is the exception: briefPrompt carries the contract in
+		// prose and the reply comes back as text, which is the emission the
+		// measurement favoured. Every other stage keeps its tool, so the
+		// ruling and the partition still parse.
+		params.Tools = anthropicTools(opts)
+		params.ToolChoice = anthropic.ToolChoiceParamOfTool(res.stage())
 	}
 	if opts.Effort != "" {
 		params.OutputConfig.Effort = anthropic.OutputConfigEffort(opts.Effort)
