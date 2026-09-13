@@ -52,22 +52,21 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 	}
 	client := anthropic.NewClient(clientOpts...)
 
-	// Still no cache breakpoint on this path, but no longer for the old
-	// reason. What blocked one was the response schema: it sits in front of the
-	// system block and the ruling sent a different one from the review it
-	// follows, so each call wrote the shared prefix and read none of it, at
-	// 171,690 and 170,601 tokens on a real run. The contract now goes as a
+	// This path marks a cache breakpoint now, and anthropicParams places it.
+	// What blocked one for a long time was the response schema: it sits in
+	// front of the system block and the ruling sent a different one from the
+	// review it follows, so each call wrote the shared prefix and read none of
+	// it, at 171,690 and 170,601 tokens on a real run. The contract goes as a
 	// constant tool array with the stage picked by tool_choice, so the review
-	// and the ruling send the same bytes ahead of the prompt and a breakpoint
-	// would be read back. Marking one is the next change and is not this one;
-	// until it lands a write nobody reads would still cost a quarter above
-	// base input, so this call pays the base rate and no more.
+	// and the ruling send the same bytes ahead of the prompt and the write is
+	// read back.
 	//
-	// Samples are a separate case and stay uncached whatever happens here:
-	// they go out together, so three concurrent calls over one fresh prefix
-	// each write it and none reads. Explore mode keeps its own breakpoints,
-	// where one growing conversation means a later turn really does read an
-	// earlier one.
+	// Not every run marks one, and cacheOn is the one place that decides:
+	// samples go out together over one fresh prefix, so each would write it and
+	// none would read it, the OpenAI wire has no breakpoint to place, and the
+	// batch tier's window outlives a five-minute entry. Explore mode keeps its
+	// own breakpoints, where one growing conversation means a later turn really
+	// does read an earlier one.
 	stream := client.Messages.NewStreaming(ctx, anthropicParams(opts, res))
 	// Next returning false at the end of the stream does not close the
 	// response body; only Close does. One per call here, so a deferred close
@@ -130,6 +129,15 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	if res.Tail != "" {
 		blocks = append(blocks, anthropic.NewTextBlock(res.Tail))
 	}
+	// A model that will not be pinned to one tool has to be told in words which
+	// stage this call is for, because tool_choice is what says it otherwise.
+	// The block goes after the cached prefix, so a run that degrades still
+	// reads the same cache entry as one that does not.
+	forced := forcesTools(opts.Model)
+	if !forced {
+		blocks = append(blocks, anthropic.NewTextBlock(
+			"\nReturn your answer by calling the "+res.stage()+" tool, and do not answer in prose."))
+	}
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(opts.Model),
 		MaxTokens: opts.MaxTokens,
@@ -145,8 +153,13 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	// emissions did not separate, so the exception is gone and both wires send
 	// the same request.
 	params.Tools = anthropicTools(opts)
-	params.ToolChoice = anthropic.ToolChoiceParamOfTool(res.stage())
-	if opts.Brief && res.stage() == StageReview {
+	if forced {
+		params.ToolChoice = anthropic.ToolChoiceParamOfTool(res.stage())
+	} else {
+		params.ToolChoice = anthropic.ToolChoiceUnionParam{OfAuto: &anthropic.ToolChoiceAutoParam{}}
+	}
+	thinkingOff := opts.Brief && res.stage() == StageReview
+	if thinkingOff {
 		// Thinking is on by default, and a free-form reply has no grammar
 		// bounding its length, so the two together spend the output budget
 		// twice over: a brief review measured $0.4405 and $0.4975 on the two
@@ -166,9 +179,55 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		// review in four.
 	}
 	if opts.Effort != "" {
-		params.OutputConfig.Effort = anthropic.OutputConfigEffort(opts.Effort)
+		params.OutputConfig.Effort = anthropic.OutputConfigEffort(cappedEffort(opts.Effort, thinkingOff))
 	}
 	return params
+}
+
+// forcesTools reports whether this model accepts tool_choice pinned to one
+// tool.
+//
+// Every stage declares the whole catalogue and picks its contract by name, so
+// pinning is how a call says which stage it is. Not every model takes it:
+// claude-fable-5-1 answers 400 with `tool_choice: type "tool" and "any" are not
+// supported for this model`, which failed the run outright rather than
+// degrading. The same request with tool_choice auto returns 200 and calls the
+// tool, so the fallback is to ask for the stage in the prompt and let the model
+// reach for it. If it answers in prose anyway the extractor already handles
+// that: absorb keys on where the body came from, not on which model sent it.
+//
+// The test names what was observed to refuse rather than what is known to
+// accept, so an unrecognised model keeps the pinned choice and the stronger
+// guarantee that comes with it.
+func forcesTools(model string) bool {
+	return !strings.Contains(model, "fable")
+}
+
+// cappedEffort is the effort a request may ask for once it has also turned
+// thinking off.
+//
+// The two are set from different places and neither knew about the other:
+// --brief disables thinking on the review call, --effort is whatever the caller
+// passed, and both are documented flag values, so `--brief --effort xhigh` built
+// a request the endpoint refuses. It answers 400 with "output_config.effort
+// 'xhigh' is not supported when thinking is disabled on this model. Use effort
+// 'high' or below, or enable thinking." The same request at 'high' returns 200,
+// so the two top rungs come down one step and the run proceeds.
+//
+// Capping the effort rather than restoring the thinking, because the
+// measurement behind the brief call is that its reasoning tokens were not what
+// found the defects: that shape with thinking off caught 8 of 31 expectations
+// against the product's 7, and thinking on spent the output budget twice over.
+// Turning it back on here would undo the thing --brief is for.
+func cappedEffort(effort string, thinkingOff bool) string {
+	if !thinkingOff {
+		return effort
+	}
+	switch effort {
+	case "xhigh", "max":
+		return "high"
+	}
+	return effort
 }
 
 // structuredOf is the body the parser is handed: the arguments of the tool

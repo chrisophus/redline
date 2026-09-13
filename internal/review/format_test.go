@@ -1,6 +1,11 @@
 package review
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/anthropics/anthropic-sdk-go"
+)
 
 // The brief review call sends the catalogue like every other stage.
 //
@@ -76,5 +81,74 @@ func TestBriefChangesThePromptAndNotTheGrammar(t *testing.T) {
 	}
 	if systemFor(base, StageReview) == systemFor(brief, StageReview) {
 		t.Error("brief is running the shipped prompt, so it is not the arm it claims to be")
+	}
+}
+
+// Turning thinking off and asking for effort are set from different places and
+// neither knew about the other. The endpoint refuses the combination:
+// output_config.effort 'xhigh' with thinking disabled answers 400 on
+// claude-opus-5, saying to use 'high' or below or to enable thinking. Both are
+// documented flag values, so --brief --effort xhigh was a run that could not
+// start. The same request at 'high' returns 200.
+func TestTheEffortComesDownWhenThinkingIsOff(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		brief  bool
+		effort string
+		want   string
+	}{
+		{"xhigh on a brief run comes down", true, "xhigh", "high"},
+		{"max on a brief run comes down", true, "max", "high"},
+		{"high on a brief run is already accepted", true, "high", "high"},
+		{"low on a brief run is untouched", true, "low", "low"},
+		{"xhigh stands when thinking is on", false, "xhigh", "xhigh"},
+		{"max stands when thinking is on", false, "max", "max"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := Options{Model: "claude-opus-5", MaxTokens: 100, Brief: tc.brief, Effort: tc.effort}
+			params := anthropicParams(opts, &Result{Stage: StageReview})
+			if got := string(params.OutputConfig.Effort); got != tc.want {
+				t.Errorf("sent effort %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// claude-fable-5-1 answers 400 to a pinned choice, with tool_choice: type
+// "tool" and "any" are not supported for this model. Auto is accepted and it
+// does call the tool, so a model that refuses the pin is asked for the stage in
+// the prompt rather than failing the run. The pinned request must not pick up
+// that instruction, because it is the one every other run sends.
+func TestAModelThatRefusesAForcedToolChoiceIsAskedInstead(t *testing.T) {
+	text := func(p anthropic.MessageNewParams) string {
+		var b strings.Builder
+		for _, blk := range p.Messages[0].Content {
+			if blk.OfText != nil {
+				b.WriteString(blk.OfText.Text)
+			}
+		}
+		return b.String()
+	}
+
+	pinned := anthropicParams(Options{Model: "claude-sonnet-5", MaxTokens: 100}, &Result{Stage: StageReview})
+	if pinned.ToolChoice.OfTool == nil {
+		t.Error("a model that accepts the pin was not pinned to its stage")
+	}
+	if strings.Contains(text(pinned), "do not answer in prose") {
+		t.Error("the pinned request carried the fallback instruction, which every run would then pay for")
+	}
+
+	asked := anthropicParams(Options{Model: "claude-fable-5-1", MaxTokens: 100}, &Result{Stage: StageReview})
+	if asked.ToolChoice.OfTool != nil {
+		t.Error("pinned the tool choice on a model that answers 400 to it")
+	}
+	if asked.ToolChoice.OfAuto == nil {
+		t.Error("a model that refuses the pin was sent no tool choice at all")
+	}
+	if !strings.Contains(text(asked), StageReview) {
+		t.Error("nothing in the request says which stage it is, and tool_choice no longer says it")
+	}
+	if len(asked.Tools) != len(pinned.Tools) {
+		t.Error("the fallback changed the catalogue; only the choice and the instruction change")
 	}
 }
