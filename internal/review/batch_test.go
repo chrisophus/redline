@@ -39,6 +39,7 @@ func TestRunBatchRefusesWhatCannotBeBatched(t *testing.T) {
 		{"explore", Options{Mode: ModeExplore}, "single-shot"},
 		{"samples", Options{Samples: 3}, "--samples"},
 		{"verify", Options{Verify: true}, "checking pass"},
+		{"synopsis", Options{Synopsis: true}, "describing call wrote"},
 		{"openai", Options{API: APIOpenAI}, "only implemented against the Anthropic API"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

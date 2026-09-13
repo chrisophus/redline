@@ -450,6 +450,13 @@ func TestSweep(t *testing.T) {
 	opts := review.Options{
 		Model:  model,
 		Effort: os.Getenv("REDLINE_EVAL_EFFORT"),
+		// What the command defaults to, because an arm that measures
+		// something the shipped configuration does not do is measuring the
+		// wrong thing. The first synopsis sweep ran without it and billed
+		// both calls at full rate - 2.1x the one-shot arm - which is the
+		// price of a configuration nobody runs. RunBatch turns it off
+		// again for its own reasons.
+		Cache: true,
 	}
 	// The arm that measures the checking pass. Without it the sweep
 	// scores the producer as it was before any of this, which is the
@@ -463,6 +470,15 @@ func TestSweep(t *testing.T) {
 	// it could not check would show up here as lost labelled defects,
 	// and that is the failure mode worth paying to detect.
 	opts.Verify = os.Getenv("REDLINE_EVAL_VERIFY") != ""
+	// The arm this sweep exists to settle next: the description in its own
+	// call. It cannot go over the batch tier - the judging call reads what
+	// the describing one wrote, and a batch's results arrive over a window
+	// no cache entry survives - so this arm runs interactively, where the
+	// second call reads the prefix the first one wrote.
+	opts.Synopsis = os.Getenv("REDLINE_EVAL_SYNOPSIS") != ""
+	if opts.Synopsis && os.Getenv("REDLINE_EVAL_BATCH") != "" {
+		t.Fatal("REDLINE_EVAL_SYNOPSIS and REDLINE_EVAL_BATCH ask for two calls that read each other over a tier that cannot pair them; drop the batch")
+	}
 	// A model on another wire is an arm like any other. The key and
 	// base URL are read the same way the command reads them, so a
 	// sweep and a real review reach the same endpoint.
@@ -599,6 +615,9 @@ func TestSweep(t *testing.T) {
 	}
 	if os.Getenv("REDLINE_EVAL_VERIFY") != "" {
 		label += " verified"
+	}
+	if os.Getenv("REDLINE_EVAL_SYNOPSIS") != "" {
+		label += " synopsis"
 	}
 	if samples > 1 {
 		label += fmt.Sprintf(" ×%d", samples)

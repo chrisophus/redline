@@ -556,7 +556,7 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	// their own worst case, because a run refused after paying for two of
 	// three calls is the failure this guard exists to prevent.
 	worst := res.CostCeilingUSD*float64(opts.Samples) +
-		synopsisCeilingCost(opts, res) + verifyCeilingCost(opts, res)
+		synopsisCeilingCost(opts, in, res) + verifyCeilingCost(opts, res)
 	if res.CostKnown && worst > opts.MaxCostUSD {
 		return res, fmt.Errorf(
 			"worst-case cost %s across %d sample(s) exceeds the %s tripwire (expected %s): %d input tokens against a %d-token ceiling. "+
