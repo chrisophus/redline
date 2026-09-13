@@ -298,8 +298,14 @@ The uncomfortable half is the comparison nobody asked for. On
 `staged-empty-partition` **both** agent arms scored 3 of 3, including the
 `failures[0]` panic — the defect `redline review` was shown on changed lines
 four times and never once reported, and which its own sweep catches at 1 of 3
-across three samples. A plain agent at one sample, with no cohorts, no ruling
-and no scout, beats the staged pipeline's 16/35 at three.
+across three samples.
+
+An earlier line here said a plain agent at one sample beats the staged
+pipeline's 16/35 at three. That is not a comparison: 18/37 is one sample
+against a union of three, on a denominator three expectations smaller, and
+the union of three samples inflates recall by construction. What the numbers
+support is narrower — the agent reached a specific defect the staged pipeline
+has never reported — and the equal-samples comparison has not been run.
 
 | Item | What | Effort |
 |------|------|--------|
@@ -472,9 +478,27 @@ time, scored by `eval.Score` on the same eleven fixtures at one sample on
 | shipped | packet + system prompt + strict tools | 6/38 | 15 | 0 |
 
 A forty-line instruction and the raw diff, with no panes, no envelopes, no
-context and no schema, catches twice what the product catches on the same
-model and the same fixtures. Everything the pipeline adds past the diff, in
-aggregate, halves recall.
+context and no schema, catches twice what the **one-shot** arm catches on the
+same model, the same fixtures and the same sample count.
+
+That bound matters, because one-shot is the weakest shipped arm and the
+rungs were never run against the strongest. The best measured configuration
+is `--pipeline staged` at three samples, 16/35, which is 46% against rung 0's
+32% — so the pipeline leads wherever the comparison is allowed to include
+its fan-out, and the equal-samples comparison (rung 0 at ×3 against staged at
+×3) has not been run. Nor did any rung include the cohort partition, the
+scout's lookups or the ruling: `opts.Verify` is off unless
+`REDLINE_EVAL_VERIFY` is set, and it was never set. The denominators differ
+too, 38 against 35, because `staged-empty-partition` was added after those
+sweeps.
+
+The rungs are also unpriced. `TestLadder` records no usage, so nothing here
+supports a claim that a rung is cheaper than an arm, only that it caught
+more than one-shot did.
+
+What the ladder does establish is narrower than "simple wins": between the
+raw diff and the shipped one-shot call there are layers that cost recall
+rather than add it, and the one-shot default is the shape that loses most.
 
 Rung 1 is the honest measurement of the packet on this set, and it is not the
 premise test's: 12 caught against 11 is no recall gain, while unlabelled
