@@ -597,3 +597,45 @@ reader nothing", the same false claim corrected in `commentSchema()` on
 prompt, which says the same thing twice. `post.go:172` withholds
 low-confidence findings, so an uncertain finding costs the reader the
 finding. Both now say so.
+
+### A two-fixture probe, and what it says about relaxing one pass
+
+Eleven fixtures at one sample costs roughly twenty minutes and a dollar an
+arm, which is how four arms went by without a cause. Two fixtures carry 31 of
+the 38 expectations - `gorefactor-changectx` 14 and `gorefactor-nil-rules`
+17 - so a probe over those two holds 82% of the signal for a sixth of the
+calls. It reproduces the full sweeps' ordering, which is what makes it usable
+as the first instrument rather than the last:
+
+| arm | changectx | nil-rules | /31 | emission |
+| --- | --- | --- | --- | --- |
+| rung 0, diff + 40 lines | 8 | 2 | **10** | free-form |
+| rung 1, packet + 40 lines | 5 | 3 | **8** | free-form |
+| rung 2, packet + long prompt | 0 | 4 | 4 | free-form |
+| default one-shot | 4 | 0 | 4 | strict tools |
+| `--mode explore`, multi-turn | 0 | 2 | 2 | strict tools |
+| `--brief` in-product | 0 | 0 | 0 | short prompt + tools |
+
+`--mode explore` had never been scored: it ships, it has a turn budget, and
+no arm had ever measured it. It comes last but one, at $0.8614 on
+`gorefactor-nil-rules` against the default's roughly $0.10, and on
+`gorefactor-changectx` it fetched context and then wrote no comments at all
+on a change carrying fourteen annotated defects.
+
+So relaxing the one-pass rule does not help by itself. Explore withholds the
+expansions until the model asks, which means its first turn sees *less* than
+the default arm does, and what the loop bought was a smaller prompt rather
+than more thought. Every tool-path arm sits at the bottom of the table
+whatever its turn count, and every free-form arm sits above them.
+
+That leaves the version of the idea this does not test. Explore's
+`fetch_context` indexes `kept[n]`, the expansions the packet already
+resolved; it cannot grep the tree. Letting the review run the scout's
+lookups itself - a real search tool, answers in context, no separate ruling
+to reconcile - is untested, and it is the one shape that addresses the
+documented binding constraint, the self-certified `diff` question at
+`rule.go:266`. The cache makes it affordable in principle: a 170k prefix
+re-read at the cached rate is about $0.034 a turn on `claude-sonnet-5`, so
+five turns of self-service lookup is cents, not dollars. What it would
+collapse is `internal/scout` (1,817 lines) and the ruling stage that exists
+to reconcile the scout's answers with findings written before they arrived.
