@@ -47,7 +47,8 @@ const (
 )
 
 // Cohort is one group of files and what they do together, as stage one drew
-// it. Summary is what the other cohorts' calls are shown of this one.
+// it. Summary is what the other cohorts' calls are shown of this one, so it
+// is written for a reader who cannot see these diffs.
 type Cohort struct {
 	Name    string   `json:"name"`
 	Summary string   `json:"summary"`
@@ -59,7 +60,11 @@ type Cohort struct {
 func (r *Result) cohortsRequest(opts Options, in Input) *Result {
 	out := r.synopsisRequest(opts, in)
 	out.Stage = StageCohorts
-	out.Tail = cohortsTail(in, opts.Cohorts)
+	// The bound the rest of the run enforces, not the raw flag. The tripwire
+	// prices cohortBound, the progress line prints it and repairPartition
+	// folds anything above it, so a stage one told a larger number spends
+	// output on a partition that is then silently collapsed.
+	out.Tail = cohortsTail(in, cohortBound(opts, in))
 	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedSynopsisTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)
@@ -68,10 +73,10 @@ func (r *Result) cohortsRequest(opts Options, in Input) *Result {
 
 // cohortRequest is one stage-two call: the same prefix as every other, scoped
 // by its instruction to one cohort.
-func (r *Result) cohortRequest(opts Options, mine Cohort, others []Cohort, bound int) *Result {
+func (r *Result) cohortRequest(opts Options, mine Cohort, others []Cohort, mineIdx, bound int) *Result {
 	out := r.clone()
 	out.Stage = StageFindings
-	out.Tail = cohortTail(mine, others, opts.CrossSummaries)
+	out.Tail = cohortTail(mine, others, mineIdx, opts.CrossSummaries)
 	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedOutputTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, cohortMaxTokens(opts, bound))
@@ -94,7 +99,24 @@ func stagedCeilingCost(opts Options, in Input, res *Result) float64 {
 	if !ok {
 		return 0
 	}
-	each, _ := CeilingCost(opts.Model, res.InputEstimate, cohortMaxTokens(opts, bound))
+	// Priced off a cohort request rather than the bare prefix: a cohort's
+	// tail carries its file list and, with cross-summaries on, a line for
+	// every other cohort, and undercounting it once per call is undercounting
+	// the shape this guard exists to price. The cohort is representative -
+	// the prefix dominates and the tails are within a few hundred tokens of
+	// each other - and stage one has not run, so there is no real partition
+	// to price against.
+	sample := Cohort{Name: "cohort", Summary: strings.Repeat("x ", 20)}
+	for path := range in.ShownFiles() {
+		sample.Files = append(sample.Files, path)
+	}
+	peers := make([]Cohort, bound)
+	for i := range peers {
+		peers[i] = sample
+	}
+	each, _ := CeilingCost(opts.Model,
+		res.cohortRequest(opts, sample, peers, 0, bound).InputEstimate,
+		cohortMaxTokens(opts, bound))
 	// Stage one is counted here, so the synopsis ceiling is not added on top
 	// of it: this is the same call under a wider contract.
 	return one + each*float64(bound)
@@ -171,6 +193,12 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		flat := opts
 		flat.Pipeline = PipelineOneShot
 		out, rerr := runOnce(ctx, in, flat, res)
+		// Stage one was billed whether or not it answered, and the write it
+		// made over the whole prefix is the expensive half. Folding it in
+		// here is what stops a run that paid for two calls from joining the
+		// one-shot distribution at one call's price - FellBack labels the
+		// row, and without this the number on it is still wrong.
+		applySynopsis(out, opts.Model, findings.Review{}, usage, written, failed)
 		if out != nil {
 			out.Pipeline = PipelineOneShot
 			out.FellBack = failed
@@ -235,7 +263,7 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 			one := opts
 			one.Samples = 1
 			one.MaxTokens = cohortMaxTokens(opts, len(cohorts))
-			got, err := runOnce(ctx, in, one, res.cohortRequest(opts, cohort, cohorts, len(cohorts)))
+			got, err := runOnce(ctx, in, one, res.cohortRequest(opts, cohort, cohorts, i, len(cohorts)))
 			out[i] = answer{res: got, err: err}
 			if opts.Progress == nil {
 				return
@@ -282,6 +310,13 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 	merged.recost(opts.Model)
 	merged.CohortsFailed = len(failures)
 	merged.Turns = len(kept)
+	// An empty partition is not an empty failure list: a change whose shown
+	// set is empty - a test-only change with tests held back - leaves
+	// repairPartition with nothing to place, and indexing failures[0] on the
+	// way out is a panic rather than an error.
+	if len(cohorts) == 0 {
+		return merged, fmt.Errorf("stage one drew no cohort covering any shown file")
+	}
 	if len(kept) == 0 {
 		return merged, fmt.Errorf("all %d cohort call(s) failed: %s", len(cohorts), failures[0])
 	}
@@ -289,7 +324,17 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 	// reach for a file on the boundary between them are describing one defect,
 	// and a reader of the merged review must see it once.
 	merged.Review = unionReviews(kept)
+	// A truncation anywhere wins. kept[0] is whichever cohort landed first,
+	// and the fan-out makes truncation more likely rather than less - each
+	// call runs against a divided cap - so reading one slot would hide the
+	// column the ledger uses to tell a cheap run from a wasted one.
 	merged.StopReason = kept[0].StopReason
+	for _, k := range kept {
+		if k.Truncated {
+			merged.StopReason, merged.Truncated = k.StopReason, true
+			break
+		}
+	}
 	return merged, nil
 }
 

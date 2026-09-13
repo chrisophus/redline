@@ -649,18 +649,21 @@ func TestAPanesOwnWordingIsNotReadAsAHedge(t *testing.T) {
 	}
 }
 
-// The findings that could not be anchored ride in the body, and a lint-heavy
-// change can list more of them than GitHub's 65536-character body allows. The
-// list must truncate with a visible count rather than take the whole review
-// down with it: the evidence table, the report link and the gate marker all
-// sit after the list and have to survive.
+// The findings that could not be anchored ride in the body, and a
+// finding-heavy change can list more of them than GitHub's 65536-character
+// body allows. The list must truncate with a visible count rather than take
+// the whole review down with it: the evidence table, the report link and the
+// gate marker all sit after the list and have to survive.
+//
+// Not built from lint findings: those are counted and not posted, so a body
+// made of them has no list to bound.
 func TestBuildBodyBoundsTheNotShownListSoTheReviewPosts(t *testing.T) {
 	rep := &findings.Report{
-		Substrates: []findings.SubstrateStatus{{Name: "lint", State: findings.SubstrateRan}},
+		Substrates: []findings.SubstrateStatus{{Name: "test-delta", State: findings.SubstrateRan}},
 	}
 	for i := range 400 {
 		rep.Findings = append(rep.Findings, findings.Finding{
-			Rule: "line-too-long", Substrate: "redline/lint", Severity: findings.SeverityWarning,
+			Rule: "package-untested", Substrate: "redline/test-delta", Severity: findings.SeverityWarning,
 			Message: fmt.Sprintf("finding %03d: %s", i, strings.Repeat("a wordy account of this one line. ", 20)),
 		})
 	}
@@ -830,9 +833,9 @@ func TestWalkthroughOmitsTestFiles(t *testing.T) {
 func TestWalkthroughAttachesFileFindingsToTheFile(t *testing.T) {
 	rep := &findings.Report{
 		Findings: []findings.Finding{
-			{File: "a.go", Rule: "complexity", Substrate: "redline/lint",
+			{File: "a.go", Rule: "source-without-test", Substrate: "redline/test-delta",
 				Severity: findings.SeverityInfo, Message: "complexity 16 here"},
-			{Rule: "package-untested", Substrate: "redline/test-delta",
+			{Rule: "package-untested", Substrate: "redline/parity",
 				Severity: findings.SeverityInfo, Message: "no test in that package"},
 		},
 		Agent: &findings.AgentReview{Files: map[string]string{"a.go": "did a thing"}},
@@ -849,6 +852,40 @@ func TestWalkthroughAttachesFileFindingsToTheFile(t *testing.T) {
 	}
 	if idx >= 0 && strings.Contains(body[idx:], "complexity 16 here") {
 		t.Fatalf("a file finding must not also appear in the not-shown list:\n%s", body[idx:])
+	}
+}
+
+// The lint pane is recorded and not posted. Every violation it finds is one
+// the author's own linter reports at the same moment CI does, and on a change
+// with ten of them they outnumbered the review and were read as the review.
+// The count still has to reach the reader: a pane that ran and said nothing
+// must stay distinguishable from one whose findings went elsewhere.
+func TestLintFindingsAreCountedRatherThanPosted(t *testing.T) {
+	rep := &findings.Report{
+		Substrates: []findings.SubstrateStatus{{Name: "lint", State: findings.SubstrateRan}},
+		Findings: []findings.Finding{
+			{File: "a.go", Line: 3, Rule: "gorefactor/god-object", Substrate: "redline/lint",
+				Severity: findings.SeverityWarning, Message: "Struct Options has 27 fields"},
+			{File: "a.go", Line: 4, Rule: "agent-comment", Substrate: "redline/review",
+				Source: findings.SourceLLM, Confidence: findings.ConfidenceHigh,
+				Severity: findings.SeverityError, Message: "failures[0] panics when the slice is empty"},
+		},
+	}
+	rep.Finalize()
+	commentable := map[string]map[int]bool{"a.go": {3: true, 4: true}}
+	p := Build(rep, prTarget(), "", commentable)
+
+	if len(p.Comments) != 1 {
+		t.Fatalf("only the review's own finding opens a thread, got %d: %+v", len(p.Comments), p.Comments)
+	}
+	if !strings.Contains(p.Comments[0].Body, "failures[0] panics") {
+		t.Fatalf("the surviving comment must be the reviewer's: %q", p.Comments[0].Body)
+	}
+	if strings.Contains(p.Body, "god-object") || strings.Contains(p.Body, "27 fields") {
+		t.Fatalf("a lint finding must not be listed in the body either:\n%s", p.Body)
+	}
+	if !strings.Contains(p.Body, "1 lint finding(s) are on the report") {
+		t.Fatalf("the body must say how many went to the report:\n%s", p.Body)
 	}
 }
 

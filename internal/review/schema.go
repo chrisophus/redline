@@ -136,12 +136,22 @@ func commentSchema() map[string]any {
 			"severity": map[string]any{
 				"type": "string",
 				"enum": []string{"error", "warning", "info"},
+				"description": "What happens if this finding is right, not how sure " +
+					"you are - confidence carries that. error: it breaks at run time, " +
+					"loses data, or ships a wrong answer to a user. warning: it is " +
+					"wrong and someone pays for it later. info: worth knowing, nothing " +
+					"breaks. A crash on an input the code can receive is error however " +
+					"unsure you are that the input occurs.",
 			},
 			"confidence": map[string]any{
 				"type": "string",
 				"enum": []string{"high", "medium", "low"},
-				"description": "How sure you are. Report the finding either way; " +
-					"low confidence is folded away on the report, not discarded.",
+				"description": "How sure you are that the finding is true. Report it " +
+					"either way, but low is not free: a low-confidence finding stays on " +
+					"the report and is not posted to the pull request, so nobody who " +
+					"could fix it is shown it. Use low when you genuinely could not " +
+					"settle it from what you were given, not as a hedge on a claim the " +
+					"lines in front of you support.",
 			},
 			"category": map[string]any{
 				"type": "string",

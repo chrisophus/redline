@@ -221,6 +221,50 @@ all missed, and the first two were found by hand within minutes.
 | **Nothing in the pipeline can run the code** | Three of the four questions on the second run were settled in minutes by marshalling `anthropicParams` and printing the JSON, and by sending one probe request: `type: object` is emitted by the SDK's `constant.Object` default, `strict: true` with closed objects returns 200 on four models, and a switched `tool_choice` reads a breakpointed prefix back whole. Read and grep cannot reach any of that. The worktrees under `~/.redline/worktrees` are already checkouts at the reviewed revision, so a bounded execution step — build, run one test, marshal one request — is a reachable class of evidence and is the class this change's real risks lived in. | M |
 | **The ruling settles on precedent when the answer is one file away** | c2 asked whether dropping the schema's `type` key loses `"type": "object"` on the wire. Ruled `justified` because `internal/scout/tools.go:212-214` builds the same SDK type the same way — a repository habit, offered as proof of an API's behaviour. The definitive answer is `anthropic-sdk-go@v1.71.0/message.go:9436`: `Type constant.Object json:"type" default:"object"`, with the comment saying it marshals its zero value as `object`. Right verdict, wrong reason, and a reader of the report learns the wrong reason. The answering brief already ranks evidence against a finding above evidence for it; it does not rank a declaration above a sibling call site. | S |
 
+## Review quality (Claude comparison, this repository's PR #46)
+
+Both reviewers were given the same change at the same revision: sixteen files,
+`8a53554..a1ae729`, the staged-review fan-out. Claude read it as an agent
+session with the repository open. Redline ran `--pipeline staged --ceiling
+150000`. Claude posted eleven inline comments carrying **eight distinct
+defects, all eight real and all eight since fixed**: an `index out of range`
+on `failures[0]` when the partition comes back empty, stage one told a bound
+the run would not honour, cohort calls priced without their own tails, stage
+one priced twice under `--synopsis`, a truncation lost because the merge read
+`kept[0]`, no `RunBatch` guard for the staged shape, the fallback dropping the
+billing for the call it had already paid for, and cohorts matched by a name
+nothing makes unique.
+
+Redline found none of them.
+
+| | Claude | Redline, as it ran | Redline, after the changes below |
+|---|---|---|---|
+| Findings produced | 11 (8 distinct) | 15 | 8 |
+| Of the 8 known defects | **8** | **0** | **1** (in 1 of 3 samples) |
+| Severity `info` | — | 14/15 | 7/8 |
+| Confidence `low` | — | 13/15 | 7/8 |
+| Comments actually posted | 11, all actionable | 3, **all lint** | 1, **a false positive** |
+| Cost | unmeasured | $0.66 | $0.26 at three samples |
+
+The yardstick is biased towards Claude and the bias cannot be removed here:
+the labels in `testdata/fixtures/staged-empty-partition` were written from
+Claude's comments, so it scores three of three there by construction. What is
+not a matter of scoring is that every one of the eight was reproduced against
+the code and fixed.
+
+Three separate mechanisms produced that result, and they are worth keeping
+apart because two are cheap and the third is the actual problem.
+
+| Item | What | Effort |
+|------|------|--------|
+| **Lint outranked the review in its own review** | `post` posts a deterministic finding unconditionally and withholds a low-confidence one, so on a change where the reviewer hedged everything the three comments that reached the pull request were all `redline/lint`, at `Warning`, above the reviewer's `Info`. The author's own linter says the same thing at the same moment CI does. The lint pane is now counted and not posted: evidence table keeps the number, the body says how many went to the report, and `redline/lint` opens no threads. | done |
+| **The reporting rules asked for the wrong thing, at length** | `what is worth reporting` opened with ten lines on the change not doing what its own description says, and six of the fifteen findings were duly sentences to reword. Removed, and the intent block is now framed as orientation — what the change is for, not a document to audit. Measured on a re-run over the same diff: prose-versus-code findings went from six of fifteen to **zero of eight**. | done |
+| **Severity had no definition in the contract** | `commentSchema` shipped `severity` as a bare `enum {error, warning, info}` with no description, so the model called everything `info`. It now says what the word means: what happens if the finding is right, not how sure you are. | done |
+| **`confidence: low` was sold as free** | The schema said low confidence "is folded away on the report, not discarded" and the prompt said an uncertain finding "costs the reader nothing". Both are false: `post.lowConfidence` withholds it, so it costs the reader the finding. Both now say so. **It did not work**: the re-run marked seven of eight findings low anyway, which is why the one comment that survives the gate is a false positive. The next thing to try is not more wording — a finding whose `question.kind` is `diff` has already claimed the shown lines settle it, and that claim and `low` cannot both be true; let the ruling arbitrate, and score it on the fixtures. | M |
+| **Nothing ever measured whether a review catches a crash** | All thirty-five labelled defects in the fixture set were wrong answers, swallowed errors or inverted comparisons. The class Claude opened with had no fixture, so no arm could ever have reported it missing. `testdata/fixtures/staged-empty-partition` is the first one that carries a crash, frozen from this very change with three of Claude's findings labelled. | done |
+| **Naming the crash class in the prompt did not buy it** | The class was added to `what is worth reporting`, in the same pass as the fixture, with the note that being unsure of the input is not a reason to lower the severity. Four runs have now been shown `failures[0]` on the changed lines of a diff they were reading — two before the change, two after — and none of them flagged it. The prompt is not the binding constraint. An index into a slice a branch can leave empty is decidable without a model, which puts this in a pane and not in a prompt. | M |
+| **The producer describes diffs; it does not trace paths** | Under every configuration measured here, what comes back is arithmetic consistency between things visible in the same window: this constant versus that comment, this estimate versus that cap. What Claude did was follow `repairPartition` into `fanOut` and ask what the slice holds when the branch above it took the early exit. No amount of topic listing has moved that, and it is the whole gap. The instruments to work on it now exist — a crash fixture, a walkthrough-completeness column, and a shape-split ledger — so this is the next thing the eval should be pointed at. | L |
+
 ## Review quality (Copilot comparison, MKT-1360)
 
 Held against GitHub Copilot on the same PR (NetApp/marketplace-cp #1360), the

@@ -1,0 +1,31 @@
+{
+  "name": "staged-empty-partition",
+  "origin": "real: chrisophus/redline PR #46 (8a53554..a1ae729), the defect verified by reading the code and fixed afterwards",
+  "summary": "A new 364-line file implementing a fan-out pipeline. Its merge path returns failures[0] to report that every cohort call failed, and reaches that line whenever nothing was kept - including when no cohort was ever drawn, in which case failures is empty and the index panics. Two smaller defects ride with it: the fallback branch drops the cost of the call it already paid for, and a cohort's cross-summary list excludes its peers by name, which nothing makes unique.",
+  "why_this_fixture_exists": "Every other labelled defect in this set is a wrong answer, a swallowed error or an inverted comparison, so nothing here ever measured whether a review notices code that crashes - and it did not: three runs over this exact diff, two before the reporting rules were changed and one after, produced twenty-three findings about pricing arithmetic and doc comments and none about the index. The crash class was added to the prompt's what-is-worth-reporting list at the same time as this fixture, and this is what says whether that worked.",
+  "clean": false,
+  "expect": [
+    {
+      "key": "empty-partition-indexes-failures",
+      "what": "fanOut returns failures[0] when no cohort answered, but reaches that line whenever len(kept) == 0 - including when cohorts itself is empty, which repairPartition returns for a change whose shown set is empty. No call is made, so failures is empty too, and the index panics instead of returning the error.",
+      "file": "internal/review/staged.go",
+      "all_of": ["failures"],
+      "any_of": ["panic", "index", "out of range", "empty", "no cohort", "zero cohort", "len(cohorts) == 0"]
+    },
+    {
+      "key": "fallback-drops-stage-one-cost",
+      "what": "runStaged's stage-one failure branch returns runOnce's result directly and never folds in the usage stage one was billed for, so a run that paid for two calls records one call's price and joins the one-shot distribution at the wrong cost.",
+      "file": "internal/review/staged.go",
+      "all_of": ["fallback"],
+      "any_of": ["usage", "cost", "billed", "applySynopsis", "ledger", "price"]
+    },
+    {
+      "key": "cohort-tail-matched-by-name",
+      "what": "cohortTail drops the other cohorts by comparing Name, and nothing makes stage one's names unique: two cohorts given the same two-or-three-word name each drop the other from the cross-summary list, so the pair most likely to be related is the pair told nothing about each other.",
+      "file": "internal/review/prompt.go",
+      "all_of": ["cohortTail"],
+      "any_of": ["name", "unique", "duplicate", "index", "collide", "same name"]
+    }
+  ],
+  "quiet": []
+}

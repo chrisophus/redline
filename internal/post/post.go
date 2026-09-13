@@ -23,6 +23,7 @@ import (
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/pane/lint"
 	"github.com/chrisophus/redline/internal/target"
 )
 
@@ -120,6 +121,12 @@ type Payload struct {
 	// tuning the thing wants to know which one they have.
 	withheld int
 	hedged   int
+	// lint counts the lint pane's findings, which this payload records and
+	// does not post. A line comment per lint violation is a comment the
+	// author's own linter will make at the same moment CI does, and on a
+	// large change they outnumber the review: the evidence table says the
+	// pane ran and how many it found, and the report carries them.
+	lint int
 	// changed is every path in the change, for the walkthrough table. Kept so
 	// the body can list files the agent did not summarize; empty in evidence
 	// mode, where the walkthrough is not rendered.
@@ -169,6 +176,15 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 		findingsList = rep.Findings
 	}
 	for _, f := range findingsList {
+		if f.Substrate == lint.DeltaSubstrate {
+			// Counted and not posted. The pane's whole output is a rule name
+			// and a line, which the author's linter says too and says first;
+			// what a review adds is the reading a linter cannot do. Posting
+			// both put ten lint comments in front of five findings and made
+			// the review look like a lint run.
+			p.lint++
+			continue
+		}
 		if lowConfidence(f) {
 			if prof.includes("low-confidence") {
 				// Shown behind a chevron instead of withheld: a guess the
@@ -405,7 +421,7 @@ func fpMarker(head, fingerprint string) string {
 // written first and kept whole; the not-shown list is what grows without
 // bound with the findings, so it is the part that truncates when the body
 // would otherwise be rejected.
-func buildBody(rep *findings.Report, head, reportURL string, inBody, lowConf []findings.Finding, prof *Profile, gateVerdict string, withheld, hedged int) string {
+func buildBody(rep *findings.Report, head, reportURL string, inBody, lowConf []findings.Finding, prof *Profile, gateVerdict string, withheld, hedged, lint int) string {
 	var head0 strings.Builder
 	fmt.Fprintf(&head0, "### %s\n\n", verdictFor(rep))
 	// The agent's own account of the change, when there is one. Redline never
@@ -428,7 +444,7 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody, lowConf []f
 		head0.WriteString(s)
 	}
 
-	tail := bodyTail(reportURL, head, prof, gateVerdict, withheld, hedged)
+	tail := bodyTail(reportURL, head, prof, gateVerdict, withheld, hedged, lint)
 	budget := maxBody - head0.Len() - len(tail)
 	middle := notShownSection(inBody, head, prof, budget)
 	low := lowConfidenceSection(lowConf, head, prof, budget-len(middle))
@@ -471,7 +487,7 @@ func lowConfidenceSection(lowConf []findings.Finding, head string, prof *Profile
 // findings list runs: the withheld note, the report link, and the markers a
 // merge gate reads. Shared by both layouts and measured before the not-shown
 // list is fitted to what is left of the budget.
-func bodyTail(reportURL, head string, prof *Profile, gateVerdict string, withheld, hedged int) string {
+func bodyTail(reportURL, head string, prof *Profile, gateVerdict string, withheld, hedged, lint int) string {
 	var tail strings.Builder
 	if withheld > 0 || hedged > 0 {
 		var parts []string
@@ -483,6 +499,12 @@ func bodyTail(reportURL, head string, prof *Profile, gateVerdict string, withhel
 		}
 		fmt.Fprintf(&tail, "_%d further finding(s) from the reviewer are on the report "+
 			"rather than here: %s._\n\n", withheld+hedged, strings.Join(parts, ", "))
+	}
+	if lint > 0 {
+		// Named rather than silent. A reader who knows the pane ran must be
+		// able to tell "nothing to say" from "said elsewhere", and the
+		// evidence table above already carries the count per pane.
+		fmt.Fprintf(&tail, "_%d lint finding(s) are on the report, not posted here._\n\n", lint)
 	}
 	if reportURL != "" {
 		fmt.Fprintf(&tail, "[Full report](%s)\n\n", reportURL)
@@ -502,7 +524,7 @@ func (p Payload) renderBody() string {
 	if p.profile != nil && p.profile.BodyStyle == BodyWalkthrough {
 		return buildBodyWalkthrough(p)
 	}
-	return buildBody(p.rep, p.CommitID, p.reportURL, p.bodyFindings, p.lowConf, p.profile, p.GateVerdict, p.withheld, p.hedged)
+	return buildBody(p.rep, p.CommitID, p.reportURL, p.bodyFindings, p.lowConf, p.profile, p.GateVerdict, p.withheld, p.hedged, p.lint)
 }
 
 // WithMeta stamps the PR metadata the walkthrough body opens with and
@@ -553,7 +575,7 @@ func buildBodyWalkthrough(p Payload) string {
 	if p.profile.includes("unknowns") {
 		head0.WriteString(unknownsSection(p.rep))
 	}
-	tail := bodyTail(p.reportURL, p.CommitID, p.profile, p.GateVerdict, p.withheld, p.hedged)
+	tail := bodyTail(p.reportURL, p.CommitID, p.profile, p.GateVerdict, p.withheld, p.hedged, p.lint)
 	budget := maxBody - head0.Len() - len(tail)
 	middle := notShownSection(leftover, p.CommitID, p.profile, budget)
 	low := lowConfidenceSection(p.lowConf, p.CommitID, p.profile, budget-len(middle))

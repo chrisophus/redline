@@ -268,6 +268,14 @@ func (o Options) withDefaults() Options {
 	if o.Pipeline == "" {
 		o.Pipeline = PipelineOneShot
 	}
+	if o.Pipeline == PipelineStaged {
+		// Staged already describes the change - that is the call that draws
+		// the partition - so the synopsis flag has nothing left to turn on.
+		// Cleared here rather than ignored at the branch, because the
+		// tripwire reads the options and would otherwise price a describing
+		// call twice and refuse a run that fits.
+		o.Synopsis = false
+	}
 	if o.Cohorts <= 0 {
 		o.Cohorts = DefaultCohorts
 	}
@@ -607,17 +615,24 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	if res.CostKnown && worst > opts.MaxCostUSD {
 		// The shape is named because the worst case is not one call's. A
 		// staged run refused at the one-shot tripwire reads as a request too
-		// large to review, when what it is is seven calls priced at once.
-		shape := ""
+		// large to review, when what it is is seven calls priced at once -
+		// and the lever is the cohort count, not the ceiling: each call
+		// carries the whole prefix, so lowering --cohorts removes a whole
+		// call's input and lowering --ceiling shaves a slice off all of them.
+		shape, advice := "", "Raise --max-cost to proceed, or lower --ceiling"
 		if opts.Pipeline == PipelineStaged {
+			bound := cohortBound(opts, in)
 			shape = fmt.Sprintf(" A staged run is stage one plus up to %d cohort call(s), "+
-				"each priced at the full response cap.", cohortBound(opts, in))
+				"each carrying the whole prefix and capped at %d response token(s).",
+				bound, cohortMaxTokens(opts, bound))
+			advice = "Raise --max-cost to proceed, lower --cohorts to buy fewer calls, " +
+				"or lower --ceiling to shrink every one of them"
 		}
 		return res, fmt.Errorf(
-			"worst-case cost %s across %d sample(s) exceeds the %s tripwire (expected %s): %d input tokens against a %d-token ceiling.%s "+
-				"Raise --max-cost to proceed, or lower --ceiling",
+			"worst-case cost %s across %d sample(s) exceeds the %s tripwire (expected %s): %d input tokens against a %d-token ceiling.%s %s",
 			FormatCost(worst, true), opts.Samples, FormatCost(opts.MaxCostUSD, true),
-			FormatCost(res.CostUSD*float64(opts.Samples), true), res.InputEstimate, opts.Ceiling, shape)
+			FormatCost(res.CostUSD*float64(opts.Samples), true), res.InputEstimate, opts.Ceiling,
+			shape, advice)
 	}
 	if opts.DryRun {
 		return res, nil
