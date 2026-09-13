@@ -50,6 +50,12 @@ type Entry struct {
 	// half-price fixtures would drag that average somewhere no interactive
 	// run can reach.
 	Batched bool `json:"batched,omitempty"`
+	// Cached marks a row that asked for a cache breakpoint. Usage already
+	// carries the read and write counts; this says whether a zero read is a
+	// prefix that broke or a run that never asked, which are the same two
+	// numbers and opposite facts. These rows stay in the distribution: a
+	// cached review is what an interactive review costs once this is on.
+	Cached bool `json:"cached,omitempty"`
 	// Ceiling and InputEstimate record what the request was allowed and what
 	// it used, so a run that was trimmed can be told from one that fit.
 	Ceiling       int  `json:"ceiling"`
@@ -83,7 +89,7 @@ func Record(dir string, r *Result, effort string) error {
 		Usage: r.Usage, CostUSD: r.CostUSD, Known: r.CostKnown,
 		Seconds: r.Duration.Seconds(), Findings: len(r.Review.Comments),
 		StopReason: r.StopReason, Truncated: r.Truncated,
-		Batched: r.Batched,
+		Batched: r.Batched, Cached: r.Cached,
 		Ceiling: r.Ceiling, InputEstimate: r.InputEstimate, OverCeiling: r.OverCeiling,
 		Samples: r.Samples, SamplesFailed: r.SamplesFailed,
 		RulingOutputTokens: r.RulingOutputTokens, ScoutCostUSD: r.ScoutCostUSD,

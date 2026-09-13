@@ -235,13 +235,13 @@ func TestVerifyWithoutAnAnswererStillAssemblesARuling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got.Prompt, "The findings to rule on") {
-		t.Fatalf("the ruling request was not assembled:\n%s", got.Prompt)
+	if !strings.Contains(got.Tail, "The findings to rule on") {
+		t.Fatalf("the ruling request was not assembled:\n%s", got.Tail)
 	}
-	if !strings.Contains(got.Prompt, "[c1]") {
+	if !strings.Contains(got.Tail, "[c1]") {
 		t.Fatal("the finding needs the id the ruling addresses it by")
 	}
-	if !strings.Contains(got.Prompt, "has been checked") {
+	if !strings.Contains(got.Tail, "has been checked") {
 		t.Fatal("with no lookups run, the ruling must be told nothing was checked")
 	}
 }
@@ -576,15 +576,16 @@ func TestANoteWithNoRecordsIsStillAnAnswer(t *testing.T) {
 	if got.VerifyFailed != "" {
 		t.Fatalf("a note is an answer, so the ruling must be sent: %q", got.VerifyFailed)
 	}
-	if !strings.Contains(got.Prompt, "searched the whole tree") {
+	if !strings.Contains(got.Tail, "searched the whole tree") {
 		t.Error("the note did not reach the ruling")
 	}
 }
 
-// The ruling instruction rides at the tail of the user turn and the system
-// block stays byte-identical, or the prompt cache serves nothing and the
-// second call pays full price.
-func TestTheRulingInstructionRidesInTheUserTurn(t *testing.T) {
+// The ruling instruction rides at the tail of the user turn, in its own block
+// after the shared prefix, and the system block stays byte-identical. If any
+// of that moves, the breakpoint the review wrote at the end of the prefix
+// serves nothing and the second call pays full price.
+func TestTheRulingInstructionRidesInItsOwnBlockAfterTheSharedPrefix(t *testing.T) {
 	in := Input{Report: priors()}
 	one, err := Assemble(in, Options{})
 	if err != nil {
@@ -597,7 +598,10 @@ func TestTheRulingInstructionRidesInTheUserTurn(t *testing.T) {
 	if two.System != one.System {
 		t.Fatal("the system block must stay byte-identical between the review and its ruling")
 	}
-	if !strings.HasSuffix(two.Prompt, rulePrompt) {
+	if two.Prompt != one.Prompt {
+		t.Fatal("the block the breakpoint sits on must stay byte-identical, or the entry is never read back")
+	}
+	if !strings.HasSuffix(two.Tail, rulePrompt) {
 		t.Fatal("the ruling instruction must be at the tail of the user turn")
 	}
 	if strings.Contains(two.System, "Now check what you found") {
@@ -768,10 +772,10 @@ func TestAReviewThatAsksNothingRunsNoLookupsAndIsStillRuled(t *testing.T) {
 	if got == one {
 		t.Fatal("the findings were left unruled, so nothing checked them at all")
 	}
-	if !strings.Contains(got.Prompt, "The findings to rule on") {
-		t.Fatalf("the ruling request was not assembled:\n%s", got.Prompt)
+	if !strings.Contains(got.Tail, "The findings to rule on") {
+		t.Fatalf("the ruling request was not assembled:\n%s", got.Tail)
 	}
-	if !strings.Contains(got.Prompt, "has been checked") {
+	if !strings.Contains(got.Tail, "has been checked") {
 		t.Error("the ruling must be told no lookup ran, or an absent answer reads as a clean one")
 	}
 }

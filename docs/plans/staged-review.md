@@ -7,11 +7,13 @@ what the change is, and it says what is wrong with it. This is the case for
 splitting those, running the judgment per cohort, and paying for the shared
 material once instead of once per call.
 
-Status: **step 1 shipped, the rest planned**. The contract now goes as a
-constant tool array selected by `tool_choice`, which is what makes a shared
-prefix cacheable; nothing yet marks one. The cache finding in the first section
-is measured and is the reason the rest is affordable, and everything after it
-is a design that has to be scored before it becomes a default.
+Status: **steps 1 and 2 shipped, the rest planned**. The contract goes as a
+constant tool array selected by `tool_choice`, and the prompt the review and
+the ruling share now carries a breakpoint, so the second call reads the first
+call's prefix back instead of paying for it again. Measured A/B on one session:
+158,065 input tokens uncached against 6,022 plus a 76,895-token write read back
+whole, which is 30% off the input and 16% off the run. Everything after this is
+a design that has to be scored before it becomes a default.
 
 ## The premise, and how to check it before building on it
 
@@ -224,13 +226,26 @@ becomes the default only when the recorded p95 of that gap reaches five
 minutes. A call after stage one that reports zero cache reads is a warning on
 the terminal and a column in the ledger, not a silent full-price line.
 
-The same fix pays before any of the pipeline exists. Today's review-then-ruling
-pair sends roughly 340k uncached; with one write and one read it is about 230k,
-a third off the input of shipped behaviour, and the `cache_read_input_tokens`
-field says whether it worked before anything is built on top of it. That pair
-also has the same exposed gap the merge will have — the review's generation
-plus the scout pass, with no refreshing read between — so caching it measures
-the one number that decides the TTL before any new stage exists.
+The same fix pays before any of the pipeline exists, and that part is no longer
+a projection. The review-then-ruling pair was run twice over one frozen
+session on `claude-sonnet-5`, `--cache` against `--no-cache`, four findings
+either way:
+
+| | Base input | Write | Read | Input cost | Run |
+|---|---|---|---|---|---|
+| `--no-cache` | 158,065 | 0 | 0 | $0.3161 | $0.4903 |
+| `--cache` (5m) | 6,022 | 76,895 | 76,895 | $0.2196 | $0.4121 |
+
+30% off the input and 16% off the run, the difference being output and the
+scout, which no breakpoint touches. The write was read back to the token:
+`cache_read_input_tokens` equals `cache_creation_input_tokens` exactly, which
+is the check that the shared block really is one block and really is
+byte-identical.
+
+That pair also has the same exposed gap the merge will have — the review's
+generation plus the scout pass, with no refreshing read between — so it
+measures the one number that decides the TTL before any new stage exists. On
+this run that gap was inside five minutes and the 5-minute entry held.
 
 ## The pipeline
 
@@ -510,13 +525,15 @@ Then, per arm, against the frozen fixtures:
 1. **One tools array, `tool_choice` to select, `strict: true`.** Shipped, in
    `internal/review/tools.go`. Two things it turned out differently from the
    plan are below. **M**
-2. **Cache the shared prefix.** Breakpoint on the last shared user-turn block —
-   not the system block — with `--cache` and `--cache-ttl`, and cache tokens
-   into the ledger. Verify on the existing
-   review-then-ruling pair that `cache_read_input_tokens` is non-zero. This is
-   about a third off the input of shipped behaviour and it de-risks everything
-   after it. Amend the design doc's caching decision with the within-run
-   arithmetic, so the next reader does not re-derive the old conclusion. **S**
+2. **Cache the shared prefix.** Shipped. `--cache` (on by default) and
+   `--cache-ttl`, breakpoint on the shared user-turn block, `cached` in the
+   ledger beside the read and write counts already there, and a warning when a
+   ruling that asked for the cache reads none of it. Measured at 30% off the
+   input on the A/B above. One thing it needed that this document did not say:
+   the shared content and the stage's instruction were one concatenated
+   string, not two blocks, so `Result` had to grow a `Tail` and the wire had to
+   build a two-block user turn. A breakpoint on the old arrangement would have
+   marked a block whose bytes differ per stage and read back nothing. **S**
 3. **Label the extras.** The `reject` list, as `two-stage-review.md` step 2
    already called for. Nothing after this is measurable without it. **S**
 4. **The synopsis stage, under `oneshot`.** Overview, per-file summaries and

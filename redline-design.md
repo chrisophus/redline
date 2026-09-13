@@ -287,22 +287,34 @@ real pull requests, and the number that matters most is the clean rate: how
 often a change that deserves no comment gets none. Configuration is unchosen
 until that sweep runs.
 
-Prompt caching stays off. Cache writes cost 1.25x base input at the
-five-minute TTL and 2x at the hour, and a pre-push tool firing a few times a
-day pays every write and reads none of them. It is worth revisiting only if
-measured review frequency shows clustering.
+Prompt caching stays off **across runs**. Cache writes cost 1.25x base input
+at the five-minute TTL and 2x at the hour, and a pre-push tool firing a few
+times a day pays every write and reads none of them. That is worth revisiting
+only if measured review frequency shows clustering.
 
-That reasoning is about caching across runs and it still holds. It is not the
-whole question: the producer is already two calls over one prefix, and
-`verifyCeilingCost` records that the ruling re-sends stage one's whole prompt
-at full rate. Several calls sharing a prefix seconds apart is the opposite
-arithmetic — one write, then reads at a tenth. What used to stop it was the
-response schema, which rendered ahead of the system block and differed per
-stage. That is gone: the contract now goes as a constant tool array selected
-by `tool_choice`, and a switched `tool_choice` was measured reading a
-breakpointed prefix back whole. What stops it today is that nothing marks one.
-Worked out in [docs/plans/staged-review.md](docs/plans/staged-review.md); this
-decision stands until that ships.
+Within one run it is on, and that is a different question with a different
+answer. The producer is two calls over one prefix seconds apart, and the
+ruling used to re-send stage one's whole prompt at full rate. Both now send
+the same tool array and the same system block, and the shared user-turn
+content is its own block with the breakpoint at the end of it; each stage's
+own instruction follows in a second block, which is what keeps the first one
+byte-identical. The review writes the entry and the ruling reads it.
+
+Measured A/B over one frozen session on `claude-sonnet-5`, four findings
+either way: 158,065 base input tokens uncached, against 6,022 base plus a
+76,895-token write read back to the token. 30% off the input, 16% off the run,
+the remainder being output and the scout. `--no-cache` restores the old
+behaviour for a caller measuring against it, and the breakpoint is not marked
+where the write could not be read - the OpenAI wire, several samples, the
+batch tier's twenty-four-hour window.
+
+What is left is the gap. The entry lives from the start of the request that
+wrote it, the scout runs between the two calls, and a lookup that runs long
+enough pays the write premium for a read that never happens. A ruling that
+asked for the cache and read none of it says so on the terminal, and the
+ledger records `cached` beside the read and write counts, so the TTL decision
+is a measurement rather than a guess. Worked out in
+[docs/plans/staged-review.md](docs/plans/staged-review.md).
 
 ## The product
 
