@@ -572,12 +572,27 @@ Then, per arm, against the frozen fixtures:
    | `--synopsis` | $0.1367 | 5/35 | 0 | 53/54 |
 
    **The walkthrough was 37% complete and is now 98%.** That is the number
-   this step exists to move and it moved by more than the spread between two
-   runs of the same arm. Recall did not move: 6, 6, 4 and 5 of 35 across the
-   four sweeps run here, which is the noise this fixture set has at one
-   sample and the reason step 7 waits for `--samples 3`. Cost is 1.53x, not
-   the 2x of a second call, because the judging call reads the prefix the
-   describing one wrote.
+   this step exists to move. Cost is 1.53x, not the 2x of a second call,
+   because the judging call reads the prefix the describing one wrote.
+
+   At one sample recall says nothing: 6, 6, 4 and 5 of 35 across four sweeps,
+   which is this fixture set's noise and not a result. So both arms were run
+   again at three samples, where the union is what a reader would be handed:
+
+   | Arm | Mean cost | Caught (union) | Caught rate | Walkthrough |
+   |---|---|---|---|---|
+   | `oneshot ×3` | $0.1238 | 4/35 | 8% | 54/54 (+4 unsent) |
+   | `--synopsis ×3` | $0.0954 | **11/35** | 17% | 54/54 |
+
+   **Nearly triple the recall, for less money.** The cost is the surprise
+   until it is read the right way: three one-shot samples write the fifty-odd
+   file summaries three times, and the staged arm writes them once. The
+   output the judging calls spend goes to findings instead, which is the
+   argument this whole plan opens with, arriving as a cost saving rather than
+   as the extra call it was budgeted as.
+
+   Recall at n=1 remains a coin flip and this does not change that. What it
+   changes is that the arm is no longer only a walkthrough fix.
 
    Two things the sweep caught that a live pair had not. The first synopsis
    arm wrote ten lines about files whose diffs were never sent, and all ten
