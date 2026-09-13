@@ -500,6 +500,44 @@ What the ladder does establish is narrower than "simple wins": between the
 raw diff and the shipped one-shot call there are layers that cost recall
 rather than add it, and the one-shot default is the shape that loses most.
 
+### Which layer, and why shortening the prompt did not fix it
+
+Rung 2 ran once the output contract described the `question` object the
+shipped prompt requires: the shipped prompt with the packet, free-form,
+caught **5/35 against rung 1's 11/38** and wrote 13 comments against 26. On
+`gorefactor-changectx` the long prompt caught none of fourteen where the
+short one caught five. With the model, the packet and the output shape held
+constant and only that block varying, the 195-line prompt is what costs the
+recall, and the strict grammar costs about one point.
+
+The obvious move from there is to put the short prompt in the product. It was
+built as `Options.Brief`, swept, and reverted, because it does not transfer:
+
+| prompt | emission | caught | unlabelled |
+| --- | --- | --- | --- |
+| brief, 40 lines | free-form | **11/38** | 16 |
+| shipped, 195 lines | free-form | 5/35 | 9 |
+| shipped, 195 lines | strict tools | 6/38 | 15 |
+| brief, 40 lines | strict tools | **2/38** | 24 |
+
+Brief and free-form is the only cell that wins. Inside the tool path the
+short prompt wrote *more* comments than the long one, 24 unlabelled against
+15, and hit fewer annotated defects. The two variables interact rather than
+add, so "shorten the prompt" is not the lever and neither is it prompt length
+at all: the gain sits with the free-form emission, and the long prompt only
+looks harmless there because the grammar was already holding recall down.
+
+That leaves the honest next experiment as free-form output inside the
+product - parse the JSON out of a text reply rather than compile a grammar
+for it - which is a real change to `anthropicTools` and `absorb`, not a flag.
+It is also the one the agent arms have been passing all along, since an agent
+writing `review.json` is exactly a free-form emission scored by `Score`.
+
+Every number in this section is one sample. The one-shot arm has measured 4,
+5, 6 and 2 across today's sweeps on nearly the same material, so a two-point
+difference is inside the noise and only the large gaps - 11 against 5, and
+the 2x against one-shot - are worth reasoning from.
+
 Rung 1 is the honest measurement of the packet on this set, and it is not the
 premise test's: 12 caught against 11 is no recall gain, while unlabelled
 comments fall from 25 to 16. The packet buys quiet, not catches. The premise
