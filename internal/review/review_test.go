@@ -856,3 +856,46 @@ func TestTheTripwirePricesTheCheckingPassItIsAboutToRun(t *testing.T) {
 		t.Fatalf("a run whose two calls are over the cap was allowed: %v", err)
 	}
 }
+
+// A brief review's reply is not grammar-constrained, so the object arrives
+// however the model felt like framing it. Each shape here came back from a
+// real call during the sweep that measured this mode.
+func TestBriefReplyNarrowsToTheObject(t *testing.T) {
+	const want = `{"overview":"a","comments":[]}`
+	for name, reply := range map[string]string{
+		"bare":            want,
+		"fenced":          "```json\n" + want + "\n```",
+		"preamble":        "Looking at this diff carefully:\n\n" + want,
+		"fenced preamble": "I checked the resolve path.\n\n```json\n" + want + "\n```\n\nThat is all.",
+		"trailing prose":  want + "\n\nLet me know if you want more detail.",
+	} {
+		if got := jsonObjectOf(reply); got != want {
+			t.Errorf("%s: got %q, want %q", name, got, want)
+		}
+	}
+	// All prose is a broken contract, and the parser's error is worth more to
+	// whoever reads it than an empty body would be.
+	const prose = "## Overview\n\nThis change adds a pane."
+	if got := jsonObjectOf(prose); got != prose {
+		t.Errorf("a reply with no object was rewritten to %q", got)
+	}
+}
+
+// The short prompt is the review stage's alone. The ruling, the synopsis and
+// the cohort partition are defined by tool contracts it does not describe, so
+// a brief run that swapped their instructions would fail to parse rather than
+// review briefly.
+func TestBriefPromptIsScopedToTheReviewStage(t *testing.T) {
+	brief := Options{Brief: true}
+	if got := systemFor(brief, StageReview); got != briefPrompt {
+		t.Error("a brief review did not get the short prompt")
+	}
+	for _, stage := range []string{StageRuling, StageSynopsis, StageFindings, StageCohorts} {
+		if got := systemFor(brief, stage); got != systemPrompt {
+			t.Errorf("stage %s lost its instructions under --brief", stage)
+		}
+	}
+	if got := systemFor(Options{}, StageReview); got != systemPrompt {
+		t.Error("a default review did not get the long prompt")
+	}
+}

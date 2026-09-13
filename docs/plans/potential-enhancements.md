@@ -298,8 +298,14 @@ The uncomfortable half is the comparison nobody asked for. On
 `staged-empty-partition` **both** agent arms scored 3 of 3, including the
 `failures[0]` panic — the defect `redline review` was shown on changed lines
 four times and never once reported, and which its own sweep catches at 1 of 3
-across three samples. A plain agent at one sample, with no cohorts, no ruling
-and no scout, beats the staged pipeline's 16/35 at three.
+across three samples.
+
+An earlier line here said a plain agent at one sample beats the staged
+pipeline's 16/35 at three. That is not a comparison: 18/37 is one sample
+against a union of three, on a denominator three expectations smaller, and
+the union of three samples inflates recall by construction. What the numbers
+support is narrower — the agent reached a specific defect the staged pipeline
+has never reported — and the equal-samples comparison has not been run.
 
 | Item | What | Effort |
 |------|------|--------|
@@ -420,3 +426,174 @@ can and reaches the ruling as silence:
     what is outside the tree, so the ruling reads an answer where it used to
     read a silence. Putting the module cache in scope is still open, and it
     is the half that would actually answer the question.
+
+## The pipeline against the same model in an agent loop (2026-09-13)
+
+The premise test showed an agent reading the packet beat the diff alone. The
+obvious next question was whether it also beat `redline review`, and whether
+the difference was the model: the agent arms ran `claude-opus-5`, and
+`DefaultModel` is `claude-sonnet-5`.
+
+Holding the model at `claude-opus-5` and the packet and prompt constant —
+both arms assemble through `review.Assemble`, so the system text is the same
+bytes — on the same eleven fixtures, one sample each:
+
+| arm | model | caught | cost/review | clean rate |
+| --- | --- | --- | --- | --- |
+| agent loop | claude-opus-5 | 18/37 | ~$0.26 (token estimate) | - |
+| `redline review` one-shot | claude-opus-5 | 2/38 | $0.2797 | 64% (7/11) |
+| `redline review` one-shot | claude-sonnet-5 | 6/38 | $0.1031 | 18% (2/11) |
+
+Opus through the pipeline scores worse than Sonnet through the pipeline, at
+2.7x the price, while the same Opus reading the same bytes in an agent loop
+scores nine times higher. So the gap is not the model, not the packet, and
+not the prompt.
+
+What it looks like from inside: on `gorefactor-changectx`, which carries
+fourteen annotated defects, the Opus one-shot returned fourteen file
+summaries, zero comments, and an overview whose last sentence was "The
+findings below concern parsing of diff hunk headers, ref quoting for `git
+log -L`, and a couple of paths where an expansion can be emitted with a
+nil-derived or wrong span." The tool call was complete and well formed. It
+announced findings and emitted an empty array. It did not take the sanctioned
+silence path either, which the prompt describes as saying so in the overview.
+
+Reasoning before the emission is not the difference either. Opus at
+`effort=high` across the same eleven fixtures caught 2/38 at $0.2649 a
+review, with the clean rate rising from 64% to 73%: the dial made it quieter,
+not better.
+
+### The ladder: what each layer is worth
+
+Four paid sweeps eliminated the model, the prompt, the describing split and
+the reasoning dial without naming a cause, which is the cost of debugging a
+pipeline by subtraction. `TestLadder` builds one up instead, a layer at a
+time, scored by `eval.Score` on the same eleven fixtures at one sample on
+`claude-sonnet-5`:
+
+| rung | layers | caught | unlabelled | false positives |
+| --- | --- | --- | --- | --- |
+| 0 | raw diff + a forty-line instruction | **12/38** | 25 | 0 |
+| 1 | the shipped packet + the same instruction | **11/38** | 16 | 1 |
+| shipped | packet + system prompt + strict tools | 6/38 | 15 | 0 |
+
+A forty-line instruction and the raw diff, with no panes, no envelopes, no
+context and no schema, catches twice what the **one-shot** arm catches on the
+same model, the same fixtures and the same sample count.
+
+That bound matters, because one-shot is the weakest shipped arm and the
+rungs were never run against the strongest. The best measured configuration
+is `--pipeline staged` at three samples, 16/35, which is 46% against rung 0's
+32% — so the pipeline leads wherever the comparison is allowed to include
+its fan-out, and the equal-samples comparison (rung 0 at ×3 against staged at
+×3) has not been run. Nor did any rung include the cohort partition, the
+scout's lookups or the ruling: `opts.Verify` is off unless
+`REDLINE_EVAL_VERIFY` is set, and it was never set. The denominators differ
+too, 38 against 35, because `staged-empty-partition` was added after those
+sweeps.
+
+The rungs are also unpriced. `TestLadder` records no usage, so nothing here
+supports a claim that a rung is cheaper than an arm, only that it caught
+more than one-shot did.
+
+What the ladder does establish is narrower than "simple wins": between the
+raw diff and the shipped one-shot call there are layers that cost recall
+rather than add it, and the one-shot default is the shape that loses most.
+
+### Which layer, and why shortening the prompt did not fix it
+
+Rung 2 ran once the output contract described the `question` object the
+shipped prompt requires: the shipped prompt with the packet, free-form,
+caught **5/35 against rung 1's 11/38** and wrote 13 comments against 26. On
+`gorefactor-changectx` the long prompt caught none of fourteen where the
+short one caught five. With the model, the packet and the output shape held
+constant and only that block varying, the 195-line prompt is what costs the
+recall, and the strict grammar costs about one point.
+
+The obvious move from there is to put the short prompt in the product. It was
+built as `Options.Brief`, swept, and reverted, because it does not transfer:
+
+| prompt | emission | caught | unlabelled |
+| --- | --- | --- | --- |
+| brief, 40 lines | free-form | **11/38** | 16 |
+| shipped, 195 lines | free-form | 5/35 | 9 |
+| shipped, 195 lines | strict tools | 6/38 | 15 |
+| brief, 40 lines | strict tools | **2/38** | 24 |
+
+Brief and free-form is the only cell that wins. Inside the tool path the
+short prompt wrote *more* comments than the long one, 24 unlabelled against
+15, and hit fewer annotated defects. The two variables interact rather than
+add, so "shorten the prompt" is not the lever and neither is it prompt length
+at all: the gain sits with the free-form emission, and the long prompt only
+looks harmless there because the grammar was already holding recall down.
+
+That leaves the honest next experiment as free-form output inside the
+product - parse the JSON out of a text reply rather than compile a grammar
+for it - which is a real change to `anthropicTools` and `absorb`, not a flag.
+It is also the one the agent arms have been passing all along, since an agent
+writing `review.json` is exactly a free-form emission scored by `Score`.
+
+Every number in this section is one sample. The one-shot arm has measured 4,
+5, 6 and 2 across today's sweeps on nearly the same material, so a two-point
+difference is inside the noise and only the large gaps - 11 against 5, and
+the 2x against one-shot - are worth reasoning from.
+
+Rung 1 is the honest measurement of the packet on this set, and it is not the
+premise test's: 12 caught against 11 is no recall gain, while unlabelled
+comments fall from 25 to 16. The packet buys quiet, not catches. The premise
+test's 18 against 14 was one sample on a different model through an agent
+loop, so one of the two numbers is sampling noise and the fixture set cannot
+say which.
+
+Rung 2 — the shipped system prompt with the packet, free-form — is not
+reported here because four of eleven fixtures failed to parse: the shipped
+prompt requires a `question` object per comment, which the rung's output
+contract did not describe, so the model emitted `question` as a string. That
+is a harness gap, not a result, and it leaves the prompt's own contribution
+the one layer still unmeasured.
+
+Two things found while building the rungs are worth keeping:
+
+- The shipped system prompt never says to reply with JSON. That contract
+  lives entirely in the tool schema, so a prompt sent without its tool
+  answers in markdown. The prompt is not self-sufficient; it only works
+  welded to the grammar.
+- Thinking is on by default. On the larger fixtures it spent the entire 32k
+  output budget before emitting one text token and returned
+  `stop=max_tokens blocks=[thinking]` — an empty reply that reads as a silent
+  model and is not one. Non-streaming calls made it worse by returning no
+  content and no error at all.
+
+### What this does not support
+
+Splitting the describing call off is not the fix, and an earlier reading here
+that said it was compared `--synopsis` on Sonnet against one-shot on Opus,
+which is a model difference wearing a pipeline label. With the model held at
+`claude-sonnet-5` across all eleven fixtures at one sample:
+
+| arm | caught | cost/review | unlabelled | walkthrough |
+| --- | --- | --- | --- | --- |
+| one-shot | 6/38 | $0.1031 | 15 | 52/66 (+10 unsent) |
+| `--synopsis` | 6/38 | $0.1175 | 13 | 66/66 |
+
+A tie on recall. The describing split buys a complete walkthrough and two
+fewer unlabelled comments for 14% more, which is worth having and is not a
+recall fix, so the default stays where it is on this evidence.
+
+The two arms catch nearly disjoint sets, though: one-shot took four
+caller/test-role items on `changectx` and nothing on `nil-rules`,
+`harness-injected-config` or `staged-empty-partition`, while `--synopsis`
+took `empty-roles-are-silent`, `condition-checked-before-facts-invalidated`,
+`nil-prepared-map` and `empty-partition-indexes-failures` — the panic. Their
+union is about 11/38, near double either arm. At one sample the sampling
+noise is larger than the shape effect, which is the same limit the ×3 sweeps
+ran into and the reason neither arm can referee the other.
+
+### Fixed here
+
+The system prompt still told the model that "an uncertain finding costs the
+reader nothing", the same false claim corrected in `commentSchema()` on
+2026-09-12 — the correction landed in the schema description and missed the
+prompt, which says the same thing twice. `post.go:172` withholds
+low-confidence findings, so an uncertain finding costs the reader the
+finding. Both now say so.

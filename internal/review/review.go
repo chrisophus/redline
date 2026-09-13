@@ -101,8 +101,12 @@ type Input struct {
 
 // Options configures one call.
 type Options struct {
-	Model     string
-	Effort    string
+	Model  string
+	Effort string
+	// Brief runs the review stage under briefPrompt with no tools, parsing
+	// the JSON out of a text reply. The pair is what was measured better;
+	// see briefPrompt for the numbers and for why neither half ships alone.
+	Brief     bool
 	Ceiling   int
 	MaxTokens int64
 	// MaxCostUSD refuses to send a request whose estimated cost exceeds it.
@@ -508,8 +512,14 @@ func (r *Result) Summary() string {
 // actually went out.
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
-	system := systemPrompt + oneShotAddendum + languageFragments(in.Envelopes)
-	fixed := toolsTokens(opts) + envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
+	system := systemFor(opts, StageReview) + oneShotAddendum + languageFragments(in.Envelopes)
+	// A brief review sends no tools, so pricing their schemas into the fixed
+	// cost would reserve context nothing occupies.
+	tools := toolsTokens(opts)
+	if opts.Brief {
+		tools = 0
+	}
+	fixed := tools + envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
 		// The block's own header is written after FitAll has fitted the
 		// expansions, so it has to be reserved here or the assembled prompt
@@ -846,6 +856,13 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 	if strings.TrimSpace(body) == "" {
 		return fmt.Errorf("the model returned no content (stop reason %q)", c.stopReason)
 	}
+	if opts.Brief && stage == StageReview {
+		// No tool constrained this reply, so the object can arrive fenced or
+		// behind a sentence about what the model is going to check. Narrowing
+		// to the object is this path's job; a malformed one still reaches
+		// parseReview and fails there with the body in the message.
+		body = jsonObjectOf(body)
+	}
 	// Which shape came back is decided by which contract went out, so the
 	// result's own schema says how to read it. One wire, two stages.
 	if res.rulesRatherThanReviews() {
@@ -874,6 +891,31 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 		res.Cohorts = wire.Cohorts
 	}
 	return nil
+}
+
+// jsonObjectOf narrows a free-form reply to the JSON object in it.
+//
+// Strips a markdown fence and anything either side of the outermost braces.
+// It returns the input unchanged when there is nothing brace-delimited to
+// find, so the parser reports what actually came back rather than an empty
+// body: a reply that is all prose is a broken contract worth reading.
+func jsonObjectOf(s string) string {
+	t := strings.TrimSpace(s)
+	if i := strings.Index(t, "```"); i >= 0 {
+		rest := t[i+3:]
+		if j := strings.IndexByte(rest, '\n'); j >= 0 {
+			rest = rest[j+1:]
+		}
+		if j := strings.Index(rest, "```"); j >= 0 {
+			rest = rest[:j]
+		}
+		t = strings.TrimSpace(rest)
+	}
+	i, j := strings.IndexByte(t, '{'), strings.LastIndexByte(t, '}')
+	if i < 0 || j <= i {
+		return s
+	}
+	return t[i : j+1]
 }
 
 // debugBody bounds a response body for a debug line. The whole point is to see

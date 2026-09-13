@@ -116,9 +116,10 @@ correct: roughly three in ten real changes deserve no comment at all, and on
 one of those you return an empty comments array and say so in the overview.
 
 Set confidence honestly. Report a finding you are unsure of with confidence
-"low" rather than withholding it. Low-confidence findings are folded away on
-the report and are not posted, so an uncertain finding costs the reader
-nothing and a withheld one costs them the finding.
+"low" rather than withholding it, but low is not free: a low-confidence
+finding stays on the report and is not posted to the pull request, so nobody
+who could fix it is shown it. Use low when you genuinely could not settle it,
+not as a hedge on a finding you believe.
 
 Every comment carries a question: the one check that would confirm or refute
 it, and what to look it up on. This is not paperwork. A lookup pass runs these
@@ -193,6 +194,80 @@ Rule only where you have something the check did not. A verdict that restates
 the finding is worse than no verdict: it costs the reader a line and tells
 them nothing. An empty verdicts array is the right answer when the findings
 speak for themselves, and most of the time they do.`
+
+// briefPrompt states the same job in forty lines instead of a hundred and
+// ninety-five, and carries its own output contract because the call that
+// sends it sends no tools.
+//
+// Both halves are load-bearing together and neither is on its own. Measured
+// on eleven fixtures at one sample on claude-sonnet-5, with the packet held
+// constant: this prompt with a free-form reply caught 11 of 38 annotated
+// defects, systemPrompt with a free-form reply caught 5 of 35, systemPrompt
+// with the strict tools caught 6 of 38, and this prompt with the strict tools
+// caught 2 of 38 while writing more comments than any of them. The short
+// prompt is worse than the long one inside the tool path and better outside
+// it, so the two variables interact and shipping either alone is shipping the
+// losing cell. --brief is the pair.
+//
+// What it keeps is what earlier sweeps showed to be load-bearing: enumerate
+// every defect rather than choosing one, and zero findings is a valid answer.
+// What it drops is the catalogue of what is not worth reporting. Each clause
+// of that catalogue was written against a real false positive and was
+// defensible alone; together they read as a case for silence, and the model
+// takes the case.
+//
+// What it costs is output tokens. Nothing bounds a free-form reply the way a
+// grammar does, and the one live run of this shape - PR #46 of this
+// repository at a 70,000-token ceiling - spent 32,795 output tokens on four
+// findings and twelve file lines, $0.8382 all in with the lookups and the
+// ruling. --max-tokens is the lever if that is too much, and the cap arrives
+// as a truncated object rather than a short one, so lower it carefully.
+const briefPrompt = `You are reviewing one change in a code repository, once, in a single pass.
+
+Report every defect you can support from the material below, each as its own
+comment. A change may carry several independent defects, and a reviewer that
+reports one and stops has failed the author as badly as one that pads: they
+cannot fix what nobody named.
+
+Do not invent findings. Zero comments is the right answer on a change that
+has none, and on one of those you say so in the overview.
+
+Deterministic tools have already run and their findings are below. Do not
+restate them. Connecting two of them is a finding, and the most valuable one
+you can produce here: set category to "correlation" and put both fingerprints
+in relatedFindings.
+
+Anchor every comment to a line you were shown. Do not state a fact about code
+you were not shown as if you had checked it: that is what each comment's
+question is for, and a later pass runs the lookup and rules on the answer.
+
+Reply with one JSON object and nothing else: no prose before it, no markdown
+fence, no preamble about what you are about to check.
+
+{"overview": "one or two paragraphs on what this change does and why",
+ "files": [{"path": "...", "summary": "what this file's change does"}],
+ "comments": [{"file": "...", "line": 0, "side": "new",
+               "category": "correctness", "severity": "warning",
+               "confidence": "high",
+               "body": "what is wrong and what happens because of it",
+               "question": {"kind": "diff", "ask": "the check that would settle it",
+                            "subject": "what to look it up on"}}]}
+
+question is an object, never a string, and kind is one of diff, precedent,
+caller, rule, history, type or none. Give a files line for every file whose
+diff you were shown, one sentence each, and none for the files held back.`
+
+// systemFor picks the harness half. briefPrompt applies to the review stage
+// only: the ruling, the synopsis and the cohort partition each have a tool
+// contract this block does not describe, and a stage that asked for one shape
+// and was told to write another would fail to parse rather than review
+// briefly.
+func systemFor(opts Options, stage string) string {
+	if opts.Brief && stage == StageReview {
+		return briefPrompt
+	}
+	return systemPrompt
+}
 
 // oneShotAddendum is true only of the pass that gets no tools. It sat in
 // systemPrompt until explore mode inherited it there, and was told its context
