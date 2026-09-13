@@ -30,7 +30,18 @@ func cmdReview(o opts) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(review.Summarize(entries).String())
+		// One block per shape, never a mean across them: a staged run is a
+		// call per cohort and a one-shot run is one call, so an average over
+		// both is a price nobody was charged.
+		byShape := review.SummarizeByShape(entries)
+		for _, shape := range []string{review.PipelineOneShot, review.PipelineStaged} {
+			if s, ok := byShape[shape]; ok {
+				fmt.Println(s.String())
+			}
+		}
+		if len(byShape) == 0 {
+			fmt.Println(review.Summarize(nil).String())
+		}
 		return nil
 	}
 	res, err := run.LoadSession(o.out)
@@ -51,7 +62,14 @@ func cmdReview(o opts) error {
 	// emit, when it has emitted any.
 	var expected int64
 	if entries, lerr := review.ReadLedger(o.out); lerr == nil {
-		expected = review.Summarize(entries).ExpectedOutput()
+		// Priced against this shape's own rows. A staged row's output is a
+		// describing call plus one per cohort, and using it to price a
+		// one-shot call would quote several calls for one.
+		shape := review.PipelineOneShot
+		if o.pipeline == review.PipelineStaged {
+			shape = review.PipelineStaged
+		}
+		expected = review.SummarizeByShape(entries)[shape].ExpectedOutput()
 	}
 	ropts := review.Options{
 		API:            o.api,
@@ -283,9 +301,11 @@ func cmdReview(o opts) error {
 		fmt.Fprintln(os.Stderr)
 	}
 	if entries, rerr := review.ReadLedger(o.out); rerr == nil && len(entries) > 1 {
-		// The target is an average, so print the average. One review's cost
-		// says nothing about whether the tool is affordable to keep running.
-		fmt.Fprintln(os.Stderr, "redline: to date,", review.Summarize(entries).String())
+		// The target is an average, so print the average - of the shape this
+		// run just used, which is the only set this run belongs to.
+		if s := review.SummarizeByShape(entries)[out.Pipeline]; s.Count > 1 {
+			fmt.Fprintln(os.Stderr, "redline: to date,", s.String())
+		}
 	}
 
 	// Stamped with the change it was written against, so the next `run`

@@ -334,3 +334,35 @@ func TestTheCatalogueCarriesOnlyTheShapesContracts(t *testing.T) {
 		}
 	}
 }
+
+// A staged row is a describing call plus one per cohort; a one-shot row is
+// one call. Averaged together they report a price nobody was charged, and
+// MedianOutput - which prices the next review - is worse than meaningless:
+// it would quote five calls' output for one.
+func TestTheLedgerNeverAveragesAcrossShapes(t *testing.T) {
+	entries := []Entry{
+		{Model: "claude-sonnet-5", CostUSD: 0.10, Known: true, Usage: Usage{OutputTokens: 700}},
+		{Model: "claude-sonnet-5", CostUSD: 0.12, Known: true, Usage: Usage{OutputTokens: 800},
+			Pipeline: PipelineOneShot},
+		{Model: "claude-sonnet-5", CostUSD: 0.90, Known: true, Usage: Usage{OutputTokens: 4000},
+			Pipeline: PipelineStaged, Cohorts: 5},
+	}
+	byShape := SummarizeByShape(entries)
+	one, staged := byShape[PipelineOneShot], byShape[PipelineStaged]
+	// The row written before the field existed is a one-shot row: it was one.
+	if one.Count != 2 {
+		t.Errorf("a row with no shape is a one-shot row, got %d in the set", one.Count)
+	}
+	if one.Mean > 0.12 {
+		t.Errorf("the staged row leaked into the one-shot mean: $%.4f", one.Mean)
+	}
+	if staged.Count != 1 || staged.Mean < 0.9 {
+		t.Errorf("the staged set is its own: %d row(s) at $%.4f", staged.Count, staged.Mean)
+	}
+	if one.ExpectedOutput() >= 4000 {
+		t.Errorf("a one-shot call must not be priced at a fan-out's output: %d", one.ExpectedOutput())
+	}
+	if s := one.String(); !strings.HasPrefix(s, PipelineOneShot+":") {
+		t.Errorf("a shape's line must say which shape it is: %q", s)
+	}
+}

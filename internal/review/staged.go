@@ -68,13 +68,13 @@ func (r *Result) cohortsRequest(opts Options, in Input) *Result {
 
 // cohortRequest is one stage-two call: the same prefix as every other, scoped
 // by its instruction to one cohort.
-func (r *Result) cohortRequest(opts Options, mine Cohort, others []Cohort) *Result {
+func (r *Result) cohortRequest(opts Options, mine Cohort, others []Cohort, bound int) *Result {
 	out := r.clone()
 	out.Stage = StageFindings
 	out.Tail = cohortTail(mine, others, opts.CrossSummaries)
 	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedOutputTokens)
-	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)
+	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, cohortMaxTokens(opts, bound))
 	return out
 }
 
@@ -89,14 +89,44 @@ func stagedCeilingCost(opts Options, in Input, res *Result) float64 {
 	if opts.Pipeline != PipelineStaged || res == nil {
 		return 0
 	}
+	bound := cohortBound(opts, in)
 	one, ok := CeilingCost(opts.Model, res.cohortsRequest(opts, in).InputEstimate, opts.MaxTokens)
 	if !ok {
 		return 0
 	}
+	each, _ := CeilingCost(opts.Model, res.InputEstimate, cohortMaxTokens(opts, bound))
 	// Stage one is counted here, so the synopsis ceiling is not added on top
 	// of it: this is the same call under a wider contract.
-	return one + res.CostCeilingUSD*float64(cohortBound(opts, in))
+	return one + each*float64(bound)
 }
+
+// cohortMaxTokens is one cohort call's response cap: the whole run's cap
+// divided across the fan-out.
+//
+// The budget is one review's, not one per cohort. Six calls at the full cap
+// is six times a review's worst case, which on a mid-sized change is $6
+// against a $2 tripwire - so the guard refused every real fixture in the
+// first sweep, correctly, for a request nobody intended to make. A cohort
+// reviewing two files does not need the cap a reviewer of fifty needs, and
+// the run measured here spent 3,267 output tokens across five of them.
+//
+// Floored, because a cap small enough to truncate a cohort's findings would
+// buy the guard by breaking the thing it guards.
+func cohortMaxTokens(opts Options, cohorts int) int64 {
+	if cohorts <= 1 {
+		return opts.MaxTokens
+	}
+	per := opts.MaxTokens / int64(cohorts)
+	if per < MinCohortMaxTokens {
+		per = min(MinCohortMaxTokens, opts.MaxTokens)
+	}
+	return per
+}
+
+// MinCohortMaxTokens is the floor on a cohort call's response cap. Well above
+// what a cohort of a handful of files was measured writing, so the division
+// above bounds the bill without bounding the review.
+const MinCohortMaxTokens int64 = 8000
 
 // cohortBound is how many stage-two calls this run may make. A change with
 // fewer shown files than MinCohortFiles is one cohort whatever the flag says:
@@ -199,9 +229,13 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 		wg.Add(1)
 		go func(i int, cohort Cohort) {
 			defer wg.Done()
+			// The run's response budget, divided. Each call sends the cap it
+			// was priced at, so the tripwire's arithmetic and the wire's
+			// request are the same number.
 			one := opts
 			one.Samples = 1
-			got, err := runOnce(ctx, in, one, res.cohortRequest(opts, cohort, cohorts))
+			one.MaxTokens = cohortMaxTokens(opts, len(cohorts))
+			got, err := runOnce(ctx, in, one, res.cohortRequest(opts, cohort, cohorts, len(cohorts)))
 			out[i] = answer{res: got, err: err}
 			if opts.Progress == nil {
 				return

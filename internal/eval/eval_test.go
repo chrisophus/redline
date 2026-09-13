@@ -488,6 +488,20 @@ func TestSweep(t *testing.T) {
 			t.Fatal("a staged run is a call per cohort over what stage one wrote; the batch tier cannot pair them")
 		}
 	}
+	// The tripwire, when the arm needs a different one. A staged run's worst
+	// case is stage one plus the bound at the divided response cap, which on
+	// a mid-sized fixture is above the $2 default the one-shot arm is
+	// calibrated for - so the first staged sweep was refused on seven of ten
+	// fixtures. Raised here only when the invocation says so, because a
+	// harness that quietly lifts a cost guard is how a sweep bills what
+	// nobody agreed to.
+	if v := os.Getenv("REDLINE_EVAL_MAX_COST"); v != "" {
+		max, err := strconv.ParseFloat(v, 64)
+		if err != nil || max <= 0 {
+			t.Fatalf("REDLINE_EVAL_MAX_COST=%q is not a positive dollar amount", v)
+		}
+		opts.MaxCostUSD = max
+	}
 	// A model on another wire is an arm like any other. The key and
 	// base URL are read the same way the command reads them, so a
 	// sweep and a real review reach the same endpoint.

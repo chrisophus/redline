@@ -160,6 +160,10 @@ func ReadLedger(dir string) ([]Entry, error) {
 
 // Stats is the distribution the target is a claim about.
 type Stats struct {
+	// Shape is which pipeline these rows came out of, set by
+	// SummarizeByShape. Empty when a caller summarised a set it had already
+	// chosen.
+	Shape  string
 	Count  int
 	Mean   float64
 	Median float64
@@ -200,7 +204,39 @@ func (s Stats) ExpectedOutput() int64 {
 	return ExpectedOutputTokens
 }
 
-// Summarize computes the distribution.
+// Shape is the ledger's grouping key: the pipeline a row came out of, with
+// the rows written before the field existed reading as what they were.
+func (e Entry) Shape() string {
+	if e.Pipeline == "" {
+		return PipelineOneShot
+	}
+	return e.Pipeline
+}
+
+// SummarizeByShape splits the ledger before averaging it.
+//
+// A mean across shapes is not a number. A staged row is a describing call
+// plus one per cohort and a one-shot row is one call, so a ledger holding
+// both reports a cost nobody was ever charged - the same reason Batched rows
+// are left out of the distribution below. MedianOutput is worse than
+// meaningless mixed: it prices the next review's judging call, and a staged
+// row's output is five calls' worth.
+func SummarizeByShape(entries []Entry) map[string]Stats {
+	byShape := map[string][]Entry{}
+	for _, e := range entries {
+		byShape[e.Shape()] = append(byShape[e.Shape()], e)
+	}
+	out := make(map[string]Stats, len(byShape))
+	for shape, rows := range byShape {
+		s := Summarize(rows)
+		s.Shape = shape
+		out[shape] = s
+	}
+	return out
+}
+
+// Summarize computes the distribution of whatever it is given. Callers that
+// hold a mixed ledger want SummarizeByShape.
 func Summarize(entries []Entry) Stats {
 	var s Stats
 	var costs []float64
@@ -278,6 +314,9 @@ func (s Stats) String() string {
 	}
 	out := fmt.Sprintf("%d review(s): mean $%.4f, median $%.4f, p90 $%.4f, range $%.4f to $%.4f, mean wall %.1fs",
 		s.Count, s.Mean, s.Median, s.P90, s.Min, s.Max, s.MeanSeconds)
+	if s.Shape != "" {
+		out = s.Shape + ": " + out
+	}
 	if s.Batched > 0 {
 		out += fmt.Sprintf(" (%d more ran at the batch tier's half rate and are excluded)", s.Batched)
 	}

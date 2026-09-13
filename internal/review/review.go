@@ -532,9 +532,13 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	cost, known := EstimateCost(opts.Model, est, expected)
 	ceiling, _ := CeilingCost(opts.Model, est, opts.MaxTokens)
 	return &Result{
-		API:            opts.API,
-		Model:          opts.Model,
-		Stage:          StageReview,
+		API:   opts.API,
+		Model: opts.Model,
+		Stage: StageReview,
+		// Stamped at assembly so every row has a shape, including the rows
+		// nothing staged ever touches: a ledger where one shape is a value
+		// and the other is an empty string groups into two sets by accident.
+		Pipeline:       opts.Pipeline,
 		Budget:         budget,
 		Prompt:         prompt,
 		System:         system,
