@@ -757,11 +757,11 @@ func TestWalkthroughBodyMatchesCopilotOrder(t *testing.T) {
 	rep.Finalize()
 	prof := walkthroughProfile("coverage", "lint", "confirmations", "unknowns")
 	p := BuildAttest(rep, prTarget(), "", nil, prof, []string{"a.go", "b.go"}).
-		WithMeta("MKT-1: do a thing", "bot[bot]")
+		WithMeta("TICKET-1: do a thing", "bot[bot]")
 	for _, want := range []string{
 		"### Review findings",
 		"**Reviewed by.** bot[bot] on `deadbeef`.",
-		"**Stated intent.** MKT-1: do a thing",
+		"**Stated intent.** TICKET-1: do a thing",
 		"**What it does.** Adds a feed.",
 		"<summary>Walkthrough</summary>",
 		"| `a.go` | Staging. |",

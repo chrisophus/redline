@@ -344,7 +344,7 @@ The case for them is not cost, it is three failures already measured in this
 repository.
 
 The walkthrough is sparse or missing. `copilot-style-review-body.md`: "On large
-PRs (e.g. Marketplace PR 1284), the bot body often has no walkthrough at all:
+PRs (e.g. a large consumer PR), the bot body often has no walkthrough at all:
 the LLM truncates or sparse-fills `files`." Description and judgment compete
 inside one output budget and judgment wins, which is the right outcome for the
 wrong reason — the reader loses the orientation block entirely.

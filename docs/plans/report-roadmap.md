@@ -132,7 +132,7 @@ Ideas that are real but not scheduled.
   failure-shaped entries down to two that read as what they are. Original note
   kept below for the reasoning.
 
-  `redline/context` unknown wording overstates the failure. On MKT-1415 the
+  `redline/context` unknown wording overstates the failure. On the dogfood PR the
   `unknowns` entry read "gorefactor could not fully resolve this change... no
   sibling expansions: no changed type implements an interface declared in this
   module" — read alone in the report this sounds like context-gathering failed.

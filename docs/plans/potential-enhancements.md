@@ -16,7 +16,7 @@ Each item is a candidate, not a commitment. Effort is rough: **S** days,
 
 ## Mutation (gomutants v0.6.0+)
 
-gomutants **v0.6.0** (latest stable; MCT pins it in `GOMUTANTS_VERSION`) adds
+gomutants **v0.6.0** (latest stable; the consumer pins it in `GOMUTANTS_VERSION`) adds
 several features aimed at CI and review workflows. Redline ingests
 `mutants.json`, overlays **LIVED** survivors on changed lines, and now reads
 the v0.6.0 statuses and the stable mutant `id`.
@@ -27,10 +27,10 @@ the v0.6.0 statuses and the stable mutant `id`.
 |-----------------|----------------|---------------|
 | **`INFRA_ERROR` status** ([PR #83](https://github.com/szhekpisov/gomutants/pull/83)) | Per-mutant classification when `go test` fails for environmental reasons (OOM, disk full, too many open files), not because the mutant was caught. Stops silent **KILLED** inflation on flaky CI runners. | **Read.** Counted apart as `mutation.infra`, named in `unreliable[]`, reported as an unknown, and it withholds the all-killed confirmation. |
 | **Stable mutant `id` in JSON** (#86) | Fingerprint like `internal/foo/foo.go:Double:RETURN_ZERO#1` survives rebases better than file+line+type. Enables `gomutants --run-mutant-id` for repro. | **Read.** On every survivor as `id`, used as the verdict key when present, with the repro command on the report. |
-| **`--changed-since` merge-base scope** (#85) | Mutants limited to lines changed vs the merge base, not an arbitrary ref tip. Matches PR review scope. | N/A (gomutants CLI). MCT `make mutate` already passes `--changed-since origin/main`. |
+| **`--changed-since` merge-base scope** (#85) | Mutants limited to lines changed vs the merge base, not an arbitrary ref tip. Matches PR review scope. | N/A (gomutants CLI). The consumer `make mutate` already passes `--changed-since origin/main`. |
 | **Return-value mutators** (#80) | `RETURN_ERROR_NIL`, wrong-return variants; catches error-swallowing gaps. | Surfaces as ordinary **LIVED** when on added lines (no special labeling). |
 | **`--run-mutant-id`** (#87) | Re-run one mutant for debugging after reading the report. | Not wired into "Copy for the agent" or report UI. |
-| **`--detect-equivalent`** (existing; MCT uses on `make mutate`) | Marks provably unkillable survivors **EQUIVALENT** after assembly compare. | **Read.** Counted apart from **LIVED** and rendered as a muted note, not a survivor. |
+| **`--detect-equivalent`** (existing; the consumer uses on `make mutate`) | Marks provably unkillable survivors **EQUIVALENT** after assembly compare. | **Read.** Counted apart from **LIVED** and rendered as a muted note, not a survivor. |
 
 ### Redline enhancements (gomutants-aware)
 
@@ -42,12 +42,12 @@ the v0.6.0 statuses and the stable mutant `id`.
 | **Report-level efficacy context** | Optional one-liner from top-level `test_efficacy`, `mutants_total`, `mutants_killed`, `mutants_lived` when present, with caveat when `infra_errors > 0`. | S |
 | **`EQUIVALENT` / `NOT COVERED` nuance** | **NOT COVERED**: leave to coverage pane (today). **EQUIVALENT**: info finding or muted marker, not a red survivor stripe. | done |
 | **Harness: minimum gomutants version** | Setup skill and docs: recommend **v0.6.0+** when mutation profile is enabled; note that pre-0.6.0 reports lack `INFRA_ERROR` and stable ids. | done |
-| **CI ingest without local mutate** | MCT `mutation-quality-check` filters daily CI artifacts to changed files (~seconds). Redline could read the same JSON shape from a downloaded artifact path (harness profile `path` only, no produce). Complements local `make mutate`. | M |
+| **CI ingest without local mutate** | The consumer `mutation-quality-check` filters daily CI artifacts to changed files (~seconds). Redline could read the same JSON shape from a downloaded artifact path (harness profile `path` only, no produce). Complements local `make mutate`. | M |
 | **Verdicts keyed by mutant `id`** | "needs test" / "equivalent" / "acceptable" per survivor; stable across line shifts when id is present. Depends on id field above. | done |
 
-### MCT CI context (dogfood)
+### Consumer CI context (dogfood)
 
-Marketplace Core moved to gomutants **v0.6.0** for the daily mutation workflow.
+The dogfood repository moved to gomutants **v0.6.0** for the daily mutation workflow.
 Before **INFRA_ERROR**, that repo used a log-grep script
 (`mutation_infra_signal_check.sh`) to flag OOM/disk-full signatures and warn
 that efficacy might be inflated. The script remains a whole-run backstop;
@@ -57,7 +57,7 @@ Redline should treat a mutation report from v0.6.0+ CI the same way a human
 would: **LIVED** on changed lines is actionable; **INFRA_ERROR** on changed
 lines is "re-run or distrust this shard", not "tests are fine."
 
-Recommended `.redline.yml` pattern for MCT-style repos:
+Recommended `.redline.yml` pattern for consumer-style repos:
 
 ```yaml
 harness:
@@ -84,7 +84,7 @@ gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
 | Test-delta facts (shipped) | Info findings from the diff: a Go package changed with no test in it, a `t.Skip`/`.skip`/`.only` added, or a net drop in assertion-like lines in a test. Pane `internal/pane/testdelta`. | done |
 | Per-test attribution | Map a line to the tests that execute it. Needs per-test profiles and real test runs; same data mutation wants. Opt-in command, not default `run`. See report-roadmap. | L |
 | CI profile ingest | Read `coverage.out` (or lcov) from a CI artifact URL or path when local produce is too heavy. Harness `from: ci` or env substitution. | M |
-| Diff-coverage vs. repo baseline as a gated finding | Today diff coverage renders as a descriptive markdown table only (`report.coverage.diffCoverage`), no severity, no `findings` entry. Dogfooding on MKT-1415 (Marketplace Core): diff coverage was 49% against a 79% repo-wide baseline, and MCT's own `CLAUDE.md` states "Never lower coverage thresholds" as an invariant — exactly the kind of drop that should surface as a `WARNING`/`ERROR` finding, not sit only in a table a reviewer might skim past. Threshold (repo baseline, a configured floor, or both) should be configurable per adopter. | S |
+| Diff-coverage vs. repo baseline as a gated finding | Today diff coverage renders as a descriptive markdown table only (`report.coverage.diffCoverage`), no severity, no `findings` entry. Dogfooding on the dogfood PR (the dogfood repository): diff coverage was 49% against a 79% repo-wide baseline, and the consumer's own `CLAUDE.md` states "Never lower coverage thresholds" as an invariant — exactly the kind of drop that should surface as a `WARNING`/`ERROR` finding, not sit only in a table a reviewer might skim past. Threshold (repo baseline, a configured floor, or both) should be configurable per adopter. | S |
 
 ## Lint and external tools
 
@@ -103,7 +103,7 @@ gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
 
 | Item | What | Effort |
 |------|------|--------|
-| Dependency install steps | Worktree `produce` for `node_modules`, `go generate` stubs, or other gitignored dirs linters need. MCT needs `ui/dist` (shipped) and `ui/node_modules` (not yet). **Confirmed live on MKT-1415**: `redline/lint` (eslint) failed on that run with exactly this cause — `ui/node_modules/.bin/eslint` missing in the detached review worktree — meaning every UI-touching PR reviewed from a detached worktree gets zero lint coverage until this ships. Same `produce`-on-`when: missing` shape as the existing `ui-embed` entry; wire `scripts/ui-yarn-install-if-needed.sh`. | S |
+| Dependency install steps | Worktree `produce` for `node_modules`, `go generate` stubs, or other gitignored dirs linters need. The consumer needs `ui/dist` (shipped) and `ui/node_modules` (not yet). **Confirmed live on the dogfood PR**: `redline/lint` (eslint) failed on that run with exactly this cause — `ui/node_modules/.bin/eslint` missing in the detached review worktree — meaning every UI-touching PR reviewed from a detached worktree gets zero lint coverage until this ships. Same `produce`-on-`when: missing` shape as the existing `ui-embed` entry; wire `scripts/ui-yarn-install-if-needed.sh`. | S |
 | Mutation produce (opt-in) | Harness profile with `produce: make mutate` scoped to changed packages. Slow and DB-dependent; must stay off default `--prepare`, documented as explicit opt-in. Require gomutants **v0.6.0+** in docs. | S |
 | Generated-code drift pane | `verify-generated` style: run codegen and diff. Not a linter delta; needs a pane that reports "these generated paths drifted" with file list. | M |
 | Staleness hints for slow profiles | When `coverage.out` or `mutants.json` is present but older than the diff, say how stale (mtime vs HEAD) in the report and `findings.json`. Partial today; make it consistent. | S |
@@ -122,7 +122,7 @@ gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
 | Import / arch lint | `go-arch-lint` or depguard matrix as a scoped custom tool. Complements golangci, not a duplicate delta. | S |
 | UI capture | Pinned browser, route screenshots, console errors, failed requests. No perceptual diff. Explicit `redline setup browser`; pane skipped when missing. Design doc phase 4. | L |
 | Interface section | Permanent gap banner vs agent screenshots vs deterministic "what UI moved" list. No decision yet. See report-roadmap backlog. | M |
-| Provider-parity pane (`internal/pane/parity`, shipped) | Deterministic, gorefactor-complementary: for repos with sibling provider/adapter directories (e.g. MCT's `internal/provider/{aws,azure,gcp}/**`), diff filenames and exported-symbol names across siblings when a change touches one. Flags "this capability exists for provider A but not B/C" without a shared interface — the exact class of gap gorefactor's sibling-expansion missed on MKT-1415 (`internal/provider/gcp/offer_amend_mutability.go` has no Azure/AWS analog, and no shared interface links them, so `redline/context` reported "no sibling expansions" even though the parity question itself is answerable cheaply and deterministically). Path/name heuristic only — no LLM, no semantic graph. Shipped as filenames only: comparing exported symbols would need a per-language notion of what exported means, which is the knowledge that lives behind the provider boundary, and the motivating case is a filename case. A `minShared` guard of three common filenames keeps it quiet on directories that merely sit side by side. | done |
+| Provider-parity pane (`internal/pane/parity`, shipped) | Deterministic, gorefactor-complementary: for repos with sibling provider/adapter directories (e.g. The consumer's `internal/provider/{aws,azure,gcp}/**`), diff filenames and exported-symbol names across siblings when a change touches one. Flags "this capability exists for provider A but not B/C" without a shared interface — the exact class of gap gorefactor's sibling-expansion missed on the dogfood PR (`internal/provider/gcp/offer_amend_mutability.go` has no Azure/AWS analog, and no shared interface links them, so `redline/context` reported "no sibling expansions" even though the parity question itself is answerable cheaply and deterministically). Path/name heuristic only — no LLM, no semantic graph. Shipped as filenames only: comparing exported symbols would need a per-language notion of what exported means, which is the knowledge that lives behind the provider boundary, and the motivating case is a filename case. A `minShared` guard of three common filenames keeps it quiet on directories that merely sit side by side. | done |
 
 ## Agent workflow and decisions
 
@@ -131,10 +131,10 @@ gomutants **v0.6.0+** so reports include `id` and `INFRA_ERROR`.
 | Verdict vocabulary expansion | Was M when only an agent writing review.json could rule on anything. `redline review` now carries verdicts in its own schema and the prompt asks for them, using the same three words (justified / should-fix / rule-noisy) across every finding class rather than a second vocabulary. What is left is smaller and is a wording question, not machinery: whether a coverage gap wants "risk / acceptable" and config drift "reasonable / hiding something", or whether the three existing words carry those too. Decide it against real reviews rather than in advance. | S |
 | Verdicts on mutation survivors | `mutants.json` overlays lines; reviewer records "needs test" / "equivalent" / "acceptable" per survivor. Key verdicts on gomutants v0.6.0+ stable `id` when present. | S |
 | Post verdicts to PR | Whether human/agent decisions ride on `redline post` or stay local. Open question in design doc. | M |
-| Multi-reviewer `review.json` | Merge agent + Bugbot (or two agents) into one report without overwriting. MCT publishes per-reviewer; Redline could key by `reviewer` field. | M |
+| Multi-reviewer `review.json` | Merge agent + Bugbot (or two agents) into one report without overwriting. The consumer publishes per-reviewer; Redline could key by `reviewer` field. | M |
 | `redline serve` live loop | Replace copy-paste "Copy for the agent" with a websocket or stdin bridge. Upgrade path noted in report-roadmap. | L |
 | Broader review skill context | Skill text for "why was this nolint added" and whether a rule is noisy. Docs/skills, not binary code. | S |
-| Domain-aware `promptFragment` | Delivered by the scout rather than as proposed, and better: instead of a config key naming convention docs and a digest appended to every review, `redline-scout` finds `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and the rest at the root and beside the changed files, reads the short ones in its opening turn, and records the lines that bear on this change under a `guideline` role, quoted from the file. Per-change instead of per-repo, and no config to keep current. The MKT-1415 case it was written for is the one it is aimed at: a domain rule written down in the repository, invisible to generic-Go doctrine. | done |
+| Domain-aware `promptFragment` | Delivered by the scout rather than as proposed, and better: instead of a config key naming convention docs and a digest appended to every review, `redline-scout` finds `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and the rest at the root and beside the changed files, reads the short ones in its opening turn, and records the lines that bear on this change under a `guideline` role, quoted from the file. Per-change instead of per-repo, and no config to keep current. The the dogfood PR case it was written for is the one it is aimed at: a domain rule written down in the repository, invisible to generic-Go doctrine. | done |
 
 ## Measured defects (dogfood, 2026-09-10)
 
@@ -313,15 +313,15 @@ has never reported — and the equal-samples comparison has not been run.
 | **Score the agent, not only the producer** | The scoring path for this ran as a throwaway and was deleted. It should not have to be rebuilt: a `review.json` written by any agent scores through `Score` today, so an `--arm agent` that emits the two prompt files and scores whatever comes back is a small, permanent addition to the eval and the only way the premise stays measured as the packet changes. | S |
 | **Measure per expansion, not per envelope** | The A/B above and the context sweep before it both compare all-or-nothing. What a reader of the roadmap actually needs is which roles pay: history bought `baseline-not-relocked-for-the-new-rules` here, and the neighbour expansions bought nothing measurable on ten fixtures at 60% more input. Score by role and the expansion budget becomes an evidence-backed setting rather than a ceiling. | M |
 
-## Review quality (Copilot comparison, MKT-1360)
+## Review quality (Copilot comparison)
 
-Held against GitHub Copilot on the same PR (NetApp/marketplace-cp #1360), the
+Held against GitHub Copilot on the same PR (the dogfood repository #1360), the
 deterministic half of Redline covered a class Copilot has nothing for (lint
 delta, coverage on added lines, structural parity, assertion drop), and the
 agent half was out-reviewed. Copilot found two verified correctness bugs Redline
 missed, both violations of the PR's own stated invariant that expansion counts
 and drill-through lists evaluate at one `asOf`. Full write-up in
-[../dogfood-reports/2026-09-10-copilot-comparison-mkt-1360.md](../dogfood-reports/2026-09-10-copilot-comparison-mkt-1360.md).
+[../dogfood-reports/2026-09-10-copilot-comparison.md](../dogfood-reports/2026-09-10-copilot-comparison.md).
 
 | Item | What | Effort |
 |------|------|--------|
@@ -369,13 +369,13 @@ and drill-through lists evaluate at one `asOf`. Full write-up in
 | `untested-*` module-qualified paths | Redline strips via `go.mod`; repo-relative emission would be cleaner and more reliable. |
 | Orphaned-config-path on gitignored dirs | Consumers need placeholder dirs (`.keep` pattern) for literal skip paths. Document in setup skill. |
 
-## Dogfooding notes (Marketplace Core and similar repos)
+## Dogfooding notes (the dogfood repository and similar repos)
 
 Items surfaced while wiring `.redline.yml` on a large Go + React + OpenAPI repo:
 
 - ESLint and tsc need `ui/node_modules` in detached PR worktrees; only `stub-ui` is wired today.
 - Gorefactor runs in Redline lint delta but not in the repo's fast `verify-lint` path, so Redline is stricter than the agent default. Document that intentional gap for adopters.
-- `mutation-quality-check` (CI baseline compare) is faster than local `make mutate` but is outside Redline; could be a harness `path` to a downloaded CI artifact. MCT pins gomutants v0.6.0 for **INFRA_ERROR** and stable mutant ids; Redline should surface those when ingesting `mutants.json` (see Mutation section above).
+- `mutation-quality-check` (CI baseline compare) is faster than local `make mutate` but is outside Redline; could be a harness `path` to a downloaded CI artifact. The consumer pins gomutants v0.6.0 for **INFRA_ERROR** and stable mutant ids; Redline should surface those when ingesting `mutants.json` (see Mutation section above).
 - oasdiff + built-in OpenAPI pane overlap slightly; report should dedupe or label "structural diff" vs "oasdiff breaking" so reviewers do not read the same break twice.
 - Shellcheck scope is often narrower than `make lint-deploy-scripts` (severity, path filters). Setup skill should copy the repo's real shell gate, not `**/*.sh`.
 
@@ -384,7 +384,7 @@ Items surfaced while wiring `.redline.yml` on a large Go + React + OpenAPI repo:
 If picking a small set that improves most adopter repos without runtime infrastructure:
 
 1. **gomutants v0.6.0 report ingest:** `INFRA_ERROR` → unknowns, mutant `id` on survivors, repro hint for `--run-mutant-id`.
-2. **`ui/node_modules` worktree produce step** — confirmed failing live on MKT-1415, not just a theoretical gap; same shape as the shipped `ui-embed` entry.
+2. **`ui/node_modules` worktree produce step** — confirmed failing live on the dogfood PR, not just a theoretical gap; same shape as the shipped `ui-embed` entry.
 3. Built-in or shared `tsc` JSON wrapper.
 4. Setup skill proposals for worktree install steps and harness profiles (mutation profile + v0.6.0 pin).
 5. Diff-coverage-vs-baseline as a gated finding, and verdict vocabulary for coverage and lint findings (not only suppressions); mutation verdicts keyed by `id`.

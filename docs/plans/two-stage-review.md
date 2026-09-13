@@ -411,7 +411,7 @@ that gets the first by losing the second is not an improvement.
 ## What shipped
 
 Steps 0-7 and 9-11 below are implemented. Step 8 (read-back statistics) is
-not, and step 12 belongs to Marketplace. Three places where building the
+not, and step 12 belongs to the consumer. Three places where building the
 first batch changed the design are worth recording, because each was a
 decision the plan got wrong. The section after this one is what the second
 field round showed those steps still missed, and the section after that is
@@ -461,7 +461,7 @@ author had replied `**Not fixing (intentional).**` on every first-round
 thread and **without resolving those threads**. The second `/review-bot
 review` posted seven more inline comments.
 
-That second pass was still the **unpatched producer**: Marketplace had not
+That second pass was still the **unpatched producer**: the consumer had not
 pinned this branch. It is therefore the baseline this work is supposed to
 beat, not a failure of the stages below. It is also a list of gaps the
 stages as shipped would still leave open once the pin lands.
@@ -478,7 +478,7 @@ Three inputs, in order of reliability:
    this repository's convention for the rest of the review.
    `feedback.Dismissed` is unused on this path. It is a helper for
    read-back statistics, and it currently requires a reply *and* a closed
-   thread. Marketplace replies first and resolves later, so that helper
+   thread. The consumer replies first and resolves later, so that helper
    would mis-label those threads if stats keyed on it. The review itself
    already has the reply text.
 
@@ -538,7 +538,7 @@ empty schedule Request would still look novel after the pin.
 Eight of the fifteen comments were **Info**. `post` withholds only
 `source: llm` + `confidence: low`. Info is still a line comment. The merge
 gate does not block on LLM findings at all (`findingAttestMarker` skips
-them), but Marketplace still triages every inline thread.
+them), but the consumer still triages every inline thread.
 
 One Warning admitted it was "acceptable but worth noting" and then posted.
 The prompt already forbids "may / might / consider"; nothing in `post`
@@ -560,7 +560,7 @@ PR, unless the items below land:
    does ask `precedent`.
 3. **Do not key review behaviour on `Dismissed`.** If read-back stats use
    it, count an attributed reply as answered even while the thread is
-   still open. Marketplace replies first and resolves in merge-gate.
+   still open. The consumer replies first and resolves in merge-gate.
 4. **LLM Info is not a line comment.** Body of the review, or the HTML
    report. Warning/Error only on the diff, unless a team opts in.
 5. **Drop hedges at post time** if stage three did not. "acceptable",
@@ -571,7 +571,7 @@ PR, unless the items below land:
 `redline learnings` would have drafted path-scoped rules from those
 fifteen replies. Nobody ran it between the two reviews. That is working
 as designed (a person commits the rule), and it is also why a second
-review of the same head still had nothing written down. Until Marketplace
+review of the same head still had nothing written down. Until the consumer
 pins this branch **and** commits a small `review.instructions` for feed
 ingest parity, the field will keep paying for the same lesson.
 
@@ -717,10 +717,10 @@ plan has been waiting on since step 2.
     `accountfeedingest/workflow.go`. **S**
 11. **LLM Info is body-only; hedges do not post as Warning.** Shipped. Line comments
     are error/warning that survived the ruling. **S**
-12. **Pin + one committed instruction.** Marketplace `REDLINE_VERSION` onto
+12. **Pin + one committed instruction.** the consumer `REDLINE_VERSION` onto
     this branch, and a committed `review.instructions` for feed-ingest
     parity (offer mirrors account). Learnings drafts do not apply until
-    someone commits them. **S** (Marketplace, not this repo)
+    someone commits them. **S** (the consumer, not this repo)
 
 Steps 0 through 3 ship value on their own and none of them calls a model
 that `review` does not call today. Step 4 is the experiment that decides how

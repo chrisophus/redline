@@ -35,7 +35,7 @@ it read and which it guessed at.
 
 Graphify also has a second half, for docs, papers, and images: semantic
 extraction dispatches subagents (or calls Gemini if a key is set), i.e. a
-real model call. Dogfooding this on Marketplace Core confirmed it directly —
+real model call. Dogfooding this confirmed it directly —
 a full build ran 22 subagents and ~2.5M output tokens over ~400 doc/image
 files. The `caller`/`sibling`/`type` roles below draw only from the code
 half's tree-sitter edges, which is the right instinct; say so explicitly, so
@@ -54,7 +54,7 @@ graphifyy` flow does not pull in. Missing it, the extractor returns
 `{"nodes": [], "edges": [], "error": "tree_sitter_sql not installed..."}`,
 and the merge step in `extract()` drops the `error` key — so the failure
 never surfaces anywhere, not in the build log, not as a `notes` entry.
-Confirmed on Marketplace Core: `detect()` correctly buckets 88 real
+Confirmed on the dogfood repository: `detect()` correctly buckets 88 real
 migrations under "code," and the built graph has zero nodes from any of
 them, with no warning printed at any point in the pipeline. A missing
 grammar looks identical to "this file had nothing structurally interesting,"
@@ -107,7 +107,7 @@ back the same claim a type-resolved one can.
   changed files does not just misroute an edge to a same-named wrong node,
   it can invent a new unqualified node with no `source_file` when the real
   target is defined outside that batch, rather than resolving to the node
-  that already exists for it. Confirmed on Marketplace Core after a 15-file
+  that already exists for it. Confirmed on the dogfood repository after a 15-file
   incremental update: `Client` had 48 nodes sharing that label, 46 of them
   bare; same shape for `Provider`, `AgreementCandidate`,
   `OrganizationPolicies`. A one-or-two-hop walk that lands on one of these
@@ -293,7 +293,7 @@ is guessing a language's conventions out of a string, in the one component
 that is supposed to know no language, to make a claim the edge does not
 carry. Left alone on purpose.
 
-The bare-node problem is real here too, not only on Marketplace Core: the
+The bare-node problem is real here too, not only on the dogfood repository: the
 same run reported `Graph`, `Options`, `io.Writer` and `testing.T` resolving
 to nodes with no source file.
 

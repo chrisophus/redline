@@ -569,12 +569,12 @@ func TestSuppressionMarkersFromOtherAuthorsAreIgnored(t *testing.T) {
 }
 
 func TestGhLoginHonoursREDLINE_GH_LOGIN(t *testing.T) {
-	t.Setenv("REDLINE_GH_LOGIN", "marketplace-review-bot[bot]")
+	t.Setenv("REDLINE_GH_LOGIN", "review-bot[bot]")
 	login, err := ghLogin()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if login != "marketplace-review-bot[bot]" {
+	if login != "review-bot[bot]" {
 		t.Fatalf("got %q", login)
 	}
 }

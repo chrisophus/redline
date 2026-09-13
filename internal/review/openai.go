@@ -51,8 +51,8 @@ type openAIRequest struct {
 	// Tools carries the schema as a single function, and ToolChoice forces the
 	// model to call it. This is asked for instead of response_format because a
 	// gateway that serves one vendor's model over another's protocol does not
-	// enforce response_format: on this repository's own Marketplace gateway
-	// one review in four came back with the schema's array as a JSON string or
+	// enforce response_format: on the internal gateway this repository is run
+	// through, one review in four came back with the schema's array as a JSON string or
 	// an object, and the checking pass failed open on the parse. Function
 	// calling is honoured where the schema is not, because the same gateway
 	// drives the scout's tool loop reliably.
