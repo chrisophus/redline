@@ -428,29 +428,29 @@ func TestCommentDropsStartLineOutsideDiff(t *testing.T) {
 
 func TestBuildAttestStampsFailMarkers(t *testing.T) {
 	prof := &Profile{
-		ReviewMarker:  "mct-agent-review:v1",
-		FindingMarker: "mct-agent-finding:v1",
+		ReviewMarker:  "example-agent-review:v1",
+		FindingMarker: "example-agent-finding:v1",
 		Blocking:      []findings.Severity{findings.SeverityError, findings.SeverityWarning},
 	}
 	p := BuildAttest(sampleReport(), prTarget(), "", nil, prof, nil)
 	if p.GateVerdict != "fail" {
 		t.Fatalf("error and warning should fail, got %q", p.GateVerdict)
 	}
-	if !strings.Contains(p.Comments[0].Body, "mct-agent-finding:v1 severity=high") {
+	if !strings.Contains(p.Comments[0].Body, "example-agent-finding:v1 severity=high") {
 		t.Fatalf("error comment needs finding marker:\n%s", p.Comments[0].Body)
 	}
-	if !strings.Contains(p.Body, "mct-agent-finding:v1 severity=medium") {
+	if !strings.Contains(p.Body, "example-agent-finding:v1 severity=medium") {
 		t.Fatalf("warning in the body needs finding marker:\n%s", p.Body)
 	}
-	if !strings.Contains(p.Body, "mct-agent-review:v1 verdict=fail head=deadbeef") {
+	if !strings.Contains(p.Body, "example-agent-review:v1 verdict=fail head=deadbeef") {
 		t.Fatalf("review body needs fail marker:\n%s", p.Body)
 	}
 }
 
 func TestBuildAttestPassHasNoFindingMarkers(t *testing.T) {
 	prof := &Profile{
-		ReviewMarker:  "mct-agent-review:v1",
-		FindingMarker: "mct-agent-finding:v1",
+		ReviewMarker:  "example-agent-review:v1",
+		FindingMarker: "example-agent-finding:v1",
 		Blocking:      []findings.Severity{findings.SeverityError, findings.SeverityWarning},
 	}
 	rep := &findings.Report{Findings: []findings.Finding{{
@@ -461,7 +461,7 @@ func TestBuildAttestPassHasNoFindingMarkers(t *testing.T) {
 	if p.GateVerdict != "pass" {
 		t.Fatalf("info-only should pass, got %q", p.GateVerdict)
 	}
-	if strings.Contains(p.Comments[0].Body, "mct-agent-finding:v1") {
+	if strings.Contains(p.Comments[0].Body, "example-agent-finding:v1") {
 		t.Fatalf("info must not carry a gate finding marker:\n%s", p.Comments[0].Body)
 	}
 	if !strings.Contains(p.Body, "verdict=pass head=deadbeef") {
@@ -724,8 +724,8 @@ func walkthroughProfile(include ...string) *Profile {
 		inc[s] = true
 	}
 	return &Profile{
-		ReviewMarker:  "mct-agent-review:v1",
-		FindingMarker: "mct-agent-finding:v1",
+		ReviewMarker:  "example-agent-review:v1",
+		FindingMarker: "example-agent-finding:v1",
 		Blocking:      []findings.Severity{findings.SeverityError, findings.SeverityWarning},
 		BodyStyle:     BodyWalkthrough,
 		BodyInclude:   inc,
@@ -757,11 +757,11 @@ func TestWalkthroughBodyMatchesCopilotOrder(t *testing.T) {
 	rep.Finalize()
 	prof := walkthroughProfile("coverage", "lint", "confirmations", "unknowns")
 	p := BuildAttest(rep, prTarget(), "", nil, prof, []string{"a.go", "b.go"}).
-		WithMeta("MKT-1: do a thing", "bot[bot]")
+		WithMeta("TICKET-1: do a thing", "bot[bot]")
 	for _, want := range []string{
 		"### Review findings",
 		"**Reviewed by.** bot[bot] on `deadbeef`.",
-		"**Stated intent.** MKT-1: do a thing",
+		"**Stated intent.** TICKET-1: do a thing",
 		"**What it does.** Adds a feed.",
 		"<summary>Walkthrough</summary>",
 		"| `a.go` | Staging. |",

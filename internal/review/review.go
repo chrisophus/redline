@@ -103,9 +103,18 @@ type Input struct {
 type Options struct {
 	Model  string
 	Effort string
-	// Brief runs the review stage under briefPrompt with no tools, parsing
-	// the JSON out of a text reply. The pair is what was measured better;
-	// see briefPrompt for the numbers and for why neither half ships alone.
+	// Brief runs the review stage under briefPrompt, carried by the same tool
+	// grammar as every other stage.
+	//
+	// It used to drop the tools and parse JSON out of a text reply, which only
+	// the Anthropic wire could do: completeOpenAI sends the catalogue on every
+	// call and has no way to be told otherwise. The two halves were measured
+	// apart on eleven fixtures at three samples and came out 17/38 free-form
+	// against 15/38 over the grammar, inside a noise floor of about 3.6
+	// expectations. The one fixture that separated them, staged-empty-partition,
+	// was rerun at five samples and scored 1/3 against 0/3, one catch in
+	// fifteen trials. Nothing there distinguishes the two emissions, so the
+	// short prompt is what Brief is now, and both wires run it.
 	Brief     bool
 	Ceiling   int
 	MaxTokens int64
@@ -362,6 +371,11 @@ type Result struct {
 	// Cached records that this call marked a breakpoint, so a ledger row that
 	// read nothing can be told from one that never asked to.
 	Cached bool `json:"cached,omitempty"`
+	// FilesShown is how many files of the change went into the prompt. It is
+	// carried so the reply can be checked against what was asked for: a review
+	// that returned no file lines for a packet that had files did not review
+	// it, and nothing downstream of the wire can tell that without this.
+	FilesShown int `json:"filesShown,omitempty"`
 	// InputEstimate is the pre-call token estimate for the whole request.
 	InputEstimate int `json:"inputEstimate"`
 	// FixedEstimate is what the parts a review cannot do without cost: the
@@ -513,13 +527,12 @@ func (r *Result) Summary() string {
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
 	system := systemFor(opts, StageReview) + oneShotAddendum + languageFragments(in.Envelopes)
-	// A brief review sends no tools, so pricing their schemas into the fixed
-	// cost would reserve context nothing occupies.
-	tools := toolsTokens(opts)
-	if opts.Brief {
-		tools = 0
-	}
-	fixed := tools + envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
+	// Every stage sends the catalogue on both wires, so it is reserved for
+	// unconditionally. This was once zeroed for a brief run, which was right on
+	// the one wire that dropped the tools and wrong on the other: the OpenAI
+	// wire sent them anyway, and the reservation came up short by the whole
+	// catalogue and overfilled the context by that much.
+	fixed := toolsTokens(opts) + envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
 		// The block's own header is written after FitAll has fitted the
 		// expansions, so it has to be reserved here or the assembled prompt
@@ -558,6 +571,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		// and the other is an empty string groups into two sets by accident.
 		Pipeline:       opts.Pipeline,
 		Budget:         budget,
+		FilesShown:     len(in.ShownFiles()),
 		Prompt:         prompt,
 		System:         system,
 		InputEstimate:  est,
@@ -856,11 +870,19 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 	if strings.TrimSpace(body) == "" {
 		return fmt.Errorf("the model returned no content (stop reason %q)", c.stopReason)
 	}
-	if opts.Brief && stage == StageReview {
-		// No tool constrained this reply, so the object can arrive fenced or
+	if !c.fromTool {
+		// Every stage forces a tool call, so arriving here means the reply came
+		// back in the content channel instead: a gateway that dropped
+		// tool_choice, or a model that answered a forced call in prose. Either
+		// way nothing constrained the body, so the object can arrive fenced or
 		// behind a sentence about what the model is going to check. Narrowing
 		// to the object is this path's job; a malformed one still reaches
 		// parseReview and fails there with the body in the message.
+		//
+		// This used to ask whether the run was brief, back when a brief review
+		// was the one call that sent no tools. It sends them now, so that
+		// question no longer picks out the unconstrained replies, and the
+		// gateway case it was accidentally covering is the one that remains.
 		body = jsonObjectOf(body)
 	}
 	// Which shape came back is decided by which contract went out, so the
@@ -876,6 +898,30 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 	rev, err := parseReview([]byte(body))
 	if err != nil {
 		return err
+	}
+	// A reply that conformed to the contract without reviewing anything. The
+	// strict tool grammar guarantees the four fields are present and says
+	// nothing about what is in them, so three empty arrays under a one-word
+	// overview validates and arrives here looking like a review.
+	//
+	// Measured: on a 48k packet the forced tool_choice arm returned
+	// {"overview": "placeholder"} with empty files, comments and verdicts on
+	// three samples out of three, and the eval scored it zero of sixteen
+	// labels. That reads as a reviewer that looked and found nothing, and it
+	// was a reviewer that never started.
+	//
+	// All three have to be empty together, and the packet has to have had
+	// files. Zero comments is the right answer on a change with no defects and
+	// has to stay reachable, which is also why the schemas carry no minItems.
+	// Zero file lines on a packet that showed files is not an answer any
+	// correct review gives. Only the review stage is checked: the findings
+	// contract has no file lines by design.
+	if stage == StageReview && res.FilesShown > 0 &&
+		len(rev.Files) == 0 && len(rev.Comments) == 0 && len(rev.Verdicts) == 0 {
+		return fmt.Errorf(
+			"the model was shown %d file(s) and returned no file lines, no comments and no verdicts; "+
+				"it answered the contract without reviewing the change",
+			res.FilesShown)
 	}
 	res.Review = *rev
 	// The partition rides on stage one's answer under its own contract, and
@@ -911,11 +957,94 @@ func jsonObjectOf(s string) string {
 		}
 		t = strings.TrimSpace(rest)
 	}
-	i, j := strings.IndexByte(t, '{'), strings.LastIndexByte(t, '}')
-	if i < 0 || j <= i {
-		return s
+	// The largest balanced object in the reply, rather than everything between
+	// the first brace and the last one.
+	//
+	// Splicing the ends together assumes every brace between them belongs to
+	// the object. Nothing on this path makes that true: no tool constrains the
+	// reply, and thinking is disabled here, so the model's reasoning has
+	// nowhere to go but the text channel. Measured on test-delta-pane at three
+	// samples: one reply opened with <think> and 46KB of numbered reasoning
+	// quoting code, one wrapped the object in <report>, one led with a prose
+	// heading. The first spliced a brace out of a quoted snippet onto the real
+	// object and failed to parse, taking the sample out of the run.
+	//
+	// Scanning for balance costs one pass and is string-aware, so a brace
+	// inside a JSON string or behind a backslash does not move the depth.
+	// Largest wins because the review object encloses every other object in
+	// the reply, and a snippet quoted in the prose around it does not.
+	if best := largestJSONObject(t); best != "" {
+		return best
 	}
-	return t[i : j+1]
+	return s
+}
+
+// largestJSONObject returns the longest balanced, valid JSON object in s, or
+// the empty string when there is none.
+//
+// It scans twice. The string-aware pass is the correct one: a brace inside a
+// JSON string is text and must not move the depth. But its correctness rests
+// on the quotes around it pairing up, and the prose it has to survive is not
+// JSON and makes no such promise. One reply of 46KB of reasoning quoting Go
+// source will eventually carry an odd quote, and from there the pass reads
+// structure as string and walks past the object it was looking for.
+//
+// The brace-only pass cannot desync, because it tracks nothing that can. It is
+// wrong in the other direction, cutting an object short at a brace that lived
+// inside a string, so on its own it would be worse. Running both and keeping
+// the longer result that json.Valid accepts takes the strength of each: a
+// candidate has to parse to win, so a pass that is confused about where the
+// object ends produces nothing rather than something wrong.
+func largestJSONObject(s string) string {
+	aware := scanForObject(s, true)
+	blind := scanForObject(s, false)
+	if len(blind) > len(aware) {
+		return blind
+	}
+	return aware
+}
+
+// scanForObject is one pass of largestJSONObject. With stringAware set, quoted
+// braces are text; without it, every brace counts.
+func scanForObject(s string, stringAware bool) string {
+	// One pass, because the reply this exists for was 46KB and restarting the
+	// scan at every brace in it is quadratic on exactly the input that broke.
+	// Depth tracks where the outermost object opened; each time it returns to
+	// zero, one complete top-level object has been seen.
+	var best string
+	depth, start := 0, -1
+	inString, escaped := false, false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case escaped:
+			escaped = false
+		case stringAware && c == '\\' && inString:
+			escaped = true
+		case stringAware && c == '"':
+			inString = !inString
+		case inString:
+			// Braces inside a string are text, whatever they look like.
+		case c == '{':
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		case c == '}':
+			if depth == 0 {
+				// A close with nothing open. Prose, not structure.
+				continue
+			}
+			depth--
+			if depth == 0 && start >= 0 {
+				if cand := s[start : i+1]; len(cand) > len(best) && json.Valid([]byte(cand)) {
+					best = cand
+				}
+				start = -1
+			}
+		}
+	}
+	return best
 }
 
 // debugBody bounds a response body for a debug line. The whole point is to see

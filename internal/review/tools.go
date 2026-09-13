@@ -88,19 +88,21 @@ func stageTools(opts Options) []stageTool {
 	review := stageTool{
 		Name: StageReview,
 		Description: "Return the review of this change: the overview, a line per file, " +
-			"the comments, and the verdicts. Call this and nothing else.",
+			"the comments, and the verdicts. Findings only; the rulings on them " +
+			"come from a later call.",
 		Schema: outputSchema(),
 	}
 	ruling := stageTool{
 		Name: StageRuling,
-		Description: "Return a ruling on every finding you were given. " +
-			"Call this and nothing else.",
+		Description: "Return a ruling on every finding you were given, and on no " +
+			"others. This contract carries no new findings and no review text.",
 		Schema: ruleSchema(),
 	}
 	findings := stageTool{
 		Name: StageFindings,
 		Description: "Return the comments and the verdicts for this change, for a run " +
-			"whose overview and file lines are already written. Call this and nothing else.",
+			"whose overview and file lines are already written. Do not restate them; " +
+			"this contract has nowhere to put them.",
 		Schema: findingsSchema(),
 	}
 	switch {
@@ -117,14 +119,15 @@ func stageTools(opts Options) []stageTool {
 			Name: StageCohorts,
 			Description: "Return what this change is - the overview and one line per file you " +
 				"were shown - and a partition of those files into cohorts for the reviews " +
-				"that follow. Call this and nothing else.",
+				"that follow. No comments and no verdicts; the judging happens in the " +
+				"calls this partition feeds.",
 			Schema: cohortsSchema(),
 		}}
 	case opts.Synopsis:
 		return []stageTool{review, ruling, findings, {
 			Name: StageSynopsis,
 			Description: "Return what this change is: the overview and one line per file " +
-				"you were shown. Call this and nothing else.",
+				"you were shown. No comments and no verdicts; a later call judges.",
 			Schema: synopsisSchema(),
 		}}
 	default:

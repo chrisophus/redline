@@ -479,18 +479,12 @@ func TestSweep(t *testing.T) {
 	if opts.Synopsis && os.Getenv("REDLINE_EVAL_BATCH") != "" {
 		t.Fatal("REDLINE_EVAL_SYNOPSIS and REDLINE_EVAL_BATCH ask for two calls that read each other over a tier that cannot pair them; drop the batch")
 	}
-	// The shipped shape TestLadder measured better than the default: the
-	// short prompt and a free-form reply, which only win as a pair.
-	opts.Brief = os.Getenv("REDLINE_EVAL_BRIEF") != ""
 	// The multi-turn arm. Explore ships behind --mode explore and has never
 	// been scored: it hands the reviewer a catalogue and a fetch tool instead
 	// of the expansions themselves, so it relaxes the one-pass rule without
 	// giving the review anything the packet did not already resolve.
 	if mode := os.Getenv("REDLINE_EVAL_MODE"); mode != "" {
 		opts.Mode = mode
-		if opts.Brief {
-			t.Fatal("REDLINE_EVAL_BRIEF sends no tools and explore is a tool loop; pick one")
-		}
 	}
 	// The fan-out arm. Same reason it cannot be batched as the synopsis arm:
 	// the cohort calls read what stage one wrote.
@@ -500,6 +494,23 @@ func TestSweep(t *testing.T) {
 		if os.Getenv("REDLINE_EVAL_BATCH") != "" {
 			t.Fatal("a staged run is a call per cohort over what stage one wrote; the batch tier cannot pair them")
 		}
+	}
+	// Brief last, and by the product's own rule (cmd/redline/review.go): on
+	// unless the arm replaces it. It was off here by default while the command
+	// shipped it on, so every sweep before this one scored a configuration
+	// nobody runs. REDLINE_EVAL_NO_BRIEF is the --no-brief arm.
+	opts.Brief = os.Getenv("REDLINE_EVAL_NO_BRIEF") == "" &&
+		opts.Pipeline != review.PipelineStaged &&
+		!opts.Synopsis &&
+		opts.Mode != review.ModeExplore
+	// Off by default because it prints a response body per call, and a sweep
+	// that prints thirty-three of them buries its own result table. On when a
+	// run is being read rather than scored: a reply that fails to parse is
+	// reported by its parser error alone, and the error names a character
+	// without showing what was around it, which is not enough to tell a model
+	// that emitted bad JSON from a harness that mangled good JSON.
+	if os.Getenv("REDLINE_EVAL_DEBUG") != "" {
+		opts.Debug = func(line string) { t.Log(line) }
 	}
 	// The tripwire, when the arm needs a different one. A staged run's worst
 	// case is stage one plus the bound at the divided response cap, which on
@@ -553,6 +564,11 @@ func TestSweep(t *testing.T) {
 
 	var cards []Scorecard
 	var costs []float64
+	// Fixtures every sample of which failed. They are not scored as misses,
+	// because that would put the plumbing's failures in the model's column,
+	// and they are not silently dropped either: the denominator they leave is
+	// the one the row is read against.
+	var failed []string
 	for fi, f := range fx {
 		in := review.Input{
 			Report: &f.Session.Report, Change: f.Session.Change,
@@ -595,6 +611,11 @@ func TestSweep(t *testing.T) {
 			t.Logf("%s: %s", f.Annotation.Name, out.Summary())
 		}
 		if len(revs) == 0 {
+			// Every sample of this fixture failed, so the fixture leaves the
+			// population and Sum's denominator moves with it. Two rows over
+			// different denominators are not a comparison, and the errors
+			// above are easy to scroll past, so the count reaches the label.
+			failed = append(failed, f.Annotation.Name)
 			continue
 		}
 		sc := ScoreSamples(f, revs)
@@ -661,8 +682,22 @@ func TestSweep(t *testing.T) {
 			label += " no-cross"
 		}
 	}
+	// Brief is the default here now, so the row that has to say so is the one
+	// without it.
+	if os.Getenv("REDLINE_EVAL_NO_BRIEF") != "" {
+		label += " no-brief"
+	}
 	if samples > 1 {
 		label += fmt.Sprintf(" ×%d", samples)
+	}
+	// On the row, because that is where it is read. A row scored over ten
+	// fixtures and one scored over eleven sit under the same header and differ
+	// only in a denominator nobody recomputes, so the arm that lost a fixture
+	// to a 429 reads as an arm with fewer defects to find.
+	if len(failed) > 0 {
+		label += fmt.Sprintf(" (%d fixture(s) errored)", len(failed))
+		t.Errorf("%d fixture(s) produced nothing and left the denominator: %v",
+			len(failed), failed)
 	}
 	if len(cards) == 0 {
 		// Every call failed, so there is no result. Printing the table anyway

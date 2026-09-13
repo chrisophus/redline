@@ -1,9 +1,9 @@
-# Copilot comparison — MKT-1360
+# Copilot comparison
 
-> Redline review of NetApp/marketplace-cp PR #1360 held up against GitHub Copilot's
+> Redline review of the dogfood repository PR #1360 held up against GitHub Copilot's
 > review of the same PR. Both ran on the same head; Copilot on commit `a41ed8e5`,
 > Redline on `399b4159:5362ef6a`. 70/82 files in scope for each, same 12-13
-> generated files excluded. Redline artifacts under `../mct/.redline`.
+> generated files excluded. Redline artifacts under `../<consumer>/.redline`.
 
 ## Why this PR is a good test
 
@@ -114,7 +114,7 @@ of bug it lost on here.
 ## Lessons
 
 Filed as enhancement items in [../plans/potential-enhancements.md](../plans/potential-enhancements.md)
-under "Review quality (Copilot comparison, MKT-1360)".
+under "Review quality (Copilot comparison)".
 
 1. Extract the PR's stated invariants from the description and rationale, then
    task the reviewer to falsify each one against the code. Copilot did this by

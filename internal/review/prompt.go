@@ -196,18 +196,31 @@ them nothing. An empty verdicts array is the right answer when the findings
 speak for themselves, and most of the time they do.`
 
 // briefPrompt states the same job in forty lines instead of a hundred and
-// ninety-five, and carries its own output contract because the call that
-// sends it sends no tools.
+// ninety-five. It still spells out its own output contract in prose, which the
+// tool grammar now carries as well. The duplication is deliberate: every number
+// below was produced by these exact bytes, and rewording them to match the
+// request would mean the shipped prompt is no longer the measured one.
 //
-// Both halves are load-bearing together and neither is on its own. Measured
-// on eleven fixtures at one sample on claude-sonnet-5, with the packet held
-// constant: this prompt with a free-form reply caught 11 of 38 annotated
-// defects, systemPrompt with a free-form reply caught 5 of 35, systemPrompt
-// with the strict tools caught 6 of 38, and this prompt with the strict tools
-// caught 2 of 38 while writing more comments than any of them. The short
-// prompt is worse than the long one inside the tool path and better outside
-// it, so the two variables interact and shipping either alone is shipping the
-// losing cell. --brief is the pair.
+// The prompt and the emission were first measured together, on eleven fixtures
+// at one sample on claude-sonnet-5 with the packet held constant: this prompt
+// with a free-form reply caught 11 of 38 annotated defects, systemPrompt
+// free-form 5 of 35, systemPrompt under the strict tools 6 of 38, and this
+// prompt under the strict tools 2 of 38. Read as four points that cell is a
+// cliff, and --brief shipped as the pair on the strength of it.
+//
+// It did not reproduce. Re-measured at three samples over the same eleven
+// fixtures, free-form caught 17 of 38 and this prompt under the tools caught
+// 15, against a noise floor near 3.6 expectations. The single fixture
+// separating them, staged-empty-partition, then scored 1 of 3 against 0 of 3 at
+// five samples, one catch in fifteen trials. At one sample 2/38 and 6/38 were
+// never distinguishable either.
+//
+// What that leaves is the short prompt accounting for the recall, with the
+// emission accounting for none of it that anything here can measure. So the
+// emission is chosen on other grounds, and there is only one: completeOpenAI
+// sends the catalogue on every call and has no way to be told otherwise, so a
+// free-form review was never available on that wire. --brief is this prompt
+// over the tool grammar, and both wires send the same request.
 //
 // What it keeps is what earlier sweeps showed to be load-bearing: enumerate
 // every defect rather than choosing one, and zero findings is a valid answer.
@@ -216,12 +229,14 @@ speak for themselves, and most of the time they do.`
 // defensible alone; together they read as a case for silence, and the model
 // takes the case.
 //
-// What it costs is output tokens. Nothing bounds a free-form reply the way a
-// grammar does, and the one live run of this shape - PR #46 of this
-// repository at a 70,000-token ceiling - spent 32,795 output tokens on four
+// What it once cost was output tokens, because nothing bounded a free-form
+// reply the way a grammar does: the one live run of that shape, PR #46 of this
+// repository at a 70,000-token ceiling, spent 32,795 output tokens on four
 // findings and twelve file lines, $0.8382 all in with the lookups and the
-// ruling. --max-tokens is the lever if that is too much, and the cap arrives
-// as a truncated object rather than a short one, so lower it carefully.
+// ruling. The grammar bounds it again, and the two arms came out at $0.1432 and
+// $0.1499 mean per review over the eleven fixtures. --max-tokens still applies,
+// and the cap arrives as a truncated object rather than a short one, so lower
+// it carefully.
 const briefPrompt = `You are reviewing one change in a code repository, once, in a single pass.
 
 Report every defect you can support from the material below, each as its own

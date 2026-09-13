@@ -9,12 +9,12 @@ attestation or idempotency.
 Status: **shipped**. `body_style: walkthrough` renders the Copilot-order body;
 `body_include` (coverage, lint, confirmations, unknowns) dials how much of the
 report rides along, an extension past the original plan so a repository decides
-how much reaches the pull request. Consumer: Marketplace `/review-bot review`
-(`marketplace-review-bot[bot]`), which sets the profile.
+how much reaches the pull request. Consumer: a repository's `/review-bot review`
+(`review-bot[bot]`), which sets the profile.
 
 ## The gap
 
-Two post paths exist in Marketplace today, and they produce different review
+Two post paths exist in the consumer repository today, and they produce different review
 bodies from the same `review.json` shape.
 
 **Author path** — `scripts/publish-agent-review.sh` (Cursor Bugbot, Claude
@@ -28,7 +28,7 @@ Code):
   `gh pr diff --name-only`, merged with per-file summaries; missing paths get
   `No notes.`
 - Inline comments from `comments` / `findings`
-- Checksum-bound `mct-agent-review:v2` attestation
+- Checksum-bound `example-agent-review:v2` attestation
 
 **Bot path** — `redline post --profile …` (Redline CI):
 
@@ -38,9 +38,9 @@ Code):
 - Optional `<details>Summary per file (N), written by the agent</details>` —
   **only files the model summarized**, not the full diff
 - `### Findings not shown inline`
-- `mct-agent-review:v1 verdict=pass|fail head=<sha>` (not v2 checksum)
+- `example-agent-review:v1 verdict=pass|fail head=<sha>` (not v2 checksum)
 
-On large PRs (e.g. Marketplace PR 1284), the bot body often has **no**
+On large PRs (e.g. a large consumer PR), the bot body often has **no**
 walkthrough at all: the LLM truncates or sparse-fills `files`, and
 `fileSummarySection` in `internal/post/post.go` deliberately omits paths
 without a non-empty agent summary. Readers see evidence and a bullet list of
@@ -52,7 +52,7 @@ piece that lagged.
 
 ## Goal
 
-When a profile asks for it (default for Marketplace bot profile), `redline
+When a profile asks for it (default for the consumer bot profile), `redline
 post` assembles a body that matches the Copilot layout closely enough that
 authors do not need a mental model switch between Bugbot and Redline on the
 same PR.
@@ -86,9 +86,9 @@ sections stay, but collapsed so the fold reads like Copilot first.
 ```markdown
 ### Review findings
 
-**Reviewed by.** marketplace-review-bot[bot] on `11fb99f64dae`.
+**Reviewed by.** review-bot[bot] on `11fb99f64dae`.
 
-**Stated intent.** MKT-1462: Populate AWS CPPO channel partner from Offer data feed
+**Stated intent.** TICKET-1462: Populate AWS CPPO channel partner from Offer data feed
 
 - Ingest AWS Offer SDDS feed…
   (sanitized PR body, truncated if huge)
@@ -122,7 +122,7 @@ empty (no empty heading).
 - **Info** — … _(redline/parity)_ <!-- redline:fp:… -->
 
 <!-- redline:review:<sha> -->
-<!-- mct-agent-review:v1 verdict=pass head=<sha> -->
+<!-- example-agent-review:v1 verdict=pass head=<sha> -->
 ```
 
 Heading rules:
@@ -145,9 +145,9 @@ above.
 
 2. **Stated intent from PR metadata**, not from the model. Fetch via existing
    `gh pr view` (title + body) when posting a PR session. Sanitize embedded
-   marker lines the same way Marketplace's `agent_review_sanitize_embedded_text`
+   marker lines the same way the consumer's `agent_review_sanitize_embedded_text`
    does — port the small rule into Redline or document a shared contract; do
-   not paste raw PR bodies that contain fake `mct-agent-review` lines.
+   not paste raw PR bodies that contain fake `example-agent-review` lines.
 
 3. **Reviewed by from posting login** (`ghLogin` / GraphQL viewer), not hard-coded.
    Short SHA (12 chars) matches author publisher.
@@ -157,7 +157,7 @@ above.
    compatibility.
 
 5. **Profile opt-in**, not a breaking default for all repos:
-   `body_style: walkthrough` in YAML (name TBD). Marketplace sets it in
+   `body_style: walkthrough` in YAML (name TBD). The consumer sets it in
    `.github/review-bot-gate-profile.yml`.
 
 6. **Body budget unchanged** (`maxBody`, `maxNarrative`). Walkthrough may
@@ -194,7 +194,7 @@ New function in `internal/post/post.go` (or `walkthrough.go`):
 - Unit tests: all diff paths present; agent summary wins; blank → `No notes.`;
   pipe in path/summary escaped; truncation message when budget exceeded.
 
-Port the merge logic from Marketplace
+Port the merge logic from the consumer
 `scripts/publish-agent-review.sh` lines 153–162 as the spec; implement in Go
 so `redline post --dry-run` needs no `jq`.
 
@@ -229,7 +229,7 @@ from overview.
 
 - Golden body fragment tests for walkthrough layout (profile on).
 - Ensure gate markers and `redline:review:` still appended.
-- Ensure `mct-agent-review:v1` unchanged.
+- Ensure `example-agent-review:v1` unchanged.
 - Regression: default profile nil / `body_style: evidence` matches old golden.
 
 Optional: fixture session under `testdata/fixtures/` with `Agent` + `Change`
@@ -239,14 +239,14 @@ for integration-style `post --dry-run` snapshot.
 
 - `README.md` posting section: describe both body styles.
 - `redline-review.yml.example`: document `body_style`.
-- Marketplace plan cross-link only (consumer sets profile); no requirement to
-  edit MCT in the same Redline release.
+- the consumer plan cross-link only (consumer sets profile); no requirement to
+  edit the consumer repository in the same Redline release.
 
-## Marketplace rollout (consumer, separate PR)
+## Consumer rollout (separate PR)
 
 After Redline release tag (e.g. v0.4.0):
 
-1. Bump `REDLINE_VERSION` in MCT `Makefile`.
+1. Bump `REDLINE_VERSION` in the consumer `Makefile`.
 2. Add `body_style: walkthrough` to `.github/review-bot-gate-profile.yml`.
 3. Re-run `/review-bot review` on a large PR; confirm walkthrough lists all
    diff files and evidence is collapsed.
@@ -262,7 +262,7 @@ a shared markdown spec both sides cite.
 - [ ] Default / missing `body_style` preserves current post body (tests green).
 - [ ] Stated intent and Reviewed by render on PR post with gh available.
 - [ ] Gate markers, fingerprint idempotency, inline comment rules unchanged.
-- [ ] Marketplace bot profile enables walkthrough; sample PR body reviewed by
+- [ ] the consumer bot profile enables walkthrough; sample PR body reviewed by
       a human as “matches Copilot layout”.
 - [ ] `redline post --dry-run` documents walkthrough truncation when body
       exceeds budget.
@@ -287,7 +287,7 @@ Steps 2–4 can land in one PR if tests cover each piece.
   from a readable body.
 - **`report-roadmap.md`** — report already shows agent overview + per-file
   summaries; walkthrough post closes the loop to GitHub.
-- **MKT-1386 (Marketplace)** — explicitly chose `redline post` over the shell
+- **TICKET-1386 (the consumer)** — explicitly chose `redline post` over the shell
   publisher for the bot; this plan aligns bot UX with Copilot without merging
   attestation paths.
 
@@ -305,6 +305,6 @@ Steps 2–4 can land in one PR if tests cover each piece.
    body section. Re-post with new findings replaces the whole review body.
    Accept (same as today).
 
-4. **Extract shared body spec to a markdown fragment** both MCT shell and
+4. **Extract shared body spec to a markdown fragment** both the consumer shell and
    Redline tests cite — **Proposal:** optional follow-up; Go implementation
    is source of truth for the bot path first.

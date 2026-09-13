@@ -130,19 +130,19 @@ flags:
                     walkthrough that covers every shown file and an output
                     cap the findings no longer share with fifty file
                     summaries.
-  --no-brief        with review: the long prompt under the strict tool
-                    contracts. The default is the other way round: one call,
-                    a forty-line prompt, no tool grammar, and the review
-                    arrives as JSON in a text reply. That shape is the
-                    simplest thing that reviews anything and it was measured
-                    against what is built on top of it - on the two probe
-                    fixtures carrying 31 of the 38 annotated expectations it
-                    caught 5 at $0.13 a review against the long prompt's 4 at
-                    $0.10, the same cost per catch with less in the path. The
-                    richer shapes replace it rather than combine with it:
-                    --pipeline staged, --synopsis and --mode explore each
-                    turn it off, because each is defined by a tool contract
-                    the short prompt does not describe.
+  --no-brief        with review: the long prompt instead of the short one.
+                    The default is the other way round: one call under a
+                    forty-line prompt, carried by the same tool grammar every
+                    other stage uses. That shape is the simplest thing that
+                    reviews anything, and measured against the long prompt
+                    under that same grammar it caught more, 15 of 38 annotated
+                    defects against 6 of 38. See briefPrompt in
+                    internal/review/prompt.go for the sample counts behind
+                    those two figures, which differ, and for what the noise
+                    floor does to the gap. The richer shapes replace it rather
+                    than combine with it: --pipeline staged, --synopsis and
+                    --mode explore each turn it off, because each is defined
+                    by a tool contract the short prompt does not describe.
   --pipeline SHAPE  with review: oneshot (default) is one call that judges
                     the whole change. staged describes it first, splits the
                     shown files into cohorts, and reviews each cohort in its
@@ -267,8 +267,8 @@ func runMain(args []string) error {
 	fs.BoolVar(&o.noCache, "no-cache", false, "with review: send every call at full input rate")
 	fs.BoolVar(&o.synopsis, "synopsis", false, "with review: describe the change in its own call before judging it")
 	fs.BoolVar(&o.noSynopsis, "no-synopsis", false, "with review: one call writes the walkthrough and the findings together")
-	fs.BoolVar(&o.brief, "brief", false, "with review: one call, the short prompt, no tool grammar (on by default)")
-	fs.BoolVar(&o.noBrief, "no-brief", false, "with review: the long prompt under the strict tool contracts")
+	fs.BoolVar(&o.brief, "brief", false, "with review: one call under the short prompt (on by default)")
+	fs.BoolVar(&o.noBrief, "no-brief", false, "with review: the long prompt instead of the short one")
 	fs.StringVar(&o.cacheTTL, "cache-ttl", "", "with review: how long the cached prefix lives, 5m or 1h")
 	fs.StringVar(&o.pipeline, "pipeline", "", "with review: oneshot, or staged to split the change into cohorts and review each")
 	fs.IntVar(&o.cohorts, "cohorts", 0, "with review: upper bound on parallel cohort reviews under --pipeline staged (default 6)")

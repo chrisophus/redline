@@ -431,10 +431,10 @@ and coded as 500; fixture counts are eight in two documents and ten on
 disk; the Layout section omits eight packages; the dogfood report describes
 a `packet` package and an `ingest` command that were later cut; the report
 opens with a gap banner for a feature marked "not started". Internal
-references (MCT, `make db-dsns`, a Marketplace review bot's markers, MKT
-tickets, `.compound-engineering/`) leak into artifacts that `make install`
-puts on every repository on a machine; worth scrubbing before anyone else
-installs it.
+references (another repository's name and make targets, its review bot's
+markers, its ticket ids) leak into artifacts that `make install` puts on
+every repository on a machine; worth scrubbing before anyone else installs
+it.
 
 Project health: 50 commits in about 30 hours, half agent-authored, one
 author, Go 1.26 required, no tag yet. CI itself is good: gofmt, vet, the

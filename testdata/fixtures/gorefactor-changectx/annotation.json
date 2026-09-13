@@ -48,19 +48,19 @@
       "key": "test-role-emits-duplicates",
       "what": "The test-role dedup key includes the target, so one test function is emitted once per changed symbol it touches, byte-identical apart from details.covers.",
       "file": "internal/changectx/expand_uses.go",
-      "any_of": ["duplicate", "once per", "dedup", "same test", "repeated", "key includes"]
+      "any_of": ["duplicate", "once per", "dedup", "same test", "key includes"]
     },
     {
       "key": "caller-role-reemits-the-change",
       "what": "collectUses skips a use only when it falls inside its own target's span, so uses inside other changed declarations are kept and the caller role repeats lines an enclosing expansion already carries.",
       "file": "internal/changectx/expand_uses.go",
-      "any_of": ["inside the change", "already in the diff", "enclosing expansion", "outside the change", "own target", "twice"]
+      "any_of": ["inside the change", "already in the diff", "enclosing expansion", "outside the change", "own target"]
     },
     {
       "key": "caller-kind-mislabelled",
       "what": "addCallerSite hardcodes kind=call-site while collectUses walks TypesInfo.Uses wholesale, so const, type and var references are labelled call sites.",
       "file": "internal/changectx/expand_uses.go",
-      "any_of": ["call-site", "call site", "mislabel", "const", "type reference", "not a call"]
+      "any_of": ["call-site", "call site", "mislabel", "type reference", "not a call"]
     },
     {
       "key": "enclosing-duplicates-the-diff",

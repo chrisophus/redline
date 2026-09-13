@@ -13,8 +13,8 @@ import (
 // Without one, post still writes a COMMENT review; it just does not emit
 // pass/fail markers or enforce author/HEAD checks.
 //
-// Markers are repository policy, not Redline's identity. Marketplace's gate
-// looks for mct-agent-review:v1; another repo can name its own.
+// Markers are repository policy, not Redline's identity. A gate might look for
+// example-agent-review:v1; every repository names its own.
 type Profile struct {
 	ReviewMarker  string
 	FindingMarker string

@@ -151,12 +151,12 @@ func cmdReview(o opts) error {
 	if explicit {
 		switch {
 		case ropts.Pipeline == review.PipelineStaged:
-			return fmt.Errorf("--brief runs one call with no tools, so it cannot draw the %s partition; pass one or the other",
+			return fmt.Errorf("--brief is a single pass under the review contract, so it cannot draw the %s partition; pass one or the other",
 				review.PipelineStaged)
 		case ropts.Synopsis:
 			return fmt.Errorf("--brief writes the walkthrough in the same call, so --synopsis has nothing to add; pass one or the other")
 		case o.mode == review.ModeExplore:
-			return fmt.Errorf("--brief sends no tools and --mode explore is a tool loop; pass one or the other")
+			return fmt.Errorf("--brief is a single pass and --mode explore is a tool loop; pass one or the other")
 		}
 	}
 	ropts.Cohorts = o.cohorts

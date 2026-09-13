@@ -676,8 +676,8 @@ func TestParseRulingsToleratesObjectShapes(t *testing.T) {
 	}
 
 	// A re-wrapped, stringified object: the gateway put a whole {"rulings":[…]}
-	// as a JSON string into the rulings field. Seen on a large ruling over the
-	// Marketplace gateway even with the forced tool call. Unwrap and read it.
+	// as a JSON string into the rulings field. Seen on a large ruling over an
+	// internal gateway even with the forced tool call. Unwrap and read it.
 	nested := []byte(`{"rulings":"{\"rulings\":[{\"finding\":\"c1\",\"verdict\":\"kept\",\"evidence\":\"e\",\"why\":\"w\"}]}"}`)
 	got, err = parseRulings(nested)
 	if err != nil {
@@ -697,8 +697,8 @@ func TestParseRulingsToleratesObjectShapes(t *testing.T) {
 // A gateway has also returned the whole {"rulings":[…]} object as a JSON string
 // and escaped it only once, so the decoded value is not valid JSON: a quote
 // inside a finding's own text (a code snippet like == "") sits raw where the
-// wire should carry an escaped one. Seen on the large MKT-1360 ruling over the
-// Marketplace gateway, where it dropped every verdict. Re-escape those quotes
+// wire should carry an escaped one. Seen on a large ruling over an internal
+// gateway, where it dropped every verdict. Re-escape those quotes
 // and read the rulings rather than leaving the findings unchecked.
 func TestParseRulingsRecoversAStringifiedObjectThatLostEscaping(t *testing.T) {
 	mangled := []byte(`{"rulings":"{\"rulings\":[{\"finding\":\"c1\",\"verdict\":\"kept\",` +

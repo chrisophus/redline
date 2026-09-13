@@ -40,6 +40,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -93,8 +94,27 @@ func TestLadder(t *testing.T) {
 	}
 	only := os.Getenv("REDLINE_EVAL_FIXTURE")
 
+	// Samples, for the reason TestSweep takes them: a review is not a stable
+	// function of its input, and the union of one sample is close to a coin
+	// flip per expectation. The rungs were measured at one sample and compared
+	// against each other on a three-point spread, which is inside the noise
+	// this buys its way out of.
+	samples := 1
+	if s := os.Getenv("REDLINE_EVAL_SAMPLES"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n < 1 {
+			t.Fatalf("REDLINE_EVAL_SAMPLES=%q is not a positive count", s)
+		}
+		samples = n
+	}
+
 	client := anthropic.NewClient()
 	var cards []eval.Scorecard
+	// Fixtures that produced nothing at all. They leave the population, which
+	// moves Sum's denominator, and a rung compared against another over a
+	// different denominator is not a comparison. Named in the result line
+	// rather than left to the errors above, so the number is read with them.
+	var failed []string
 	for _, f := range fixtures {
 		if only != "" && f.Annotation.Name != only {
 			continue
@@ -104,24 +124,43 @@ func TestLadder(t *testing.T) {
 		}
 
 		system, user := ladderPrompt(t, f, rung)
-		out, err := ladderCall(client, model, system, user)
-		if err != nil {
-			t.Errorf("%s: %v", f.Annotation.Name, err)
+		var revs []findings.Review
+		for si := range samples {
+			out, err := ladderCall(client, model, system, user)
+			if err != nil {
+				t.Errorf("%s sample %d: %v", f.Annotation.Name, si, err)
+				continue
+			}
+			rev, err := ladderParse(t, out)
+			if err != nil {
+				t.Errorf("%s sample %d: %v (got %s)", f.Annotation.Name, si, err, clip(out, 300))
+				continue
+			}
+			revs = append(revs, *rev)
+		}
+		if len(revs) == 0 {
+			failed = append(failed, f.Annotation.Name)
 			continue
 		}
-		rev, err := ladderParse(t, out)
-		if err != nil {
-			t.Errorf("%s: %v (got %s)", f.Annotation.Name, err, clip(out, 300))
-			continue
-		}
-		card := eval.Score(f, *rev)
+		card := eval.ScoreSamples(f, revs)
 		cards = append(cards, card)
-		t.Logf("%s: comments=%d caught=%v missed=%d extra=%d",
-			f.Annotation.Name, card.Comments, card.Caught, len(card.Missed), card.Extra)
+		t.Logf("%s: comments=%d caught=%v caughtIn=%v missed=%d extra=%d",
+			f.Annotation.Name, card.Comments, card.Caught, card.CaughtIn,
+			len(card.Missed), card.Extra)
+	}
+	if len(cards) == 0 {
+		t.Fatal("no fixture produced a review, so there is nothing to compare; " +
+			"the errors above are the result")
 	}
 	tot := eval.Sum(cards)
-	t.Logf("RUNG %s: caught %d/%d, %d unlabelled, %d false positives, clean %d/%d",
-		rung, tot.Caught, tot.Expected, tot.Extra, tot.FalsePositives(), tot.CleanFixtures, len(cards))
+	t.Logf("RUNG %s x%d: caught %d/%d (union), %d unlabelled, %d false positives, clean %d/%d",
+		rung, samples, tot.Caught, tot.Expected, tot.Extra, tot.FalsePositives(),
+		tot.CleanFixtures, len(cards))
+	if len(failed) > 0 {
+		t.Errorf("%d fixture(s) produced nothing and are not in the denominator: %v; "+
+			"this rung's %d is not comparable with a rung that scored them",
+			len(failed), failed, tot.Expected)
+	}
 }
 
 // ladderPrompt builds the rung's two halves out of what actually ships:

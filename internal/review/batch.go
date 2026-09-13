@@ -204,8 +204,10 @@ func RunBatch(ctx context.Context, ins []Input, opts Options) ([]*Result, []erro
 		switch item.Result.AsAny().(type) {
 		case anthropic.MessageBatchSucceededResult:
 			msg := item.Result.Message
+			body, fromTool := structuredOf(msg)
 			c := completion{
-				text:       structuredOf(msg),
+				text:       body,
+				fromTool:   fromTool,
 				stopReason: string(msg.StopReason),
 				usage: Usage{
 					InputTokens:      msg.Usage.InputTokens,

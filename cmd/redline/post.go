@@ -383,8 +383,16 @@ func statedIntent(owner, repo string, num int) string {
 }
 
 // sanitizeIntent drops the marker lines a PR body might carry, so a description
-// that quotes a fake mct-agent-review or redline marker cannot smuggle one into
-// the review body Redline signs. Whole HTML-comment lines go too.
+// that quotes a fake verdict marker cannot smuggle one into the review body
+// Redline signs. Whole HTML-comment lines go too, which is where a marker
+// normally sits and so is the check that does most of the work.
+//
+// Marker names are repository policy and this function is not told which ones
+// are configured, so the backstop behind that matches the shape the names share
+// rather than naming one repository's. It used to test for a single gate's two
+// markers, which meant every other repository's markers passed straight
+// through. A repository whose markers share no shape with these still relies on
+// the HTML-comment rule above.
 func sanitizeIntent(body string) string {
 	var out []string
 	for _, line := range strings.Split(body, "\n") {
@@ -392,7 +400,7 @@ func sanitizeIntent(body string) string {
 		if strings.Contains(l, "<!--") || strings.Contains(l, "-->") {
 			continue
 		}
-		if strings.Contains(l, "mct-agent-review") || strings.Contains(l, "mct-agent-finding") ||
+		if strings.Contains(l, "-agent-review") || strings.Contains(l, "-agent-finding") ||
 			strings.Contains(l, "redline:") {
 			continue
 		}
