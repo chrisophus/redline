@@ -137,7 +137,7 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 			{Role: "user", Content: res.Prompt + res.Tail},
 		},
 		MaxCompletionTokens: opts.MaxTokens,
-		Tools:               openAITools(),
+		Tools:               openAITools(opts),
 		ToolChoice: map[string]any{
 			"type":     "function",
 			"function": map[string]any{"name": fn},

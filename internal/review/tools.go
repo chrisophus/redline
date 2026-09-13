@@ -29,8 +29,20 @@ import (
 // selection moves to tool_choice, which changes what the model emits while
 // every cache tier survives it. What varies is a name.
 //
-// Nothing reads a cache yet. This only makes one possible, and the invariant
-// it rests on is that these bytes do not move between two calls of one run.
+// The invariant it rests on is that these bytes do not move between two calls
+// of one run. That is narrower than "the same array forever", and the
+// narrowing is now load-bearing rather than pedantic: with five strict tools
+// declared, the endpoint answered
+//
+//	400 invalid_request_error: The compiled grammar is too large, which would
+//	cause performance issues. Simplify your tool schemas or reduce the number
+//	of strict tools.
+//
+// So the array carries the contracts this run's shape can ask for and no
+// others. Every call of a staged run sends the same three, every call of a
+// one-shot run the same two, and within a run nothing before the prompt
+// moves. Across runs it may, and nothing reads across runs: the entry lives
+// five minutes or an hour and the next run assembles its own.
 //
 // That last part is measured, not cited: the documented invalidation table
 // says a tool_choice change costs the message blocks, which is where the
@@ -43,6 +55,7 @@ const (
 	StageRuling   = "ruling"
 	StageSynopsis = "synopsis"
 	StageFindings = "findings"
+	StageCohorts  = "synopsis_cohorts"
 )
 
 // stageTool is one stage's output contract, named so the model can be pointed
@@ -56,41 +69,66 @@ type stageTool struct {
 	Schema      map[string]any `json:"input_schema"`
 }
 
-// stageTools is every contract a request may be constrained to, in a fixed
-// order. The order is part of the bytes, so it is written out here rather than
-// built from a map: reordering the array is the same cache miss as changing a
-// schema in it.
+// stageTools is every contract this run's shape may be constrained to, in a
+// fixed order. The order is part of the bytes, so it is written out here
+// rather than built from a map: reordering the array is the same cache miss
+// as changing a schema in it.
 //
-// Every stage is declared on every call, including the stages this call is not
-// asking for. That is the point. A run sends this array to the review and then
-// to the ruling, and the two are identical, so the second can read what the
-// first wrote.
-func stageTools() []stageTool {
-	return []stageTool{
-		{
-			Name: StageReview,
-			Description: "Return the review of this change: the overview, a line per file, " +
-				"the comments, and the verdicts. Call this and nothing else.",
-			Schema: outputSchema(),
-		},
-		{
-			Name: StageRuling,
-			Description: "Return a ruling on every finding you were given. " +
-				"Call this and nothing else.",
-			Schema: ruleSchema(),
-		},
-		{
+// Every stage the shape can reach is declared on every one of its calls,
+// including the stages this particular call is not asking for. That is the
+// point: a staged run sends these three to stage one, to each cohort and to
+// the ruling, and all of them are identical, so every call after the first
+// reads what the first wrote.
+//
+// Stages the shape cannot reach are left out, because the endpoint compiles
+// every strict tool into one grammar and refuses when that grammar gets too
+// large. A one-shot run has no use for the partition contract and paying for
+// it costs a 400.
+func stageTools(opts Options) []stageTool {
+	review := stageTool{
+		Name: StageReview,
+		Description: "Return the review of this change: the overview, a line per file, " +
+			"the comments, and the verdicts. Call this and nothing else.",
+		Schema: outputSchema(),
+	}
+	ruling := stageTool{
+		Name: StageRuling,
+		Description: "Return a ruling on every finding you were given. " +
+			"Call this and nothing else.",
+		Schema: ruleSchema(),
+	}
+	findings := stageTool{
+		Name: StageFindings,
+		Description: "Return the comments and the verdicts for this change, for a run " +
+			"whose overview and file lines are already written. Call this and nothing else.",
+		Schema: findingsSchema(),
+	}
+	switch {
+	case opts.Pipeline == PipelineStaged:
+		// The review contract is left out, and that is measured rather than
+		// chosen: review + ruling + findings + cohorts is the array that got
+		// the 400, and ruling + findings + cohorts is accepted. A staged run
+		// that loses stage one falls back to a one-shot call, which reassembles
+		// under the one-shot shape and carries the review contract then. The
+		// fallback sends a different array than the call before it and reads
+		// no cache, which costs nothing: the run it is rescuing has already
+		// lost the call that wrote one.
+		return []stageTool{ruling, findings, {
+			Name: StageCohorts,
+			Description: "Return what this change is - the overview and one line per file you " +
+				"were shown - and a partition of those files into cohorts for the reviews " +
+				"that follow. Call this and nothing else.",
+			Schema: cohortsSchema(),
+		}}
+	case opts.Synopsis:
+		return []stageTool{review, ruling, findings, {
 			Name: StageSynopsis,
 			Description: "Return what this change is: the overview and one line per file " +
 				"you were shown. Call this and nothing else.",
 			Schema: synopsisSchema(),
-		},
-		{
-			Name: StageFindings,
-			Description: "Return the comments and the verdicts for this change, for a run " +
-				"whose overview and file lines are already written. Call this and nothing else.",
-			Schema: findingsSchema(),
-		},
+		}}
+	default:
+		return []stageTool{review, ruling}
 	}
 }
 
@@ -99,11 +137,12 @@ func stageTools() []stageTool {
 // It has to be priced with the other fixed parts for the reason the system
 // block does: a ceiling that admits a request smaller than the one that goes
 // out is a ceiling that gets quoted and is wrong. This grew when the contract
-// became a tool array, because a call now carries every stage's schema and not
-// only its own, and that is the trade the caching buys. Estimated off the
-// marshalled bytes, which is what the endpoint is actually sent.
-func toolsTokens() int {
-	raw, err := json.Marshal(stageTools())
+// became a tool array, because a call now carries every stage's schema its
+// shape can reach and not only its own, and that is the trade the caching
+// buys. Estimated off the marshalled bytes, which is what the endpoint is
+// actually sent.
+func toolsTokens(opts Options) int {
+	raw, err := json.Marshal(stageTools(opts))
 	if err != nil {
 		// Nothing here can fail to marshal. If it somehow does, price it high
 		// rather than free: an unpriced block is the failure this exists to
@@ -121,8 +160,8 @@ func toolsTokens() int {
 // cannot quietly drop the one carrying the correlation. It needs
 // additionalProperties false and a required list on every object, which these
 // schemas already have.
-func anthropicTools() []anthropic.ToolUnionParam {
-	all := stageTools()
+func anthropicTools(opts Options) []anthropic.ToolUnionParam {
+	all := stageTools(opts)
 	out := make([]anthropic.ToolUnionParam, 0, len(all))
 	for _, t := range all {
 		out = append(out, anthropic.ToolUnionParam{OfTool: &anthropic.ToolParam{
@@ -173,8 +212,8 @@ func toolInputSchema(s map[string]any) anthropic.ToolInputSchemaParam {
 // gateways that ignore the constraint and answer in prose, which readOpenAIResponse
 // reads anyway. Asking for a guarantee this wire cannot make would be a claim
 // the parse has to keep disproving.
-func openAITools() []openAITool {
-	all := stageTools()
+func openAITools(opts Options) []openAITool {
+	all := stageTools(opts)
 	out := make([]openAITool, 0, len(all))
 	for _, t := range all {
 		out = append(out, openAITool{

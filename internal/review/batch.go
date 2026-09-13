@@ -82,6 +82,16 @@ func RunBatch(ctx context.Context, ins []Input, opts Options) ([]*Result, []erro
 	if opts.Synopsis {
 		return nil, nil, fmt.Errorf("the judging call reads the walkthrough the describing call wrote, so the two cannot go out in the same batch; run the synopsis arm interactively")
 	}
+	if opts.Pipeline == PipelineStaged {
+		// Two reasons, and the second is the one that bites. A staged run is
+		// a call per cohort over the partition stage one drew, which a batch
+		// cannot pair any more than it can pair the ruling. And the staged
+		// catalogue leaves out the review contract that Assemble's own
+		// StageReview stamp forces here, so every request in the batch would
+		// name a tool it does not declare and the whole sweep would 400
+		// after the caller had assembled and priced it.
+		return nil, nil, fmt.Errorf("a staged run is stage one plus a call per cohort that reads what it drew, and a batched request is single-shot; use --pipeline oneshot to batch")
+	}
 	// No breakpoint on this tier, whatever the caller asked for. Each request
 	// of a batch is its own prefix and the results arrive over a
 	// twenty-four-hour window, so a five-minute entry expires long before

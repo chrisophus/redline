@@ -63,6 +63,20 @@ type Entry struct {
 	// count.
 	Synopsis             bool  `json:"synopsis,omitempty"`
 	SynopsisOutputTokens int64 `json:"synopsisOutputTokens,omitempty"`
+	// Pipeline is the shape the run came out of, Cohorts how many calls the
+	// fan-out made and CohortsFailed how many did not answer, and FellBack
+	// the reason a staged run finished as a one-shot review.
+	//
+	// The shape is recorded because a cost mean across shapes is not a
+	// number: a staged row is a call per cohort and a one-shot row is one
+	// call, which is the same reason Batched rows are kept out of the
+	// distribution. FellBack is what stops a run that paid for a failed
+	// stage one and then reviewed in one call from reading as a cheap
+	// staged run.
+	Pipeline      string `json:"pipeline,omitempty"`
+	Cohorts       int    `json:"cohorts,omitempty"`
+	CohortsFailed int    `json:"cohortsFailed,omitempty"`
+	FellBack      string `json:"fellBack,omitempty"`
 	// Ceiling and InputEstimate record what the request was allowed and what
 	// it used, so a run that was trimmed can be told from one that fit.
 	Ceiling       int  `json:"ceiling"`
@@ -98,6 +112,8 @@ func Record(dir string, r *Result, effort string) error {
 		StopReason: r.StopReason, Truncated: r.Truncated,
 		Batched: r.Batched, Cached: r.Cached,
 		Synopsis: r.Synopsis, SynopsisOutputTokens: r.SynopsisOutputTokens,
+		Pipeline: r.Pipeline, Cohorts: len(r.Cohorts),
+		CohortsFailed: r.CohortsFailed, FellBack: r.FellBack,
 		Ceiling: r.Ceiling, InputEstimate: r.InputEstimate, OverCeiling: r.OverCeiling,
 		Samples: r.Samples, SamplesFailed: r.SamplesFailed,
 		RulingOutputTokens: r.RulingOutputTokens, ScoutCostUSD: r.ScoutCostUSD,
@@ -144,6 +160,10 @@ func ReadLedger(dir string) ([]Entry, error) {
 
 // Stats is the distribution the target is a claim about.
 type Stats struct {
+	// Shape is which pipeline these rows came out of, set by
+	// SummarizeByShape. Empty when a caller summarised a set it had already
+	// chosen.
+	Shape  string
 	Count  int
 	Mean   float64
 	Median float64
@@ -184,7 +204,39 @@ func (s Stats) ExpectedOutput() int64 {
 	return ExpectedOutputTokens
 }
 
-// Summarize computes the distribution.
+// Shape is the ledger's grouping key: the pipeline a row came out of, with
+// the rows written before the field existed reading as what they were.
+func (e Entry) Shape() string {
+	if e.Pipeline == "" {
+		return PipelineOneShot
+	}
+	return e.Pipeline
+}
+
+// SummarizeByShape splits the ledger before averaging it.
+//
+// A mean across shapes is not a number. A staged row is a describing call
+// plus one per cohort and a one-shot row is one call, so a ledger holding
+// both reports a cost nobody was ever charged - the same reason Batched rows
+// are left out of the distribution below. MedianOutput is worse than
+// meaningless mixed: it prices the next review's judging call, and a staged
+// row's output is five calls' worth.
+func SummarizeByShape(entries []Entry) map[string]Stats {
+	byShape := map[string][]Entry{}
+	for _, e := range entries {
+		byShape[e.Shape()] = append(byShape[e.Shape()], e)
+	}
+	out := make(map[string]Stats, len(byShape))
+	for shape, rows := range byShape {
+		s := Summarize(rows)
+		s.Shape = shape
+		out[shape] = s
+	}
+	return out
+}
+
+// Summarize computes the distribution of whatever it is given. Callers that
+// hold a mixed ledger want SummarizeByShape.
 func Summarize(entries []Entry) Stats {
 	var s Stats
 	var costs []float64
@@ -262,6 +314,9 @@ func (s Stats) String() string {
 	}
 	out := fmt.Sprintf("%d review(s): mean $%.4f, median $%.4f, p90 $%.4f, range $%.4f to $%.4f, mean wall %.1fs",
 		s.Count, s.Mean, s.Median, s.P90, s.Min, s.Max, s.MeanSeconds)
+	if s.Shape != "" {
+		out = s.Shape + ": " + out
+	}
 	if s.Batched > 0 {
 		out += fmt.Sprintf(" (%d more ran at the batch tier's half rate and are excluded)", s.Batched)
 	}

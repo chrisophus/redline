@@ -209,6 +209,26 @@ type Options struct {
 	// that cap with fifty file summaries in front of the findings. The price
 	// is one more call over a prefix the first one has already paid to cache.
 	Synopsis bool
+	// Pipeline is the shape of the run: "oneshot" is one call that judges the
+	// whole change, "staged" describes it first, splits it, and judges each
+	// part in its own call.
+	//
+	// Staged implies the describing call - it is the call that draws the
+	// partition - so Synopsis is not consulted under it.
+	Pipeline string
+	// Cohorts is the upper bound on stage-two calls, not a target. Stage one
+	// chooses how many to draw within it and the tripwire prices the bound,
+	// because a guard that priced one review and then paid for six would be
+	// no guard.
+	Cohorts int
+	// MinCohortFiles is the size below which a change is reviewed as one
+	// cohort whatever the bound says. Splitting four files into six groups
+	// spends six calls to review four files.
+	MinCohortFiles int
+	// CrossSummaries carries the other cohorts' summaries into each cohort's
+	// instruction. Off is cheaper in input and gives up the correlation a
+	// cohort call can raise about a neighbour it was told nothing about.
+	CrossSummaries bool
 }
 
 func (o Options) withDefaults() Options {
@@ -244,6 +264,23 @@ func (o Options) withDefaults() Options {
 	}
 	if o.CacheTTL == "" {
 		o.CacheTTL = CacheTTL5m
+	}
+	if o.Pipeline == "" {
+		o.Pipeline = PipelineOneShot
+	}
+	if o.Pipeline == PipelineStaged {
+		// Staged already describes the change - that is the call that draws
+		// the partition - so the synopsis flag has nothing left to turn on.
+		// Cleared here rather than ignored at the branch, because the
+		// tripwire reads the options and would otherwise price a describing
+		// call twice and refuse a run that fits.
+		o.Synopsis = false
+	}
+	if o.Cohorts <= 0 {
+		o.Cohorts = DefaultCohorts
+	}
+	if o.MinCohortFiles <= 0 {
+		o.MinCohortFiles = DefaultMinCohortFiles
 	}
 	return o
 }
@@ -395,6 +432,19 @@ type Result struct {
 	// prices the next review's judging call, and folding a walkthrough into
 	// it would inflate every estimate after it.
 	SynopsisOutputTokens int64 `json:"synopsisOutputTokens,omitempty"`
+	// Pipeline is the shape this result actually came out of, which is not
+	// always the shape that was asked for: a staged run whose describing call
+	// failed finishes as a one-shot review and says so here, with FellBack
+	// carrying the reason. A ledger that recorded the request instead would
+	// average a one-shot run into the staged distribution.
+	Pipeline string `json:"pipeline,omitempty"`
+	FellBack string `json:"fellBack,omitempty"`
+	// Cohorts is the partition stage one drew, after repair, and
+	// CohortsFailed how many of their calls did not answer. Both are on the
+	// result because a merge over four cohorts of six is not a review of the
+	// change, and nothing downstream can tell without being told.
+	Cohorts       []Cohort `json:"cohorts,omitempty"`
+	CohortsFailed int      `json:"cohortsFailed,omitempty"`
 
 	// Candidates is what stage one found, as it wrote it, before any ruling
 	// touched it. Kept because the verifying pass writes its rulings onto the
@@ -459,7 +509,7 @@ func (r *Result) Summary() string {
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
 	system := systemPrompt + oneShotAddendum + languageFragments(in.Envelopes)
-	fixed := toolsTokens() + envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
+	fixed := toolsTokens(opts) + envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
 		// The block's own header is written after FitAll has fitted the
 		// expansions, so it has to be reserved here or the assembled prompt
@@ -490,9 +540,13 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	cost, known := EstimateCost(opts.Model, est, expected)
 	ceiling, _ := CeilingCost(opts.Model, est, opts.MaxTokens)
 	return &Result{
-		API:            opts.API,
-		Model:          opts.Model,
-		Stage:          StageReview,
+		API:   opts.API,
+		Model: opts.Model,
+		Stage: StageReview,
+		// Stamped at assembly so every row has a shape, including the rows
+		// nothing staged ever touches: a ledger where one shape is a value
+		// and the other is an empty string groups into two sets by accident.
+		Pipeline:       opts.Pipeline,
 		Budget:         budget,
 		Prompt:         prompt,
 		System:         system,
@@ -556,13 +610,29 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	// their own worst case, because a run refused after paying for two of
 	// three calls is the failure this guard exists to prevent.
 	worst := res.CostCeilingUSD*float64(opts.Samples) +
-		synopsisCeilingCost(opts, in, res) + verifyCeilingCost(opts, res)
+		synopsisCeilingCost(opts, in, res) + stagedCeilingCost(opts, in, res) +
+		verifyCeilingCost(opts, res)
 	if res.CostKnown && worst > opts.MaxCostUSD {
+		// The shape is named because the worst case is not one call's. A
+		// staged run refused at the one-shot tripwire reads as a request too
+		// large to review, when what it is is seven calls priced at once -
+		// and the lever is the cohort count, not the ceiling: each call
+		// carries the whole prefix, so lowering --cohorts removes a whole
+		// call's input and lowering --ceiling shaves a slice off all of them.
+		shape, advice := "", "Raise --max-cost to proceed, or lower --ceiling"
+		if opts.Pipeline == PipelineStaged {
+			bound := cohortBound(opts, in)
+			shape = fmt.Sprintf(" A staged run is stage one plus up to %d cohort call(s), "+
+				"each carrying the whole prefix and capped at %d response token(s).",
+				bound, cohortMaxTokens(opts, bound))
+			advice = "Raise --max-cost to proceed, lower --cohorts to buy fewer calls, " +
+				"or lower --ceiling to shrink every one of them"
+		}
 		return res, fmt.Errorf(
-			"worst-case cost %s across %d sample(s) exceeds the %s tripwire (expected %s): %d input tokens against a %d-token ceiling. "+
-				"Raise --max-cost to proceed, or lower --ceiling",
+			"worst-case cost %s across %d sample(s) exceeds the %s tripwire (expected %s): %d input tokens against a %d-token ceiling.%s %s",
 			FormatCost(worst, true), opts.Samples, FormatCost(opts.MaxCostUSD, true),
-			FormatCost(res.CostUSD*float64(opts.Samples), true), res.InputEstimate, opts.Ceiling)
+			FormatCost(res.CostUSD*float64(opts.Samples), true), res.InputEstimate, opts.Ceiling,
+			shape, advice)
 	}
 	if opts.DryRun {
 		return res, nil
@@ -592,8 +662,27 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 			return res, fmt.Errorf("--synopsis splits one call in two, and explore's call is a " +
 				"loop that already writes its walkthrough over several turns; use --mode oneshot")
 		}
+		if opts.Pipeline == PipelineStaged {
+			return res, fmt.Errorf("--pipeline staged and --mode explore are two answers to the " +
+				"same question - one spends the budget on breadth, the other on turns; pick one")
+		}
 		res.Turns = 0
 		return runExplore(ctx, in, opts, res)
+	}
+	if opts.Pipeline == PipelineStaged {
+		if opts.Samples > 1 {
+			return res, fmt.Errorf("--samples unions independent reviews of the whole change, " +
+				"and a staged run already spends its budget on breadth; sampling a fan-out multiplies it")
+		}
+		out, err := runStaged(ctx, in, opts, res)
+		if err != nil || !opts.Verify {
+			return out, err
+		}
+		if opts.Progress != nil {
+			opts.Progress(fmt.Sprintf("the cohorts produced %d finding(s) in %s; checking them against the repository",
+				len(out.Review.Comments), out.Duration.Round(time.Second)))
+		}
+		return Verify(ctx, in, opts, out)
 	}
 	// The describing stage runs first, because it is the call that writes the
 	// cache the judging call reads, and because the judging call's contract
@@ -664,7 +753,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			"cache": map[string]any{"breakpoint": res.Cached, "ttl": opts.CacheTTL},
 			// The whole array, because the whole array is what was sent and
 			// its bytes are what a cache read depends on.
-			"tools": stageTools(), "toolChoice": stage,
+			"tools": stageTools(opts), "toolChoice": stage,
 		}, "", "  ")
 		opts.Capture(stage+".request.json", req)
 	}
@@ -772,6 +861,18 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 		return err
 	}
 	res.Review = *rev
+	// The partition rides on stage one's answer under its own contract, and
+	// findings.Review has no field for it: it is this producer's scaffolding,
+	// not part of the review a reader is handed or the file a skill writes.
+	if stage == StageCohorts {
+		var wire struct {
+			Cohorts []Cohort `json:"cohorts"`
+		}
+		if err := json.Unmarshal([]byte(body), &wire); err != nil {
+			return fmt.Errorf("the describing call's partition did not parse: %w", err)
+		}
+		res.Cohorts = wire.Cohorts
+	}
 	return nil
 }
 

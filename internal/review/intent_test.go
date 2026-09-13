@@ -35,16 +35,21 @@ func TestThePromptCarriesWhatTheAuthorSaidTheChangeDoes(t *testing.T) {
 		"This adds an idempotency key.",
 		"Add an idempotency key to charge",
 		"Without it a retried request charged twice.",
-		// The account is only worth carrying if the review is asked to check
-		// it: a description that survives review wrong outlives the review.
-		"report where they disagree",
+		// Carried as orientation. What the change is for is what a reviewer
+		// needs to judge whether the code achieves it; auditing the sentence
+		// against the diff is a separate job, and asking for it produced
+		// reviews made of rewording suggestions.
+		"it is not itself under review",
 	} {
 		if !strings.Contains(got.Prompt, want) {
 			t.Errorf("the prompt does not carry %q", want)
 		}
 	}
-	if !strings.Contains(got.System, "does not do what its own description says") {
-		t.Error("the reporting rules do not make an inaccurate description a finding")
+	if !strings.Contains(got.System, "Any disagreement between prose and code") {
+		t.Error("the reporting rules must rule prose-versus-code mismatches out")
+	}
+	if strings.Contains(got.System, "does not do what its own description says") {
+		t.Error("the reporting rules still ask for description mismatches")
 	}
 }
 

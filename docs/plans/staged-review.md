@@ -604,9 +604,72 @@ Then, per arm, against the frozen fixtures:
    zero. The second was in the harness, not the producer: the sweep built
    `review.Options` without `Cache`, so the arm it billed at 2.1x was a
    configuration the command never runs. **M**
-5. **Cohort fan-out.** `--cohorts`, the per-cohort prompt with cross-summaries,
-   the scout budget split. Score against every column above, with correlation
-   survival as the bar. **L**
+5. **Cohort fan-out.** Shipped as `--pipeline staged`, off by default. Stage
+   one describes the change and partitions the shown files; one call per
+   cohort judges its own part over the same cached prefix; the findings are
+   unioned by `UnionKey` and the ruling runs behind them as it always has.
+   `--cohorts` bounds the fan-out, `--min-cohort-files` keeps small changes
+   whole, `--no-cross-summaries` is the arm that withholds the neighbours.
+
+   Proven on a real change - this repository's own PR #44, 13 files - at
+   $0.3286: five cohorts drawn, five calls made, 366,240 tokens read from
+   cache against 10,251 billed at base rate, ten findings, one kept by the
+   ruling.
+
+   Three things it turned out to need that this document did not say.
+
+   **The constant tool array has a ceiling.** Declaring the partition
+   contract alongside the other four got a 400 from the endpoint - "the
+   compiled grammar is too large ... reduce the number of strict tools" - on
+   the first live run. Probed: `review + ruling + findings + cohorts` is
+   refused, `ruling + findings + cohorts` is accepted. So the array carries
+   the contracts the run's *shape* can ask for rather than every contract
+   there is. The cache invariant was never "the same array forever", it was
+   "the same array between two calls of one run", and that still holds.
+
+   **The fallback reassembles.** A staged run that loses stage one falls back
+   to one call, and the review contract it needs is the one the staged array
+   cannot carry, so the fallback call goes out under the one-shot shape and
+   reads no cache. That costs nothing: the run it is rescuing has already
+   lost the call that would have written one. The failure model held up on
+   the wire before it was ever tested - the 400 above is what exercised it,
+   and the review still came back.
+
+   **The tripwire needed a sentence and a smaller budget.** A staged run's
+   worst case is stage one plus the bound, and at the full response cap each
+   that is $6.35 on a 57k-token change against a $2 default. The refusal now
+   names the shape rather than reading as a change too large to review - and
+   the budget it prices is one review's, divided, rather than one per cohort.
+
+   Scored on the ten fixtures at three samples, against the arms already
+   measured there:
+
+   | Arm | Mean cost | Caught (union) | Caught rate | Unlabelled | Walkthrough |
+   |---|---|---|---|---|---|
+   | `oneshot ×3` | $0.1238 | 4/35 | 8% | 37 | 54/54 (+4 unsent) |
+   | `--synopsis ×3` | $0.0954 | 11/35 | 17% | 36 | 54/54 |
+   | `--pipeline staged ×3` | $0.2523 | **16/35** | **28%** | **97** | 54/54 (+1 unsent) |
+
+   Four times the one-shot arm's recall, and two and a half times its noise.
+   That is the trade this step exists to expose, and the noise number is the
+   one to read first: 97 unlabelled comments across thirty reviews is what
+   six reviewers with a sixth of the change each produce, and none of it is
+   scored as wrong until somebody reads it. The `reject` list step 3 built is
+   what turns that column into a verdict, and it has to be run over these
+   dumps before the arm can be called better rather than louder.
+
+   The tripwire needed the response budget divided, not raised. A staged run
+   priced at the full cap per cohort is $6 of worst case on a mid-sized
+   change, and the first sweep was refused on seven of ten fixtures for a
+   request nobody intended to make. One review's cap now divides across the
+   fan-out - the measured run spent 3,267 output tokens across five calls
+   against a 64,000 cap - which halves the worst case and bounds the real
+   spend. What is left is genuinely a call per cohort, so the sweep raises
+   `--max-cost` explicitly rather than the harness lifting the guard quietly.
+
+   The ledger groups by shape and `--stats` prints one line per shape. A mean
+   across shapes is a price nobody was charged, and `MedianOutput` mixed
+   across them prices a one-shot call at a fan-out's output. **L**
 6. **The merge stage.** `--merge-context`, dedup across cohorts, the ruling
    moved behind it. **M**
 7. **Retune the defaults.** Only once 4 through 6 have been scored on the

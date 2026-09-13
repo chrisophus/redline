@@ -221,6 +221,92 @@ all missed, and the first two were found by hand within minutes.
 | **Nothing in the pipeline can run the code** | Three of the four questions on the second run were settled in minutes by marshalling `anthropicParams` and printing the JSON, and by sending one probe request: `type: object` is emitted by the SDK's `constant.Object` default, `strict: true` with closed objects returns 200 on four models, and a switched `tool_choice` reads a breakpointed prefix back whole. Read and grep cannot reach any of that. The worktrees under `~/.redline/worktrees` are already checkouts at the reviewed revision, so a bounded execution step — build, run one test, marshal one request — is a reachable class of evidence and is the class this change's real risks lived in. | M |
 | **The ruling settles on precedent when the answer is one file away** | c2 asked whether dropping the schema's `type` key loses `"type": "object"` on the wire. Ruled `justified` because `internal/scout/tools.go:212-214` builds the same SDK type the same way — a repository habit, offered as proof of an API's behaviour. The definitive answer is `anthropic-sdk-go@v1.71.0/message.go:9436`: `Type constant.Object json:"type" default:"object"`, with the comment saying it marshals its zero value as `object`. Right verdict, wrong reason, and a reader of the report learns the wrong reason. The answering brief already ranks evidence against a finding above evidence for it; it does not rank a declaration above a sibling call site. | S |
 
+## Review quality (Claude comparison, this repository's PR #46)
+
+Both reviewers were given the same change at the same revision: sixteen files,
+`8a53554..a1ae729`, the staged-review fan-out. Claude read it as an agent
+session with the repository open. Redline ran `--pipeline staged --ceiling
+150000`. Claude posted eleven inline comments carrying **eight distinct
+defects, all eight real and all eight since fixed**: an `index out of range`
+on `failures[0]` when the partition comes back empty, stage one told a bound
+the run would not honour, cohort calls priced without their own tails, stage
+one priced twice under `--synopsis`, a truncation lost because the merge read
+`kept[0]`, no `RunBatch` guard for the staged shape, the fallback dropping the
+billing for the call it had already paid for, and cohorts matched by a name
+nothing makes unique.
+
+Redline found none of them.
+
+| | Claude | Redline, as it ran | Redline, after the changes below |
+|---|---|---|---|
+| Findings produced | 11 (8 distinct) | 15 | 8 |
+| Of the 8 known defects | **8** | **0** | **1** (in 1 of 3 samples) |
+| Severity `info` | — | 14/15 | 7/8 |
+| Confidence `low` | — | 13/15 | 7/8 |
+| Comments actually posted | 11, all actionable | 3, **all lint** | 1, **a false positive** |
+| Cost | unmeasured | $0.66 | $0.26 at three samples |
+
+The yardstick is biased towards Claude and the bias cannot be removed here:
+the labels in `testdata/fixtures/staged-empty-partition` were written from
+Claude's comments, so it scores three of three there by construction. What is
+not a matter of scoring is that every one of the eight was reproduced against
+the code and fixed.
+
+Three separate mechanisms produced that result, and they are worth keeping
+apart because two are cheap and the third is the actual problem.
+
+| Item | What | Effort |
+|------|------|--------|
+| **Lint outranked the review in its own review** | `post` posts a deterministic finding unconditionally and withholds a low-confidence one, so on a change where the reviewer hedged everything the three comments that reached the pull request were all `redline/lint`, at `Warning`, above the reviewer's `Info`. The author's own linter says the same thing at the same moment CI does. The lint pane is now counted and not posted: evidence table keeps the number, the body says how many went to the report, and `redline/lint` opens no threads. | done |
+| **The reporting rules asked for the wrong thing, at length** | `what is worth reporting` opened with ten lines on the change not doing what its own description says, and six of the fifteen findings were duly sentences to reword. Removed, and the intent block is now framed as orientation — what the change is for, not a document to audit. Measured on a re-run over the same diff: prose-versus-code findings went from six of fifteen to **zero of eight**. | done |
+| **Severity had no definition in the contract** | `commentSchema` shipped `severity` as a bare `enum {error, warning, info}` with no description, so the model called everything `info`. It now says what the word means: what happens if the finding is right, not how sure you are. | done |
+| **`confidence: low` was sold as free** | The schema said low confidence "is folded away on the report, not discarded" and the prompt said an uncertain finding "costs the reader nothing". Both are false: `post.lowConfidence` withholds it. Both now say so, and the model went on marking seven of eight low anyway — but that is not what suppressed the review, and the first draft of this row said it was. Counted off the run's own `review.json`: of fifteen findings, four were low, kept and grounded, so `effectiveConfidence` promoted them and they reached the body along with the one medium. The ten that did not reach it were not withheld for hedging. **Nine came back `unverifiable` from the ruling**, and six of those nine carried `question.kind: diff` — the reviewer certified that the shown lines settled its own claim, so no lookup ran, so the ruling had nothing to rule against. The gate is not the constraint and neither is the wording. The constraint is two rows above this table, at "A `diff` question is self-certified and never checked", and it is now measured rather than argued: it costs two thirds of a review. | S |
+| **Nothing ever measured whether a review catches a crash** | All thirty-five labelled defects in the fixture set were wrong answers, swallowed errors or inverted comparisons. The class Claude opened with had no fixture, so no arm could ever have reported it missing. `testdata/fixtures/staged-empty-partition` is the first one that carries a crash, frozen from this very change with three of Claude's findings labelled. | done |
+| **Naming the crash class in the prompt did not buy it** | The class was added to `what is worth reporting`, in the same pass as the fixture, with the note that being unsure of the input is not a reason to lower the severity. Four runs have now been shown `failures[0]` on the changed lines of a diff they were reading — two before the change, two after — and none of them flagged it. The prompt is not the binding constraint. An index into a slice a branch can leave empty is decidable without a model, which puts this in a pane and not in a prompt. | M |
+| **The producer describes diffs; it does not trace paths** | Under every configuration measured here, what comes back is arithmetic consistency between things visible in the same window: this constant versus that comment, this estimate versus that cap. What Claude did was follow `repairPartition` into `fanOut` and ask what the slice holds when the branch above it took the early exit. No amount of topic listing has moved that, and it is the whole gap. The instruments to work on it now exist — a crash fixture, a walkthrough-completeness column, and a shape-split ledger — so this is the next thing the eval should be pointed at. | L |
+
+## The premise, measured (2026-09-13)
+
+The design says the packet is the product and the agent writes the prose. That
+claim had never been scored. Everything the eval measures is `redline review`
+against fixtures; nothing measured whether **an agent given the packet reviews
+better than the same agent given the diff**.
+
+It costs nothing to find out. `internal/eval.Score` takes a `findings.Review`
+and an annotation and does not care who wrote it, which is the boundary the
+design already draws. So: eleven fixtures, both arms assembled by
+`review.Assemble` so the instructions are byte-identical, one arm with
+`Envelopes`, pane findings and coverage and one with an empty `Report` and no
+expansions. Twenty-two isolated agents, one read of one file each, no
+repository access. Scored by the product's own scorer.
+
+| Arm | Caught | Unlabelled | Quiet violations |
+|---|---|---|---|
+| diff alone | **14 / 37** | 37 | 3 |
+| the packet | **18 / 37** | 37 | 3 |
+
+The packet wins by four, at the same false-positive rate, and it never loses a
+fixture. Two of the four gains have a named mechanism rather than a coin
+flip: `not-null-against-the-struct-field` carries `relates_to_rules`, and
+`baseline-not-relocked-for-the-new-rules` carries `needs_history` — evidence
+the bare arm provably did not hold. The other two are resolvable from the diff
+and could be noise. Two fixtures cannot discriminate at all, having no
+envelope or pane content to remove. This is n=1 per arm on a producer whose
+variance is known to be total, so four is a direction and not a size.
+
+The uncomfortable half is the comparison nobody asked for. On
+`staged-empty-partition` **both** agent arms scored 3 of 3, including the
+`failures[0]` panic — the defect `redline review` was shown on changed lines
+four times and never once reported, and which its own sweep catches at 1 of 3
+across three samples. A plain agent at one sample, with no cohorts, no ruling
+and no scout, beats the staged pipeline's 16/35 at three.
+
+| Item | What | Effort |
+|------|------|--------|
+| **The packet earns its cost; the in-process reviewer does not** | Measured above. The observation half is the part with no competition and it is the part that received zero added lines across the last twenty-four commits, against 4,011 for `internal/review` and 1,817 for `internal/scout`. The conclusion the numbers support is to stop extending the reviewer and spend on what only this tool can do: more panes, more of the change observed, and the eval arms that say which expansions are worth their tokens. `redline review` keeps its place as the no-agent path — CI, or a repository with no harness driving it — and stops being where the work goes. | — |
+| **Score the agent, not only the producer** | The scoring path for this ran as a throwaway and was deleted. It should not have to be rebuilt: a `review.json` written by any agent scores through `Score` today, so an `--arm agent` that emits the two prompt files and scores whatever comes back is a small, permanent addition to the eval and the only way the premise stays measured as the packet changes. | S |
+| **Measure per expansion, not per envelope** | The A/B above and the context sweep before it both compare all-or-nothing. What a reader of the roadmap actually needs is which roles pay: history bought `baseline-not-relocked-for-the-new-rules` here, and the neighbour expansions bought nothing measurable on ten fixtures at 60% more input. Score by role and the expansion budget becomes an evidence-backed setting rather than a ceiling. | M |
+
 ## Review quality (Copilot comparison, MKT-1360)
 
 Held against GitHub Copilot on the same PR (NetApp/marketplace-cp #1360), the

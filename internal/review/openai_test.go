@@ -139,8 +139,11 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 		}
 		names = append(names, tool.Function.Name)
 	}
-	if !slices.Equal(names, []string{StageReview, StageRuling, StageSynopsis, StageFindings}) {
-		t.Fatalf("every stage's contract goes on every call, in a fixed order, got %v", names)
+	// A one-shot run can reach these two and no others. The stages it cannot
+	// ask for are left out because the endpoint compiles every strict tool
+	// into one grammar and refuses when that grammar gets too large.
+	if !slices.Equal(names, []string{StageReview, StageRuling}) {
+		t.Fatalf("every stage this shape can reach goes on every call, in a fixed order, got %v", names)
 	}
 	tc, _ := got.ToolChoice.(map[string]any)
 	fnsel, _ := tc["function"].(map[string]any)

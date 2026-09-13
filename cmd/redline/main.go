@@ -123,6 +123,24 @@ flags:
                     walkthrough that covers every shown file and an output
                     cap the findings no longer share with fifty file
                     summaries.
+  --pipeline SHAPE  with review: oneshot (default) is one call that judges
+                    the whole change. staged describes it first, splits the
+                    shown files into cohorts, and reviews each cohort in its
+                    own call over the same cached prefix. What it is aimed at
+                    is measured: a reviewer with fifty files in front of it
+                    spends its finding-count on the first few. Staged implies
+                    the describing call, so --synopsis is not also needed.
+  --cohorts N       with review: upper bound on parallel cohort reviews
+                    (default 6). Stage one draws fewer when the change has
+                    fewer groups in it; the tripwire prices the bound.
+  --min-cohort-files N
+                    with review: below this many shown files a staged run is
+                    one cohort (default 3).
+  --no-cross-summaries
+                    with review: each cohort is told nothing about its
+                    neighbours. Cheaper, and gives up the correlations a
+                    cohort call raises about a change it can see but was not
+                    given.
   --ceiling N       with review: token ceiling for the whole request
                     (default 250000). A tail bound, not a per-review budget:
                     a change whose diff and findings alone exceed it is
@@ -174,8 +192,10 @@ type opts struct {
 	stats, verify, noVerify, debug, cache, noCache                    bool
 	synopsis, noSynopsis                                              bool
 	port, ceiling, maxTokens, maxTurns, samples                       int
+	cohorts, minCohortFiles                                           int
 	maxCost                                                           float64
-	cacheTTL                                                          string
+	cacheTTL, pipeline                                                string
+	crossSummaries, noCrossSummaries                                  bool
 }
 
 func runMain(args []string) error {
@@ -227,6 +247,11 @@ func runMain(args []string) error {
 	fs.BoolVar(&o.synopsis, "synopsis", false, "with review: describe the change in its own call before judging it")
 	fs.BoolVar(&o.noSynopsis, "no-synopsis", false, "with review: one call writes the walkthrough and the findings together")
 	fs.StringVar(&o.cacheTTL, "cache-ttl", "", "with review: how long the cached prefix lives, 5m or 1h")
+	fs.StringVar(&o.pipeline, "pipeline", "", "with review: oneshot, or staged to split the change into cohorts and review each")
+	fs.IntVar(&o.cohorts, "cohorts", 0, "with review: upper bound on parallel cohort reviews under --pipeline staged (default 6)")
+	fs.IntVar(&o.minCohortFiles, "min-cohort-files", 0, "with review: below this many shown files a staged run is one cohort (default 3)")
+	fs.BoolVar(&o.crossSummaries, "cross-summaries", false, "with review: give each cohort the other cohorts' summaries (on by default)")
+	fs.BoolVar(&o.noCrossSummaries, "no-cross-summaries", false, "with review: each cohort reviews its files knowing nothing of the others")
 	fs.BoolVar(&o.debug, "debug", false, "with review: log each model request, response, and scout tool call to stderr")
 	fs.IntVar(&o.ceiling, "ceiling", 0, "with review: token ceiling for the whole request")
 	fs.IntVar(&o.maxTokens, "max-tokens", 0, "with review: cap on the response")

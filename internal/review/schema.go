@@ -44,6 +44,55 @@ func synopsisSchema() map[string]any {
 	}
 }
 
+// cohortsSchema is stage one's contract when the run fans out: the same
+// walkthrough, plus the partition the fan-out is drawn from.
+//
+// A separate contract rather than an optional field on the synopsis one,
+// because strict mode requires every property a schema declares: a single
+// contract would make a run with no fan-out pay output tokens for a partition
+// nothing reads. Both are declared on every call and the stage is picked by
+// tool_choice, so carrying two costs input that is cached and nothing else.
+func cohortsSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"overview", "files", "cohorts"},
+		"properties": map[string]any{
+			"overview": overviewSchema(),
+			"files":    map[string]any{"type": "array", "items": fileSchema()},
+			"cohorts":  map[string]any{"type": "array", "items": cohortSchema()},
+		},
+	}
+}
+
+// cohortSchema is one group of files and what they do together. The summary is
+// what the other cohorts' calls are shown of this one, so it is written for a
+// reader who cannot see these diffs, not as a label.
+func cohortSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"name", "summary", "files"},
+		"properties": map[string]any{
+			"name": map[string]any{
+				"type":        "string",
+				"description": "Two or three words naming what this group of files does together.",
+			},
+			"summary": map[string]any{
+				"type": "string",
+				"description": "One or two sentences on what changed in this group, written for " +
+					"a reviewer who is reading a different group and cannot see these lines.",
+			},
+			"files": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"type": "string"},
+				"description": "Repository-relative paths, exactly as they appear in the change. " +
+					"Every file you were shown belongs to exactly one cohort, and no cohort is empty.",
+			},
+		},
+	}
+}
+
 // findingsSchema is the judging stage's half, for a run whose walkthrough was
 // already written. Dropping the two description fields is the point rather
 // than tidiness: they and the findings shared one output cap, and on measured
@@ -87,12 +136,22 @@ func commentSchema() map[string]any {
 			"severity": map[string]any{
 				"type": "string",
 				"enum": []string{"error", "warning", "info"},
+				"description": "What happens if this finding is right, not how sure " +
+					"you are - confidence carries that. error: it breaks at run time, " +
+					"loses data, or ships a wrong answer to a user. warning: it is " +
+					"wrong and someone pays for it later. info: worth knowing, nothing " +
+					"breaks. A crash on an input the code can receive is error however " +
+					"unsure you are that the input occurs.",
 			},
 			"confidence": map[string]any{
 				"type": "string",
 				"enum": []string{"high", "medium", "low"},
-				"description": "How sure you are. Report the finding either way; " +
-					"low confidence is folded away on the report, not discarded.",
+				"description": "How sure you are that the finding is true. Report it " +
+					"either way, but low is not free: a low-confidence finding stays on " +
+					"the report and is not posted to the pull request, so nobody who " +
+					"could fix it is shown it. Use low when you genuinely could not " +
+					"settle it from what you were given, not as a hedge on a claim the " +
+					"lines in front of you support.",
 			},
 			"category": map[string]any{
 				"type": "string",
