@@ -265,6 +265,48 @@ apart because two are cheap and the third is the actual problem.
 | **Naming the crash class in the prompt did not buy it** | The class was added to `what is worth reporting`, in the same pass as the fixture, with the note that being unsure of the input is not a reason to lower the severity. Four runs have now been shown `failures[0]` on the changed lines of a diff they were reading — two before the change, two after — and none of them flagged it. The prompt is not the binding constraint. An index into a slice a branch can leave empty is decidable without a model, which puts this in a pane and not in a prompt. | M |
 | **The producer describes diffs; it does not trace paths** | Under every configuration measured here, what comes back is arithmetic consistency between things visible in the same window: this constant versus that comment, this estimate versus that cap. What Claude did was follow `repairPartition` into `fanOut` and ask what the slice holds when the branch above it took the early exit. No amount of topic listing has moved that, and it is the whole gap. The instruments to work on it now exist — a crash fixture, a walkthrough-completeness column, and a shape-split ledger — so this is the next thing the eval should be pointed at. | L |
 
+## The premise, measured (2026-09-13)
+
+The design says the packet is the product and the agent writes the prose. That
+claim had never been scored. Everything the eval measures is `redline review`
+against fixtures; nothing measured whether **an agent given the packet reviews
+better than the same agent given the diff**.
+
+It costs nothing to find out. `internal/eval.Score` takes a `findings.Review`
+and an annotation and does not care who wrote it, which is the boundary the
+design already draws. So: eleven fixtures, both arms assembled by
+`review.Assemble` so the instructions are byte-identical, one arm with
+`Envelopes`, pane findings and coverage and one with an empty `Report` and no
+expansions. Twenty-two isolated agents, one read of one file each, no
+repository access. Scored by the product's own scorer.
+
+| Arm | Caught | Unlabelled | Quiet violations |
+|---|---|---|---|
+| diff alone | **14 / 37** | 37 | 3 |
+| the packet | **18 / 37** | 37 | 3 |
+
+The packet wins by four, at the same false-positive rate, and it never loses a
+fixture. Two of the four gains have a named mechanism rather than a coin
+flip: `not-null-against-the-struct-field` carries `relates_to_rules`, and
+`baseline-not-relocked-for-the-new-rules` carries `needs_history` — evidence
+the bare arm provably did not hold. The other two are resolvable from the diff
+and could be noise. Two fixtures cannot discriminate at all, having no
+envelope or pane content to remove. This is n=1 per arm on a producer whose
+variance is known to be total, so four is a direction and not a size.
+
+The uncomfortable half is the comparison nobody asked for. On
+`staged-empty-partition` **both** agent arms scored 3 of 3, including the
+`failures[0]` panic — the defect `redline review` was shown on changed lines
+four times and never once reported, and which its own sweep catches at 1 of 3
+across three samples. A plain agent at one sample, with no cohorts, no ruling
+and no scout, beats the staged pipeline's 16/35 at three.
+
+| Item | What | Effort |
+|------|------|--------|
+| **The packet earns its cost; the in-process reviewer does not** | Measured above. The observation half is the part with no competition and it is the part that received zero added lines across the last twenty-four commits, against 4,011 for `internal/review` and 1,817 for `internal/scout`. The conclusion the numbers support is to stop extending the reviewer and spend on what only this tool can do: more panes, more of the change observed, and the eval arms that say which expansions are worth their tokens. `redline review` keeps its place as the no-agent path — CI, or a repository with no harness driving it — and stops being where the work goes. | — |
+| **Score the agent, not only the producer** | The scoring path for this ran as a throwaway and was deleted. It should not have to be rebuilt: a `review.json` written by any agent scores through `Score` today, so an `--arm agent` that emits the two prompt files and scores whatever comes back is a small, permanent addition to the eval and the only way the premise stays measured as the packet changes. | S |
+| **Measure per expansion, not per envelope** | The A/B above and the context sweep before it both compare all-or-nothing. What a reader of the roadmap actually needs is which roles pay: history bought `baseline-not-relocked-for-the-new-rules` here, and the neighbour expansions bought nothing measurable on ten fixtures at 60% more input. Score by role and the expansion budget becomes an evidence-backed setting rather than a ceiling. | M |
+
 ## Review quality (Copilot comparison, MKT-1360)
 
 Held against GitHub Copilot on the same PR (NetApp/marketplace-cp #1360), the
