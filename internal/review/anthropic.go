@@ -150,6 +150,24 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		params.Thinking = anthropic.ThinkingConfigParamUnion{
 			OfDisabled: &anthropic.ThinkingConfigDisabledParam{},
 		}
+		// The contract, declared rather than asked for in prose.
+		//
+		// tools.go explains why the other stages cannot carry a per-call output
+		// format: it renders ahead of the system block, so a run whose stages
+		// ask for different contracts moves bytes in front of the shared prefix
+		// and every later call reads nothing. That argument is about variance
+		// between calls in one run, and this arm has none to have. A brief run
+		// asks for the review contract and no other.
+		//
+		// What it buys is the thing prose could not promise. Nothing bounded
+		// this reply before, and the model picked a different wrapper on every
+		// sample: <think>, <report>, <looking at the code>, a bold prose
+		// heading, or the bare object. jsonObjectOf guessed which, and measured
+		// across four runs of one fixture at three samples it guessed right
+		// 0, 2, 1 and 3 times out of 3.
+		params.OutputConfig.Format = anthropic.JSONOutputFormatParam{
+			Schema: outputSchema(),
+		}
 	}
 	if opts.Effort != "" {
 		params.OutputConfig.Effort = anthropic.OutputConfigEffort(opts.Effort)
