@@ -344,9 +344,49 @@ what the change is.`
 // prompt holds back moves the instruction, the diff and the measurement
 // together.
 func synopsisTail(in Input) string {
+	return withRoster(synopsisPrompt, in)
+}
+
+// stepwisePrompt is turn 1 of the stepwise conversation. It differs from
+// synopsisPrompt in what it can truthfully say about the material: this turn
+// has the change and the diff and nothing else, and the rest arrives in the
+// same conversation once the description is written.
+const stepwisePrompt = `
+
+## This turn
+
+Describe this change. Do not judge it yet.
+
+Call the synopsis tool and nothing else. Write the overview, and one line for
+every file on the list below - every one of them, and nothing outside it.
+
+So far you have the change and its diff. The rest of the packet comes in the
+next turn, after this description: the findings the tools already established,
+what this pull request has already heard, coverage, and the context beyond the
+diff. The comments and the verdicts are written then, so a defect you notice
+here is that turn's to report and yours to leave out.`
+
+// stepwiseLead opens turn 2's material, so the model reads what follows as the
+// part of the packet its description was written without.
+const stepwiseLead = `## The rest of the packet
+
+Your overview and file lines are recorded. What follows is the material that
+description was written without. Read it against the diff you have already
+described.
+
+`
+
+// stepwiseDescribeTail is turn 1's instruction with the same roster the
+// describing call gets, for the same reason.
+func stepwiseDescribeTail(in Input) string {
+	return withRoster(stepwisePrompt, in)
+}
+
+// withRoster appends the files a describing instruction may write a line for.
+func withRoster(prompt string, in Input) string {
 	shown := in.ShownFiles()
 	if len(shown) == 0 {
-		return synopsisPrompt
+		return prompt
 	}
 	paths := make([]string, 0, len(shown))
 	for path := range shown {
@@ -354,7 +394,7 @@ func synopsisTail(in Input) string {
 	}
 	sort.Strings(paths)
 	var b strings.Builder
-	b.WriteString(synopsisPrompt)
+	b.WriteString(prompt)
 	b.WriteString("\n\n### The files to describe\n\n")
 	for _, path := range paths {
 		b.WriteString("- " + path + "\n")

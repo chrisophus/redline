@@ -92,6 +92,9 @@ func RunBatch(ctx context.Context, ins []Input, opts Options) ([]*Result, []erro
 		// after the caller had assembled and priced it.
 		return nil, nil, fmt.Errorf("a staged run is stage one plus a call per cohort that reads what it drew, and a batched request is single-shot; use --pipeline oneshot to batch")
 	}
+	if opts.Pipeline == PipelineStepwise {
+		return nil, nil, fmt.Errorf("a stepwise run is two turns of one conversation, the second resending the first's answer, and a batched request is single-shot; use --pipeline oneshot to batch")
+	}
 	// No breakpoint on this tier, whatever the caller asked for. Each request
 	// of a batch is its own prefix and the results arrive over a
 	// twenty-four-hour window, so a five-minute entry expires long before

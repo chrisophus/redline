@@ -26,6 +26,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anthropics/anthropic-sdk-go"
+
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/feedback"
@@ -281,7 +283,10 @@ func (o Options) withDefaults() Options {
 	if o.Pipeline == "" {
 		o.Pipeline = PipelineOneShot
 	}
-	if o.Pipeline == PipelineStaged {
+	if o.Pipeline == PipelineStaged || o.Pipeline == PipelineStepwise {
+		// Stepwise replaces the split for the same reason: its turn 1 is the
+		// describing call.
+		//
 		// Staged already describes the change - that is the call that draws
 		// the partition - so the synopsis flag has nothing left to turn on.
 		// Cleared here rather than ignored at the branch, because the
@@ -485,6 +490,16 @@ type Result struct {
 	// lookups failed, which VerifyFailed then says.
 	Questions []Question         `json:"-"`
 	Answers   *envelope.Envelope `json:"-"`
+
+	// history is the conversation a stepwise turn continues, sent ahead of
+	// this call's own user turn, and answering the ids of the tool calls in it
+	// that the user turn answers first. reply and replyToolUses are what this
+	// call's answer adds to the conversation, for a turn after it. All four are
+	// empty on every other call, which is one user turn.
+	history       []anthropic.MessageParam
+	answering     []string
+	reply         anthropic.MessageParam
+	replyToolUses []string
 }
 
 // Summary is the one line a run prints. Cost and wall time per review are
@@ -552,6 +567,16 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		// expansion turns out to be redundant errs high, which is the
 		// harmless direction for a bound.
 		fixed += envelope.EstimateTokens(in.contextHeader(envelopeRoles(in.Envelopes)))
+	}
+	if opts.Pipeline == PipelineStepwise {
+		// Turn 2 is the largest request a stepwise run sends, and it carries
+		// what the one-shot prompt does not: turn 1's instruction and roster,
+		// the walkthrough turn 1 wrote, the tool result and the lead-in. Priced
+		// at the walkthrough's expected size, because the context is fitted
+		// before turn 1 has written anything. A walkthrough longer than that,
+		// or thinking resent with it, lands above the ceiling by the difference.
+		fixed += envelope.EstimateTokens(stepwiseDescribeTail(in)+stepwiseLead+stepwiseAck) +
+			int(ExpectedSynopsisTokens)
 	}
 	room := opts.Ceiling - fixed
 	if room < 0 {
@@ -638,6 +663,13 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Ahead of the tripwire and the dry run, so a combination the conversation
+	// cannot run under is refused the same way whether or not it would send.
+	if opts.Pipeline == PipelineStepwise {
+		if err := stepwiseRefusal(opts); err != nil {
+			return res, err
+		}
+	}
 	// The tripwire measures the worst case, not the expected one. Its whole
 	// job is the run where the model does spend its entire allowance, and with
 	// --samples that run happens N times: the samples go out together over the
@@ -647,7 +679,7 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	// three calls is the failure this guard exists to prevent.
 	worst := res.CostCeilingUSD*float64(opts.Samples) +
 		synopsisCeilingCost(opts, in, res) + stagedCeilingCost(opts, in, res) +
-		verifyCeilingCost(opts, res)
+		stepwiseCeilingCost(opts, in, res) + verifyCeilingCost(opts, res)
 	if res.CostKnown && worst > opts.MaxCostUSD {
 		// The shape is named because the worst case is not one call's. A
 		// staged run refused at the one-shot tripwire reads as a request too
@@ -663,6 +695,11 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 				bound, cohortMaxTokens(opts, bound))
 			advice = "Raise --max-cost to proceed, lower --cohorts to buy fewer calls, " +
 				"or lower --ceiling to shrink every one of them"
+		}
+		if opts.Pipeline == PipelineStepwise {
+			shape = " A stepwise run is two turns of one conversation, the second resending the first " +
+				"and its answer, each capped at the full response allowance."
+			advice = "Raise --max-cost to proceed, lower --max-tokens to shrink both turns, or lower --ceiling"
 		}
 		return res, fmt.Errorf(
 			"worst-case cost %s across %d sample(s) exceeds the %s tripwire (expected %s): %d input tokens against a %d-token ceiling.%s %s",
@@ -719,6 +756,26 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 				len(out.Review.Comments), out.Duration.Round(time.Second)))
 		}
 		return Verify(ctx, in, opts, out)
+	}
+	if opts.Pipeline == PipelineStepwise {
+		out, err := runStepwise(ctx, in, opts, res)
+		if err != nil || !opts.Verify {
+			return out, err
+		}
+		if opts.Progress != nil {
+			opts.Progress(fmt.Sprintf("the conversation produced %d finding(s) in %s; checking them against the repository",
+				len(out.Review.Comments), out.Duration.Round(time.Second)))
+		}
+		// The ruling is one user turn over the assembled prompt, the prefix it
+		// was written against on every other shape. The stepwise trace goes back
+		// on afterwards for the recorder.
+		trace, tail := out.Prompt, out.Tail
+		out.Prompt, out.Tail = res.Prompt, res.Tail
+		checked, err := Verify(ctx, in, opts, out)
+		if checked != nil {
+			checked.Prompt, checked.Tail = trace, tail
+		}
+		return checked, err
 	}
 	// The describing stage runs first, because it is the call that writes the
 	// cache the judging call reads, and because the judging call's contract
@@ -778,7 +835,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			map[bool]string{true: opts.CacheTTL, false: "off"}[res.Cached]))
 	}
 	if opts.Capture != nil {
-		req, _ := json.MarshalIndent(map[string]any{
+		captured := map[string]any{
 			"api": opts.API, "model": opts.Model, "stage": stage,
 			"effort": opts.Effort, "maxTokens": opts.MaxTokens,
 			"inputTokensEstimate": res.InputEstimate,
@@ -790,7 +847,15 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			// The whole array, because the whole array is what was sent and
 			// its bytes are what a cache read depends on.
 			"tools": stageTools(opts), "toolChoice": stage,
-		}, "", "  ")
+		}
+		if len(res.history) > 0 {
+			// The turns this call resends ahead of its own, as they go on the
+			// wire. Without them a captured turn 2 shows only its new material
+			// and reads like a request that never saw the diff.
+			captured["history"] = res.history
+			captured["toolResults"] = res.answering
+		}
+		req, _ := json.MarshalIndent(captured, "", "  ")
 		opts.Capture(stage+".request.json", req)
 	}
 	start := time.Now()
@@ -803,6 +868,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	res.Duration = time.Since(start)
 	res.Turns = 1
 	res.Usage = c.usage
+	res.reply, res.replyToolUses = c.message, c.toolUses
 	if err == nil && c.usage == (Usage{}) {
 		// The call went out and came back, so it was paid for. An endpoint
 		// that reports no counts, which some proxies do on a stream, would
@@ -914,7 +980,8 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 	}
 	// Ahead of the check below, so a reply made of stubs is judged on what
 	// remains and refused the way an empty one is.
-	res.Stubs += dropStubs(rev)
+	stubs := dropStubs(rev)
+	res.Stubs += stubs
 	// A reply that conformed to the contract without reviewing anything. The
 	// strict tool grammar guarantees the four fields are present and says
 	// nothing about what is in them, so three empty arrays under a one-word
@@ -938,6 +1005,29 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 			"the model was shown %d file(s) and returned no file lines, no comments and no verdicts; "+
 				"it answered the contract without reviewing the change",
 			res.FilesShown)
+	}
+	// The findings contract gets no equivalent of the check above, and this is
+	// deliberate. It has no file lines, so what is left to test is zero comments
+	// and zero verdicts, which is the right answer on a clean change and has to
+	// stay reachable. On the synopsis and stepwise paths the part of the reply
+	// that could show a model never started is the walkthrough, and describedBy
+	// already refuses one with no overview before this call is sent.
+	//
+	// The one reply that can be told apart here is a findings call whose
+	// comments were all stubs. A clean answer drops nothing, so a reply that
+	// lost every comment to dropStubs and kept no verdict wrote placeholders,
+	// and scoring it as a review that found nothing is the lie the check above
+	// exists to stop.
+	//
+	// Checked on a stepwise turn 2 only. The synopsis and staged findings calls
+	// have the same exposure, but turning a stub reply into a failure there
+	// changes what a cohort counts as and what their sweeps have measured, and
+	// that is a change to make on its own with its own measurement.
+	if stage == StageFindings && res.Pipeline == PipelineStepwise &&
+		stubs > 0 && len(rev.Comments) == 0 && len(rev.Verdicts) == 0 {
+		return fmt.Errorf(
+			"every one of the %d comment(s) the findings call returned was a stub, and it returned no verdicts; "+
+				"it answered the contract without judging the change", stubs)
 	}
 	res.Review = *rev
 	// The partition rides on stage one's answer under its own contract, and

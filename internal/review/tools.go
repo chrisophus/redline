@@ -123,7 +123,12 @@ func stageTools(opts Options) []stageTool {
 				"calls this partition feeds.",
 			Schema: cohortsSchema(),
 		}}
-	case opts.Synopsis:
+	case opts.Synopsis || opts.Pipeline == PipelineStepwise:
+		// Stepwise forces the synopsis contract on turn 1 and the findings
+		// contract on turn 2, and falls back to the review contract when turn 1
+		// fails. This is the array the synopsis path already sends, so its size
+		// is one the endpoint has accepted, and the fallback call sends the same
+		// bytes as turn 1 and still reads them back.
 		return []stageTool{review, ruling, findings, {
 			Name: StageSynopsis,
 			Description: "Return what this change is: the overview and one line per file " +

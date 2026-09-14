@@ -30,8 +30,9 @@ import (
 
 // Pipeline shapes.
 const (
-	PipelineOneShot = "oneshot"
-	PipelineStaged  = "staged"
+	PipelineOneShot  = "oneshot"
+	PipelineStaged   = "staged"
+	PipelineStepwise = "stepwise"
 )
 
 // The fan-out's defaults, which apply only when the pipeline is staged.

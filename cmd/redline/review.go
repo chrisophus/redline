@@ -34,7 +34,7 @@ func cmdReview(o opts) error {
 		// call per cohort and a one-shot run is one call, so an average over
 		// both is a price nobody was charged.
 		byShape := review.SummarizeByShape(entries)
-		for _, shape := range []string{review.PipelineOneShot, review.PipelineStaged} {
+		for _, shape := range []string{review.PipelineOneShot, review.PipelineStaged, review.PipelineStepwise} {
 			if s, ok := byShape[shape]; ok {
 				fmt.Println(s.String())
 			}
@@ -66,8 +66,8 @@ func cmdReview(o opts) error {
 		// describing call plus one per cohort, and using it to price a
 		// one-shot call would quote several calls for one.
 		shape := review.PipelineOneShot
-		if o.pipeline == review.PipelineStaged {
-			shape = review.PipelineStaged
+		if o.pipeline == review.PipelineStaged || o.pipeline == review.PipelineStepwise {
+			shape = o.pipeline
 		}
 		expected = review.SummarizeByShape(entries)[shape].ExpectedOutput()
 	}
@@ -121,11 +121,28 @@ func cmdReview(o opts) error {
 	// --no-synopsis does not switch it off: a run asked to fan out cannot be
 	// given nothing to fan out over.
 	switch o.pipeline {
-	case "", review.PipelineOneShot, review.PipelineStaged:
+	case "", review.PipelineOneShot, review.PipelineStaged, review.PipelineStepwise:
 		ropts.Pipeline = o.pipeline
 	default:
-		return fmt.Errorf("--pipeline is %s or %s, not %q",
-			review.PipelineOneShot, review.PipelineStaged, o.pipeline)
+		return fmt.Errorf("--pipeline is %s, %s or %s, not %q",
+			review.PipelineOneShot, review.PipelineStaged, review.PipelineStepwise, o.pipeline)
+	}
+	// Stepwise replaces the describing split rather than combining with it: its
+	// first turn is the describing call. The library clears Synopsis under it,
+	// so a caller who passed --synopsis would otherwise be told nothing about a
+	// flag that did nothing.
+	if ropts.Pipeline == review.PipelineStepwise {
+		switch {
+		case o.brief:
+			return fmt.Errorf("--brief is a single pass under the review contract, and --pipeline %s is two turns under contracts the short prompt does not describe; pass one or the other",
+				review.PipelineStepwise)
+		case ropts.Synopsis:
+			return fmt.Errorf("--pipeline %s already describes the change in its first turn, so --synopsis has nothing to add; pass one or the other",
+				review.PipelineStepwise)
+		case o.mode == review.ModeExplore:
+			return fmt.Errorf("--pipeline %s and --mode explore are both multi-turn conversations over the packet; pass one or the other",
+				review.PipelineStepwise)
+		}
 	}
 	// One call under the short prompt, when --brief asks for it.
 	//
@@ -323,7 +340,9 @@ func cmdReview(o opts) error {
 	// Turns counts samples too, so this line has to name the mode it is
 	// about: a three-sample one-shot review has no turns and fetched
 	// nothing.
-	if out.Samples == 0 && out.Turns > 1 {
+	// A stepwise run is two turns that fetch nothing, so the line is left to
+	// the shapes it describes.
+	if out.Samples == 0 && out.Turns > 1 && out.Pipeline != review.PipelineStepwise {
 		fmt.Fprintf(os.Stderr, "redline: %d turns, %d context entries fetched", out.Turns, out.Fetched)
 		if out.CapHit {
 			fmt.Fprint(os.Stderr, ", stopped by the cost cap")
