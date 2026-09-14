@@ -121,6 +121,13 @@ finding stays on the report and is not posted to the pull request, so nobody
 who could fix it is shown it. Use low when you genuinely could not settle it,
 not as a hedge on a finding you believe.
 
+A comment is a concern you still hold after tracing it. Settle what you can
+before you write one. When the trace ends with the code doing the right thing,
+leave the concern out. Do not write it up and then withdraw it in its closing
+sentence, and do not keep it as an info remark about something you have just
+shown to be correct. Every comment lands on the report, and one that concludes
+there is nothing wrong costs the reader a read and tells them nothing.
+
 Every comment carries a question: the one check that would confirm or refute
 it, and what to look it up on. This is not paperwork. A lookup pass runs these
 after you, and a second pass rules on each finding with the answers in front of
