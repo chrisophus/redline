@@ -77,6 +77,7 @@ type openAIFunction struct {
 // forced tool call's arguments; content is read only when a proxy ignored the
 // tool call and answered in prose instead.
 type openAIResponse struct {
+	Model   string `json:"model"`
 	Choices []struct {
 		Message struct {
 			Content   string `json:"content"`
@@ -212,7 +213,7 @@ func readOpenAIResponse(raw []byte) (completion, error) {
 	if r.Error != nil && strings.TrimSpace(r.Error.Message) != "" {
 		return completion{}, fmt.Errorf("response error: %s", r.Error.Message)
 	}
-	var c completion
+	c := completion{model: r.Model}
 	if r.Usage != nil {
 		// The vendor counts cached tokens inside prompt_tokens; Usage keeps
 		// them apart so they price at the cached rate.

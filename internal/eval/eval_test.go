@@ -488,11 +488,24 @@ func TestSweep(t *testing.T) {
 	}
 	// The fan-out arm. Same reason it cannot be batched as the synopsis arm:
 	// the cohort calls read what stage one wrote.
-	if os.Getenv("REDLINE_EVAL_PIPELINE") == review.PipelineStaged {
+	switch os.Getenv("REDLINE_EVAL_PIPELINE") {
+	case review.PipelineStaged:
 		opts.Pipeline = review.PipelineStaged
 		opts.CrossSummaries = os.Getenv("REDLINE_EVAL_NO_CROSS_SUMMARIES") == ""
 		if os.Getenv("REDLINE_EVAL_BATCH") != "" {
 			t.Fatal("a staged run is a call per cohort over what stage one wrote; the batch tier cannot pair them")
+		}
+	case review.PipelineStepwise:
+		// The progressive-disclosure arm: one conversation that describes the
+		// change from its diff and judges it once the rest of the packet
+		// arrives. Its second turn resends the first's answer, so it cannot be
+		// batched for the reason the synopsis arm cannot.
+		opts.Pipeline = review.PipelineStepwise
+		if os.Getenv("REDLINE_EVAL_BATCH") != "" {
+			t.Fatal("a stepwise run is two turns of one conversation, the second resending the first's answer; the batch tier cannot pair them")
+		}
+		if opts.Synopsis {
+			t.Fatal("REDLINE_EVAL_PIPELINE=stepwise already describes the change in its first turn; unset REDLINE_EVAL_SYNOPSIS")
 		}
 	}
 	// Brief last, and by the product's own rule (cmd/redline/review.go): off
@@ -506,8 +519,9 @@ func TestSweep(t *testing.T) {
 		t.Fatal("REDLINE_EVAL_NO_BRIEF is the default now; unset it, or set REDLINE_EVAL_BRIEF for the short prompt")
 	}
 	opts.Brief = os.Getenv("REDLINE_EVAL_BRIEF") != ""
-	if opts.Brief && (opts.Pipeline == review.PipelineStaged || opts.Synopsis || opts.Mode == review.ModeExplore) {
-		t.Fatal("REDLINE_EVAL_BRIEF is a single pass under the short prompt and cannot be combined with staged, synopsis or explore")
+	if opts.Brief && (opts.Pipeline == review.PipelineStaged || opts.Pipeline == review.PipelineStepwise ||
+		opts.Synopsis || opts.Mode == review.ModeExplore) {
+		t.Fatal("REDLINE_EVAL_BRIEF is a single pass under the short prompt and cannot be combined with staged, stepwise, synopsis or explore")
 	}
 	// Off by default because it prints a response body per call, and a sweep
 	// that prints thirty-three of them buries its own result table. On when a
@@ -575,6 +589,7 @@ func TestSweep(t *testing.T) {
 	// and they are not silently dropped either: the denominator they leave is
 	// the one the row is read against.
 	var failed []string
+	hc := newHillclimbRecorder(t)
 	for fi, f := range fx {
 		in := review.Input{
 			Report: &f.Session.Report, Change: f.Session.Change,
@@ -611,10 +626,12 @@ func TestSweep(t *testing.T) {
 			}
 			if err != nil {
 				t.Errorf("%s: %v", f.Annotation.Name, err)
+				hc.recordError(t, f, si, out, err)
 				continue
 			}
 			revs = append(revs, out.Review)
 			t.Logf("%s: %s", f.Annotation.Name, out.Summary())
+			hc.recordSample(t, f, si, out)
 		}
 		if len(revs) == 0 {
 			// Every sample of this fixture failed, so the fixture leaves the
@@ -687,6 +704,9 @@ func TestSweep(t *testing.T) {
 		if os.Getenv("REDLINE_EVAL_NO_CROSS_SUMMARIES") != "" {
 			label += " no-cross"
 		}
+	}
+	if os.Getenv("REDLINE_EVAL_PIPELINE") == review.PipelineStepwise {
+		label += " stepwise"
 	}
 	// The long prompt is the default, so the row that has to say so is the one
 	// under the short prompt.

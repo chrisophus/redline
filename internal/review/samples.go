@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/anthropics/anthropic-sdk-go"
+
 	"github.com/chrisophus/redline/internal/findings"
 )
 
@@ -111,6 +113,7 @@ func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Re
 	}
 	merged.Review = unionReviews(kept)
 	merged.StopReason = kept[0].StopReason
+	merged.ServedModel = kept[0].ServedModel
 	return merged, nil
 }
 
@@ -127,6 +130,12 @@ func (r *Result) clone() *Result {
 	c.RulingOutputTokens = 0
 	c.ScoutCostUSD = 0
 	c.Stubs = 0
+	// A clone is a new call, and a new call continues no conversation unless
+	// runStepwise attaches one. The ruling clones whatever result it is handed,
+	// and a stepwise turn 2 carried into it would send the ruling as a third
+	// turn of a conversation it was never priced as.
+	c.history, c.answering = nil, nil
+	c.reply, c.replyToolUses = anthropic.MessageParam{}, nil
 	return &c
 }
 

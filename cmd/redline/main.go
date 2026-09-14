@@ -148,6 +148,12 @@ flags:
                     is measured: a reviewer with fifty files in front of it
                     spends its finding-count on the first few. Staged implies
                     the describing call, so --synopsis is not also needed.
+                    stepwise is one conversation in two turns: the first sees
+                    the change and its diff and writes the walkthrough, the
+                    second gets the findings, coverage and context and writes
+                    the comments. The second resends the first, so it reads
+                    that from the cache. Anthropic wire only, and it cannot
+                    be combined with --brief, --synopsis or --mode explore.
   --cohorts N       with review: upper bound on parallel cohort reviews
                     (default 6). Stage one draws fewer when the change has
                     fewer groups in it; the tripwire prices the bound.
@@ -268,7 +274,7 @@ func runMain(args []string) error {
 	fs.BoolVar(&o.brief, "brief", false, "with review: one call under the short prompt")
 	fs.BoolVar(&o.noBrief, "no-brief", false, "with review: the long prompt, which is already the default")
 	fs.StringVar(&o.cacheTTL, "cache-ttl", "", "with review: how long the cached prefix lives, 5m or 1h")
-	fs.StringVar(&o.pipeline, "pipeline", "", "with review: oneshot, or staged to split the change into cohorts and review each")
+	fs.StringVar(&o.pipeline, "pipeline", "", "with review: oneshot, staged to split the change into cohorts and review each, or stepwise to describe from the diff before seeing the rest")
 	fs.IntVar(&o.cohorts, "cohorts", 0, "with review: upper bound on parallel cohort reviews under --pipeline staged (default 6)")
 	fs.IntVar(&o.minCohortFiles, "min-cohort-files", 0, "with review: below this many shown files a staged run is one cohort (default 3)")
 	fs.BoolVar(&o.crossSummaries, "cross-summaries", false, "with review: give each cohort the other cohorts' summaries (on by default)")

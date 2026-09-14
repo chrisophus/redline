@@ -406,7 +406,16 @@ func unionOf(revs []findings.Review) findings.Review {
 	return out
 }
 
+// expectationMatches reports whether a comment catches a labelled defect: it
+// claims one, and its location and words are the label's.
 func expectationMatches(exp Expectation, c findings.ReviewComment, prior *findings.Report) bool {
+	return !deniesDefect(c.Body) && wordsMatchExpectation(exp, c, prior)
+}
+
+// wordsMatchExpectation is the label's location and vocabulary alone, whatever
+// the comment concludes. Kept apart so a denial can be measured against what
+// it would have scored.
+func wordsMatchExpectation(exp Expectation, c findings.ReviewComment, prior *findings.Report) bool {
 	if exp.File != "" && c.File != exp.File {
 		return false
 	}
@@ -433,6 +442,67 @@ func expectationMatches(exp Expectation, c findings.ReviewComment, prior *findin
 		}
 	}
 	return false
+}
+
+// denialPhrases close a comment that has decided there is nothing wrong.
+// Written from the last sentences of the comments a baseline scored as catches:
+// the model traces a concern in the body and settles it there, and the
+// labelled defect's words are all in the tracing.
+var denialPhrases = []string{
+	"no issue", "no actual issue", "not an issue", "non-issue", "nothing wrong",
+	"no defect", "not a defect", "not a bug", "not a new defect", "not a new bug",
+	"not a real defect", "not a real bug", "rather than a bug",
+	"is intentional", "by design",
+	"not raising", "not filing", "not reported as a defect",
+	"withdrawing", "retracting",
+	"looks correct", "looks fine", "looks consistent", "handled correctly",
+	"this is fine", "that's fine", "it's fine", "likely fine",
+	"doesn't diverge from correct",
+}
+
+// deniesDefect reports whether a comment concludes that there is no defect.
+//
+// Matching is by keyword, so a comment that names a labelled defect's words
+// while arguing the defect away used to score as having found it. Measured on
+// the 2026-09-14 hillclimb baseline, eight of thirty-one catches were comments
+// like that, ending "No defect apparent." or "not a bug, withdrawing", and a
+// round at effort=medium lost fourteen of twenty-eight the same way. A catch
+// has to be a claim, so a denial satisfies no expectation.
+//
+// Only the last sentence is read, because that is where the verdict lands; a
+// denial phrase earlier in the body is usually a concern set aside on the way
+// to one that is kept. A contrast after the phrase keeps the comment a claim:
+// "this is fine, but the map is never checked" raises the second half.
+func deniesDefect(body string) bool {
+	last := lastSentence(strings.ToLower(body))
+	end := -1
+	for _, p := range denialPhrases {
+		if i := strings.LastIndex(last, p); i >= 0 && i+len(p) > end {
+			end = i + len(p)
+		}
+	}
+	if end < 0 {
+		return false
+	}
+	rest := last[end:]
+	return !strings.Contains(rest, " but ") && !strings.Contains(rest, "however")
+}
+
+// lastSentence is the final sentence of a comment body, split where a full
+// stop, question or exclamation mark is followed by whitespace, so the dots in
+// a selector or a file name do not end a sentence.
+func lastSentence(s string) string {
+	s = strings.TrimSpace(s)
+	end := len(s)
+	for end > 0 && strings.ContainsRune(".!? \n\t", rune(s[end-1])) {
+		end--
+	}
+	for i := end - 1; i > 0; i-- {
+		if strings.ContainsRune(".!?", rune(s[i-1])) && (s[i] == ' ' || s[i] == '\n' || s[i] == '\t') {
+			return strings.TrimSpace(s[i:])
+		}
+	}
+	return s
 }
 
 // referencesRules resolves a comment's references against the frozen
