@@ -77,6 +77,12 @@ func TestAnnounceFailsWhenThereIsNoReport(t *testing.T) {
 	}
 }
 
+func TestNoLintFlagIsPassedToRun(t *testing.T) {
+	if got := (opts{noLint: true}).toRun("."); !got.SkipLint {
+		t.Fatal("no-lint flag was not passed to run")
+	}
+}
+
 func TestAnnounceServesWhenItCan(t *testing.T) {
 	dir := reportDir(t)
 	t.Cleanup(func() { _ = report.Stop(dir) })
