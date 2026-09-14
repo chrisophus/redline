@@ -96,5 +96,23 @@
       "note": "data-clumps, sibling-missing-file and test-skip-added are already on the report. Repeating one is not a review.",
       "matches_without_correlation": ["data-clumps", "sibling-missing-file", "skips a test", "parameter group"]
     }
+  ],
+  "reject": [
+    {
+      "key": "changed-flag-empty-ref-usage",
+      "what": "claims contextCommand lost its budget check and that `context --changed` with an empty ref falls through to the symbol path with the wrong usage message",
+      "why": "At 1ee9d89 contextCommand still rejects --budget below 200. main.go runs checkCommandArgs in strict mode before Run, so a trailing --changed with no value is refused with 'flag --changed requires a value'. Only `--changed=` reaches the symbol path, where the message 'context needs a symbol, or --changed <ref>' is correct.",
+      "source": "model",
+      "file": "cmd/gorefactor/cmd_context.go",
+      "all_of": ["empty ref", "wrong usage message"]
+    },
+    {
+      "key": "declfor-fallback-fileset-mismatch",
+      "what": "claims declFor resolves an object defined in a fallback-parsed file against idx.fset, giving a wrong or panicking position",
+      "why": "declFor in expand_types.go only receives objects from loaded packages' TypesInfo, whose positions are in the loader's FileSet. A fallback-parsed fileUnit in resolve.go has pkg nil, and resolveObject returns early without an object, so no object comes from a fallback file. FileSet.Position does not panic.",
+      "source": "model",
+      "file": "internal/changectx/resolve.go",
+      "all_of": ["declFor", "fallback"]
+    }
   ]
 }

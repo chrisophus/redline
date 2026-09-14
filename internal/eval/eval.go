@@ -96,10 +96,11 @@ type Reject struct {
 	// deciding whether to trust this label needs the reason, not the verdict.
 	Why string `json:"why"`
 	// Source says who judged it: "author" for a reader of a posted review,
-	// "fixture" for the fixture's own author reading a dumped sample. An
-	// author's dismissal is evidence about the reviewer and it is not ground
-	// truth, so the label records which kind it is rather than flattening
-	// them.
+	// "fixture" for the fixture's own author reading a dumped sample, "model"
+	// for a model that checked the claim against the code. An author's
+	// dismissal is evidence about the reviewer and it is not ground truth, and
+	// a model's verdict on another model's review can share its blind spots,
+	// so the label records which kind it is rather than flattening them.
 	Source string   `json:"source"`
 	File   string   `json:"file"`
 	AnyOf  []string `json:"any_of"`

@@ -27,5 +27,40 @@
       "any_of": ["name", "unique", "duplicate", "index", "collide", "same name"]
     }
   ],
-  "quiet": []
+  "quiet": [],
+  "reject": [
+    {
+      "key": "cohort-cap-exceeds-tripwire",
+      "what": "claims dividing the response cap by the drawn cohort count instead of the bound lets the staged run spend past the ceiling the tripwire priced",
+      "why": "repairPartition never returns more cohorts than the bound, so the divisor is at most the bound; n calls at cohortMaxTokens(n) cost at most bound calls at cohortMaxTokens(bound), and Run compares the summed worst case, so the total can only be lower than priced.",
+      "source": "model",
+      "file": "internal/review/staged.go",
+      "all_of": ["cohortMaxTokens"],
+      "any_of": ["exceed the ceiling", "exceed what was priced", "either direction"]
+    },
+    {
+      "key": "describedby-loses-stage-one-output",
+      "what": "claims describedBy zeroing stage one's OutputTokens drops that output's cost from the staged run's ledger row",
+      "why": "describedBy returns the output count separately and runStaged hands it to applySynopsis, which adds it to SynopsisOutputTokens; recost prices that back into CostUSD.",
+      "source": "model",
+      "file": "internal/review/staged.go",
+      "all_of": ["describedBy", "zeroed OutputTokens"]
+    },
+    {
+      "key": "cohorts-request-names-synopsis-tool",
+      "what": "claims cohortsRequest inherits a StageSynopsis reference from synopsisRequest that the staged tool array does not declare",
+      "why": "synopsisRequest sets only Stage, Tail, InputEstimate and costs, cohortsRequest overwrites Stage with StageCohorts, and runOnce picks the tool from res.stage().",
+      "source": "model",
+      "file": "internal/review/staged.go",
+      "all_of": ["synopsisRequest", "StageSynopsis"]
+    },
+    {
+      "key": "repair-double-counts-folded-files",
+      "what": "claims repairPartition can place a file in two cohorts when it folds cohorts over the bound and also appends missed files",
+      "why": "every file accepted from any cohort, folded ones included, is marked taken before the fold, and the missed pass only collects paths that are not taken.",
+      "source": "model",
+      "file": "internal/review/staged.go",
+      "all_of": ["repairPartition", "double-counted"]
+    }
+  ]
 }

@@ -11,5 +11,31 @@
       "note": "A per-file account of what changed is the report's job, not a finding.",
       "matches_without_correlation": ["this change adds", "this commit introduces", "overall this is a"]
     }
+  ],
+  "reject": [
+    {
+      "key": "mutation-never-available-for-pr-targets",
+      "what": "claims mutation data is never picked up for PR, branch, commit or range targets because there is no origin fallback",
+      "why": "At 8b6d6c6 attachMutation passes opts.Dir, the invoking checkout, to mutation.Compute for every target kind, and that checkout is the same origin root coverage falls back to, so a report there is found on a PR run.",
+      "source": "model",
+      "file": "internal/run/run.go",
+      "any_of": ["working-tree review", "no equivalent fallback"]
+    },
+    {
+      "key": "survivor-path-mismatch-drops-drawer-entry",
+      "what": "claims a suffix-matched survivor path can differ from the change's file path and silently drop out of the drawer",
+      "why": "mutation.Compute records FileSurvivors.Path as c.Path, which attachMutation takes from ch.Files, and buildView looks survivors up by the same f.Path, so the keys are always identical.",
+      "source": "model",
+      "file": "internal/report/html.go",
+      "all_of": ["suffix", "fv.Survived"]
+    },
+    {
+      "key": "suffix-match-crosses-component-boundary",
+      "what": "claims mutationsFor's suffix match can cross a path component, such as a/b.go matching xa/b.go",
+      "why": "mutationsFor matches only FileName == path or strings.HasSuffix(path, \"/\"+FileName), and the leading slash forces a component boundary.",
+      "source": "model",
+      "file": "internal/mutation/mutation.go",
+      "all_of": ["path-component boundary", "mutationsFor"]
+    }
   ]
 }

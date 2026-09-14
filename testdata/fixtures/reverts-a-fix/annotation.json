@@ -17,7 +17,12 @@
         "put there",
         "re-introduc",
         "removed the guard",
-        "removes the guard"
+        "removes the guard",
+        "reintroduc",
+        "do not remove this guard",
+        "panicked in production",
+        "production panic",
+        "production incident"
       ],
       "note": "The envelope carries this as a removed-line-history expansion: the span is traced against the base revision, which is the only place the deleted lines' numbers mean anything. Tracing only surviving lines misses it entirely.",
       "needs_history": true

@@ -863,9 +863,9 @@ func TestRejectLabelsAreSpecificEnoughToMeasure(t *testing.T) {
 					f.Annotation.Name, r.Key)
 			}
 			switch r.Source {
-			case "author", "fixture":
+			case "author", "fixture", "model":
 			default:
-				t.Errorf("%s: reject %q has source %q, want author or fixture",
+				t.Errorf("%s: reject %q has source %q, want author, fixture or model",
 					f.Annotation.Name, r.Key, r.Source)
 			}
 		}

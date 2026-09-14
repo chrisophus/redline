@@ -18,5 +18,17 @@
       ]
     }
   ],
-  "reject": []
+  "reject": [
+    {
+      "key": "guard-removal-leaves-panic-fix-unverified",
+      "what": "claims removing the empty-string guard without a regression test leaves the production panic fix unverified",
+      "why": "Requeue in retry.go was the only producer of empty entries and is deleted in the same commit, which the commit message states, so no input left in the package can reach the removed branch",
+      "source": "model",
+      "file": "internal/queue/queue.go",
+      "all_of": [
+        "panic",
+        "unverified"
+      ]
+    }
+  ]
 }

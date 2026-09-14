@@ -78,7 +78,10 @@ dumped sample. `author` is the reader of a posted review on a real change, and
 that one is evidence about the reviewer rather than ground truth: a person
 dismissing a finding about their own code has a stake in the answer, and a
 dismissal that is itself wrong teaches the next review to stay quiet about a
-real defect. Keep the reason in `why` so a later reader can check the label
+real defect. `model` is a model that read the dumped sample and checked the
+claim against the code. It is the cheapest source and the least independent
+one, since a judge that shares the reviewer's blind spots will agree with its
+mistakes. Keep the reason in `why` so a later reader can check the label
 rather than inherit it.
 
 Write the words tightly. An entry with no `any_of` or `all_of` would match
