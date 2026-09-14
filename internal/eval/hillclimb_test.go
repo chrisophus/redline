@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/review"
 )
 
@@ -88,39 +89,10 @@ func (h *hillclimbRecorder) recordSample(t *testing.T, f Fixture, si int, out *r
 		return
 	}
 	rep := h.rep0 + si
-	sc := Score(f, out.Review)
-
-	var expected, caught int
-	caughtKeys := map[string]bool{}
-	for _, k := range sc.Caught {
-		caughtKeys[k] = true
-	}
-	for _, e := range f.Annotation.Expect {
-		if e.Optional {
-			continue
-		}
-		expected++
-		if caughtKeys[e.Key] {
-			caught++
-		}
-	}
-	grade := map[string]float64{
-		"unlabelled":      float64(sc.Extra),
-		"false_positives": float64(len(sc.QuietViolations) + len(sc.Rejected)),
-		"comments":        float64(len(out.Review.Comments)),
-		"stubs":           float64(out.Stubs),
-	}
-	if expected > 0 {
-		grade["caught"] = float64(caught)
-		grade["catch_rate"] = float64(caught) / float64(expected)
-	}
+	grade := hillclimbGrade(f, out.Review, out.Stubs)
 	tag := "defect"
 	if f.Annotation.Clean {
 		tag = "clean"
-		grade["clean_held"] = 0
-		if len(out.Review.Comments) == 0 {
-			grade["clean_held"] = 1
-		}
 	}
 
 	promptRef := h.writePrompt(t, f, out)
@@ -152,6 +124,128 @@ func (h *hillclimbRecorder) recordSample(t *testing.T, f Fixture, si int, out *r
 		{"role": "assistant", "content": string(body)},
 	}
 	h.writeJSON(t, filepath.Join("traces", fmt.Sprintf("%s_rep%d.json", f.Annotation.Name, rep)), trace)
+}
+
+// hillclimbGrade scores one review of one fixture for a results row. Shared by
+// the recorder and the re-grader, so a row written during a sweep and a row
+// re-graded afterwards are graded by the same code.
+func hillclimbGrade(f Fixture, rev findings.Review, stubs int) map[string]float64 {
+	sc := Score(f, rev)
+	var expected, caught int
+	caughtKeys := map[string]bool{}
+	for _, k := range sc.Caught {
+		caughtKeys[k] = true
+	}
+	for _, e := range f.Annotation.Expect {
+		if e.Optional {
+			continue
+		}
+		expected++
+		if caughtKeys[e.Key] {
+			caught++
+		}
+	}
+	grade := map[string]float64{
+		"unlabelled":      float64(sc.Extra),
+		"false_positives": float64(len(sc.QuietViolations) + len(sc.Rejected)),
+		"comments":        float64(len(rev.Comments)),
+		"stubs":           float64(stubs),
+	}
+	if expected > 0 {
+		grade["caught"] = float64(caught)
+		grade["catch_rate"] = float64(caught) / float64(expected)
+	}
+	if f.Annotation.Clean {
+		grade["clean_held"] = 0
+		if len(rev.Comments) == 0 {
+			grade["clean_held"] = 1
+		}
+	}
+	return grade
+}
+
+// TestHillclimbRegrade re-grades a variant's rows from its stored traces,
+// after the scorer or the labels change. The model is not called: every row's
+// review is already on disk, and re-running it would put new samples under an
+// old variant's name. The previous results are kept beside the new ones, so
+// the old and new grades can be compared before anything is concluded from
+// them.
+//
+//	REDLINE_HILLCLIMB_REGRADE=/abs/flow/v2 go test ./internal/eval -run TestHillclimbRegrade -v
+func TestHillclimbRegrade(t *testing.T) {
+	dir := os.Getenv("REDLINE_HILLCLIMB_REGRADE")
+	if dir == "" {
+		t.Skip("set REDLINE_HILLCLIMB_REGRADE to a variant directory")
+	}
+	if !filepath.IsAbs(dir) {
+		t.Fatalf("REDLINE_HILLCLIMB_REGRADE=%q must be an absolute path", dir)
+	}
+	fixtures := load(t)
+	byName := map[string]Fixture{}
+	for _, f := range fixtures {
+		byName[f.Annotation.Name] = f
+	}
+	path := filepath.Join(dir, "results.jsonl")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	var changed int
+	for i, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		var row map[string]any
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			t.Fatalf("row %d: %v", i, err)
+		}
+		name, _ := row["prompt_id"].(string)
+		rep := int(row["rep"].(float64))
+		f, ok := byName[name]
+		if !ok {
+			t.Fatalf("row %d names %q, which is not a fixture", i, name)
+		}
+		tr, err := os.ReadFile(filepath.Join(dir, "traces", fmt.Sprintf("%s_rep%d.json", name, rep)))
+		if err != nil {
+			t.Fatalf("row %d: %v", i, err)
+		}
+		var turns []map[string]string
+		if err := json.Unmarshal(tr, &turns); err != nil {
+			t.Fatalf("%s rep %d: %v", name, rep, err)
+		}
+		var rev findings.Review
+		if err := json.Unmarshal([]byte(turns[len(turns)-1]["content"]), &rev); err != nil {
+			t.Fatalf("%s rep %d: %v", name, rep, err)
+		}
+		// Stubs were dropped before the review was stored, so the trace cannot
+		// recount them; the row's own count stands.
+		stubs := 0
+		if old, ok := row["grade"].(map[string]any); ok {
+			if s, ok := old["stubs"].(float64); ok {
+				stubs = int(s)
+			}
+		}
+		grade := hillclimbGrade(f, rev, stubs)
+		before, _ := json.Marshal(row["grade"])
+		after, _ := json.Marshal(grade)
+		if string(before) != string(after) {
+			changed++
+		}
+		row["grade"] = grade
+		buf, err := json.Marshal(row)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, string(buf))
+	}
+	backup := filepath.Join(dir, "results.before-regrade.jsonl")
+	if _, err := os.Stat(backup); os.IsNotExist(err) {
+		if err := os.WriteFile(backup, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(out, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%s: re-graded %d rows, %d changed", filepath.Base(dir), len(out), changed)
 }
 
 // recordError keeps a sample that produced no scorable review out of the
