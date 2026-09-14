@@ -257,8 +257,13 @@ func (h *hillclimbRecorder) recordError(t *testing.T, f Fixture, si int, out *re
 	}
 	class := "serving"
 	switch {
-	case strings.Contains(cause.Error(), "answered the contract without reviewing"):
+	case strings.Contains(cause.Error(), "answered the contract without"):
 		class = "stub"
+	case strings.Contains(cause.Error(), "did not parse as a review"):
+		// The model answered, and what it wrote broke the contract. Counted
+		// apart from the endpoint failing, because a shape that raises this
+		// rate is a worse reviewer rather than a worse day for the API.
+		class = "malformed"
 	case strings.Contains(cause.Error(), "response was served by"):
 		class = "served-model-mismatch"
 	case errors.Is(cause, os.ErrDeadlineExceeded):
