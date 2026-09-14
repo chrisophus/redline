@@ -330,6 +330,8 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 	// call runs against a divided cap - so reading one slot would hide the
 	// column the ledger uses to tell a cheap run from a wasted one.
 	merged.StopReason = kept[0].StopReason
+	// Every cohort goes to the same model, so the first one's answer names it.
+	merged.ServedModel = kept[0].ServedModel
 	for _, k := range kept {
 		if k.Truncated {
 			merged.StopReason, merged.Truncated = k.StopReason, true

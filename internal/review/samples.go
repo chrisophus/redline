@@ -111,6 +111,7 @@ func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Re
 	}
 	merged.Review = unionReviews(kept)
 	merged.StopReason = kept[0].StopReason
+	merged.ServedModel = kept[0].ServedModel
 	return merged, nil
 }
 
