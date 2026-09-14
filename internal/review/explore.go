@@ -240,6 +240,7 @@ func runExplore(ctx context.Context, in Input, opts Options, res *Result) (*Resu
 			if perr != nil {
 				return res, perr
 			}
+			res.Stubs += dropStubs(rev)
 			res.Review = *rev
 			return res, nil
 		}

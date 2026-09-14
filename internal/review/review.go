@@ -410,6 +410,11 @@ type Result struct {
 	// ledger has to be able to say which it was.
 	Samples       int `json:"samples,omitempty"`
 	SamplesFailed int `json:"samplesFailed,omitempty"`
+
+	// Stubs counts comments and file lines dropped for carrying no remark,
+	// such as "placeholder". Kept on the result so a run that lost them says
+	// so in its log line.
+	Stubs int `json:"stubs,omitempty"`
 	// StopReason is what ended the turn. Checked rather than assumed: a
 	// refusal returns HTTP 200 and an empty-looking result.
 	StopReason string `json:"stopReason,omitempty"`
@@ -493,6 +498,9 @@ func (r *Result) Summary() string {
 		// cache and the uncached count collapses; the tokens were still
 		// input, at a different rate.
 		s += fmt.Sprintf(" cached=%d", r.Usage.CacheReadTokens)
+	}
+	if r.Stubs > 0 {
+		s += fmt.Sprintf(" stubs=%d", r.Stubs)
 	}
 	if r.Samples > 1 {
 		// The cost is the whole union's, so the sample count has to be beside
@@ -899,6 +907,9 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 	if err != nil {
 		return err
 	}
+	// Ahead of the check below, so a reply made of stubs is judged on what
+	// remains and refused the way an empty one is.
+	res.Stubs += dropStubs(rev)
 	// A reply that conformed to the contract without reviewing anything. The
 	// strict tool grammar guarantees the four fields are present and says
 	// nothing about what is in them, so three empty arrays under a one-word
@@ -945,7 +956,49 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 // of absorb, exported so a caller that sends no tools, as the eval ladder
 // does, parses the way the product does instead of keeping its own copy.
 func ParseReply(text string) (*findings.Review, error) {
-	return parseReview([]byte(jsonObjectOf(text)))
+	rev, err := parseReview([]byte(jsonObjectOf(text)))
+	if err != nil {
+		return nil, err
+	}
+	dropStubs(rev)
+	return rev, nil
+}
+
+// dropStubs removes comments and file lines that carry no remark and reports
+// how many it removed.
+//
+// The whole-reply check in absorb refuses a reply with no file lines, no
+// comments and no verdicts, and a stub reply got past it by carrying stubs. On
+// the claude-sonnet-5 baseline of 2026-09-14, seven of 42 replies had a
+// one-word overview, "placeholder" or "x", and a single comment whose body was
+// "placeholder" or empty. Five had no file lines and no verdicts; the other two
+// had one file line whose summary was "placeholder" too. Each was scored as a
+// review of a change it never read. With stubs removed first, the whole-reply
+// check sees all seven for what they are.
+//
+// The line is fewer than two words. One token cannot say what is wrong or what
+// a file's change does, and a terse remark of two words is still kept.
+func dropStubs(rev *findings.Review) int {
+	kept := rev.Comments[:0]
+	for _, c := range rev.Comments {
+		if isStub(c.Body) {
+			continue
+		}
+		kept = append(kept, c)
+	}
+	dropped := len(rev.Comments) - len(kept)
+	rev.Comments = kept
+	for path, summary := range rev.Files {
+		if isStub(summary) {
+			delete(rev.Files, path)
+			dropped++
+		}
+	}
+	return dropped
+}
+
+func isStub(s string) bool {
+	return len(strings.Fields(s)) < 2
 }
 
 // jsonObjectOf narrows a free-form reply to the JSON object in it.

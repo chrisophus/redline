@@ -305,6 +305,7 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 			failures = append(failures, a.err.Error())
 			continue
 		}
+		merged.Stubs += a.res.Stubs
 		kept = append(kept, a.res)
 	}
 	merged.recost(opts.Model)
