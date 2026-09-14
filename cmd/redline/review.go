@@ -127,29 +127,27 @@ func cmdReview(o opts) error {
 		return fmt.Errorf("--pipeline is %s or %s, not %q",
 			review.PipelineOneShot, review.PipelineStaged, o.pipeline)
 	}
-	// One call, the short prompt, no tool grammar, and this is the default.
+	// One call under the short prompt, when --brief asks for it.
 	//
-	// It is the simplest shape that reviews anything and it was measured
-	// against the shapes built on top of it. On the two probe fixtures
-	// carrying 31 of the 38 annotated expectations: this caught 5 at $0.13 a
-	// review, the long prompt under the strict tools caught 4 at $0.10, and
-	// the same cost per catch. It is not worse on either axis and there is
-	// less of it, so it goes first and everything else has to earn its place
-	// against it.
+	// It was the default until 2026-09-14, on measurements later found to have
+	// gone through a local proxy that appended its own instructions to the
+	// system prompt. Taken again directly on claude-sonnet-5, fourteen fixtures
+	// at three samples: the short prompt returned a stub reply, a placeholder
+	// written in about 200 output tokens, on 22 of 168 calls whether thinking
+	// was on or off, and the long prompt on none of 42. The long prompt also
+	// left 38 unlabelled comments against 76 to 102, held one more clean
+	// fixture, and cost no more per review. Recall did not separate them: one
+	// configuration of the short prompt caught 7, 8 and 14 of 38 on three runs,
+	// so a single run cannot rank the two.
 	//
-	// The richer shapes are not merged with it, they replace it: staged,
-	// explore and the describing split are each defined by a tool contract
-	// briefPrompt does not describe. Asking for one of those turns this off
-	// rather than failing, because a caller who typed --pipeline staged said
-	// what they wanted. Only an explicit --brief beside them is a
-	// contradiction worth refusing.
-	explicit := o.brief
-	ropts.Brief = !o.noBrief &&
-		ropts.Pipeline != review.PipelineStaged &&
-		!ropts.Synopsis &&
-		o.mode != review.ModeExplore
-	if explicit {
+	// The richer shapes replace it rather than combine with it: staged, explore
+	// and the describing split are each defined by a tool contract briefPrompt
+	// does not describe, so asking for one of them beside --brief is refused.
+	ropts.Brief = o.brief
+	if o.brief {
 		switch {
+		case o.noBrief:
+			return fmt.Errorf("--brief and --no-brief ask for opposite prompts; pass one or the other")
 		case ropts.Pipeline == review.PipelineStaged:
 			return fmt.Errorf("--brief is a single pass under the review contract, so it cannot draw the %s partition; pass one or the other",
 				review.PipelineStaged)

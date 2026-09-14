@@ -495,14 +495,20 @@ func TestSweep(t *testing.T) {
 			t.Fatal("a staged run is a call per cohort over what stage one wrote; the batch tier cannot pair them")
 		}
 	}
-	// Brief last, and by the product's own rule (cmd/redline/review.go): on
-	// unless the arm replaces it. It was off here by default while the command
-	// shipped it on, so every sweep before this one scored a configuration
-	// nobody runs. REDLINE_EVAL_NO_BRIEF is the --no-brief arm.
-	opts.Brief = os.Getenv("REDLINE_EVAL_NO_BRIEF") == "" &&
-		opts.Pipeline != review.PipelineStaged &&
-		!opts.Synopsis &&
-		opts.Mode != review.ModeExplore
+	// Brief last, and by the product's own rule (cmd/redline/review.go): off
+	// unless asked for, and refused beside a shape that replaces it. The sweep
+	// and the command have disagreed about this default before, and every sweep
+	// in that window scored a configuration nobody ran. REDLINE_EVAL_BRIEF is
+	// the --brief arm. REDLINE_EVAL_NO_BRIEF named the arm that is the default
+	// now, so a run still setting it is stopped rather than printed under a
+	// label that no longer describes it.
+	if os.Getenv("REDLINE_EVAL_NO_BRIEF") != "" {
+		t.Fatal("REDLINE_EVAL_NO_BRIEF is the default now; unset it, or set REDLINE_EVAL_BRIEF for the short prompt")
+	}
+	opts.Brief = os.Getenv("REDLINE_EVAL_BRIEF") != ""
+	if opts.Brief && (opts.Pipeline == review.PipelineStaged || opts.Synopsis || opts.Mode == review.ModeExplore) {
+		t.Fatal("REDLINE_EVAL_BRIEF is a single pass under the short prompt and cannot be combined with staged, synopsis or explore")
+	}
 	// Off by default because it prints a response body per call, and a sweep
 	// that prints thirty-three of them buries its own result table. On when a
 	// run is being read rather than scored: a reply that fails to parse is
@@ -682,10 +688,10 @@ func TestSweep(t *testing.T) {
 			label += " no-cross"
 		}
 	}
-	// Brief is the default here now, so the row that has to say so is the one
-	// without it.
-	if os.Getenv("REDLINE_EVAL_NO_BRIEF") != "" {
-		label += " no-brief"
+	// The long prompt is the default, so the row that has to say so is the one
+	// under the short prompt.
+	if os.Getenv("REDLINE_EVAL_BRIEF") != "" {
+		label += " brief"
 	}
 	if samples > 1 {
 		label += fmt.Sprintf(" ×%d", samples)

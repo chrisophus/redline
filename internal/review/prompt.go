@@ -222,6 +222,14 @@ speak for themselves, and most of the time they do.`
 // free-form review was never available on that wire. --brief is this prompt
 // over the tool grammar, and both wires send the same request.
 //
+// It stopped being the default on 2026-09-14. Every figure above was taken
+// through a local proxy that appended its own instructions to the system
+// prompt, so none of them measured these bytes alone. Taken again directly,
+// at three samples over fourteen fixtures, this prompt returned a stub reply,
+// a placeholder in about 200 output tokens, on 22 of 168 calls and
+// systemPrompt on none of 42. Recall could not rank the two: one
+// configuration of this prompt caught 7, 8 and 14 of 38 on three runs.
+//
 // What it keeps is what earlier sweeps showed to be load-bearing: enumerate
 // every defect rather than choosing one, and zero findings is a valid answer.
 // What it drops is the catalogue of what is not worth reporting. Each clause
