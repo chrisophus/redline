@@ -330,10 +330,15 @@ func TestOpenAIDefaultModelHasARate(t *testing.T) {
 // review at another model's rate, and reported the cost as known. An unknown
 // model has to read as unknown, which is what the ledger's cost column means.
 func TestARateComesOnlyFromItsOwnFamily(t *testing.T) {
-	for _, model := range []string{"gpt-5.6-terra", "gpt-5.6", "claude-sonnet-50"} {
+	for _, model := range []string{"gpt-5.6-sol", "gpt-5.6", "claude-sonnet-50"} {
 		if p, ok := LookupPricing(model); ok {
 			t.Errorf("%s priced at %+v, borrowed from another family", model, p)
 		}
+	}
+	// The model that exposed the bug has a rate of its own now, and it has to
+	// be that one. gpt-5's output rate is 10, so 12 is what tells the two apart.
+	if p, ok := LookupPricing("gpt-5.6-terra"); !ok || p.OutPerM != 12 {
+		t.Errorf("gpt-5.6-terra priced at %+v (known=%v), want its own rate of 12 out", p, ok)
 	}
 	// A dated or versioned id still resolves to its family.
 	for _, model := range []string{"gpt-5-2025-08-07", "claude-sonnet-5-20250929"} {
