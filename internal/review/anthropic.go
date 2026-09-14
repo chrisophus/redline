@@ -36,6 +36,10 @@ type completion struct {
 	detail  string
 	// truncated is set when the response hit the output cap.
 	truncated bool
+	// model is the model the response says served it, which is not always the
+	// one requested: an alias resolves to a snapshot, and a gateway can route
+	// elsewhere without saying so anywhere else.
+	model string
 }
 
 // completeAnthropic is the Messages API call. Streamed because the input is
@@ -101,6 +105,7 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 		stopReason: string(msg.StopReason),
 		usage:      usage(),
 		truncated:  msg.StopReason == anthropic.StopReasonMaxTokens,
+		model:      string(msg.Model),
 	}
 	if msg.StopReason == anthropic.StopReasonRefusal {
 		c.refused = true

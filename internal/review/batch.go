@@ -216,6 +216,7 @@ func RunBatch(ctx context.Context, ins []Input, opts Options) ([]*Result, []erro
 					CacheWriteTokens: msg.Usage.CacheCreationInputTokens,
 				},
 				truncated: msg.StopReason == anthropic.StopReasonMaxTokens,
+				model:     string(msg.Model),
 			}
 			if msg.StopReason == anthropic.StopReasonRefusal {
 				c.refused = true

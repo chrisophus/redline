@@ -415,6 +415,10 @@ type Result struct {
 	// such as "placeholder". Kept on the result so a run that lost them says
 	// so in its log line.
 	Stubs int `json:"stubs,omitempty"`
+	// ServedModel is the model the response named, beside Model, which is the
+	// one requested. The eval records it per sample, because a comparison
+	// between two arms means nothing if a different model answered one of them.
+	ServedModel string `json:"servedModel,omitempty"`
 	// StopReason is what ended the turn. Checked rather than assumed: a
 	// refusal returns HTTP 200 and an empty-looking result.
 	StopReason string `json:"stopReason,omitempty"`
@@ -839,6 +843,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 func (res *Result) absorb(opts Options, stage string, c completion) error {
 	res.StopReason = c.stopReason
 	res.Truncated = c.truncated
+	res.ServedModel = c.model
 	if opts.Debug != nil {
 		opts.Debug(fmt.Sprintf("← %s: stop=%s, out=%d token(s), %s",
 			stage, c.stopReason, res.Usage.OutputTokens, res.Duration.Round(time.Millisecond)))

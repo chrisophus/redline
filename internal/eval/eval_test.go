@@ -575,6 +575,7 @@ func TestSweep(t *testing.T) {
 	// and they are not silently dropped either: the denominator they leave is
 	// the one the row is read against.
 	var failed []string
+	hc := newHillclimbRecorder(t)
 	for fi, f := range fx {
 		in := review.Input{
 			Report: &f.Session.Report, Change: f.Session.Change,
@@ -611,10 +612,12 @@ func TestSweep(t *testing.T) {
 			}
 			if err != nil {
 				t.Errorf("%s: %v", f.Annotation.Name, err)
+				hc.recordError(t, f, si, out, err)
 				continue
 			}
 			revs = append(revs, out.Review)
 			t.Logf("%s: %s", f.Annotation.Name, out.Summary())
+			hc.recordSample(t, f, si, out)
 		}
 		if len(revs) == 0 {
 			// Every sample of this fixture failed, so the fixture leaves the
