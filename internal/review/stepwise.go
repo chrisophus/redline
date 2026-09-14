@@ -35,6 +35,7 @@ import (
 // stepwiseAck is what turn 2 answers turn 1's tool call with. The endpoint
 // refuses a conversation that goes on past an unanswered tool_use, and the
 // walkthrough is already recorded on this side, so the result says only that.
+//nolint:gosec // G101 reads the "pw" in "stepwise" as a password.
 const stepwiseAck = "Recorded. The rest of the packet follows."
 
 // stepwiseRefusal is every combination the stepwise conversation cannot run

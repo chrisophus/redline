@@ -351,6 +351,7 @@ func synopsisTail(in Input) string {
 // synopsisPrompt in what it can truthfully say about the material: this turn
 // has the change and the diff and nothing else, and the rest arrives in the
 // same conversation once the description is written.
+//nolint:gosec // G101 reads the "pw" in "stepwise" as a password.
 const stepwisePrompt = `
 
 ## This turn
@@ -368,6 +369,7 @@ here is that turn's to report and yours to leave out.`
 
 // stepwiseLead opens turn 2's material, so the model reads what follows as the
 // part of the packet its description was written without.
+//nolint:gosec // G101 reads the "pw" in "stepwise" as a password.
 const stepwiseLead = `## The rest of the packet
 
 Your overview and file lines are recorded. What follows is the material that
