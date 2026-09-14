@@ -31,12 +31,18 @@ var priceTable = map[string]Pricing{
 	"claude-haiku-4":  {InPerM: 1, OutPerM: 5},
 	// OpenAI list rates, for --api openai. A proxy that aliases a model
 	// to another name prices as unknown, which is the honest answer.
-	"gpt-5":        {InPerM: 1.25, OutPerM: 10},
-	"gpt-5-mini":   {InPerM: 0.25, OutPerM: 2},
-	"gpt-5-nano":   {InPerM: 0.05, OutPerM: 0.40},
-	"gpt-4.1":      {InPerM: 2, OutPerM: 8},
-	"gpt-4.1-mini": {InPerM: 0.40, OutPerM: 1.60},
-	"gpt-4o":       {InPerM: 2.50, OutPerM: 10},
+	"gpt-5": {InPerM: 1.25, OutPerM: 10},
+	// From each model's page on developers.openai.com, 2026-09-14, and
+	// matching OpenRouter's listing. gpt-5.6-sol is left out: OpenAI's page
+	// and the third-party listings disagree on its rate.
+	"gpt-5.6-terra": {InPerM: 2, OutPerM: 12},
+	"gpt-5.4":       {InPerM: 2.50, OutPerM: 15},
+	"gpt-5.3-codex": {InPerM: 1.75, OutPerM: 14},
+	"gpt-5-mini":    {InPerM: 0.25, OutPerM: 2},
+	"gpt-5-nano":    {InPerM: 0.05, OutPerM: 0.40},
+	"gpt-4.1":       {InPerM: 2, OutPerM: 8},
+	"gpt-4.1-mini":  {InPerM: 0.40, OutPerM: 1.60},
+	"gpt-4o":        {InPerM: 2.50, OutPerM: 10},
 }
 
 // LookupPricing resolves a model id to its rate by longest-prefix match.

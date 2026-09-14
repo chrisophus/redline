@@ -11,5 +11,31 @@
       "note": "The test-skip-added findings on testdelta.go are wave-one output and already on the report. Repeating them makes the reader read the same thing twice and trust the list less.",
       "matches_without_correlation": ["skips a test", "test-skip-added", "focuses tests"]
     }
+  ],
+  "reject": [
+    {
+      "key": "added-lines-misaligned-with-file",
+      "what": "claims CRLF or end-of-file line handling makes the added-line numbers from the diff disagree with the split file content in skipsAdded",
+      "why": "cover.AddedLines numbers head-side lines from the @@ header and splits on newline, and skipsAdded splits the file on newline the same way; a trailing carriage return stays on its line and a trailing newline only adds an unnumbered tail, so the numbers agree.",
+      "source": "model",
+      "file": "internal/pane/testdelta/testdelta.go",
+      "any_of": ["crlf"]
+    },
+    {
+      "key": "hunk-header-counted-as-assertion",
+      "what": "claims assertionsRemoved does not skip @@ hunk headers, so a header could be counted as an assertion",
+      "why": "assertionsRemoved only tests lines that start with + or -; a hunk header starts with @@, falls through the switch and is never matched against assertionRe.",
+      "source": "model",
+      "file": "internal/pane/testdelta/testdelta.go",
+      "all_of": ["@@", "assertionRe"]
+    },
+    {
+      "key": "worktree-read-disagrees-with-diff",
+      "what": "claims skipsAdded reads the worktree with File while its line numbers come from a diff against a different head, so commit or range targets misattribute lines",
+      "why": "gitx DiffPath runs git diff <rev> -- path in Repo.Root, comparing base with the working tree, and File with an empty rev reads the same Repo.Root from disk, so both sides describe the same tree.",
+      "source": "model",
+      "file": "internal/pane/testdelta/testdelta.go",
+      "all_of": ["File(\"\", f)", "worktree"]
+    }
   ]
 }

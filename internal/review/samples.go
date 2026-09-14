@@ -97,6 +97,7 @@ func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Re
 			failures = append(failures, s.err.Error())
 			continue
 		}
+		merged.Stubs += s.res.Stubs
 		kept = append(kept, s.res)
 	}
 	merged.CostUSD, merged.CostKnown = merged.Usage.Cost(opts.Model)
@@ -125,6 +126,7 @@ func (r *Result) clone() *Result {
 	c.Turns = 0
 	c.RulingOutputTokens = 0
 	c.ScoutCostUSD = 0
+	c.Stubs = 0
 	return &c
 }
 

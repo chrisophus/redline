@@ -78,7 +78,10 @@ dumped sample. `author` is the reader of a posted review on a real change, and
 that one is evidence about the reviewer rather than ground truth: a person
 dismissing a finding about their own code has a stake in the answer, and a
 dismissal that is itself wrong teaches the next review to stay quiet about a
-real defect. Keep the reason in `why` so a later reader can check the label
+real defect. `model` is a model that read the dumped sample and checked the
+claim against the code. It is the cheapest source and the least independent
+one, since a judge that shares the reviewer's blind spots will agree with its
+mistakes. Keep the reason in `why` so a later reader can check the label
 rather than inherit it.
 
 Write the words tightly. An entry with no `any_of` or `all_of` would match
@@ -92,6 +95,15 @@ does not contain: a migration to correlate against the code, a generated file
 left stale, and a change that undoes an earlier deliberate fix. It constructs a
 small repository for each and runs Redline over it, so those sessions are real
 output too.
+
+It also builds a clean counterpart for each of the three, to the same shape and
+carrying no defect. A clean half made of one-line dependency bumps asks only
+whether a reviewer can tell a small change from a large one. Paired this way the
+surface is held constant and the verdict is the only thing that moves: a
+nullable column instead of a NOT NULL one, a generated file regenerated instead
+of left behind, a guard removed in the commit that removes the caller it
+guarded against. A reviewer firing on the shape of a change rather than on what
+it does is caught by the pair and cannot be caught without it.
 
 ## What the set has to keep covering
 
@@ -112,16 +124,26 @@ output too.
 | Fixture | Origin | What it tests |
 |---|---|---|
 | `correlation-not-null-column` | synthetic | A NOT NULL migration against a struct field that cannot express absence |
+| `clean-nullable-column` | synthetic | The same two files with a nullable column, where omitting it is correct |
+| `stale-generated-file` | synthetic | A generated file not regenerated (known gap) |
+| `clean-regenerated-together` | synthetic | The same edit with the generated file moved alongside it |
+| `reverts-a-fix` | synthetic | A deliberate guard removed as a simplification |
+| `clean-guard-and-caller-removed` | synthetic | The same guard removed with the caller that needed it |
+| `gorefactor-changectx` | gorefactor PR #65 | A new package across eighteen files, fourteen labelled defects |
+| `gorefactor-nil-rules` | gorefactor 20629f3 | A second lint rule and a widening of the first, seventeen labelled defects |
+| `staged-empty-partition` | redline PR #46 | A 364-line pipeline whose merge path indexes an empty slice |
 | `golangci-action-bump` | fe6ff27 | A purely mechanical change that should return clean |
 | `harness-injected-config` | 4cfafc4 | An exported signature change whose callers all moved with it |
 | `mutation-overlay` | 8b6d6c6 | A wide feature change across a dozen files |
 | `not-applicable-panes` | 825b052 | A change about what a report must not say |
-| `reverts-a-fix` | synthetic | A deliberate guard removed as a simplification |
-| `stale-generated-file` | synthetic | A generated file not regenerated (known gap) |
 | `test-delta-pane` | fe2df58 | Wave-one findings against the detector's own source, not to be restated |
 
-Eight is a starting set, not the target. The plan calls for twenty, drawn from
-real pull requests across the repositories this tool is used on.
+Fourteen is a starting set, not the target. The plan calls for twenty, drawn
+from real pull requests across the repositories this tool is used on.
+
+The first six are three pairs. Each pair holds the surface constant and moves
+only the verdict, so the clean half measures a reflex the defect half rewards.
+Four of the fourteen are clean, against the three in ten a real queue carries.
 
 ## Scoring what a reader receives
 

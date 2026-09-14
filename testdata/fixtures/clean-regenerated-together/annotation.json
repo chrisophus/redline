@@ -1,0 +1,22 @@
+{
+  "name": "clean-regenerated-together",
+  "origin": "synthetic, built by make-synthetic.sh",
+  "summary": "The proto gains a tenant_id field and the generated Go file is regenerated in the same commit. The generated file is not shown in the change, and the packet names it as one that also moved.",
+  "clean": true,
+  "why_this_fixture_exists": "The paired control for stale-generated-file. Both changes show exactly one file, api/schema.proto, and both carry no wave-one findings, so the diff alone cannot separate them. What separates them is report.coverage.generated, which is empty on the stale fixture and holds api/schema.pb.go here, and which prompt.go turns into a line naming the generated files that also changed. That makes this the one fixture in the set that asks whether the review reads that line at all. It matters because stale-generated-file is the known-gap fixture, where nothing shipping catches the defect, and a reviewer with the reflex to say \"worth regenerating\" scores that gap without having found anything. This fixture is where that reflex costs something.",
+  "expect": [],
+  "quiet": [
+    {
+      "about": "asking for a regeneration that the same commit already did",
+      "note": "The generated file moved with its source and the packet says so. Calling it stale, or asking whether protoc was run, is the stale-generated-file finding filed against the change that does not have it.",
+      "matches_without_correlation": [
+        "stale",
+        "regenerate",
+        "regenerating",
+        "out of date",
+        "forgot to run"
+      ]
+    }
+  ],
+  "reject": []
+}

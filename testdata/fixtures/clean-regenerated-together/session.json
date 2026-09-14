@@ -1,0 +1,119 @@
+{
+  "report": {
+    "schemaVersion": 1,
+    "baseRef": "4ef83f8538c8b290cd28234d2c2c2a66c7355afc",
+    "baseSHA": "4ef83f8538c8b290cd28234d2c2c2a66c7355afc",
+    "scope": [
+      "api/schema.proto"
+    ],
+    "findings": [],
+    "substrates": [
+      {
+        "name": "redline/sql",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/api",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/suppressions",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint-config",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/test-delta",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/parity",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/mutation",
+        "state": "not-applicable",
+        "detail": "no gomutants report configured in .redline.yml",
+        "gating": false
+      }
+    ],
+    "newCount": {},
+    "coverage": {
+      "changedFiles": 1,
+      "examinedFiles": 0,
+      "unexamined": [
+        "api/schema.proto"
+      ],
+      "generated": [
+        "api/schema.pb.go"
+      ],
+      "coverableFiles": 0
+    },
+    "unknowns": [
+      {
+        "substrate": "redline/api",
+        "message": "1 file(s) in this change fall under the api pane, which examined none of them",
+        "reason": "vacuum spec linting, spec-vs-handler and observed-vs-declared response checks are not built"
+      },
+      {
+        "substrate": "redline",
+        "message": "none of the 1 changed file(s) fall under any pane Redline currently ships",
+        "reason": "this change is entirely unexamined; the empty findings list below is not evidence of correctness"
+      }
+    ]
+  },
+  "change": {
+    "target": {
+      "kind": "commit",
+      "dir": "/private/var/folders/g1/pll5_z394xg4gn8drm46y__m0000gn/T/tmp.aPVjps4S4h/regen",
+      "head": "88c277296e9c0b9b17b2583c2ac661b9cd01bd5e",
+      "base": "4ef83f8538c8b290cd28234d2c2c2a66c7355afc",
+      "label": "HEAD"
+    },
+    "baseSHA": "4ef83f8538c8b290cd28234d2c2c2a66c7355afc",
+    "commits": [
+      {
+        "sha": "88c277296e9c0b9b17b2583c2ac661b9cd01bd5e",
+        "author": "fixture",
+        "subject": "add tenant_id to the user message and regenerate"
+      }
+    ],
+    "files": [
+      {
+        "path": "api/schema.proto",
+        "status": "modified",
+        "added": 1,
+        "removed": 0,
+        "diff": "diff --git a/api/schema.proto b/api/schema.proto\nindex f0751fe..b874e0d 100644\n--- a/api/schema.proto\n+++ b/api/schema.proto\n@@ -2,4 +2,5 @@ syntax = \"proto3\";\n message User {\n   string id = 1;\n   string email = 2;\n+  string tenant_id = 3;\n }\n",
+        "addedLines": [
+          5
+        ],
+        "head": "syntax = \"proto3\";\nmessage User {\n  string id = 1;\n  string email = 2;\n  string tenant_id = 3;\n}\n",
+        "areas": [
+          "api"
+        ]
+      }
+    ],
+    "uiTouched": false
+  }
+}

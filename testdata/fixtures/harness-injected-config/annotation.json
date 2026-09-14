@@ -8,8 +8,7 @@
     {
       "key": "nil-prepared-map",
       "what": "The prepared map is read before it is written and the write is guarded by a nil check, so passing nil is accepted and silently disables the deduplication the parameter exists for.",
-      "file": "internal/harness/harness.go",
-      "any_of": ["prepared map", "nil map", "prepared is nil", "never made", "not initialised", "not initialized", "make(map"],
+      "any_of": ["nil map", "prepared is nil", "nil prepared", "prepared map is nil", "prepared map was nil", "never made", "not initialised", "not initialized", "make(map"],
       "optional": true,
       "note": "Worth having, not required. Marked optional so a run that misses it is not scored as a miss."
     }

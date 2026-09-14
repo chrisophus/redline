@@ -28,10 +28,9 @@ func TestTheBriefReviewCallSendsTheSameGrammarAsEveryOtherStage(t *testing.T) {
 	if params.OutputConfig.Format.Schema != nil {
 		t.Error("the brief review declared an output format; the grammar carries the contract and a gateway ignores the format")
 	}
-	// Thinking stays off. The ladder ran this prompt with thinking disabled and
-	// caught 8 of 31 expectations against the product's 7, so the reasoning
-	// tokens were not what found the defects, and a brief run that turned them
-	// back on would pay for them twice.
+	// Thinking stays off. Turning it back on was measured on 2026-09-14 and left
+	// the short prompt's stub replies at 5 of 42 against 17 of 126 with it off,
+	// so the setting was left alone.
 	if params.Thinking.OfDisabled == nil {
 		t.Error("thinking is not disabled on the brief review")
 	}
