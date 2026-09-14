@@ -42,6 +42,13 @@ func newHillclimbRecorder(t *testing.T) *hillclimbRecorder {
 	if dir == "" {
 		return nil
 	}
+	// go test runs a package's binary from that package's directory, so a
+	// relative path lands under internal/eval, outside the gitignored .redline
+	// at the repository root. The first baseline was written there before
+	// this check existed.
+	if !filepath.IsAbs(dir) {
+		t.Fatalf("REDLINE_HILLCLIMB_DIR=%q must be an absolute path: go test runs from the package directory, so a relative one lands under internal/eval", dir)
+	}
 	rep0 := 0
 	if s := os.Getenv("REDLINE_HILLCLIMB_REP_OFFSET"); s != "" {
 		n, err := strconv.Atoi(s)
