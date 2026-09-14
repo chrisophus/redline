@@ -48,6 +48,8 @@ type Options struct {
 	// AllowMissingCoverage skips the fail-fast check for configured coverage
 	// harness profiles. Other configured profiles (mutation, etc.) still apply.
 	AllowMissingCoverage bool
+	// SkipLint omits lint delta, suppression, and configuration panes.
+	SkipLint bool
 
 	// Progress is called with a line worth printing while the run is
 	// working. Nil keeps the library silent, which is what the tests and any
@@ -169,12 +171,18 @@ func Run(opts Options) (*Result, error) {
 	panes := []pane.Pane{
 		&migrations.Pane{Repo: repo, UpstreamRef: resolveRef(repo, opts.Upstream, baseRef), Dir: opts.MigDir},
 		&openapi.Pane{Repo: repo},
-		&lint.Delta{Repo: repo, Harness: cfg, HarnessRoot: configRoot, Prepared: prepared},
-		&lint.Suppressions{Repo: repo},
-		&lint.Config{Repo: repo},
+	}
+	if !opts.SkipLint {
+		panes = append(panes,
+			&lint.Delta{Repo: repo, Harness: cfg, HarnessRoot: configRoot, Prepared: prepared},
+			&lint.Suppressions{Repo: repo},
+			&lint.Config{Repo: repo},
+		)
+	}
+	panes = append(panes,
 		&testdelta.Pane{Repo: repo},
 		&parity.Pane{Repo: repo},
-	}
+	)
 
 	// Every path in the tree under review, listed once and only if a pane
 	// turns out to have nothing in the change to look at. It answers a

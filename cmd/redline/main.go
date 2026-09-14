@@ -64,6 +64,7 @@ flags:
   --out DIR         evidence directory (default .redline)
   --prepare         run harness produce steps from .redline.yml before observe
   --allow-missing-coverage  do not fail when a configured coverage profile is absent
+  --no-lint         skip lint delta, suppression, and configuration checks
   --open            open the HTML report when done
   --no-open         never open a browser
   --file            open (or print) the report as a file:// path, no server
@@ -213,6 +214,7 @@ type opts struct {
 	model, effort, mode, api, baseURL, apiUser                        string
 	scoutModel, scoutEffort                                           string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
+	noLint                                                            bool
 	stats, verify, noVerify, debug, cache, noCache                    bool
 	synopsis, noSynopsis                                              bool
 	brief, noBrief                                                    bool
@@ -246,6 +248,7 @@ func runMain(args []string) error {
 	fs.StringVar(&o.revRange, "range", "", "commit range A..B")
 	fs.BoolVar(&o.prepare, "prepare", false, "run harness produce steps from .redline.yml before observe")
 	fs.BoolVar(&o.allowMissingCoverage, "allow-missing-coverage", false, "do not fail when a configured coverage profile is missing or stale")
+	fs.BoolVar(&o.noLint, "no-lint", false, "skip lint delta, suppression, and configuration checks")
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
 	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
 	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")
@@ -326,6 +329,7 @@ func (o opts) toRun(dir string) run.Options {
 	return run.Options{Dir: dir, Base: o.base, Upstream: o.upstream,
 		MigDir: o.migDir, PR: o.pr, Branch: o.branch, Commit: o.commit,
 		Range: o.revRange, Out: o.out, AllowMissingCoverage: o.allowMissingCoverage,
+		SkipLint: o.noLint,
 		// Which tree was observed decides what the harness could see, so it
 		// is said out loud rather than left to be inferred from a coverage
 		// number that came back missing.

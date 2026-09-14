@@ -114,6 +114,29 @@ func TestCleanNewMigrationHasNoFindings(t *testing.T) {
 	}
 }
 
+func TestSkipLintOmitsAllLintPanes(t *testing.T) {
+	r := newRepo(t)
+	r.write(".golangci.yml", "linters: {}\n")
+	r.write("a.go", "package a\n\nfunc A() {}\n")
+	r.commit("init")
+	r.git("checkout", "-b", "feature")
+	r.write("a.go", "package a\n\nfunc A() { ignored() } //nolint:errcheck\n")
+
+	rep := r.run(run.Options{Base: "main", SkipLint: true}).Report
+	for _, substrate := range rep.Substrates {
+		switch substrate.Name {
+		case "redline/lint", "redline/suppressions", "redline/lint-config":
+			t.Errorf("skip lint included %q pane", substrate.Name)
+		}
+	}
+	for _, finding := range rep.Findings {
+		switch finding.Substrate {
+		case "redline/lint", "redline/suppressions", "redline/lint-config":
+			t.Errorf("skip lint included finding from %q", finding.Substrate)
+		}
+	}
+}
+
 // Check 1: a migration that exists at merge-base was edited.
 func TestModifiedMergedMigration(t *testing.T) {
 	r := baseline(t)
