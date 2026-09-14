@@ -12,17 +12,28 @@ package eval_test
 //	rung 2  the shipped system prompt + the shipped packet
 //	shipped adds the strict tool grammar, and is TestSweep's one-shot arm
 //
-// Measured 2026-09-13 on claude-sonnet-5, eleven fixtures, one sample: rung 0
-// caught 12/38, rung 1 caught 11/38, and the one-shot arm caught 6/38. The
-// packet's measurable contribution on this set is quiet rather than catches:
-// 25 unlabelled comments at rung 0 against 16 at rung 1.
+// Measured 2026-09-14 on claude-sonnet-5, gorefactor-changectx and
+// gorefactor-nil-rules, three samples each, called directly:
 //
-// The comparison is against one-shot only, which is the weakest shipped arm.
-// No rung carries the cohort partition, the scout's lookups or the ruling,
-// and `--pipeline staged` at three samples caught 16/35, above rung 0's
-// 12/38. Nothing here says a rung beats the pipeline; it says the one-shot
-// default is the shape that loses most. The rungs are unpriced, so no cost
-// claim follows from them either.
+//	rung 0  caught  9/31, 12 unlabelled
+//	rung 1  caught 10/31,  4 unlabelled
+//	rung 2  caught  7/31,  2 unlabelled
+//
+// Recall does not separate the rungs on this pair. What the packet and the
+// shipped prompt measurably buy is quiet: each layer roughly halves the
+// comments nobody labelled, at about the same number of catches.
+//
+// Every earlier figure for these rungs is void. They went through a local
+// proxy that appended its own instruction block to the system prompt, one
+// telling the model never to restate code, file contents or diffs, and that
+// run put rung 1 at 12/31 and rung 2 at 3/31. The k=1 figures before it
+// (rung 0 at 12/38 beating rung 1 at 11/38) were inside the noise as well as
+// behind the proxy. A paid run has to reach the vendor's endpoint unaltered,
+// or it measures somebody else's prompt.
+//
+// No rung carries the cohort partition, the scout's lookups or the ruling, so
+// nothing here compares a rung with `--pipeline staged`. The rungs are
+// unpriced, so no cost claim follows from them either.
 //
 // Every rung asks for free-form JSON and parses it with findings.LoadReview,
 // which is the same path an agent's review.json takes, so a rung is scored
@@ -36,10 +47,8 @@ package eval_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -69,6 +78,10 @@ check.
 Keep each file summary to one sentence: the comments are what matter, and a
 reply that spends its budget on summaries gets cut off before them.`
 
+// ladderMaxTokens is the output budget every rung gets. A rung that ran under
+// a different one would be measuring the ceiling rather than the material.
+const ladderMaxTokens = 32000
+
 const minimalSystem = `You are reviewing one change in a code repository.
 
 Report every defect you can support from the material below, each as its own
@@ -92,7 +105,28 @@ func TestLadder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	only := os.Getenv("REDLINE_EVAL_FIXTURE")
+	// A comma-separated list, as TestSweep takes. One name at a time scored
+	// each fixture under its own denominator, so the two-fixture probe that
+	// carries most of the expectations had to be added up by hand, and a rung
+	// summed that way is not comparable with one Sum pooled. An unknown name
+	// fails rather than silently narrowing the set.
+	if only := os.Getenv("REDLINE_EVAL_FIXTURE"); only != "" {
+		want := map[string]bool{}
+		for _, name := range strings.Split(only, ",") {
+			want[strings.TrimSpace(name)] = true
+		}
+		var kept []eval.Fixture
+		for _, f := range fixtures {
+			if want[f.Annotation.Name] {
+				kept = append(kept, f)
+				delete(want, f.Annotation.Name)
+			}
+		}
+		for name := range want {
+			t.Fatalf("REDLINE_EVAL_FIXTURE names %q, which is not a fixture", name)
+		}
+		fixtures = kept
+	}
 
 	// Samples, for the reason TestSweep takes them: a review is not a stable
 	// function of its input, and the union of one sample is close to a coin
@@ -116,9 +150,6 @@ func TestLadder(t *testing.T) {
 	// rather than left to the errors above, so the number is read with them.
 	var failed []string
 	for _, f := range fixtures {
-		if only != "" && f.Annotation.Name != only {
-			continue
-		}
 		if f.Session == nil || f.Session.Change == nil || len(f.Session.Change.Files) == 0 {
 			continue
 		}
@@ -131,7 +162,7 @@ func TestLadder(t *testing.T) {
 				t.Errorf("%s sample %d: %v", f.Annotation.Name, si, err)
 				continue
 			}
-			rev, err := ladderParse(t, out)
+			rev, err := review.ParseReply(out)
 			if err != nil {
 				t.Errorf("%s sample %d: %v (got %s)", f.Annotation.Name, si, err, clip(out, 300))
 				continue
@@ -208,9 +239,20 @@ func ladderCall(client anthropic.Client, model, system, user string) (string, er
 	// nothing but thinking blocks, which reads as a silent model and is the
 	// harness's fault. The rungs are about what the material buys, not about
 	// the reasoning dial, so it is off here.
+	//
+	// With it off the model reasons in prose instead, and on the larger
+	// fixtures that prose ate the budget before the object: all three samples
+	// of gorefactor-nil-rules at rung 0 opened "Let me analyze the diff for
+	// defects" and one never reached a brace at all, which dropped the fixture
+	// out of the denominator and made the rung incomparable. Prefilling the
+	// assistant turn with the opening brace would foreclose the preamble, and
+	// the endpoint these rungs run against refuses it: assistant prefill comes
+	// back 400, the conversation has to end with a user message. So the budget
+	// check below is what names the cause instead of leaving it as a parse
+	// failure.
 	stream := client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.Model(model),
-		MaxTokens: 32000,
+		MaxTokens: ladderMaxTokens,
 		Thinking:  anthropic.ThinkingConfigParamUnion{OfDisabled: &anthropic.ThinkingConfigDisabledParam{}},
 		System:    []anthropic.TextBlockParam{{Text: system}},
 		Messages: []anthropic.MessageParam{
@@ -238,48 +280,23 @@ func ladderCall(client anthropic.Client, model, system, user string) (string, er
 		return "", fmt.Errorf("empty reply: stop=%s blocks=%v in=%d out=%d",
 			msg.StopReason, kinds, msg.Usage.InputTokens, msg.Usage.OutputTokens)
 	}
+	// A reply cut off at the budget cannot parse, and reported as a parse
+	// failure it reads as a model that cannot follow the contract. Naming the
+	// cause here is what tells a raised ceiling apart from a broken prompt.
+	if msg.StopReason == anthropic.StopReasonMaxTokens {
+		return "", fmt.Errorf("reply hit the %d token budget and is truncated: in=%d out=%d",
+			ladderMaxTokens, msg.Usage.InputTokens, msg.Usage.OutputTokens)
+	}
 	return b.String(), nil
 }
 
-// ladderParse takes the model's free text down to the JSON object and runs it
-// through the same loader an agent's review.json goes through.
-func ladderParse(t *testing.T, out string) (*findings.Review, error) {
-	t.Helper()
-	s := strings.TrimSpace(out)
-	if i := strings.Index(s, "```"); i >= 0 {
-		s = s[i+3:]
-		if j := strings.IndexByte(s, '\n'); j >= 0 {
-			s = s[j+1:]
-		}
-		if j := strings.Index(s, "```"); j >= 0 {
-			s = s[:j]
-		}
-	}
-	i, j := strings.IndexByte(s, '{'), strings.LastIndexByte(s, '}')
-	if i < 0 || j <= i {
-		return nil, fmt.Errorf("no JSON object in the reply")
-	}
-	s = s[i : j+1]
-	if !json.Valid([]byte(s)) {
-		return nil, fmt.Errorf("reply is not valid JSON")
-	}
-	path := filepath.Join(t.TempDir(), "review.json")
-	if err := os.WriteFile(path, []byte(s), 0o644); err != nil {
-		return nil, err
-	}
-	rev, err := findings.LoadReview(path)
-	if err != nil {
-		return nil, err
-	}
-	if rev == nil {
-		return nil, fmt.Errorf("loader returned no review")
-	}
-	return rev, nil
-}
-
+// clip shows both ends of a reply. The head alone said only that the model
+// opened with prose, which was true of the replies that parsed too; whether
+// the object ever arrived is visible at the tail.
 func clip(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "..."
+	half := n / 2
+	return s[:half] + "\n...\n" + s[len(s)-half:]
 }

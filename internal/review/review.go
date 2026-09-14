@@ -939,6 +939,15 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 	return nil
 }
 
+// ParseReply reads a review out of a reply nothing constrained: the object
+// narrowed out of whatever prose, fence or tags surround it, then loaded
+// through the same path as a tool call's input. It is the content-channel half
+// of absorb, exported so a caller that sends no tools, as the eval ladder
+// does, parses the way the product does instead of keeping its own copy.
+func ParseReply(text string) (*findings.Review, error) {
+	return parseReview([]byte(jsonObjectOf(text)))
+}
+
 // jsonObjectOf narrows a free-form reply to the JSON object in it.
 //
 // Strips a markdown fence and anything either side of the outermost braces.
