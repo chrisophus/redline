@@ -1,0 +1,206 @@
+{
+  "report": {
+    "schemaVersion": 1,
+    "baseRef": "bd05c2320c0e2cc713d348fea746c90bc20f6008",
+    "baseSHA": "bd05c2320c0e2cc713d348fea746c90bc20f6008",
+    "scope": [
+      "internal/store/user.go",
+      "migrations/0002_add_note.up.sql"
+    ],
+    "findings": [
+      {
+        "rule": "source-without-test",
+        "substrate": "redline/test-delta",
+        "category": "tests",
+        "severity": "info",
+        "message": "code in internal/store changed but no test in that package did",
+        "new": true,
+        "fingerprint": "package:internal/store\u0000source-without-test\u0000code in internal/store changed but no test in that package did",
+        "id": "f8c947a2476",
+        "context": "Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.",
+        "anchor": {
+          "kind": "package",
+          "id": "internal/store"
+        },
+        "source": "deterministic",
+        "question": {
+          "kind": ""
+        }
+      }
+    ],
+    "substrates": [
+      {
+        "name": "redline/sql",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/api",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint",
+        "state": "failed",
+        "detail": "observe worktree: gorefactor at head: gorefactor is configured for this repository but not on PATH",
+        "gating": false
+      },
+      {
+        "name": "redline/suppressions",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/lint-config",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/test-delta",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/parity",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/mutation",
+        "state": "not-applicable",
+        "detail": "no gomutants report configured in .redline.yml",
+        "gating": false
+      }
+    ],
+    "newCount": {
+      "info": 1
+    },
+    "coverage": {
+      "changedFiles": 2,
+      "examinedFiles": 2,
+      "coverableFiles": 1
+    },
+    "confirmations": [
+      {
+        "substrate": "redline/sql",
+        "rule": "migration-version-unique",
+        "message": "version 0002 is not present on bd05c2320c0e2cc713d348fea746c90bc20f6008",
+        "anchor": {
+          "kind": "migration",
+          "id": "0002"
+        }
+      },
+      {
+        "substrate": "redline/sql",
+        "rule": "migration-add-not-null-no-default",
+        "message": "no NOT NULL column is added without a default across 1 new migration(s)"
+      },
+      {
+        "substrate": "redline/sql",
+        "rule": "migration-immutable",
+        "message": "all 1 migration file(s) already merged at the base are byte-identical in this change"
+      },
+      {
+        "substrate": "redline/suppressions",
+        "rule": "no-suppressions-added",
+        "message": "this change adds no lint-silencing directive"
+      }
+    ],
+    "unknowns": [
+      {
+        "substrate": "redline/lint",
+        "message": "pane applied to this change but did not run",
+        "reason": "observe worktree: gorefactor at head: gorefactor is configured for this repository but not on PATH"
+      },
+      {
+        "substrate": "redline/context",
+        "message": "context provider gorefactor claimed files in this change but did not run",
+        "reason": "gorefactor is configured for this repository but not on PATH"
+      },
+      {
+        "substrate": "redline/context",
+        "message": "1 changed file(s) fall outside every configured context provider's scope",
+        "reason": "no configured provider speaks for migrations/0002_add_note.up.sql, so the context below covers the rest of the change only"
+      }
+    ]
+  },
+  "change": {
+    "target": {
+      "kind": "commit",
+      "dir": "/private/var/folders/g1/pll5_z394xg4gn8drm46y__m0000gn/T/tmp.aPVjps4S4h/nullable",
+      "head": "9d11291cd444236812c0e30f1a683b04a9162832",
+      "base": "bd05c2320c0e2cc713d348fea746c90bc20f6008",
+      "label": "HEAD"
+    },
+    "baseSHA": "bd05c2320c0e2cc713d348fea746c90bc20f6008",
+    "commits": [
+      {
+        "sha": "9d11291cd444236812c0e30f1a683b04a9162832",
+        "author": "fixture",
+        "subject": "add an optional note to users"
+      }
+    ],
+    "files": [
+      {
+        "path": "internal/store/user.go",
+        "status": "modified",
+        "added": 3,
+        "removed": 0,
+        "diff": "diff --git a/internal/store/user.go b/internal/store/user.go\nindex 696c8de..ee76734 100644\n--- a/internal/store/user.go\n+++ b/internal/store/user.go\n@@ -4,6 +4,9 @@ package store\n type User struct {\n \tID    string\n \tEmail string\n+\t// Note is free text the operator may leave unset, and the column\n+\t// accepts NULL for exactly that reason.\n+\tNote string\n }\n \n // Insert writes a user. Every column the table requires must be set here.\n",
+        "addedLines": [
+          7,
+          8,
+          9
+        ],
+        "head": "package store\n\n// User is one row of the users table.\ntype User struct {\n\tID    string\n\tEmail string\n\t// Note is free text the operator may leave unset, and the column\n\t// accepts NULL for exactly that reason.\n\tNote string\n}\n\n// Insert writes a user. Every column the table requires must be set here.\nfunc Insert(u User) error {\n\t_ = u\n\treturn nil\n}\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "migrations/0002_add_note.up.sql",
+        "status": "added",
+        "added": 1,
+        "removed": 0,
+        "diff": "diff --git a/migrations/0002_add_note.up.sql b/migrations/0002_add_note.up.sql\nnew file mode 100644\nindex 0000000..8187d15\n--- /dev/null\n+++ b/migrations/0002_add_note.up.sql\n@@ -0,0 +1 @@\n+ALTER TABLE users ADD COLUMN note text;\n",
+        "addedLines": [
+          1
+        ],
+        "head": "ALTER TABLE users ADD COLUMN note text;\n",
+        "language": "sql",
+        "areas": [
+          "sql"
+        ]
+      }
+    ],
+    "uiTouched": false
+  },
+  "renders": [
+    {
+      "Title": "Migrations",
+      "Summary": "1 migration version(s) added, 0 pre-existing file(s) touched",
+      "Lines": [
+        "+ version 0002 — migrations/0002_add_note.up.sql"
+      ]
+    },
+    {
+      "Title": "Suppressions",
+      "Summary": "0 lint-silencing directive(s) added by this change",
+      "Lines": null
+    },
+    {
+      "Title": "Tests",
+      "Summary": "1 test-delta fact(s) from the diff",
+      "Lines": [
+        "~ internal/store (no test changed)"
+      ]
+    }
+  ],
+  "contextAbsent": [
+    "gorefactor (context): gorefactor is configured for this repository but not on PATH"
+  ]
+}

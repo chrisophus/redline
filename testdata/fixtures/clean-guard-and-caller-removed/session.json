@@ -1,0 +1,168 @@
+{
+  "report": {
+    "schemaVersion": 1,
+    "baseRef": "e8cb00f90f7f053c0387a54d18ab99ccffcb58a7",
+    "baseSHA": "e8cb00f90f7f053c0387a54d18ab99ccffcb58a7",
+    "scope": [
+      "internal/queue/queue.go",
+      "internal/queue/retry.go"
+    ],
+    "findings": [
+      {
+        "rule": "source-without-test",
+        "substrate": "redline/test-delta",
+        "category": "tests",
+        "severity": "info",
+        "message": "code in internal/queue changed but no test in that package did",
+        "new": true,
+        "fingerprint": "package:internal/queue\u0000source-without-test\u0000code in internal/queue changed but no test in that package did",
+        "id": "fe8af6654f9",
+        "context": "Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.",
+        "anchor": {
+          "kind": "package",
+          "id": "internal/queue"
+        },
+        "source": "deterministic",
+        "question": {
+          "kind": ""
+        }
+      }
+    ],
+    "substrates": [
+      {
+        "name": "redline/sql",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/api",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint",
+        "state": "failed",
+        "detail": "observe worktree: gorefactor at head: gorefactor is configured for this repository but not on PATH",
+        "gating": false
+      },
+      {
+        "name": "redline/suppressions",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/lint-config",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/test-delta",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/parity",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/mutation",
+        "state": "not-applicable",
+        "detail": "no gomutants report configured in .redline.yml",
+        "gating": false
+      }
+    ],
+    "newCount": {
+      "info": 1
+    },
+    "coverage": {
+      "changedFiles": 2,
+      "examinedFiles": 2,
+      "coverableFiles": 2
+    },
+    "confirmations": [
+      {
+        "substrate": "redline/suppressions",
+        "rule": "no-suppressions-added",
+        "message": "this change adds no lint-silencing directive"
+      }
+    ],
+    "unknowns": [
+      {
+        "substrate": "redline/lint",
+        "message": "pane applied to this change but did not run",
+        "reason": "observe worktree: gorefactor at head: gorefactor is configured for this repository but not on PATH"
+      },
+      {
+        "substrate": "redline/context",
+        "message": "context provider gorefactor claimed files in this change but did not run",
+        "reason": "gorefactor is configured for this repository but not on PATH"
+      }
+    ]
+  },
+  "change": {
+    "target": {
+      "kind": "commit",
+      "dir": "/private/var/folders/g1/pll5_z394xg4gn8drm46y__m0000gn/T/tmp.aPVjps4S4h/retired",
+      "head": "71a9011860b552b0b96a46425c974132220964e7",
+      "base": "e8cb00f90f7f053c0387a54d18ab99ccffcb58a7",
+      "label": "HEAD"
+    },
+    "baseSHA": "e8cb00f90f7f053c0387a54d18ab99ccffcb58a7",
+    "commits": [
+      {
+        "sha": "71a9011860b552b0b96a46425c974132220964e7",
+        "author": "fixture",
+        "subject": "drop the retry path and the guard it needed",
+        "body": "Requeue was the only caller that could produce an empty entry, and it is\ngone. The guard added on 2026-03-11 has nothing left to guard against."
+      }
+    ],
+    "files": [
+      {
+        "path": "internal/queue/queue.go",
+        "status": "modified",
+        "added": 0,
+        "removed": 5,
+        "diff": "diff --git a/internal/queue/queue.go b/internal/queue/queue.go\nindex 185ba13..871b25e 100644\n--- a/internal/queue/queue.go\n+++ b/internal/queue/queue.go\n@@ -4,11 +4,6 @@ package queue\n func Drain(items []string) []string {\n \tvar out []string\n \tfor _, it := range items {\n-\t\t// A nil entry reaches this from the retry path and panicked in\n-\t\t// production on 2026-03-11. Do not remove this guard.\n-\t\tif it == \"\" {\n-\t\t\tcontinue\n-\t\t}\n \t\tout = append(out, it)\n \t}\n \treturn out\n",
+        "head": "package queue\n\n// Drain empties the queue.\nfunc Drain(items []string) []string {\n\tvar out []string\n\tfor _, it := range items {\n\t\tout = append(out, it)\n\t}\n\treturn out\n}\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      },
+      {
+        "path": "internal/queue/retry.go",
+        "status": "deleted",
+        "added": 0,
+        "removed": 12,
+        "diff": "diff --git a/internal/queue/retry.go b/internal/queue/retry.go\ndeleted file mode 100644\nindex 6b396f9..0000000\n--- a/internal/queue/retry.go\n+++ /dev/null\n@@ -1,12 +0,0 @@\n-package queue\n-\n-// Requeue returns items to the queue after a failed send. A dropped item\n-// arrives here as the empty string.\n-func Requeue(items []string, failed []int) []string {\n-\tout := make([]string, len(items))\n-\tcopy(out, items)\n-\tfor _, i := range failed {\n-\t\tout[i] = \"\"\n-\t}\n-\treturn out\n-}\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      }
+    ],
+    "uiTouched": false
+  },
+  "renders": [
+    {
+      "Title": "Suppressions",
+      "Summary": "0 lint-silencing directive(s) added by this change",
+      "Lines": null
+    },
+    {
+      "Title": "Tests",
+      "Summary": "1 test-delta fact(s) from the diff",
+      "Lines": [
+        "~ internal/queue (no test changed)"
+      ]
+    }
+  ],
+  "contextAbsent": [
+    "gorefactor (context): gorefactor is configured for this repository but not on PATH"
+  ]
+}

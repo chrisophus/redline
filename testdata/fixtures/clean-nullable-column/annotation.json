@@ -1,0 +1,22 @@
+{
+  "name": "clean-nullable-column",
+  "origin": "synthetic, built by make-synthetic.sh",
+  "summary": "A migration adds a nullable note column to users and the User struct gains the matching field. Insert still does not mention it, which is what a nullable column is for.",
+  "clean": true,
+  "why_this_fixture_exists": "The paired control for correlation-not-null-column. That fixture is two files, a migration and the struct that writes the row, where the column is NOT NULL and the insert omits it, so every insert writes an empty string into a column the schema was widened to require. This is the same two files in the same shape with the same omission, and the column accepts NULL. Everything that made the first a defect is present except the NOT NULL. A clean half made of one-line dependency bumps only asks whether a reviewer can tell a small change from a large one, which is not a question anybody needs answered. Paired this way the surface is held constant and the verdict is the only thing that moves, so a reviewer reading the shape of a migration beside a struct rather than reading what the migration says is caught here and cannot be caught anywhere else in the set.",
+  "expect": [],
+  "quiet": [
+    {
+      "about": "importing the paired fixture's defect into a change that does not have it",
+      "note": "The column is nullable, so an insert that omits it writes NULL, which is the behaviour the column was declared for. Asking for a backfill, for a default, or for Insert to set the field is the correlation-not-null-column finding filed against a change where the NOT NULL is absent.",
+      "matches_without_correlation": [
+        "not null",
+        "backfill",
+        "every insert",
+        "writes an empty string",
+        "must be set"
+      ]
+    }
+  ],
+  "reject": []
+}
