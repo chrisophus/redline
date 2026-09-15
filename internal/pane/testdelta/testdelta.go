@@ -201,11 +201,10 @@ func (p *Pane) skipsAdded(baseRev string, res *pane.Result, lines *[]string) {
 }
 
 // assertionsRemoved reports a test file that ends the change with fewer
-// assertion-like lines than it started. Netting added against removed keeps a
-// pure move or rename from reading as a loss; only a real drop is reported, and
-// per file rather than per line, because a deleted line has no home in the head
-// tree to anchor on.
+// assertion-like lines than it started. It is reported per file rather than per
+// line, because a deleted line has no home in the head tree to anchor on.
 func (p *Pane) assertionsRemoved(baseRev string, res *pane.Result, lines *[]string) {
+	var counts []testAssertions
 	for _, f := range p.scoped {
 		if !isTestFile(f) {
 			continue
@@ -214,35 +213,78 @@ func (p *Pane) assertionsRemoved(baseRev string, res *pane.Result, lines *[]stri
 		if diff == "" {
 			continue
 		}
-		added, removed := 0, 0
-		for _, l := range strings.Split(diff, "\n") {
-			if strings.HasPrefix(l, "+++") || strings.HasPrefix(l, "---") {
-				continue
+		counts = append(counts, countAssertions(f, diff))
+	}
+	for _, c := range assertionLosses(counts) {
+		res.Findings = append(res.Findings, findings.Finding{
+			File:      c.path,
+			Rule:      "assertions-removed",
+			Substrate: Substrate,
+			Category:  findings.CategoryTests,
+			Severity:  findings.SeverityInfo,
+			Message:   fmt.Sprintf("this change removes %d more assertion-like line(s) than it adds in this test", c.removed-c.added),
+			Context:   "Assertions are what let a test fail. A net drop can mean a weaker test; check it is intended.",
+		})
+		*lines = append(*lines, fmt.Sprintf("- %s (-%d assertion-like line(s))", c.path, c.removed-c.added))
+	}
+}
+
+// testAssertions is one test file's assertion-like lines as its diff shows them.
+type testAssertions struct {
+	path           string
+	added, removed int
+	// created and deleted mark a diff that adds or removes the whole file.
+	created, deleted bool
+}
+
+func countAssertions(path, diff string) testAssertions {
+	c := testAssertions{path: path}
+	for _, l := range strings.Split(diff, "\n") {
+		switch {
+		case l == "--- /dev/null":
+			c.created = true
+		case l == "+++ /dev/null":
+			c.deleted = true
+		case strings.HasPrefix(l, "+++"), strings.HasPrefix(l, "---"):
+		case strings.HasPrefix(l, "+"):
+			if assertionRe.MatchString(l[1:]) {
+				c.added++
 			}
-			switch {
-			case strings.HasPrefix(l, "+"):
-				if assertionRe.MatchString(l[1:]) {
-					added++
-				}
-			case strings.HasPrefix(l, "-"):
-				if assertionRe.MatchString(l[1:]) {
-					removed++
-				}
+		case strings.HasPrefix(l, "-"):
+			if assertionRe.MatchString(l[1:]) {
+				c.removed++
 			}
-		}
-		if removed > added {
-			res.Findings = append(res.Findings, findings.Finding{
-				File:      f,
-				Rule:      "assertions-removed",
-				Substrate: Substrate,
-				Category:  findings.CategoryTests,
-				Severity:  findings.SeverityInfo,
-				Message:   fmt.Sprintf("this change removes %d more assertion-like line(s) than it adds in this test", removed-added),
-				Context:   "Assertions are what let a test fail. A net drop can mean a weaker test; check it is intended.",
-			})
-			*lines = append(*lines, fmt.Sprintf("- %s (-%d assertion-like line(s))", f, removed-added))
 		}
 	}
+	return c
+}
+
+// assertionLosses picks the files that lost assertions. A file that only changed
+// nets its own additions against its removals. A deleted file is judged together
+// with every test file the change creates, because the changed-path list has no
+// rename detection: a moved or split test arrives as one deleted path and one or
+// more new ones, and netting each path alone reported the move as a loss.
+func assertionLosses(files []testAssertions) []testAssertions {
+	createdAdds, deletedRemoves := 0, 0
+	for _, f := range files {
+		if f.created {
+			createdAdds += f.added
+		}
+		if f.deleted {
+			deletedRemoves += f.removed
+		}
+	}
+	var out []testAssertions
+	for _, f := range files {
+		if f.removed <= f.added {
+			continue
+		}
+		if f.deleted && deletedRemoves <= createdAdds {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 // skipKind classifies a skip or focus directive on a line of a test file in
@@ -295,11 +337,13 @@ const (
 var (
 	goSkipRe = regexp.MustCompile(`\b[tbsf]\.Skip(Now|f)?\s*\(`) // t.Skip / b.SkipNow
 
+	// The bare forms refuse a preceding dot, so a method that happens to be
+	// named fit, like chart.fit() in a test, is not read as Jasmine's fit.
 	jsSkipRe = regexp.MustCompile(`\b(it|test|describe|context)\.skip\s*\(` + // .skip
-		`|\bx(it|describe)\s*\(`) // xit / xdescribe
+		`|(^|[^.\w$])x(it|describe)\s*\(`) // xit / xdescribe
 
 	jsFocusRe = regexp.MustCompile(`\b(it|test|describe|context)\.only\s*\(` + // .only
-		`|\bf(it|describe)\s*\(`) // fit / fdescribe
+		`|(^|[^.\w$])f(it|describe)\s*\(`) // fit / fdescribe
 
 	// Python's skip decorators are declarations rather than calls, so the @ that
 	// introduces them stands in for the parenthesis the call forms require.
