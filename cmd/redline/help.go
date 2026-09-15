@@ -399,7 +399,8 @@ output:
   --debug           log every model request, its stop reason and token
                     counts, the body the parser was handed, and each scout
                     tool call to stderr, and write the full requests and
-                    responses under --out/debug. REDLINE_DEBUG does the same.
+                    responses under --out/debug, with the model's thinking
+                    summary when --thinking is on. REDLINE_DEBUG does the same.
   --open            open the HTML report when done
   --no-open         never open a browser
   --port N          loopback port for the report server (default 8765)

@@ -1292,6 +1292,9 @@ func captureResponse(opts Options, stage string, res *Result, c completion, call
 	if callErr != nil {
 		out["error"] = callErr.Error()
 	}
+	if c.thinking != "" {
+		out["thinking"] = c.thinking
+	}
 	if body := strings.TrimSpace(c.text); body != "" {
 		if json.Valid([]byte(body)) {
 			out["body"] = json.RawMessage(body)
