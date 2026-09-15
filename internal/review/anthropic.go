@@ -21,6 +21,10 @@ const (
 type completion struct {
 	text       string
 	stopReason string
+	// thinking is the reasoning summary the stream carried, joined across
+	// thinking blocks. Empty unless the call asked for a summary, since Sonnet 5
+	// sends thinking blocks with no text by default. Only --debug keeps it.
+	thinking string
 	// usage is filled on every path, including the ones that fail, because
 	// the input is billed as soon as the request is accepted.
 	usage Usage
@@ -99,7 +103,7 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 	for stream.Next() {
 		ev := stream.Current()
 		if err := msg.Accumulate(ev); err != nil {
-			return completion{usage: usage()}, err
+			return completion{usage: usage(), thinking: thinkingOf(msg)}, err
 		}
 		hb.observe(ev.Delta.Type, ev.Delta.Text, ev.Delta.Thinking, ev.Delta.PartialJSON)
 		if opts.onOutput != nil && ev.Type == "content_block_start" {
@@ -107,11 +111,12 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 		}
 	}
 	if err := stream.Err(); err != nil {
-		return completion{usage: usage()}, err
+		return completion{usage: usage(), thinking: thinkingOf(msg)}, err
 	}
 	body, fromTool := structuredOf(msg)
 	c := completion{
 		text:       body,
+		thinking:   thinkingOf(msg),
 		fromTool:   fromTool,
 		stopReason: string(msg.StopReason),
 		usage:      usage(),
@@ -129,6 +134,19 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 		c.detail = string(msg.StopDetails.Category)
 	}
 	return c, nil
+}
+
+// thinkingOf joins the text of a message's thinking blocks. A stream that broke
+// partway still carries what it had accumulated, and a call that ran out of
+// room while thinking is the one whose reasoning is most worth reading.
+func thinkingOf(msg anthropic.Message) string {
+	var parts []string
+	for _, block := range msg.Content {
+		if t, ok := block.AsAny().(anthropic.ThinkingBlock); ok && strings.TrimSpace(t.Thinking) != "" {
+			parts = append(parts, t.Thinking)
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // anthropicParams is the request one review makes, without sending it.

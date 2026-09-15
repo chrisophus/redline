@@ -132,3 +132,59 @@ func TestTheRequestIsSizedByPart(t *testing.T) {
 		t.Errorf("parts line %q does not name the diff and the context's room", line)
 	}
 }
+
+// --debug keeps the thinking summary the stream carried, beside the answer it
+// led to, and keeps nothing under that key when there was none.
+func TestTheCaptureKeepsTheThinkingSummary(t *testing.T) {
+	api := serveSSE(t, anthropicSSE("end_turn", 1000, 60,
+		anthropicThinking(0, "the guard was added after a panic in production"),
+		anthropicText(1, exploreReviewJSON)))
+	opts := oneShotOpts(api)
+	captured := map[string][]byte{}
+	opts.Capture = func(name string, data []byte) { captured[name] = data }
+	if _, err := Run(context.Background(), exploreInput(), opts); err != nil {
+		t.Fatalf("review: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(captured["review.response.json"], &got); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := got["thinking"].(string); !strings.Contains(s, "added after a panic") {
+		t.Errorf("thinking = %q, want the summary the stream carried", got["thinking"])
+	}
+
+	plain := serveSSE(t, anthropicSSE("end_turn", 1000, 60, anthropicText(0, exploreReviewJSON)))
+	opts = oneShotOpts(plain)
+	captured = map[string][]byte{}
+	opts.Capture = func(name string, data []byte) { captured[name] = data }
+	if _, err := Run(context.Background(), exploreInput(), opts); err != nil {
+		t.Fatalf("review: %v", err)
+	}
+	got = nil
+	if err := json.Unmarshal(captured["review.response.json"], &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["thinking"]; ok {
+		t.Errorf("a response with no thinking captured a thinking key: %v", got["thinking"])
+	}
+}
+
+// A call that ran out of room while it was still thinking is the one whose
+// reasoning says why, so its capture keeps what it had.
+func TestACallCutOffWhileThinkingKeepsItsReasoning(t *testing.T) {
+	api := serveSSE(t, anthropicSSE("max_tokens", 1000, 4096,
+		anthropicThinking(0, "still weighing whether the retry path can return nil")))
+	opts := oneShotOpts(api)
+	captured := map[string][]byte{}
+	opts.Capture = func(name string, data []byte) { captured[name] = data }
+	if _, err := Run(context.Background(), exploreInput(), opts); err == nil {
+		t.Fatal("the call must fail for this to be the failing path")
+	}
+	var got map[string]any
+	if err := json.Unmarshal(captured["review.response.json"], &got); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := got["thinking"].(string); !strings.Contains(s, "retry path can return nil") {
+		t.Errorf("thinking = %q, want the reasoning the cut-off call had written", got["thinking"])
+	}
+}
