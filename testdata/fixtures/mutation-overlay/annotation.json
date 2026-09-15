@@ -4,7 +4,16 @@
   "summary": "Reads a gomutants report off disk and renders surviving mutants on the changed lines, in findings.json, the markdown report, and the HTML drawer. Adds the mutation package and wires it through run.",
   "clean": false,
   "why_this_fixture_exists": "A wide feature change touching a dozen files across rendering and orchestration. It is here to check the reviewer stays quiet about the mechanical parts and spends its output on the one or two places where behaviour is decided.",
-  "expect": [],
+  "expect": [
+    {
+      "key": "mutation-report-read-from-invocation-dir",
+      "what": "attachMutation passes opts.Dir, which Options documents as any directory inside the repository, and mutation.Locate and Compute join the report name onto it without finding the repository root. make mutants writes mutants.json at the root, so running redline from a subdirectory finds no report and the change reads as unmeasured. originCoverageDir resolves gitx.Open(dir).Root for exactly this. Checked at 8b6d6c6: run.go:234 and :286-307, mutation.go:29 and :98.",
+      "file": "internal/run/run.go",
+      "all_of": ["attachmutation"],
+      "any_of": ["subdirectory", "sub-directory", "any directory inside"],
+      "note": "Labelled after the fact from an Open Code Review sample on 2026-09-16, and checked against the code at the fixture's head by a model reading the tree, not by the change's author. This is a different claim from the rejected mutation-never-available-for-pr-targets: it is about where in the checkout redline runs, not which checkout it reads."
+    }
+  ],
   "quiet": [
     {
       "about": "summarizing what the diff plainly shows",

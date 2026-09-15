@@ -88,6 +88,14 @@
       "what": "The test pins the incidental token %w inside a prose constant the consumer treats as opaque data, so it is sensitive to rewording and blind to the field being gutted.",
       "file": "internal/changectx/changectx_test.go",
       "any_of": ["%w", "wording", "incidental", "opaque", "prose"]
+    },
+    {
+      "key": "removed-history-ignores-reviewable",
+      "what": "expandHistory calls expandRemovedHistory for every path in b.files, and the manifest puts vendored, generated, lockfile and non-Go files in that list. Surviving-line history is held to reviewable files through b.ranges, but removed-line history has no such check, so it runs git diff and up to three git log -L calls per excluded file and emits RoleHistory expansions at Priority 1, above real history. Checked at 1ee9d89: expand.go:59, :89 and :114, changectx.go:100-147.",
+      "file": "internal/changectx/expand.go",
+      "all_of": ["expandremovedhistory"],
+      "any_of": ["vendor", "generated", "lockfile", "non-go", "reviewable", "every changed file", "regardless of whether"],
+      "note": "Labelled after the fact from an Open Code Review sample on 2026-09-16, and checked against the code at the fixture's head by a model reading the tree, not by the change's author."
     }
   ],
   "quiet": [

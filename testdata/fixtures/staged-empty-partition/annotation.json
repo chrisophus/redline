@@ -25,6 +25,14 @@
       "file": "internal/review/prompt.go",
       "all_of": ["cohortTail"],
       "any_of": ["name", "unique", "duplicate", "index", "collide", "same name"]
+    },
+    {
+      "key": "cohorts-request-asks-for-the-raw-count",
+      "what": "cohortsRequest passes opts.Cohorts to cohortsTail, which tells stage one it may draw at most that many groups, while cohortBound can clamp the run to 1 under MinCohortFiles or to the shown-file count, and runStaged, repairPartition and stagedCeilingCost all use the clamped bound. A two-file change is told it may return up to six groups, then has the extras folded away under a message saying the partition needed repair. Checked at a1ae729: staged.go:62 and :139-148, prompt.go:286, review.go:272.",
+      "file": "internal/review/staged.go",
+      "all_of": ["cohortsrequest"],
+      "any_of": ["opts.cohorts", "un-clamped", "unclamped", "raw", "cohortstail", "at most"],
+      "note": "Labelled after the fact from an Open Code Review sample on 2026-09-16, and checked against the code at the fixture's head by a model reading the tree, not by the change's author."
     }
   ],
   "quiet": [],

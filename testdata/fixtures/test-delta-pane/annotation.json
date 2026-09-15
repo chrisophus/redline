@@ -4,7 +4,24 @@
   "summary": "Adds a pane that reports facts about tests from the diff alone: a package changed with no test in it, a skip or focus directive added, a net drop in assertion-like lines.",
   "clean": false,
   "why_this_fixture_exists": "The pane's own source contains the strings it detects, so wave one reports several test-skip-added findings against the detector itself. Those are already on the report. The reviewer must not restate them, which is the instruction this fixture exercises.",
-  "expect": [],
+  "expect": [
+    {
+      "key": "focus-pattern-matches-ordinary-fit",
+      "what": "The bare alternative in focusRe, \\bf(it|describe)\\b, runs on every added line of every test file, Go and Python included, so an ordinary identifier named fit reads as Jasmine's focus directive. Running the pattern at fe2df58 matched model.fit(x, y), self.fit() and const fit = 3, each reported as focusing tests. Checked at testdelta.go:242 and :252. The same pattern later fired on the English word fit in Redline's own Go comments.",
+      "file": "internal/pane/testdelta/testdelta.go",
+      "all_of": ["fit"],
+      "any_of": ["model.fit", "fit(", "named fit", "identifier fit", "word fit", "`fit`", "\"fit\"", "standalone"],
+      "note": "Labelled after the fact from an Open Code Review sample on 2026-09-16, and checked against the code at the fixture's head by a model reading the tree, not by the change's author. A comment that quotes the pane's message will also trip the quiet rule on restating findings, since that rule matches the words focuses tests."
+    },
+    {
+      "key": "rename-reads-as-removed-assertions",
+      "what": "assertionsRemoved nets added against removed assertion-like lines per path, and its doc comment says that keeps a pure move or rename from reading as a loss. ChangedPaths compares blobs by path with no rename detection, so a rename arrives as the old path fully removed and the new path fully added, and the old path gets an assertions-removed finding. Checked at fe2df58, testdelta.go:179-183 and :189, gitx/git.go:539-563, and reproduced with a rename in a throwaway repository.",
+      "file": "internal/pane/testdelta/testdelta.go",
+      "all_of": ["assertionsremoved"],
+      "any_of": ["a rename", "pure rename", "git rename", "renamed", "two different paths", "two paths"],
+      "note": "Labelled after the fact from an Open Code Review sample on 2026-09-16, and checked against the code at the fixture's head by a model reading the tree, not by the change's author."
+    }
+  ],
   "quiet": [
     {
       "about": "restating the pane's findings against its own source",
