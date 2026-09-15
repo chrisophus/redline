@@ -22,6 +22,11 @@ func TestSkipKind(t *testing.T) {
 		{"  xit('x', () => {})", langJS, "skips a test"},
 		{"  describe.only('x', () => {})", langJS, focus},
 		{"  fit('x', () => {})", langJS, focus},
+		{"fit('x', () => {})", langJS, focus},
+		{"xdescribe('x', () => {})", langJS, "skips a test"},
+		{"  chart.fit(width, height)", langJS, ""},
+		{"  const size = layout.fdescribe(node)", langJS, ""},
+		{"  queue.xit(job)", langJS, ""},
 		{"\treturn nil", langGo, ""},
 		{"\tt.Errorf(\"boom\")", langGo, ""},
 		{"\t// skip this comment mentions skip but is not a directive", langGo, ""},
@@ -104,6 +109,61 @@ func TestAssertionRe(t *testing.T) {
 	for _, l := range none {
 		if assertionRe.MatchString(l) {
 			t.Errorf("assertionRe should not match %q", l)
+		}
+	}
+}
+
+func TestCountAssertionsReadsWholeFileMarkers(t *testing.T) {
+	deleted := "diff --git a/old_test.go b/old_test.go\ndeleted file mode 100644\n--- a/old_test.go\n+++ /dev/null\n@@ -1,3 +0,0 @@\n-func TestA(t *testing.T) {\n-\tassert.Equal(t, 1, 1)\n-}\n"
+	created := "diff --git a/new_test.go b/new_test.go\nnew file mode 100644\n--- /dev/null\n+++ b/new_test.go\n@@ -0,0 +1,3 @@\n+func TestA(t *testing.T) {\n+\tassert.Equal(t, 1, 1)\n+}\n"
+	if got := countAssertions("old_test.go", deleted); !got.deleted || got.created || got.removed != 1 || got.added != 0 {
+		t.Errorf("deleted file counted as %+v", got)
+	}
+	if got := countAssertions("new_test.go", created); !got.created || got.deleted || got.added != 1 || got.removed != 0 {
+		t.Errorf("created file counted as %+v", got)
+	}
+}
+
+// ChangedPaths has no rename detection, so a moved test arrives as a deleted
+// path and a created one. The move must not read as a loss, and a real drop in
+// a file that only changed must not be hidden by assertions a new file adds.
+func TestAssertionLosses(t *testing.T) {
+	paths := func(fs []testAssertions) string {
+		var out []string
+		for _, f := range fs {
+			out = append(out, f.path)
+		}
+		return strings.Join(out, ",")
+	}
+	cases := []struct {
+		name  string
+		files []testAssertions
+		want  string
+	}{
+		{"rename", []testAssertions{
+			{path: "old_test.go", removed: 2, deleted: true},
+			{path: "new_test.go", added: 2, created: true},
+		}, ""},
+		{"split into two files", []testAssertions{
+			{path: "all_test.go", removed: 4, deleted: true},
+			{path: "a_test.go", added: 2, created: true},
+			{path: "b_test.go", added: 2, created: true},
+		}, ""},
+		{"rename that also drops assertions", []testAssertions{
+			{path: "old_test.go", removed: 3, deleted: true},
+			{path: "new_test.go", added: 1, created: true},
+		}, "old_test.go"},
+		{"deleted with nothing replacing it", []testAssertions{
+			{path: "old_test.go", removed: 2, deleted: true},
+		}, "old_test.go"},
+		{"drop in a changed file beside a new test", []testAssertions{
+			{path: "a_test.go", added: 1, removed: 3},
+			{path: "b_test.go", added: 5, created: true},
+		}, "a_test.go"},
+	}
+	for _, c := range cases {
+		if got := paths(assertionLosses(c.files)); got != c.want {
+			t.Errorf("%s: losses = %q, want %q", c.name, got, c.want)
 		}
 	}
 }
