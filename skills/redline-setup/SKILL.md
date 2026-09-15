@@ -218,7 +218,8 @@ command. Do not install it.
 
 After writing `.redline.yml`, run `redline run --prepare` on the working
 tree (or `--commit HEAD` in a clean tree) when harness profiles are
-configured, else `redline run`, and read `.redline/findings.json`:
+configured, else `redline run`, and read `findings.json` in the session directory it
+prints:
 
 - Every tool you wired appears in `tools[]` with `status: ran` (or `degraded`
   when its base run or baseline failed and the delta fell back to added-line

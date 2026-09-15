@@ -72,9 +72,9 @@ func TestTopLevelHelpListsCommandsAndGlobalFlagsOnly(t *testing.T) {
 // A flag belonging to another command is refused, and the error names where
 // the right flags are listed.
 func TestForeignFlagIsRefused(t *testing.T) {
-	err := runMain([]string{"review", "--pr", "7"})
+	err := runMain([]string{"review", "--format", "json"})
 	if err == nil {
-		t.Fatal("review accepted --pr, which only run and post read")
+		t.Fatal("review accepted --format, which only run and postmortem read")
 	}
 	if !strings.Contains(err.Error(), "redline help review") {
 		t.Errorf("error does not point at the command's help: %v", err)

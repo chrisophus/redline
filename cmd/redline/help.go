@@ -26,7 +26,7 @@ type command struct {
 var commands = []command{
 	{name: "run", summary: "observe the change and report (the entry point)",
 		flags: runFlags, help: runHelp, run: cmdRun},
-	{name: "review", summary: "review the last run with a model and merge the result",
+	{name: "review", summary: "review a saved session with a model (--run observes first)",
 		flags: reviewFlags, help: reviewHelp, run: cmdReview},
 	{name: "learnings", summary: "draft review rules from what people said about\n              earlier findings on this pull request",
 		flags: outFlag, help: learningsHelp, run: cmdLearnings},
@@ -54,7 +54,7 @@ func commandNamed(name string) (command, bool) {
 // globalFlags are the flags listed once in `redline help` rather than under
 // each command. --out is every command's but gc's, which works on
 // ~/.redline/worktrees and has no session to find.
-var globalFlags = []string{"out"}
+var globalFlags = []string{"out", "session"}
 
 func usage() string {
 	var b strings.Builder
@@ -72,8 +72,13 @@ commands:
 	b.WriteString(`  version     print the version and build info
 
 global flags:
-  --out DIR         evidence directory (default .redline). Every command but
-                    gc and version reads or writes its session there.
+  --out DIR         the session directory itself. Without it, each target's
+                    session lives in .redline/sessions/<name>: pr-1360,
+                    branch-feat-x, commit-<ref>, range-<a..b>, or
+                    tree-<branch> for the working tree. A command given no
+                    target works on the session the last run wrote.
+  --session NAME    name the session under .redline/sessions instead of
+                    deriving it from the target
   -h, --help        print this; after a command, that command's flags
 `)
 	return b.String()
@@ -82,7 +87,7 @@ global flags:
 func commandHelp(c command) string {
 	for _, name := range registeredFlags(c) {
 		if slices.Contains(globalFlags, name) {
-			return c.help + "\nGlobal flags such as --out are listed by `redline help`.\n"
+			return c.help + "\nGlobal flags (--out, --session) are listed by `redline help`.\n"
 		}
 	}
 	return c.help
@@ -99,6 +104,7 @@ func registeredFlags(c command) []string {
 
 func outFlag(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.out, "out", ".redline", "evidence directory")
+	fs.StringVar(&o.session, "session", "", "name of the session under .redline/sessions")
 }
 
 func targetFlags(fs *flag.FlagSet, o *opts) {
@@ -114,22 +120,31 @@ func browseFlags(fs *flag.FlagSet, o *opts) {
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 }
 
-func runFlags(fs *flag.FlagSet, o *opts) {
-	outFlag(fs, o)
-	targetFlags(fs, o)
-	browseFlags(fs, o)
+// observeFlags shape what a run observes. run always takes them; review takes
+// them with --run.
+func observeFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.base, "base", "", "base revision")
 	fs.StringVar(&o.upstream, "upstream", "", "upstream branch for version-collision checks")
 	fs.StringVar(&o.migDir, "migrations", "", "migrations directory")
-	fs.StringVar(&o.format, "format", "report", "report|json")
 	fs.BoolVar(&o.prepare, "prepare", false, "run harness produce steps from .redline.yml before observe")
 	fs.BoolVar(&o.allowMissingCoverage, "allow-missing-coverage", false, "do not fail when a configured coverage profile is missing or stale")
 	fs.BoolVar(&o.noLint, "no-lint", false, "skip lint delta, suppression, and configuration checks")
+}
+
+func runFlags(fs *flag.FlagSet, o *opts) {
+	outFlag(fs, o)
+	targetFlags(fs, o)
+	observeFlags(fs, o)
+	browseFlags(fs, o)
+	fs.StringVar(&o.format, "format", "report", "report|json")
 	fs.BoolVar(&o.file, "file", false, "print the report as a file:// path, no server")
 }
 
 func reviewFlags(fs *flag.FlagSet, o *opts) {
 	outFlag(fs, o)
+	targetFlags(fs, o)
+	observeFlags(fs, o)
+	fs.BoolVar(&o.observe, "run", false, "observe the change and save its session before reviewing it")
 	browseFlags(fs, o)
 	fs.BoolVar(&o.stats, "stats", false, "print the recorded cost distribution and exit")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "print the assembled prompt and its estimated cost, and call nothing")
@@ -199,8 +214,9 @@ const runHelp = `redline run — observe the change and report
 usage:
   redline run [flags]
 
-Writes findings.json, report.md and report.html under --out and prints the
-markdown report. Invokes no model.
+Writes the session, findings.json, report.md and report.html into the
+target's session directory (see ` + "`redline help`" + `), prints the markdown report,
+and marks the session as the latest. Invokes no model.
 
 target (pass only one):
   (default)         working tree, uncommitted work included
@@ -226,15 +242,33 @@ flags:
                     next free port is used if it is taken)
 `
 
-const reviewHelp = `redline review — review the last run with a model and merge the result
+const reviewHelp = `redline review — review a saved session with a model and merge the result
 
 usage:
-  redline run [target flags]
-  redline review [flags]
+  redline review [target flags] [flags]
+  redline review --run [target flags] [flags]
 
-Reviews the session the last ` + "`redline run`" + ` wrote under --out. It takes no
-target flags of its own: name the pull request, branch, commit or range on
-run.
+Reviews a saved session. With no target flag it is the session the last run
+wrote; with one it is that target's session, which has to exist. --run
+observes the target first, as ` + "`redline run`" + ` would, saves its session, and
+reviews that.
+
+session:
+  --run             observe the change and save its session before reviewing
+  --pr N|URL        the pull request's session
+  --branch REF      the branch's session
+  --commit REF      the commit's session
+  --range A..B      the range's session
+  --base REF        with --run: base revision (default: commit parent, range
+                    start, PR base, else origin/main)
+  --upstream REF    with --run: branch new migrations must not collide with
+  --migrations DIR  with --run: restrict migration checks to one directory
+  --prepare         with --run: run harness produce steps from .redline.yml
+  --allow-missing-coverage
+                    with --run: do not fail when a configured coverage
+                    profile is absent
+  --no-lint         with --run: skip lint delta, suppression, and
+                    configuration checks
 
 where the call goes:
   --api NAME        anthropic (default) or openai. openai is any endpoint
@@ -383,8 +417,8 @@ Posts the last run's findings to the pull request it observed. The one
 command that writes to GitHub.
 
 flags:
-  --pr N|URL        the pull request to post to; it must be the one the
-                    session observed
+  --pr N|URL        post that pull request's session (default: the session
+                    the last run wrote, which has to be a pull request's)
   --branch, --commit, --range
                     refused: post targets the pull request the session
                     reviewed

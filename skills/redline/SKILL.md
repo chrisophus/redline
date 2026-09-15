@@ -46,23 +46,26 @@ when you want it required; run the repository's own mutate target first,
 along with whatever it needs in the environment, such as database DSNs when
 data packages are in scope. Mutation is never part of `--prepare`.
 
-This writes `findings.json`, `report.md`, and `report.html` under
-`.redline/`, prints the markdown report, and prints `Report: <url>` on
-stderr.
+This writes `findings.json`, `report.md`, and `report.html` into the
+target's session directory, `.redline/sessions/<name>/`, prints the
+markdown report, and prints the session's path and `Report: <url>` on
+stderr. Each target keeps its own session; the rest of this skill calls
+that directory the session directory.
 
 **1b. Optionally, let Redline review it.**
 
 ```
 redline review              # one model call over the run you just did
+redline review --run --pr 123  # observe a pull request, then review it
 redline review --dry-run    # print the prompt and its estimated price, call nothing
 redline review --stats      # the cost distribution of the reviews recorded so far
 redline postmortem          # what that review proposed, looked up, and ruled
 ```
 
 This is the one Redline command that calls a model. It reads the session
-`run` wrote, sends one request, writes `.redline/review.json`, and
-re-renders the report. It observes nothing itself, so it sees exactly what
-you can see in `findings.json`.
+`run` wrote, sends one request, writes `review.json` in the session directory, and
+re-renders the report. Without `--run` it observes nothing itself, so it
+sees exactly what you can see in `findings.json`.
 
 Use it when you want a second reading beside your own, or when you are
 driving Redline unattended. Skip it when you are reviewing the change
@@ -176,7 +179,7 @@ When you receive it:
 ## Bring your review into the report
 
 If you produce a review of the change, an overview, a per-file summary, and line
-comments, write it to `.redline/review.json` and Redline folds it into the
+comments, write it to `review.json` in the session directory and Redline folds it into the
 report on the next run. It is the same file the verdicts below live in, and
 the file a repository's own publisher reads when it posts the review to
 GitHub. Redline renders what you wrote, marked as yours.
@@ -225,7 +228,7 @@ Redline's deterministic fact.
 
 After a run, for each finding in `findings.json` with rule
 `suppression-added`, decide why the author silenced the linter and write
-`.redline/review.json`, keyed by the finding's own `fingerprint`:
+`review.json` in the session directory, keyed by the finding's own `fingerprint`:
 
 ```json
 {"verdicts": {
@@ -262,7 +265,7 @@ mutant `id` when the report has one (v0.6.0 and later), and
 `<path>:<line>:<mutator>` when it does not. The id survives a rebase that moves
 the line, so use whatever `key` says rather than rebuilding it. A survivor with
 an `id` also carries the command that re-runs that one mutant. Rule on the ones
-worth judging and write them to the same `.redline/review.json`, under
+worth judging and write them to the same `review.json`, under
 `mutationVerdicts`, keyed by that `key`:
 
 ```json

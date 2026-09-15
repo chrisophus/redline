@@ -358,6 +358,20 @@ func worktreeRoot() (string, error) {
 // Head returns the commit HEAD points at.
 func (r *Repo) Head() (string, error) { return r.Resolve("HEAD") }
 
+// Branch returns the name of the branch HEAD is on, or "" when HEAD is
+// detached.
+func (r *Repo) Branch() (string, error) {
+	out, err := r.git("rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	name := strings.TrimSpace(out)
+	if name == "HEAD" {
+		return "", nil
+	}
+	return name, nil
+}
+
 // Clean reports whether the working tree matches HEAD.
 //
 // Ignored files do not count: git leaves them out of `status --porcelain`,
