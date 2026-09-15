@@ -178,8 +178,14 @@ func cmdReview(o opts) error {
 	// and the describing split are each defined by a tool contract briefPrompt
 	// does not describe, so asking for one of them beside --brief is refused.
 	ropts.Brief = o.brief
+	ropts.Thinking = o.thinking
+	if o.thinking && o.mode == review.ModeExplore {
+		return fmt.Errorf("--thinking changes how the one-shot, staged and stepwise calls are sent, and --mode explore builds its own; pass one or the other")
+	}
 	if o.brief {
 		switch {
+		case o.thinking:
+			return fmt.Errorf("--brief turns thinking off and --thinking turns it on; pass one or the other")
 		case o.noBrief:
 			return fmt.Errorf("--brief and --no-brief ask for opposite prompts; pass one or the other")
 		case ropts.Pipeline == review.PipelineStaged:
@@ -256,6 +262,7 @@ func cmdReview(o opts) error {
 				describeSession(res), est.Model, est.API, est.InputEstimate,
 				review.FormatCost(est.CostUSD, est.CostKnown),
 				review.FormatCost(est.CostCeilingUSD, est.CostKnown))
+			fmt.Fprintf(os.Stderr, "redline: request by part: %s\n", est.PartsLine())
 		}
 	}
 
@@ -339,6 +346,9 @@ func cmdReview(o opts) error {
 			out.InputEstimate,
 			review.FormatCost(out.CostUSD, out.CostKnown),
 			review.FormatCost(out.CostCeilingUSD, out.CostKnown))
+		if line := out.PartsLine(); line != "" {
+			fmt.Fprintf(os.Stderr, "redline: request by part: %s\n", line)
+		}
 		return nil
 	}
 	fmt.Fprintln(os.Stderr, "redline: review", out.Summary())

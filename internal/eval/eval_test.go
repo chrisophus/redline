@@ -523,6 +523,12 @@ func TestSweep(t *testing.T) {
 		opts.Synopsis || opts.Mode == review.ModeExplore) {
 		t.Fatal("REDLINE_EVAL_BRIEF is a single pass under the short prompt and cannot be combined with staged, stepwise, synopsis or explore")
 	}
+	// REDLINE_EVAL_THINKING offers each stage's tool instead of pinning it, which
+	// is what lets the model think; see review.Options.Thinking.
+	opts.Thinking = os.Getenv("REDLINE_EVAL_THINKING") != ""
+	if opts.Thinking && opts.Brief {
+		t.Fatal("REDLINE_EVAL_THINKING and REDLINE_EVAL_BRIEF ask for thinking on and off; set one")
+	}
 	// Off by default because it prints a response body per call, and a sweep
 	// that prints thirty-three of them buries its own result table. On when a
 	// run is being read rather than scored: a reply that fails to parse is
@@ -712,6 +718,9 @@ func TestSweep(t *testing.T) {
 	// under the short prompt.
 	if os.Getenv("REDLINE_EVAL_BRIEF") != "" {
 		label += " brief"
+	}
+	if os.Getenv("REDLINE_EVAL_THINKING") != "" {
+		label += " thinking"
 	}
 	if samples > 1 {
 		label += fmt.Sprintf(" ×%d", samples)

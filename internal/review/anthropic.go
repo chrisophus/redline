@@ -92,6 +92,7 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 			OutputTokens:     msg.Usage.OutputTokens,
 			CacheReadTokens:  msg.Usage.CacheReadInputTokens,
 			CacheWriteTokens: msg.Usage.CacheCreationInputTokens,
+			ThinkingTokens:   msg.Usage.OutputTokensDetails.ThinkingTokens,
 		}
 	}
 	hb := newHeartbeat(opts, res.stage())
@@ -165,7 +166,7 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	// stage this call is for, because tool_choice is what says it otherwise.
 	// The block goes after the cached prefix, so a run that degrades still
 	// reads the same cache entry as one that does not.
-	forced := forcesTools(opts.Model)
+	forced := forcesStage(opts)
 	if !forced {
 		blocks = append(blocks, anthropic.NewTextBlock(
 			"\nReturn your answer by calling the "+res.stage()+" tool, and do not answer in prose."))
@@ -212,6 +213,16 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		// vendor's model over another's protocol ignored response_format on one
 		// review in four.
 	}
+	if opts.Thinking && !thinkingOff {
+		// Asked for although Sonnet 5 thinks unasked, because an older model
+		// thinks only when asked, and the summary puts the reasoning on the
+		// stream as it is written. The heartbeat counts it there, and a stream
+		// that is not silent while the model thinks may also keep a proxy that
+		// closes quiet streams from closing this one.
+		params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{
+			Display: anthropic.ThinkingConfigAdaptiveDisplaySummarized,
+		}}
+	}
 	if opts.Effort != "" {
 		params.OutputConfig.Effort = anthropic.OutputConfigEffort(cappedEffort(opts.Effort, thinkingOff))
 	}
@@ -235,6 +246,13 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 // guarantee that comes with it.
 func forcesTools(model string) bool {
 	return !strings.Contains(model, "fable")
+}
+
+// forcesStage reports whether this call pins tool_choice to its stage's tool:
+// never for a model that refuses the pin, and never for a call asked to think,
+// since a pinned call does not think. See Options.Thinking.
+func forcesStage(opts Options) bool {
+	return forcesTools(opts.Model) && !opts.Thinking
 }
 
 // cappedEffort is the effort a request may ask for once it has also turned

@@ -124,6 +124,7 @@ func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Re
 			merged.Usage.OutputTokens += s.res.Usage.OutputTokens
 			merged.Usage.CacheReadTokens += s.res.Usage.CacheReadTokens
 			merged.Usage.CacheWriteTokens += s.res.Usage.CacheWriteTokens
+			merged.Usage.ThinkingTokens += s.res.Usage.ThinkingTokens
 			if s.res.Duration > merged.Duration {
 				merged.Duration = s.res.Duration
 			}

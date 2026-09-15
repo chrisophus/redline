@@ -298,6 +298,7 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 			merged.Usage.OutputTokens += a.res.Usage.OutputTokens
 			merged.Usage.CacheReadTokens += a.res.Usage.CacheReadTokens
 			merged.Usage.CacheWriteTokens += a.res.Usage.CacheWriteTokens
+			merged.Usage.ThinkingTokens += a.res.Usage.ThinkingTokens
 			if a.res.Duration > merged.Duration {
 				merged.Duration = a.res.Duration
 			}

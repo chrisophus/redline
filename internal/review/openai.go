@@ -92,8 +92,11 @@ type openAIResponse struct {
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage *struct {
-		PromptTokens        int64 `json:"prompt_tokens"`
-		CompletionTokens    int64 `json:"completion_tokens"`
+		PromptTokens            int64 `json:"prompt_tokens"`
+		CompletionTokens        int64 `json:"completion_tokens"`
+		CompletionTokensDetails struct {
+			ReasoningTokens int64 `json:"reasoning_tokens"`
+		} `json:"completion_tokens_details"`
 		PromptTokensDetails struct {
 			CachedTokens int64 `json:"cached_tokens"`
 		} `json:"prompt_tokens_details"`
@@ -129,21 +132,26 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 	// the same request over either wire, which is the property that lets the
 	// eval compare an arm run over one against an arm run over the other.
 	fn := res.stage()
+	// Pinned unless the call is asked to think, for the reason Options.Thinking
+	// records; a proxy serving Sonnet over this protocol passes the pin through.
+	var choice any = map[string]any{"type": "function", "function": map[string]any{"name": fn}}
+	user := res.Prompt + res.Tail
+	if opts.Thinking {
+		choice = "auto"
+		user += "\nReturn your answer by calling the " + fn + " function, and do not answer in prose."
+	}
 	body := openAIRequest{
 		Model: opts.Model,
 		Messages: []openAIMessage{
 			{Role: "system", Content: res.System},
 			// One string, because this protocol's user turn is one string and
 			// there is no breakpoint here to keep the two apart for.
-			{Role: "user", Content: res.Prompt + res.Tail},
+			{Role: "user", Content: user},
 		},
 		MaxCompletionTokens: opts.MaxTokens,
 		Tools:               openAITools(opts),
-		ToolChoice: map[string]any{
-			"type":     "function",
-			"function": map[string]any{"name": fn},
-		},
-		ReasoningEffort: opts.Effort,
+		ToolChoice:          choice,
+		ReasoningEffort:     opts.Effort,
 	}
 	buf, err := json.Marshal(body)
 	if err != nil {
@@ -221,6 +229,7 @@ func readOpenAIResponse(raw []byte) (completion, error) {
 		c.usage = Usage{
 			InputTokens:     r.Usage.PromptTokens - cached,
 			OutputTokens:    r.Usage.CompletionTokens,
+			ThinkingTokens:  r.Usage.CompletionTokensDetails.ReasoningTokens,
 			CacheReadTokens: cached,
 		}
 	}
