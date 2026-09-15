@@ -112,7 +112,7 @@ func TestTheTTLAskedForIsTheTTLSent(t *testing.T) {
 	}
 }
 
-// Three exclusions, each because the write could never be read. Decided in one
+// Two exclusions, each because the write could never be read. Decided in one
 // place so a caller cannot reach around it.
 func TestAWriteNobodyCanReadIsNotMade(t *testing.T) {
 	for _, tc := range []struct {
@@ -122,7 +122,7 @@ func TestAWriteNobodyCanReadIsNotMade(t *testing.T) {
 	}{
 		{"the one-shot pair, which is what it is for", Options{Cache: true, API: APIAnthropic, Samples: 1}, true},
 		{"a wire with no breakpoint to place", Options{Cache: true, API: APIOpenAI, Samples: 1}, false},
-		{"samples, which go out together over one fresh prefix", Options{Cache: true, API: APIAnthropic, Samples: 3}, false},
+		{"samples, whose first primes the entry the rest read", Options{Cache: true, API: APIAnthropic, Samples: 3}, true},
 		{"turned off", Options{API: APIAnthropic, Samples: 1}, false},
 	} {
 		if got := tc.opts.cacheOn(); got != tc.want {
