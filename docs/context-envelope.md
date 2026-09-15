@@ -192,3 +192,17 @@ context:
 `scope` is the globs this provider speaks for. A changed file outside every
 provider's scope is reported as unexamined by the context layer, the same way
 the lint pane reports a file no tool covers.
+
+A provider runs as a subprocess whose working directory is the root of the
+tree under review. That is the caller's own checkout when it already sits on
+the reviewed revision with nothing modified, and a detached worktree at the
+head commit otherwise, so a provider must not assume the user's checkout and
+must not rely on anything git does not track: a detached worktree has no
+`node_modules`, no build output, and none of the artifacts a harness produces
+unless `--prepare` builds them. The working directory is the top of the tree,
+not wherever a language keeps its project files. A provider whose language
+configures itself per directory — a `tsconfig.json` under `ui/`, a `go.mod` in
+a nested module — has to find that configuration, for instance by walking up
+from each changed file; searching upward from the working directory finds
+nothing below it. `{{base}}` is replaced with the merge-base SHA. A provider
+still running after five minutes is stopped and reported as failed.
