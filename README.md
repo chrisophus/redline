@@ -123,7 +123,7 @@ across runs so a second review of the same commit is instant. The cache is
 left in place on purpose; `redline gc` reclaims it for the current repository
 (`--older-than 168h` keeps recent worktrees).
 
-Target (all subcommands; pass only one): the working tree by default,
+Target (`run`, and `--pr` on `post`; pass only one): the working tree by default,
 `--commit REF` for that commit against its parent (`HEAD` for the latest),
 `--range A..B` for a set of commits, `--branch REF` for a branch tip,
 `--pr N|URL` for a GitHub pull request.
@@ -131,6 +131,11 @@ Target (all subcommands; pass only one): the working tree by default,
 Flags: `--base REF` (default: commit parent, range start, PR base, else
 origin/main), `--upstream REF` (default: same as base), `--migrations DIR`,
 `--out DIR`, `--open`, `--no-open`, `--port N` (report server, default 8765).
+
+Each command accepts only the flags it reads. `redline help` lists the
+commands and the global flags, and `redline help <command>` lists that
+command's flags. `review` takes no target flags: it reviews the session the
+last `run` wrote, so name the pull request, branch, commit or range on `run`.
 
 ## Lint
 
