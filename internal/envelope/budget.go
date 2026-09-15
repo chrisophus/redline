@@ -96,16 +96,23 @@ func (s Seen) Add(file string, line int) {
 	s[file][line] = true
 }
 
+// carriesHistory is true of the roles whose content is commit history rather
+// than the source at the lines they name.
+func (r Role) carriesHistory() bool {
+	return r == RoleHistory || r == RoleRemoval
+}
+
 // unseen counts how many of an expansion's lines the model has not been shown.
 //
-// History is exempt and always counts as unseen. It carries a line span like
+// History is exempt and always counts as unseen, and so is removal, which is
+// history of deleted lines. It carries a line span like
 // everything else, but its content is commit messages and prior revisions
 // rather than the current source at those lines, so no diff of the working
 // tree can contain it. Treating the span at face value here deletes the one
 // expansion that catches a change undoing a deliberate fix, which is the
 // role's whole reason for existing.
 func (s Seen) unseen(x Expansion) int {
-	if x.Role == RoleHistory {
+	if x.Role.carriesHistory() {
 		return 1
 	}
 	if x.File == "" || x.StartLine <= 0 || x.EndLine < x.StartLine {
@@ -316,11 +323,11 @@ func FitFilter(e *Envelope, ceiling int, seen Seen, filter Filter) Budgeted {
 
 // markSeen records what a kept expansion has now shown the model.
 //
-// History is left out for the reason unseen exempts it: its content is commit
+// History and removal are left out for the reason unseen exempts them: its content is commit
 // messages and prior revisions rather than the current source at those lines,
 // so it does not make the lines it names redundant for anyone else.
 func markSeen(seen Seen, x Expansion) {
-	if x.Role == RoleHistory || x.File == "" || x.StartLine <= 0 {
+	if x.Role.carriesHistory() || x.File == "" || x.StartLine <= 0 {
 		return
 	}
 	for line := x.StartLine; line <= x.EndLine; line++ {

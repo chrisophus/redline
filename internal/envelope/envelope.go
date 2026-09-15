@@ -42,6 +42,10 @@ const (
 	RoleEnclosing Role = "enclosing"
 	// RoleCaller is a call site of a changed exported symbol.
 	RoleCaller Role = "caller"
+	// RoleRemoval is the history of lines the change deletes: the commits that
+	// added them, and with them the reason the lines were there. A deleted guard
+	// reads like a tidy simplification until that commit says why it was added.
+	RoleRemoval Role = "removal"
 	// RoleType is the definition of a type named in a changed signature.
 	RoleType Role = "type"
 	// RoleSibling is another implementation of an interface the change
@@ -62,10 +66,16 @@ const (
 var roleRank = map[Role]int{
 	RoleEnclosing: 0,
 	RoleCaller:    1,
-	RoleType:      2,
-	RoleSibling:   3,
-	RoleTest:      4,
-	RoleHistory:   5,
+	// Removal ranks after callers and ahead of the rest. It shared history's
+	// last place until a 43-file change dropped eight history expansions to fit,
+	// and the deletions' history is the part with a catch to its name. Callers
+	// stay ahead of it because they cost little: across the fixtures a change's
+	// callers ran 4 to 12 thousand characters, and its removals up to 35.
+	RoleRemoval: 2,
+	RoleType:    3,
+	RoleSibling: 4,
+	RoleTest:    5,
+	RoleHistory: 6,
 }
 
 // unknownRoleRank sorts a role Redline does not know after every role it
@@ -116,6 +126,8 @@ func (r Role) Gloss() string {
 		return "a sibling implementation"
 	case RoleTest:
 		return "a test that covers a changed symbol"
+	case RoleRemoval:
+		return "history of lines this change deletes"
 	case RoleHistory:
 		return "prior history of these lines"
 	}

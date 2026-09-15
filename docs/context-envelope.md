@@ -111,6 +111,7 @@ Context beyond the diff. `role` is the vocabulary Redline ranks by:
 |---|---|
 | `enclosing` | The full declaration a changed hunk sits inside — the whole function, not the hunk |
 | `caller` | A call site of a changed exported symbol |
+| `removal` | History of lines the change deletes: the commits that added them |
 | `type` | The definition of a type named in a changed signature |
 | `sibling` | Another implementation of an interface the change touches |
 | `test` | A test covering a changed symbol |
@@ -121,6 +122,11 @@ provider cannot promote a test above an enclosing declaration; `priority`
 orders expansions *within* one role and does nothing else. Higher is more
 valuable. A role Redline does not know ranks after every role it does, is
 kept when it fits, and is named in the report when it does not.
+
+`history` and `removal` carry commit history rather than source, so the diff
+never makes one redundant and neither makes the lines it names redundant for
+anything else. `removal` is ranked apart from `history` so a deletion's
+history is kept ahead of the older history of lines that survive.
 
 Before any of that, Redline decides whether a class of context is wanted at
 all. Today one class is not: test code. A `test` expansion, and any expansion

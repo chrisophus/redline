@@ -50,6 +50,10 @@ type Options struct {
 	AllowMissingCoverage bool
 	// SkipLint omits lint delta, suppression, and configuration panes.
 	SkipLint bool
+	// SkipContext gathers no context beyond the diff: no provider runs, and no
+	// repository rule or neighbouring file is read. It exists to review one
+	// change with context and without and compare the two.
+	SkipContext bool
 
 	// Progress is called with a line worth printing while the run is
 	// working. Nil keeps the library silent, which is what the tests and any
@@ -352,7 +356,18 @@ func Run(opts Options) (*Result, error) {
 	}
 	findings.Sort(res.Report.Findings)
 
-	res.Envelopes, res.ContextAbsent = resolveContext(&res.Report, configRoot, tgt.Dir, baseSHA, changed)
+	if opts.SkipContext {
+		// Recorded as a choice. The review reads unknowns under what no check
+		// determined, and a provider that was never run must not read to it as
+		// one that broke.
+		res.Report.Unknowns = append(res.Report.Unknowns, findings.Unknown{
+			Substrate: "redline/context",
+			Message:   "context beyond the diff was not gathered: --no-context was passed",
+			Reason:    "skipped on request, to compare a review with context against one without",
+		})
+	} else {
+		res.Envelopes, res.ContextAbsent = resolveContext(&res.Report, configRoot, tgt.Dir, baseSHA, changed)
+	}
 	// What this pull request already heard, and what people said back. Read
 	// in the observing wave, not by `review`, for the reason every other input
 	// is: `review` stays a pure function of the session, and a fixture frozen

@@ -57,6 +57,7 @@ type opts struct {
 	scoutModel, scoutEffort                                           string
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
 	noLint                                                            bool
+	noContext                                                         bool
 	stats, verify, noVerify, debug, cache, noCache                    bool
 	synopsis, noSynopsis                                              bool
 	brief, noBrief                                                    bool
@@ -143,7 +144,7 @@ func (o opts) toRun(dir string) run.Options {
 	return run.Options{Dir: dir, Base: o.base, Upstream: o.upstream,
 		MigDir: o.migDir, PR: o.pr, Branch: o.branch, Commit: o.commit,
 		Range: o.revRange, Out: o.out, AllowMissingCoverage: o.allowMissingCoverage,
-		SkipLint: o.noLint,
+		SkipLint: o.noLint, SkipContext: o.noContext,
 		// Which tree was observed decides what the harness could see, so it
 		// is said out loud rather than left to be inferred from a coverage
 		// number that came back missing.

@@ -29,6 +29,7 @@ redline run                   # working tree (uncommitted work included)
 redline run --prepare         # run harness produce steps first (coverage, etc.)
 redline run --allow-missing-coverage  # continue without a configured coverage profile
 redline run --no-lint         # omit lint delta, suppressions, and config drift
+redline run --no-context      # no context beyond the diff, to compare against a run with it
 redline run --commit HEAD     # latest commit only
 redline run --range HEAD~3..HEAD
 redline run --branch feat/x

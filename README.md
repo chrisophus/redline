@@ -102,6 +102,7 @@ go build ./cmd/redline
 ./redline run --prepare           # run harness produce steps from .redline.yml first
 ./redline run --format json       # findings schema on stdout
 ./redline run --no-lint           # omit lint delta, suppressions, and config drift
+./redline run --no-context        # no context beyond the diff, to compare against a run with it
 ./redline run --pr 123            # observe an open pull request
 ./redline post --pr 123           # post the session's findings as one PR review
 ./redline post --pr 123 --profile .github/redline-review.yml

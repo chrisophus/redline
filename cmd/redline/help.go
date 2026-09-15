@@ -129,6 +129,7 @@ func observeFlags(fs *flag.FlagSet, o *opts) {
 	fs.BoolVar(&o.prepare, "prepare", false, "run harness produce steps from .redline.yml before observe")
 	fs.BoolVar(&o.allowMissingCoverage, "allow-missing-coverage", false, "do not fail when a configured coverage profile is missing or stale")
 	fs.BoolVar(&o.noLint, "no-lint", false, "skip lint delta, suppression, and configuration checks")
+	fs.BoolVar(&o.noContext, "no-context", false, "gather no context beyond the diff")
 }
 
 func runFlags(fs *flag.FlagSet, o *opts) {
@@ -236,6 +237,9 @@ flags:
   --allow-missing-coverage
                     do not fail when a configured coverage profile is absent
   --no-lint         skip lint delta, suppression, and configuration checks
+  --no-context      gather no context beyond the diff: no providers, no
+                    repository rules, no neighbouring files. For comparing a
+                    review with context against one without.
   --open            open the HTML report when done
   --no-open         never open a browser
   --file            print the report as a file:// path, no server
@@ -270,6 +274,7 @@ session:
                     profile is absent
   --no-lint         with --run: skip lint delta, suppression, and
                     configuration checks
+  --no-context      with --run: gather no context beyond the diff
 
 where the call goes:
   --api NAME        anthropic (default) or openai. openai is any endpoint
