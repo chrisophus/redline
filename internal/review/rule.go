@@ -486,6 +486,7 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 	stageOne.Usage.InputTokens += out.Usage.InputTokens
 	stageOne.Usage.CacheReadTokens += out.Usage.CacheReadTokens
 	stageOne.Usage.CacheWriteTokens += out.Usage.CacheWriteTokens
+	stageOne.Usage.ThinkingTokens += out.Usage.ThinkingTokens
 	stageOne.RulingOutputTokens += out.Usage.OutputTokens
 	stageOne.Duration += out.Duration
 	stageOne.recost(opts.Model)

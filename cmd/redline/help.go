@@ -154,6 +154,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.model, "model", "", "model to review and check the findings with")
 	fs.StringVar(&o.effort, "effort", "", "low|medium|high|xhigh|max, for the review and the checking")
 	fs.StringVar(&o.scoutModel, "scout-model", "", "model to check the findings with, when it should differ from --model")
+	fs.BoolVar(&o.thinking, "thinking", false, "let the model think: offer the review tool instead of forcing it")
 	fs.StringVar(&o.scoutEffort, "scout-effort", "", "effort for the checking, when it should differ from --effort")
 	fs.StringVar(&o.mode, "mode", "", "oneshot or explore")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "with --mode explore: turn limit")
@@ -293,6 +294,13 @@ model:
   --scout-effort LEVEL
                     effort for the checking, when it should differ from
                     --effort
+  --thinking        let the model think before it answers. Redline pins the
+                    call to the review tool, and a pinned call does not think
+                    on Sonnet 5 (0 thinking tokens on two probes, against 485
+                    and 2,576 with the tool offered). This offers the tool
+                    and asks for adaptive thinking; the thinking is billed as
+                    output. Not yet measured on the eval. Cannot be combined
+                    with --brief or --mode explore.
 
 shape:
   --mode MODE       oneshot (default) sends the context Redline chose;

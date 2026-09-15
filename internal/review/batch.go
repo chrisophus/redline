@@ -217,6 +217,7 @@ func RunBatch(ctx context.Context, ins []Input, opts Options) ([]*Result, []erro
 					OutputTokens:     msg.Usage.OutputTokens,
 					CacheReadTokens:  msg.Usage.CacheReadInputTokens,
 					CacheWriteTokens: msg.Usage.CacheCreationInputTokens,
+					ThinkingTokens:   msg.Usage.OutputTokensDetails.ThinkingTokens,
 				},
 				truncated: msg.StopReason == anthropic.StopReasonMaxTokens,
 				model:     string(msg.Model),

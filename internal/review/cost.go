@@ -83,6 +83,9 @@ type Usage struct {
 	OutputTokens     int64 `json:"outputTokens"`
 	CacheReadTokens  int64 `json:"cacheReadTokens"`
 	CacheWriteTokens int64 `json:"cacheWriteTokens"`
+	// ThinkingTokens is the part of OutputTokens the model spent thinking. It
+	// is already inside OutputTokens and priced there, so Cost does not read it.
+	ThinkingTokens int64 `json:"thinkingTokens,omitempty"`
 }
 
 // Cost prices a usage record. ok is false for a model with no entry, and the

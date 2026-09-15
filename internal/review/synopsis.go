@@ -101,6 +101,7 @@ func applySynopsis(res *Result, model string, walkthrough findings.Review, usage
 	res.Usage.InputTokens += usage.InputTokens
 	res.Usage.CacheReadTokens += usage.CacheReadTokens
 	res.Usage.CacheWriteTokens += usage.CacheWriteTokens
+	res.Usage.ThinkingTokens += usage.ThinkingTokens
 	res.SynopsisOutputTokens += written
 	res.SynopsisFailed = failed
 	res.recost(model)

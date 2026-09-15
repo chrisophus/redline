@@ -117,7 +117,16 @@ type Options struct {
 	// was rerun at five samples and scored 1/3 against 0/3, one catch in
 	// fifteen trials. Nothing there distinguishes the two emissions, so the
 	// short prompt is what Brief is now, and both wires run it.
-	Brief     bool
+	Brief bool
+	// Thinking lets the model think before it answers. Sonnet 5 thinks by
+	// default, but not on a call whose tool_choice pins one tool: measured
+	// straight to the API on 2026-09-15, pinned calls spent 0 and 0 thinking
+	// tokens, the same request with tool_choice auto spent 485 and 2,576, and
+	// adaptive thinking set beside the pin still spent 0. So a call asked to
+	// think offers its stage's tool instead of pinning it and says in words
+	// which tool answers, the way a model that refuses the pin is already
+	// asked. Off by default until an eval arm has measured what it buys.
+	Thinking  bool
 	Ceiling   int
 	MaxTokens int64
 	// MaxCostUSD refuses to send a request whose estimated cost exceeds it.
@@ -398,6 +407,9 @@ type Result struct {
 	// tool catalogue, the whole system block with its language fragments, and
 	// the change, the priors and the diff.
 	FixedEstimate int `json:"fixedEstimate"`
+	// Parts is the estimated size of each part of the request, the tools
+	// included, which InputEstimate leaves out.
+	Parts []PromptPart `json:"parts,omitempty"`
 	// ContextRoom is what was left for the context block after those.
 	ContextRoom int `json:"contextRoom"`
 	// OverCeiling is set when the fixed parts alone exceed the ceiling, so
@@ -532,6 +544,9 @@ func (r *Result) Summary() string {
 	if r.Stubs > 0 {
 		s += fmt.Sprintf(" stubs=%d", r.Stubs)
 	}
+	if r.Usage.ThinkingTokens > 0 {
+		s += fmt.Sprintf(" thinking=%d", r.Usage.ThinkingTokens)
+	}
 	if r.Samples > 1 {
 		// The cost is the whole union's, so the sample count has to be beside
 		// it: otherwise a line reads as one expensive review.
@@ -595,6 +610,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	}
 	budget := envelope.FitAllFilter(in.Envelopes, room, in.shownLines(), in.contextFilter())
 	prompt := in.build(budget)
+	parts := promptParts(in, opts, system, budget)
 	est := envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt)
 	expected := opts.ExpectedOutput
 	if expected <= 0 {
@@ -624,6 +640,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		System:         system,
 		InputEstimate:  est,
 		FixedEstimate:  fixed,
+		Parts:          parts,
 		ContextRoom:    room,
 		OverCeiling:    fixed > opts.Ceiling,
 		Ceiling:        opts.Ceiling,
