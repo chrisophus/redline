@@ -97,6 +97,7 @@ A project skill overrides the personal one. Teammates still need the binary.
 go build ./cmd/redline
 ./redline run                     # observe; markdown report on stdout
 ./redline review                  # review the last run with a model
+./redline review --run --pr 123   # observe a pull request, then review it
 ./redline review --dry-run        # print the prompt and its price; call nothing
 ./redline run --prepare           # run harness produce steps from .redline.yml first
 ./redline run --format json       # findings schema on stdout
@@ -111,9 +112,10 @@ go build ./cmd/redline
 ./redline gc                      # remove this repo's cached review worktrees
 ```
 
-`run` writes `.redline/findings.json`, `.redline/report.md`,
-`.redline/report.html`, and any captured artifacts under
-`.redline/evidence/`. `findings.json` plus git is the whole machine
+`run` writes `findings.json`, `report.md`, `report.html`, and any captured
+artifacts under `evidence/` into the target's session directory,
+`.redline/sessions/<name>/` (`pr-123`, `branch-feat-x`, or `tree-<branch>` for
+the working tree), and prints that path. `findings.json` plus git is the whole machine
 interface: an agent reviewing the change reads it so it does not re-derive
 what Redline measured, and runs git for anything else.
 
@@ -123,7 +125,7 @@ across runs so a second review of the same commit is instant. The cache is
 left in place on purpose; `redline gc` reclaims it for the current repository
 (`--older-than 168h` keeps recent worktrees).
 
-Target (`run`, and `--pr` on `post`; pass only one): the working tree by default,
+Target (`run`, `review`, and `--pr` on `post`; pass only one): the working tree by default,
 `--commit REF` for that commit against its parent (`HEAD` for the latest),
 `--range A..B` for a set of commits, `--branch REF` for a branch tip,
 `--pr N|URL` for a GitHub pull request.
@@ -134,8 +136,14 @@ origin/main), `--upstream REF` (default: same as base), `--migrations DIR`,
 
 Each command accepts only the flags it reads. `redline help` lists the
 commands and the global flags, and `redline help <command>` lists that
-command's flags. `review` takes no target flags: it reviews the session the
-last `run` wrote, so name the pull request, branch, commit or range on `run`.
+command's flags.
+
+Sessions do not overwrite each other. Each target keeps its own directory
+under `.redline/sessions/`, and a command given no target works on the one
+the last `run` wrote. `--session NAME` names one yourself, and `--out DIR`
+makes DIR the session directory, as it was before sessions. `review` reads a
+saved session: `redline review --pr 123` reviews that pull request's session,
+and `redline review --run --pr 123` observes it first.
 
 ## Lint
 

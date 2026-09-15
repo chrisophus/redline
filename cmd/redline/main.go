@@ -65,6 +65,10 @@ type opts struct {
 	maxCost                                                           float64
 	cacheTTL, pipeline                                                string
 	crossSummaries, noCrossSummaries                                  bool
+	// observe is review's --run. session is --session; root is the --out the
+	// caller gave, and sessionKey the session resolveSession chose under it.
+	observe                   bool
+	session, root, sessionKey string
 }
 
 func runMain(args []string) error {
@@ -101,6 +105,11 @@ func runMain(args []string) error {
 			return nil
 		}
 		return fmt.Errorf("%w (see `redline help %s`)", err, c.name)
+	}
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	if err := resolveSession(c, &o, set); err != nil {
+		return err
 	}
 	return c.run(o)
 }
@@ -149,6 +158,7 @@ func cmdRun(o opts) error {
 	if err := write(o, res); err != nil {
 		return err
 	}
+	recordSession(o)
 	if o.format == "json" {
 		if err := emitJSON(res.Report); err != nil {
 			return err

@@ -19,14 +19,31 @@ import (
 
 // cmdReview is the one command in Redline that calls a model.
 //
-// It reviews the session `run` already wrote rather than observing anything
-// itself, which is what makes it a pure function of its inputs: the same
+// It reviews a saved session. With --run it observes the change and saves the
+// session first, then reviews the saved file like any other, which is what
+// keeps it a pure function of its inputs: the same
 // session reviewed twice sees exactly the same material, and a frozen session
 // is a fixture the eval can replay. It also means `run` stays model-free, and
 // a repository with no API key still gets the whole report.
 func cmdReview(o opts) error {
+	if o.observe {
+		if o.stats {
+			return fmt.Errorf("--stats reads the cost ledger and observes nothing; drop --run")
+		}
+		res, runErr := execute(o)
+		if res == nil {
+			return runErr
+		}
+		if err := write(o, res); err != nil {
+			return err
+		}
+		recordSession(o)
+		if runErr != nil {
+			return runErr
+		}
+	}
 	if o.stats {
-		entries, err := review.ReadLedger(o.out)
+		entries, err := review.ReadLedger(o.ledgerDir())
 		if err != nil {
 			return err
 		}
@@ -61,7 +78,7 @@ func cmdReview(o opts) error {
 	// Price the estimate against what this installation's reviews actually
 	// emit, when it has emitted any.
 	var expected int64
-	if entries, lerr := review.ReadLedger(o.out); lerr == nil {
+	if entries, lerr := review.ReadLedger(o.ledgerDir()); lerr == nil {
 		// Priced against this shape's own rows. A staged row's output is a
 		// describing call plus one per cohort, and using it to price a
 		// one-shot call would quote several calls for one.
@@ -291,7 +308,7 @@ func cmdReview(o opts) error {
 	// sent from one that never left — a dry run, or a refusal before the
 	// call — so those still write nothing.
 	if out != nil && !o.dryRun && out.Usage.InputTokens > 0 {
-		if rerr := review.Record(o.out, out, o.effort); rerr != nil {
+		if rerr := review.Record(o.ledgerDir(), out, o.effort); rerr != nil {
 			// Not fatal. A review that produced findings has done its job,
 			// and losing a cost line is not worth failing the command over.
 			fmt.Fprintf(os.Stderr, "redline: could not record the run's cost: %v\n", rerr)
@@ -349,7 +366,7 @@ func cmdReview(o opts) error {
 		}
 		fmt.Fprintln(os.Stderr)
 	}
-	if entries, rerr := review.ReadLedger(o.out); rerr == nil && len(entries) > 1 {
+	if entries, rerr := review.ReadLedger(o.ledgerDir()); rerr == nil && len(entries) > 1 {
 		// The target is an average, so print the average - of the shape this
 		// run just used, which is the only set this run belongs to.
 		if s := review.SummarizeByShape(entries)[out.Pipeline]; s.Count > 1 {
