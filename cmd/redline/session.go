@@ -33,7 +33,7 @@ var (
 
 // observeOnlyFlags mean something only while a change is being observed, so
 // review accepts them only with --run.
-var observeOnlyFlags = []string{"base", "upstream", "migrations", "prepare", "allow-missing-coverage", "no-lint"}
+var observeOnlyFlags = []string{"base", "upstream", "migrations", "prepare", "allow-missing-coverage", "no-lint", "no-context"}
 
 // targetSession names the session a command's target flags point at. It reads
 // only the flags, so `run --pr 7` and a later `review --pr 7` arrive at the

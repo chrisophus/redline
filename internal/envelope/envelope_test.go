@@ -43,7 +43,7 @@ func TestUnknownRoleIsReportedNotRejected(t *testing.T) {
 }
 
 func TestKnownRolesRankInCostOrder(t *testing.T) {
-	want := []Role{RoleEnclosing, RoleCaller, RoleType, RoleSibling, RoleTest, RoleHistory}
+	want := []Role{RoleEnclosing, RoleCaller, RoleRemoval, RoleType, RoleSibling, RoleTest, RoleHistory}
 	got := Roles()
 	if len(got) != len(want) {
 		t.Fatalf("Roles() = %v, want %v", got, want)
