@@ -101,6 +101,9 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 			return completion{usage: usage()}, err
 		}
 		hb.observe(ev.Delta.Type, ev.Delta.Text, ev.Delta.Thinking, ev.Delta.PartialJSON)
+		if opts.onOutput != nil && ev.Type == "content_block_start" {
+			opts.onOutput()
+		}
 	}
 	if err := stream.Err(); err != nil {
 		return completion{usage: usage()}, err

@@ -169,8 +169,10 @@ type Options struct {
 	// agreement as confidence, which was the first thing this looked like it
 	// should do.
 	//
-	// Cost scales with Samples and wall time does not, because the calls are
-	// independent and go out together.
+	// Cost scales with Samples. With the cache on, the first sample goes out
+	// alone and the rest follow once its stream shows the prompt has been
+	// read, so they read it from the cache and wall time grows by about one
+	// prompt's read. With the cache off they all go out together.
 	Samples int
 	// Progress is called as work completes, for a command that would
 	// otherwise print nothing for several minutes. A review is one blocking
@@ -187,6 +189,10 @@ type Options struct {
 	// can tell the review call from the ruling call. Debug shows a bounded
 	// line on the terminal; this is the whole thing, for writing to disk.
 	Capture func(name string, data []byte)
+	// onOutput is called as the call's stream carries content, which the
+	// endpoint cannot send before it has read the whole prompt. runSamples
+	// hands it to the sample that primes the cache. Nil is fine.
+	onOutput func()
 	// DryRun assembles the prompt and prices it without calling anything.
 	DryRun bool
 	// Answer runs the lookups a finding asked for, between the review and the
@@ -312,20 +318,25 @@ const (
 // cacheOn reports whether this run marks a breakpoint, and is the one place
 // that decides it.
 //
-// Three exclusions, each because the write would never be read. The OpenAI
+// Two exclusions, each because the write would never be read. The OpenAI
 // wire has no breakpoint to place: what a gateway caches is its own business
-// and this protocol says nothing about it. Samples go out together over one
-// fresh prefix, so every one of them writes it and none reads it - N writes at
-// a quarter above base input to save one later read. And the batch tier's
-// window is twenty-four hours, where a five-minute entry is gone long before
-// the results are.
+// and this protocol says nothing about it. And the batch tier's window is
+// twenty-four hours, where a five-minute entry is gone long before the results
+// are.
+//
+// Samples used to be a third, since they went out together over one fresh
+// prefix and every one of them wrote it. runSamples now sends the first alone
+// and the rest once its stream shows the prompt has been read, so the rest
+// read the entry the first wrote. On a 247k-token prompt through a proxy, a
+// four-sample run cost $1.46, of which the two samples that answered from the
+// cache cost $0.06 and $0.10.
 //
 // The wire test is written as "not the OpenAI one" rather than "the Anthropic
 // one" because the empty API means Anthropic everywhere else and a caller that
 // reaches the wire code without withDefaults would otherwise lose the cache
 // silently, which is the failure this whole change is about noticing.
 func (o Options) cacheOn() bool {
-	return o.Cache && o.API != APIOpenAI && o.Samples <= 1
+	return o.Cache && o.API != APIOpenAI
 }
 
 // Result is one review and what it cost.
@@ -672,11 +683,12 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	}
 	// The tripwire measures the worst case, not the expected one. Its whole
 	// job is the run where the model does spend its entire allowance, and with
-	// --samples that run happens N times: the samples go out together over the
-	// same prompt, so the worst case is N full-price calls, not one. The
-	// describing and ruling calls are counted where they are turned on, at
-	// their own worst case, because a run refused after paying for two of
-	// three calls is the failure this guard exists to prevent.
+	// --samples that run happens N times: every sample carries the same prompt
+	// and none is certain to read it from the cache, so the worst case is N
+	// full-price calls, not one. The describing and ruling calls are counted
+	// where they are turned on, at their own worst case, because a run refused
+	// after paying for two of three calls is the failure this guard exists to
+	// prevent.
 	worst := res.CostCeilingUSD*float64(opts.Samples) +
 		synopsisCeilingCost(opts, in, res) + stagedCeilingCost(opts, in, res) +
 		stepwiseCeilingCost(opts, in, res) + verifyCeilingCost(opts, res)

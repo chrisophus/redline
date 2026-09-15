@@ -37,9 +37,14 @@ import (
 // never is, and the measurement is worth taking again under it. Until it is,
 // the conclusion above stands as what was actually observed.
 
-// runSamples takes Samples independent reviews and unions them. The calls go
-// out together: they share no state, so the wall clock is one review's and
-// only the money scales.
+// runSamples takes Samples independent reviews and unions them. They share no
+// state, so with the cache off they go out together and the wall clock is one
+// review's. With it on, the first goes alone and primes the cache, and the rest
+// go out together as soon as its stream carries content: the endpoint cannot
+// send content before it has read the prompt, so by then the entry is written
+// and the rest pay the cache-read rate for the prompt instead of each paying to
+// read it. They also go when the first ends without content, failed or not, so
+// a primer that breaks costs the rest nothing but the wait.
 func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Result, error) {
 	type sample struct {
 		res *Result
@@ -49,16 +54,25 @@ func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Re
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var landed int
-	for i := range opts.Samples {
+	// launch starts sample i. A non-nil primed is closed once that sample's
+	// stream carries content, or when its call ends without any.
+	launch := func(i int, primed chan struct{}) {
 		wg.Add(1)
-		go func(i int) {
+		go func() {
 			defer wg.Done()
 			// Each sample is a fresh call over the same assembled prompt.
 			// One sample's options are the single-sample options, so nothing
 			// below this point knows it is one of many.
 			one := opts
 			one.Samples = 1
+			release := func() {}
+			if primed != nil {
+				var once sync.Once
+				release = func() { once.Do(func() { close(primed) }) }
+				one.onOutput = release
+			}
 			res, err := runOnce(ctx, in, one, first.clone())
+			release()
 			out[i] = sample{res: res, err: err}
 			if opts.Progress == nil {
 				return
@@ -77,7 +91,26 @@ func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Re
 			opts.Progress(fmt.Sprintf("sample %d of %d: %d finding(s), %s",
 				landed, opts.Samples, len(res.Review.Comments),
 				FormatCost(res.CostUSD, res.CostKnown)))
-		}(i)
+		}()
+	}
+	if opts.cacheOn() {
+		primed := make(chan struct{})
+		launch(0, primed)
+		if opts.Progress != nil {
+			opts.Progress(fmt.Sprintf("sample 1 of %d goes first; the other %d follow once it has read the prompt, "+
+				"so they read it from the cache", opts.Samples, opts.Samples-1))
+		}
+		select {
+		case <-primed:
+		case <-ctx.Done():
+		}
+		for i := 1; i < opts.Samples; i++ {
+			launch(i, nil)
+		}
+	} else {
+		for i := range opts.Samples {
+			launch(i, nil)
+		}
 	}
 	wg.Wait()
 

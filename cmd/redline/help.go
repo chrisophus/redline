@@ -268,8 +268,9 @@ shape:
   --max-turns N     with --mode explore: turn limit (default 5)
   --samples N       take N independent reviews and union them (default 1).
                     Samples do not overlap, so recall rises with N and cost
-                    rises with it too; the calls go out together, so wall
-                    time does not.
+                    rises with it too. With the cache on, the first goes out
+                    alone and the rest follow once it has read the prompt, so
+                    they read the prompt from the cache.
   --verify          look up what each finding said would settle it, then rule
                     on every finding with the answers in hand. Only findings
                     the ruling keeps are posted; the rest stay on the report
@@ -333,8 +334,7 @@ cost and caching:
                     prompt cache, so the second call reads it back instead of
                     paying for it again. On by default; --no-cache sends both
                     at full input rate. Ignored where the write could not be
-                    read: --api openai, --samples above one, and the batch
-                    tier.
+                    read: --api openai and the batch tier.
   --no-cache        send every call at full input rate
   --cache-ttl D     how long the cached prefix lives, 5m (default) or 1h. The
                     hour costs 2x base input to write against the five
