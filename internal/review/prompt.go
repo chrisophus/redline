@@ -2,6 +2,7 @@ package review
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -83,7 +84,6 @@ What is worth reporting, given tools have already run:
 What is not worth reporting:
 
 - Style, formatting, and naming, unless the change makes the code wrong.
-- Anything a linter would catch. One already ran.
 - Any disagreement between prose and code: a doc comment, a commit message,
   a plan document or the pull request body that does not match what the diff
   does. The author's account is given above so you know what the change is
@@ -299,12 +299,17 @@ func systemFor(opts Options, stage string) string {
 	return systemPrompt
 }
 
-// oneShotAddendum is true only of the pass that gets no tools. It sat in
+// oneShotAddendum tells the one-shot pass its material is complete. It sat in
 // systemPrompt until explore mode inherited it there, and was told its context
 // was complete in the same block that handed it a catalogue and a fetch tool.
+//
+// It also said the pass had no tools, which stopped being true when every stage
+// began answering through the tool catalogue. A pinned call never noticed. A
+// call asked to think is not pinned, and was told in one block that it had no
+// tools and in the next to answer by calling one.
 const oneShotAddendum = `
 
-You have no tools in this pass. Everything you get to see is below.`
+Everything you get to see is below.`
 
 // synopsisPrompt is the describing stage's own turn, appended after the shared
 // prefix so the block the cache is keyed on does not move.
@@ -1045,6 +1050,7 @@ func (in Input) priorsSection() string {
 		var b strings.Builder
 		b.WriteString("## Findings already established\n\n")
 		b.WriteString("None. The deterministic checks that ran found nothing to report.\n\n")
+		b.WriteString(lintSentence(in.Report))
 		return b.String()
 	}
 	var b strings.Builder
@@ -1071,6 +1077,7 @@ func (in Input) priorsSection() string {
 		}
 	}
 	b.WriteString("\n")
+	b.WriteString(lintSentence(in.Report))
 	if len(in.Report.Unknowns) > 0 {
 		b.WriteString("Not determined by any check:\n")
 		for _, u := range in.Report.Unknowns {
@@ -1079,6 +1086,25 @@ func (in Input) priorsSection() string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// lintSentence names the linters that ran over this change, so the reviewer
+// leaves their ground to them. The system prompt used to say a linter had run
+// on every change, which was false wherever the lint check did not run, and a
+// reviewer told so set aside exactly the defects nothing had looked for. Empty
+// when no linter ran: saying nothing claims nothing.
+func lintSentence(r *findings.Report) string {
+	var names []string
+	for _, t := range r.Tools {
+		if (t.Status == "ran" || t.Status == "degraded") && !slices.Contains(names, t.Name) {
+			names = append(names, t.Name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return "Linters ran over this change: " + strings.Join(names, ", ") +
+		". What they catch is already in the findings above, so leave it to them.\n\n"
 }
 
 // coverageSection is the lines this change added that no test executes.
