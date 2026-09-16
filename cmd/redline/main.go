@@ -64,14 +64,14 @@ type opts struct {
 	port, ceiling, maxTokens, maxTurns, samples                       int
 	cohorts, minCohortFiles                                           int
 	maxCost                                                           float64
-	cacheTTL, pipeline                                                string
+	cacheTTL                                                          string
 	crossSummaries, noCrossSummaries                                  bool
 	planOnly                                                          bool
 	onlyCohorts                                                       string
 	// observe is review's --run. session is --session; root is the --out the
 	// caller gave, and sessionKey the session resolveSession chose under it.
 	observe                   bool
-	thinking                  bool
+	thinking, stepwise        bool
 	session, root, sessionKey string
 }
 

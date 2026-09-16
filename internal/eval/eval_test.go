@@ -522,19 +522,28 @@ func TestSweep(t *testing.T) {
 	}
 	// The fan-out arm. Same reason it cannot be batched as the synopsis arm:
 	// the cohort calls read what stage one wrote.
-	switch os.Getenv("REDLINE_EVAL_PIPELINE") {
-	case review.PipelineStaged:
-		opts.Pipeline = review.PipelineStaged
+	if os.Getenv("REDLINE_EVAL_PIPELINE") != "" {
+		t.Fatal("REDLINE_EVAL_PIPELINE is gone with --pipeline; set REDLINE_EVAL_COHORTS=N for the split or REDLINE_EVAL_STEPWISE for the conversation")
+	}
+	if n := os.Getenv("REDLINE_EVAL_COHORTS"); n != "" {
+		cohorts, err := strconv.Atoi(n)
+		if err != nil || cohorts < 1 {
+			t.Fatalf("REDLINE_EVAL_COHORTS is a cohort count of at least 1, not %q", n)
+		}
+		opts.Cohorts = cohorts
+	}
+	if opts.Cohorts > 1 {
 		opts.CrossSummaries = os.Getenv("REDLINE_EVAL_NO_CROSS_SUMMARIES") == ""
 		if os.Getenv("REDLINE_EVAL_BATCH") != "" {
-			t.Fatal("a staged run is a call per cohort over what stage one wrote; the batch tier cannot pair them")
+			t.Fatal("a split run is a call per cohort over what stage one wrote; the batch tier cannot pair them")
 		}
-	case review.PipelineStepwise:
+	}
+	if os.Getenv("REDLINE_EVAL_STEPWISE") != "" {
 		// The progressive-disclosure arm: one conversation that describes the
 		// change from its diff and judges it once the rest of the packet
 		// arrives. Its second turn resends the first's answer, so it cannot be
 		// batched for the reason the synopsis arm cannot.
-		opts.Pipeline = review.PipelineStepwise
+		opts.Stepwise = true
 		if os.Getenv("REDLINE_EVAL_BATCH") != "" {
 			t.Fatal("a stepwise run is two turns of one conversation, the second resending the first's answer; the batch tier cannot pair them")
 		}
@@ -554,9 +563,8 @@ func TestSweep(t *testing.T) {
 	}
 	opts.Brief = os.Getenv("REDLINE_EVAL_BRIEF") != ""
 	if opts.Brief {
-		if opts.Pipeline == review.PipelineStaged || opts.Pipeline == review.PipelineStepwise ||
-			opts.Mode == review.ModeExplore {
-			t.Fatal("REDLINE_EVAL_BRIEF is a single pass under the short prompt and cannot be combined with staged, stepwise or explore")
+		if opts.Cohorts > 1 || opts.Stepwise || opts.Mode == review.ModeExplore {
+			t.Fatal("REDLINE_EVAL_BRIEF is a single pass under the short prompt and cannot be combined with a split, stepwise or explore")
 		}
 		// The short prompt writes the walkthrough and the findings in one call
 		// and carries no synopsis contract, so the default describing call
@@ -745,16 +753,16 @@ func TestSweep(t *testing.T) {
 	// The describing call is the default, so what distinguishes a row is its
 	// absence. A row labelled the old way would read as the arm under test
 	// when it is now the shipped shape.
-	if !opts.Synopsis && opts.Pipeline != review.PipelineStaged && opts.Pipeline != review.PipelineStepwise && !opts.Brief {
+	if !opts.Synopsis && opts.Cohorts <= 1 && !opts.Stepwise && !opts.Brief {
 		label += " no-synopsis"
 	}
-	if os.Getenv("REDLINE_EVAL_PIPELINE") == review.PipelineStaged {
-		label += " staged"
+	if opts.Cohorts > 1 {
+		label += fmt.Sprintf(" staged cohorts=%d", opts.Cohorts)
 		if os.Getenv("REDLINE_EVAL_NO_CROSS_SUMMARIES") != "" {
 			label += " no-cross"
 		}
 	}
-	if os.Getenv("REDLINE_EVAL_PIPELINE") == review.PipelineStepwise {
+	if opts.Stepwise {
 		label += " stepwise"
 	}
 	// The long prompt is the default, so the row that has to say so is the one

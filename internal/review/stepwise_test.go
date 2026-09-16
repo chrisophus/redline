@@ -41,7 +41,7 @@ func stepwiseOpts(api *exploreAPI) Options {
 	return Options{
 		API: APIAnthropic, BaseURL: api.srv.URL, APIKey: "k",
 		Model: "claude-sonnet-5", MaxTokens: 4096, MaxCostUSD: 5,
-		Pipeline: PipelineStepwise, Cache: true, CacheTTL: CacheTTL5m,
+		Stepwise: true, Cache: true, CacheTTL: CacheTTL5m,
 	}
 }
 
@@ -289,7 +289,7 @@ func TestStepwiseRefusesWhatItCannotRunUnder(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			o := tc.opts
 			o.BaseURL, o.APIKey, o.MaxCostUSD = api.srv.URL, "k", 5
-			o.Pipeline = PipelineStepwise
+			o.Stepwise = true
 			_, err := Run(context.Background(), exploreInput(), o)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("err = %v, want a refusal naming %q", err, tc.want)
@@ -299,7 +299,7 @@ func TestStepwiseRefusesWhatItCannotRunUnder(t *testing.T) {
 	if n := len(api.seen()); n != 0 {
 		t.Errorf("a refused run sent %d request(s)", n)
 	}
-	if _, _, err := RunBatch(context.Background(), []Input{exploreInput()}, Options{Pipeline: PipelineStepwise}); err == nil {
+	if _, _, err := RunBatch(context.Background(), []Input{exploreInput()}, Options{Stepwise: true}); err == nil {
 		t.Error("a stepwise run cannot be batched, and the batch path must say so")
 	}
 }
@@ -317,7 +317,7 @@ func TestTheTripwirePricesBothTurns(t *testing.T) {
 		t.Errorf("a one-shot run must add nothing, got %f", got)
 	}
 	step := base
-	step.Pipeline = PipelineStepwise
+	step.Stepwise = true
 	res, err := Assemble(in, step)
 	if err != nil {
 		t.Fatal(err)
@@ -368,7 +368,7 @@ func TestAFindingsReplyOfStubsIsRefused(t *testing.T) {
 // is the same bytes on all three.
 func TestTheStepwiseCatalogueCarriesEveryTurnsContract(t *testing.T) {
 	var names []string
-	for _, tool := range stageTools(Options{Pipeline: PipelineStepwise}) {
+	for _, tool := range stageTools(Options{Stepwise: true}) {
 		names = append(names, tool.Name)
 	}
 	for _, want := range []string{StageSynopsis, StageFindings, StageReview} {

@@ -169,13 +169,13 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.BoolVar(&o.noSynopsis, "no-synopsis", false, "one call writes the walkthrough and the findings together")
 	fs.BoolVar(&o.brief, "brief", false, "one call under the short prompt")
 	fs.BoolVar(&o.noBrief, "no-brief", false, "the long prompt, which is already the default")
-	fs.StringVar(&o.pipeline, "pipeline", "", "oneshot, staged to split the change into cohorts and review each, or stepwise to describe from the diff before seeing the rest")
-	fs.IntVar(&o.cohorts, "cohorts", 0, "upper bound on parallel cohort reviews under --pipeline staged (default 6)")
-	fs.IntVar(&o.minCohortFiles, "min-cohort-files", 0, "below this many shown files a staged run is one cohort (default 3)")
+	fs.IntVar(&o.cohorts, "cohorts", 0, "split the change into at most this many cohorts and judge each in its own call (default 1, no split)")
+	fs.BoolVar(&o.stepwise, "stepwise", false, "one conversation: describe from the diff, then judge once the rest of the packet arrives")
+	fs.IntVar(&o.minCohortFiles, "min-cohort-files", 0, "below this many shown files a split run is one cohort (default 3)")
 	fs.BoolVar(&o.crossSummaries, "cross-summaries", false, "give each cohort the other cohorts' summaries (on by default)")
 	fs.BoolVar(&o.noCrossSummaries, "no-cross-summaries", false, "each cohort reviews its files knowing nothing of the others")
-	fs.BoolVar(&o.planOnly, "plan", false, "with --pipeline staged: describe and partition, then stop before judging any cohort")
-	fs.StringVar(&o.onlyCohorts, "only-cohorts", "", "with --pipeline staged: comma-separated cohort names or 1-based indices to judge, skipping the rest")
+	fs.BoolVar(&o.planOnly, "plan", false, "with --cohorts above 1: describe and partition, then stop before judging any cohort")
+	fs.StringVar(&o.onlyCohorts, "only-cohorts", "", "with --cohorts above 1: comma-separated cohort names or 1-based indices to judge, skipping the rest")
 	fs.BoolVar(&o.debug, "debug", false, "log each model request, response, and scout tool call to stderr")
 	fs.IntVar(&o.ceiling, "ceiling", 0, "token ceiling for the whole request")
 	fs.IntVar(&o.maxTokens, "max-tokens", 0, "cap on the response")
@@ -349,29 +349,28 @@ shape:
                     placeholder in place of a review on 22 of 168 calls,
                     where the long prompt did on none of 42, and left about
                     twice the unlabelled comments. It cannot be combined with
-                    --pipeline staged, --synopsis or --mode explore, each
+                    --cohorts above 1, --stepwise or --mode explore, each
                     defined by a tool contract the short prompt does not
                     describe.
   --no-brief        the long prompt, which is the default. Kept so scripts
                     that pass it still run.
-  --pipeline SHAPE  oneshot (default) is one call that judges the whole
-                    change. staged describes it first, splits the shown files
-                    into cohorts, and reviews each cohort in its own call
-                    over the same cached prefix. What it is aimed at is
-                    measured: a reviewer with fifty files in front of it
-                    spends its finding-count on the first few. Staged implies
-                    the describing call, so --synopsis is not also needed.
-                    stepwise is one conversation in two turns: the first sees
-                    the change and its diff and writes the walkthrough, the
-                    second gets the findings, coverage and context and writes
-                    the comments. The second resends the first, so it reads
-                    that from the cache. Anthropic wire only, and it cannot
-                    be combined with --brief, --synopsis or --mode explore.
-  --cohorts N       upper bound on parallel cohort reviews (default 6). Stage
-                    one draws fewer when the change has fewer groups in it;
-                    the tripwire prices the bound.
+  --cohorts N       the split. 1 (default) judges the whole change in one
+                    call. Above 1, the describing call also splits the shown
+                    files into at most N cohorts, and each cohort is judged
+                    in its own call over the same cached prefix. What it is
+                    aimed at is measured: a reviewer with fifty files in
+                    front of it spends its finding-count on the first few.
+                    Stage one draws fewer when the change has fewer groups
+                    in it; the tripwire prices the bound.
+  --stepwise        one conversation in two turns: the first sees the change
+                    and its diff and writes the walkthrough, the second gets
+                    the findings, coverage and context and writes the
+                    comments. The second resends the first, so it reads that
+                    from the cache. Anthropic wire only, and it cannot be
+                    combined with --cohorts above 1, --brief or --mode
+                    explore.
   --min-cohort-files N
-                    below this many shown files a staged run is one cohort
+                    below this many shown files a split run is one cohort
                     (default 3).
   --cross-summaries give each cohort the other cohorts' summaries, which is
                     the default
@@ -379,15 +378,15 @@ shape:
                     each cohort is told nothing about its neighbours.
                     Cheaper, and gives up the correlations a cohort call
                     raises about a change it can see but was not given.
-  --plan            with --pipeline staged: describe the change and draw the
+  --plan            with --cohorts above 1: describe the change and draw the
                     partition, then stop. No cohort call is sent, so
                     Comments comes back empty because nothing judged the
                     change, not because it was clean; the report and
                     Summary say plan-only rather than a finding count.
-                    Ignored under any other pipeline, which has no
-                    partition to stop before.
+                    Refused without a split, which has no partition to
+                    stop before.
   --only-cohorts LIST
-                    with --pipeline staged: judge only the cohorts stage one
+                    with --cohorts above 1: judge only the cohorts stage one
                     drew that match one of a comma-separated list of
                     selectors, and skip the rest. Each is a 1-based index
                     into the partition as printed, a substring of a

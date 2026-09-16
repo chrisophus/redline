@@ -82,10 +82,7 @@ func cmdReview(o opts) error {
 		// Priced against this shape's own rows. A staged row's output is a
 		// describing call plus one per cohort, and using it to price a
 		// one-shot call would quote several calls for one.
-		shape := review.PipelineOneShot
-		if o.pipeline == review.PipelineStaged || o.pipeline == review.PipelineStepwise {
-			shape = o.pipeline
-		}
+		shape := review.Options{Cohorts: o.cohorts, Stepwise: o.stepwise}.Shape()
 		expected = review.SummarizeByShape(entries)[shape].ExpectedOutput()
 	}
 	ropts := review.Options{
@@ -142,36 +139,12 @@ func cmdReview(o opts) error {
 	// file and a judging call whose output cap is not shared with fifty file
 	// summaries. --no-synopsis is the way back to one call.
 	ropts.Synopsis = !o.noSynopsis
-	// The pipeline shape. Staged implies the describing call - it is the call
-	// that draws the partition - so --synopsis is not also required, and
-	// --no-synopsis does not switch it off: a run asked to fan out cannot be
-	// given nothing to fan out over.
-	switch o.pipeline {
-	case "", review.PipelineOneShot, review.PipelineStaged, review.PipelineStepwise:
-		ropts.Pipeline = o.pipeline
-	default:
-		return fmt.Errorf("--pipeline is %s, %s or %s, not %q",
-			review.PipelineOneShot, review.PipelineStaged, review.PipelineStepwise, o.pipeline)
-	}
 	// Stepwise replaces the describing split rather than combining with it: its
-	// first turn is the describing call. The library clears Synopsis under it,
-	// so a caller who passed --synopsis would otherwise be told nothing about a
-	// flag that did nothing.
-	if ropts.Pipeline == review.PipelineStepwise {
-		switch {
-		case o.brief:
-			return fmt.Errorf("--brief is a single pass under the review contract, and --pipeline %s is two turns under contracts the short prompt does not describe; pass one or the other",
-				review.PipelineStepwise)
-		case o.synopsis:
-			return fmt.Errorf("--pipeline %s already describes the change in its first turn, so --synopsis has nothing to add; pass one or the other",
-				review.PipelineStepwise)
-		case o.mode == review.ModeExplore:
-			return fmt.Errorf("--pipeline %s and --mode explore are both multi-turn conversations over the packet; pass one or the other",
-				review.PipelineStepwise)
-		}
-		// Turn one is the describing call, so the default one has nothing to
-		// add. The library ignores it under this shape either way; clearing it
-		// keeps the options saying what the run will do.
+	// first turn is the describing call, so the default one comes off. The
+	// combinations it cannot run under are refused by the library, before
+	// anything is priced.
+	ropts.Stepwise = o.stepwise
+	if o.stepwise {
 		ropts.Synopsis = false
 	}
 	// One call under the short prompt, when --brief asks for it.
@@ -187,13 +160,13 @@ func cmdReview(o opts) error {
 	// configuration of the short prompt caught 7, 8 and 14 of 38 on three runs,
 	// so a single run cannot rank the two.
 	//
-	// The richer shapes replace it rather than combine with it: staged, explore
+	// The richer shapes replace it rather than combine with it: the split, explore
 	// and the describing split are each defined by a tool contract briefPrompt
 	// does not describe, so asking for one of them beside --brief is refused.
 	ropts.Brief = o.brief
 	ropts.Thinking = o.thinking
 	if o.thinking && o.mode == review.ModeExplore {
-		return fmt.Errorf("--thinking changes how the one-shot, staged and stepwise calls are sent, and --mode explore builds its own; pass one or the other")
+		return fmt.Errorf("--thinking changes how the one-shot, split and stepwise calls are sent, and --mode explore builds its own; pass one or the other")
 	}
 	if o.brief {
 		switch {
@@ -201,11 +174,9 @@ func cmdReview(o opts) error {
 			return fmt.Errorf("--brief turns thinking off and --thinking turns it on; pass one or the other")
 		case o.noBrief:
 			return fmt.Errorf("--brief and --no-brief ask for opposite prompts; pass one or the other")
-		case ropts.Pipeline == review.PipelineStaged:
-			return fmt.Errorf("--brief is a single pass under the review contract, so it cannot draw the %s partition; pass one or the other",
-				review.PipelineStaged)
-		case o.synopsis:
-			return fmt.Errorf("--brief writes the walkthrough in the same call, so --synopsis has nothing to add; pass one or the other")
+		case o.cohorts > 1:
+			return fmt.Errorf("--brief is a single pass under the review contract, so it cannot draw the partition --cohorts %d is judged over; pass one or the other",
+				o.cohorts)
 		case o.mode == review.ModeExplore:
 			return fmt.Errorf("--brief is a single pass and --mode explore is a tool loop; pass one or the other")
 		}
@@ -214,23 +185,14 @@ func cmdReview(o opts) error {
 		// here rather than be sent under a prompt that cannot answer it.
 		ropts.Synopsis = false
 	}
-	if o.planOnly && ropts.Pipeline != review.PipelineStaged {
-		shape := ropts.Pipeline
-		if shape == "" {
-			shape = review.PipelineOneShot
-		}
-		return fmt.Errorf("--plan stops before the cohort calls --pipeline %s sends, and %s has none; pass --pipeline %s",
-			review.PipelineStaged, shape, review.PipelineStaged)
+	// Both work on the partition, and one cohort draws none.
+	if o.planOnly && o.cohorts <= 1 {
+		return fmt.Errorf("--plan stops before the cohort calls a split sends, and without --cohorts above 1 there is no split; pass --cohorts N")
 	}
 	ropts.PlanOnly = o.planOnly
 	if o.onlyCohorts != "" {
-		if ropts.Pipeline != review.PipelineStaged {
-			shape := ropts.Pipeline
-			if shape == "" {
-				shape = review.PipelineOneShot
-			}
-			return fmt.Errorf("--only-cohorts selects among the cohorts --pipeline %s draws, and %s has none; pass --pipeline %s",
-				review.PipelineStaged, shape, review.PipelineStaged)
+		if o.cohorts <= 1 {
+			return fmt.Errorf("--only-cohorts selects among the cohorts a split draws, and without --cohorts above 1 there is no split; pass --cohorts N")
 		}
 		for _, sel := range strings.Split(o.onlyCohorts, ",") {
 			if sel = strings.TrimSpace(sel); sel != "" {

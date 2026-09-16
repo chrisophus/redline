@@ -12,6 +12,20 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Changed
+- **`--cohorts N` is the split, and `--pipeline` is gone.** The flag decided
+  two things at once, whether a separate call describes the change and
+  whether the judging is one call or several, and a caller could not set them
+  apart. `--cohorts 1`, the default, is the describing call and one judging
+  call; above 1, the describing call also draws the partition and each cohort
+  is judged in its own call. The default bound was 6 under `--pipeline staged`
+  and is 1 now, so a split has to name its size. The stepwise conversation is
+  `--stepwise`, refused beside `--cohorts` above 1. `--plan` and
+  `--only-cohorts` are refused without a split. `--synopsis` beside `--brief`
+  or `--stepwise` is accepted rather than refused: it names the default, and
+  the shape that replaces it wins. No synonym is kept for `--pipeline`. The
+  ledger still groups rows as `oneshot`, `staged` and `stepwise`, so earlier
+  rows compare. The eval harness reads `REDLINE_EVAL_COHORTS` and
+  `REDLINE_EVAL_STEPWISE` and stops on `REDLINE_EVAL_PIPELINE`.
 - **The plan documents are one document.** Eight documents under `docs/plans`
   had grown past three thousand lines, most of it describing work that has
   since shipped, and several of their measurements were overturned by later

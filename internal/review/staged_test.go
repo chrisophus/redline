@@ -32,7 +32,7 @@ func stagedOpts(api *exploreAPI) Options {
 	return Options{
 		API: APIAnthropic, BaseURL: api.srv.URL, APIKey: "k",
 		Model: "claude-sonnet-5", MaxTokens: 4096, MaxCostUSD: 5,
-		Pipeline: PipelineStaged, CrossSummaries: true,
+		Cohorts: 6, CrossSummaries: true,
 	}
 }
 
@@ -318,7 +318,7 @@ func TestTheCatalogueCarriesOnlyTheShapesContracts(t *testing.T) {
 	// cohorts is the one that got the 400; this is what was probed and
 	// answered 200, and the fallback call reassembles under the one-shot
 	// shape to get the review contract it needs.
-	staged := names(Options{Pipeline: PipelineStaged})
+	staged := names(Options{Cohorts: 6})
 	if !slices.Equal(staged, []string{StageRuling, StageFindings, StageCohorts}) {
 		t.Errorf("a staged run carries the three contracts it can ask for, got %v", staged)
 	}
@@ -327,12 +327,12 @@ func TestTheCatalogueCarriesOnlyTheShapesContracts(t *testing.T) {
 	}
 	// Every call of one staged run sends the same array, which is the whole
 	// invariant the cache rests on.
-	first, err := json.Marshal(stageTools(Options{Pipeline: PipelineStaged}))
+	first, err := json.Marshal(stageTools(Options{Cohorts: 6}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for range 20 {
-		again, err := json.Marshal(stageTools(Options{Pipeline: PipelineStaged}))
+		again, err := json.Marshal(stageTools(Options{Cohorts: 6}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -371,5 +371,29 @@ func TestTheLedgerNeverAveragesAcrossShapes(t *testing.T) {
 	}
 	if s := one.String(); !strings.HasPrefix(s, PipelineOneShot+":") {
 		t.Errorf("a shape's line must say which shape it is: %q", s)
+	}
+}
+
+// The shape is read off the options, not set: one cohort is the unsplit
+// review, more is the split, and stepwise is its own. The default is one.
+func TestTheShapeIsReadOffCohortsAndStepwise(t *testing.T) {
+	for _, tc := range []struct {
+		o    Options
+		want string
+	}{
+		{Options{}, PipelineOneShot},
+		{Options{Cohorts: 1}, PipelineOneShot},
+		{Options{Cohorts: 2}, PipelineStaged},
+		{Options{Stepwise: true}, PipelineStepwise},
+	} {
+		if got := tc.o.withDefaults().Shape(); got != tc.want {
+			t.Errorf("%+v: shape %q, want %q", tc.o, got, tc.want)
+		}
+	}
+	if d := (Options{}).withDefaults(); d.Cohorts != 1 {
+		t.Errorf("the default is no split, got %d cohort(s)", d.Cohorts)
+	}
+	if d := (Options{Cohorts: 3, Synopsis: true}).withDefaults(); d.Synopsis {
+		t.Error("a split describes the change itself, so Synopsis must be cleared under it")
 	}
 }

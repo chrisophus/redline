@@ -17,14 +17,14 @@ func TestReviewRefusesStepwiseBesideTheShapesItReplaces(t *testing.T) {
 		want string
 	}{
 		{"brief", opts{brief: true}, "--brief"},
-		{"synopsis", opts{synopsis: true}, "--synopsis"},
+		{"a split", opts{cohorts: 4}, "--cohorts"},
 		{"explore", opts{mode: review.ModeExplore}, "--mode explore"},
 		{"the openai wire", opts{api: review.APIOpenAI}, "Anthropic wire"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			o := tc.o
 			o.out, o.dryRun, o.noOpen = dir, true, true
-			o.pipeline = review.PipelineStepwise
+			o.stepwise = true
 			var err error
 			captureStdout(t, func() { err = cmdReview(o) })
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -34,7 +34,7 @@ func TestReviewRefusesStepwiseBesideTheShapesItReplaces(t *testing.T) {
 	}
 	var err error
 	captureStdout(t, func() {
-		err = cmdReview(opts{out: dir, dryRun: true, noOpen: true, pipeline: review.PipelineStepwise})
+		err = cmdReview(opts{out: dir, dryRun: true, noOpen: true, stepwise: true})
 	})
 	if err != nil {
 		t.Errorf("a stepwise dry run on its own must be accepted: %v", err)
