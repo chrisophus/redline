@@ -135,8 +135,15 @@ func stageTools(opts Options) []stageTool {
 				"you were shown. No comments and no verdicts; a later call judges.",
 			Schema: synopsisSchema(),
 		}}
-	default:
+	case opts.Verify:
 		return []stageTool{review, ruling}
+	default:
+		// No second call is coming, so the ruling contract is 443 tokens of
+		// grammar nothing can be pinned to. It rides on every call of a
+		// verified run because the ruling reads the prefix the review wrote;
+		// with the checking pass off there is no prefix to share and no stage
+		// to reach, and the review is the only contract the run can use.
+		return []stageTool{review}
 	}
 }
 

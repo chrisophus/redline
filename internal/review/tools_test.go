@@ -39,7 +39,10 @@ func keysOf(m map[string]json.RawMessage) []string {
 // tokens written with nothing read.
 func TestEveryStageSendsTheSameToolsAndDiffersOnlyInTheChoice(t *testing.T) {
 	api := serveSSE(t, anthropicSSE("end_turn", 10, 5, anthropicText(0, "{}")))
-	opts := Options{BaseURL: api.srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 100}
+	// Verify, because the shared prefix is a property of the run that makes
+	// both calls. A run without the checking pass declares the review contract
+	// alone: there is no second call to read what the first one wrote.
+	opts := Options{BaseURL: api.srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 100, Verify: true}
 	for _, stage := range []string{StageReview, StageRuling} {
 		res := &Result{System: "the system prompt", Prompt: "the whole prompt", Stage: stage}
 		if _, err := completeAnthropic(context.Background(), opts, res); err != nil {
@@ -258,5 +261,27 @@ func TestEveryContractObeysTheRulesStrictModeEnforces(t *testing.T) {
 	}
 	for _, tool := range stageTools(Options{Pipeline: PipelineStaged}) {
 		walk(tool.Name, tool.Schema)
+	}
+}
+
+// The ruling contract rides on a review call so the ruling can read the prefix
+// that call wrote. With the checking pass off no ruling call happens, so the
+// contract is grammar nothing can be pinned to, and it was costing 443 input
+// tokens on every review a default run makes.
+func TestTheRulingContractRidesOnlyOnAVerifiedRun(t *testing.T) {
+	plain := stageTools(Options{}.withDefaults())
+	if len(plain) != 1 || plain[0].Name != StageReview {
+		names := make([]string, 0, len(plain))
+		for _, tl := range plain {
+			names = append(names, tl.Name)
+		}
+		t.Errorf("a run with no checking pass declared %v, want the review contract alone", names)
+	}
+	verified := stageTools(Options{Verify: true}.withDefaults())
+	if len(verified) != 2 || verified[0].Name != StageReview || verified[1].Name != StageRuling {
+		t.Fatalf("a verified run declared %d tool(s), want review then ruling", len(verified))
+	}
+	if cheaper, dearer := toolsTokens(Options{}.withDefaults()), toolsTokens(Options{Verify: true}.withDefaults()); cheaper >= dearer {
+		t.Errorf("dropping the ruling contract saved nothing: %d tokens against %d", cheaper, dearer)
 	}
 }

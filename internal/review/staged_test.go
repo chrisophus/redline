@@ -303,9 +303,16 @@ func TestTheCatalogueCarriesOnlyTheShapesContracts(t *testing.T) {
 		}
 		return out
 	}
-	oneshot := names(Options{})
-	if len(oneshot) != 2 {
-		t.Errorf("a one-shot run reaches the review and the ruling, got %v", oneshot)
+	// Reachable is about the calls this run will make, not only its pipeline.
+	// A one-shot run with the checking pass on makes two calls and carries
+	// both contracts; with it off the ruling is a stage nothing can be pinned
+	// to, and its schema is 443 input tokens on the only call there is.
+	oneshot := names(Options{Verify: true})
+	if !slices.Equal(oneshot, []string{StageReview, StageRuling}) {
+		t.Errorf("a verified one-shot run reaches the review and the ruling, got %v", oneshot)
+	}
+	if plain := names(Options{}); !slices.Equal(plain, []string{StageReview}) {
+		t.Errorf("a run with no checking pass reaches the review alone, got %v", plain)
 	}
 	// The array the endpoint accepts, exactly. review + ruling + findings +
 	// cohorts is the one that got the 400; this is what was probed and
