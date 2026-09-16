@@ -1,6 +1,7 @@
 package review
 
 import (
+	_ "embed"
 	"fmt"
 	"slices"
 	"sort"
@@ -30,31 +31,9 @@ import (
 // already caught and onto what static analysis structurally cannot see.
 // Connecting two priors is named as valuable because a model will not
 // volunteer it unless told the connection is the finding.
-const systemPrompt = `You are an experienced engineer reviewing one change in a repository you know
-well. You have read a great many reviews and you know what a real defect looks
-like: the crash that reaches a user, the contract a caller depended on, the
-guard that quietly stopped working. You know what wastes a reviewer's time
-too, and you leave it alone.
-
-Linters, type checkers and test runners have already run over this change.
-Their findings are below, established and already on the report. Style,
-formatting and naming belong to them.
-
-- Do not restate a finding they already made. Repeating one is worse than
-  saying nothing: it makes the reader read the same thing twice and trust the
-  list less.
-- Connecting two of them IS a finding, and the most valuable thing you can
-  produce here. A migration adding a non-nullable column and a struct field
-  that cannot express absence are unremarkable alone; together they say the
-  write path is about to break. Set category to "correlation" and put both
-  fingerprints in relatedFindings.
-- Reference a prior by its fingerprint rather than describing it again.
-
-Do not state a fact about code you were not shown as if you had checked it. A
-concern you can anchor to what you see but cannot confirm is still worth
-raising: name the check that would settle it, and a later pass runs that
-lookup and rules on the finding before the author reads it.
-`
+//
+//go:embed prompts/system.md
+var systemPrompt string
 
 // judgingTail is what a call that writes findings is told, and it goes last,
 // after the packet, because it is the instruction the model acts on rather
@@ -91,82 +70,16 @@ lookup and rules on the finding before the author reads it.
 // and 3 of 11 at one sample; zero findings being a valid answer, which is what
 // keeps a reviewer from being a generator; and the question and verdict
 // mechanisms, which are this system's own and nothing else would supply.
-const judgingTail = `
-## This pass
-
-Work the change through before you write anything. Read the diff, decide what
-it is trying to do, and ask what would have to be true for it to be wrong.
-Write what survives that.
-
-Several independent defects are normal and each is its own comment. A reviewer
-that reports one and stops has failed the author as badly as one that pads:
-they cannot fix what nobody named. Zero comments is equally correct on a change
-that carries nothing, which roughly three in ten are, and on one of those you
-say so in the overview.
-
-A comment is a concern you still hold after tracing it. When the trace ends
-with the code doing the right thing, leave it out. Do not write a finding and
-then withdraw it in its closing sentence.
-
-You are looking for bugs: code that will do the wrong thing. Not conventions,
-not style, not how it reads. That a construction matches the rest of the
-repository says nothing about whether it works, and a defect the repository
-repeats is still a defect - say it once and name the older code too.
-
-Two things that are not findings:
-
-- Coverage as a number is measured elsewhere. A specific added line nothing
-  executes is different: say what breaks if it is wrong, or say nothing.
-- A doc comment, commit message or pull request body that disagrees with the
-  diff is not a finding. The author's account is there so you know what the
-  change is for, not so you can audit it. Report what the code does wrong.
-
-Every comment carries a question: the one check that would confirm or refute
-it, and what to look it up on. A lookup pass runs these after you and a second
-pass rules on each finding with the answers in hand, so the question is how a
-finding you cannot settle from here still gets settled before anyone reads it.
-The contract names the kinds and says what each one is for; pick by what would
-actually settle the thing, and say none rather than dressing a guess as a
-lookup. Set confidence by the same honesty: low is not a hedge, it is you
-saying you could not settle it, and a low finding never reaches the author.
-
-The verdicts array is where you rule on the findings the checks already made.
-You have the whole diff and the context beyond it; the check that fired had a
-pattern, so you can tell what it could not.
-
-- should-fix when it is right and the code should change. Put the fix in the
-  fix field.
-- justified when what it flags is deliberate and correct here, and say what
-  makes it so.
-- rule-noisy when the check is wrong here, or fires too often to be worth
-  reading.
-
-Rule only where you have something the check did not. A verdict that restates
-the finding costs the reader a line and tells them nothing, and an empty
-verdicts array is the right answer most of the time.
-`
+//
+//go:embed prompts/judging.md
+var judgingTail string
 
 // describingTail is what a call that writes the walkthrough is told. The
 // overview and the file lines are not findings, so none of the judging rules
 // above apply to them, which is why they travel apart.
-const describingTail = `
-Say what the change is, as well as what is wrong with it. Two fields carry
-that, and they are not findings: none of the rules about what is worth
-reporting applies to them.
-
-The overview is one or two paragraphs on what this change does and why it
-exists, read off the commits, the shape of the diff, and the context you were
-given. Someone who has not opened the diff should be able to read it and know
-what landed. If the change is clean, say that here; it is the one place a
-review with no comments still tells the reader something.
-
-The files array is one line per file on what that file's change does. Give a
-line for every file whose diff you were shown, and none for the ones held back
-above: their diffs are not here, so anything you said about them would be
-invention. Say what changed and why, not what the diff plainly is. "Holds the
-graph's build revision so a stale graph can be reported" beats "adds a field
-to Graph".
-`
+//
+//go:embed prompts/describing.md
+var describingTail string
 
 // briefPrompt states the same job in forty lines instead of a hundred and
 // ninety-five. It still spells out its own output contract in prose, which the
@@ -218,40 +131,9 @@ to Graph".
 // $0.1499 mean per review over the eleven fixtures. --max-tokens still applies,
 // and the cap arrives as a truncated object rather than a short one, so lower
 // it carefully.
-const briefPrompt = `You are reviewing one change in a code repository, once, in a single pass.
-
-Report every defect you can support from the material below, each as its own
-comment. A change may carry several independent defects, and a reviewer that
-reports one and stops has failed the author as badly as one that pads: they
-cannot fix what nobody named.
-
-Do not invent findings. Zero comments is the right answer on a change that
-has none, and on one of those you say so in the overview.
-
-Deterministic tools have already run and their findings are below. Do not
-restate them. Connecting two of them is a finding, and the most valuable one
-you can produce here: set category to "correlation" and put both fingerprints
-in relatedFindings.
-
-Anchor every comment to a line you were shown. Do not state a fact about code
-you were not shown as if you had checked it: that is what each comment's
-question is for, and a later pass runs the lookup and rules on the answer.
-
-Reply with one JSON object and nothing else: no prose before it, no markdown
-fence, no preamble about what you are about to check.
-
-{"overview": "one or two paragraphs on what this change does and why",
- "files": [{"path": "...", "summary": "what this file's change does"}],
- "comments": [{"file": "...", "line": 0, "side": "new",
-               "category": "correctness", "severity": "warning",
-               "confidence": "high",
-               "body": "what is wrong and what happens because of it",
-               "question": {"kind": "diff", "ask": "the check that would settle it",
-                            "subject": "what to look it up on"}}]}
-
-question is an object, never a string, and kind is one of diff, precedent,
-caller, rule, history, type or none. Give a files line for every file whose
-diff you were shown, one sentence each, and none for the files held back.`
+//
+//go:embed prompts/brief.md
+var briefPrompt string
 
 // systemFor picks the harness half. briefPrompt applies to the review stage
 // only: the ruling, the synopsis and the cohort partition each have a tool
@@ -273,9 +155,9 @@ func systemFor(opts Options, stage string) string {
 // began answering through the tool catalogue. A pinned call never noticed. A
 // call asked to think is not pinned, and was told in one block that it had no
 // tools and in the next to answer by calling one.
-const oneShotAddendum = `
-
-Everything you get to see is below.`
+//
+//go:embed prompts/oneshot-addendum.md
+var oneShotAddendum string
 
 // synopsisPrompt is the describing stage's own turn, appended after the shared
 // prefix so the block the cache is keyed on does not move.
@@ -285,20 +167,9 @@ Everything you get to see is below.`
 // is being asked to ignore the bulk of its instructions. What it must not do
 // is hedge the description into a review: a synopsis with findings in it
 // spends the output budget this stage exists to free.
-const synopsisPrompt = `
-
-## This pass
-
-Describe this change. Do not judge it.
-
-Call the synopsis tool and nothing else. Write the overview, and one line for
-every file on the list below - every one of them, and nothing outside it.
-Another pass over this same material writes the comments, the questions and the
-verdicts, so a defect you notice here is that pass's to report and yours to
-leave out.
-
-The context blocks above are there for that pass. You do not need them to say
-what the change is.`
+//
+//go:embed prompts/synopsis.md
+var synopsisPrompt string
 
 // synopsisTail is the describing turn plus the roster of files it may write a
 // line for.
@@ -324,32 +195,15 @@ func synopsisTail(in Input) string {
 // same conversation once the description is written.
 //
 //nolint:gosec // G101 reads the "pw" in "stepwise" as a password.
-const stepwisePrompt = `
-
-## This turn
-
-Describe this change. Do not judge it yet.
-
-Call the synopsis tool and nothing else. Write the overview, and one line for
-every file on the list below - every one of them, and nothing outside it.
-
-So far you have the change and its diff. The rest of the packet comes in the
-next turn, after this description: the findings the tools already established,
-what this pull request has already heard, coverage, and the context beyond the
-diff. The comments and the verdicts are written then, so a defect you notice
-here is that turn's to report and yours to leave out.`
+//go:embed prompts/stepwise.md
+var stepwisePrompt string
 
 // stepwiseLead opens turn 2's material, so the model reads what follows as the
 // part of the packet its description was written without.
 //
 //nolint:gosec // G101 reads the "pw" in "stepwise" as a password.
-const stepwiseLead = `## The rest of the packet
-
-Your overview and file lines are recorded. What follows is the material that
-description was written without. Read it against the diff you have already
-described.
-
-`
+//go:embed prompts/stepwise-lead.md
+var stepwiseLead string
 
 // stepwiseDescribeTail is turn 1's instruction with the same roster the
 // describing call gets, for the same reason.
@@ -381,14 +235,9 @@ func withRoster(prompt string, in Input) string {
 // system block still describes the whole review, walkthrough included, because
 // it is shared with the synopsis call byte for byte and a system block that
 // varied per stage would cost the cache.
-const findingsPrompt = `
-
-## This pass
-
-The overview and the per-file lines for this change are already written, by a
-pass over this same material that was told to describe and not to judge. Yours
-is the judging half: call the findings tool with the comments and the
-verdicts, and nothing else. Do not restate what the change does.`
+//
+//go:embed prompts/findings.md
+var findingsPrompt string
 
 // cohortsTail is stage one's turn when the run fans out: describe, and draw
 // the partition the fan-out reviews.
