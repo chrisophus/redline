@@ -539,17 +539,7 @@ func TestSweep(t *testing.T) {
 		}
 	}
 	if os.Getenv("REDLINE_EVAL_STEPWISE") != "" {
-		// The progressive-disclosure arm: one conversation that describes the
-		// change from its diff and judges it once the rest of the packet
-		// arrives. Its second turn resends the first's answer, so it cannot be
-		// batched for the reason the synopsis arm cannot.
-		opts.Stepwise = true
-		if os.Getenv("REDLINE_EVAL_BATCH") != "" {
-			t.Fatal("a stepwise run is two turns of one conversation, the second resending the first's answer; the batch tier cannot pair them")
-		}
-		// Turn one is the describing call, so the default one has nothing to
-		// add. The command clears it under this shape for the same reason.
-		opts.Synopsis = false
+		t.Fatal("REDLINE_EVAL_STEPWISE is gone with --stepwise; the stepwise arm was removed")
 	}
 	// Brief last, and by the product's own rule (cmd/redline/review.go): off
 	// unless asked for, and refused beside a shape that replaces it. The sweep
@@ -563,8 +553,8 @@ func TestSweep(t *testing.T) {
 	}
 	opts.Brief = os.Getenv("REDLINE_EVAL_BRIEF") != ""
 	if opts.Brief {
-		if opts.Cohorts > 1 || opts.Stepwise || opts.Mode == review.ModeExplore {
-			t.Fatal("REDLINE_EVAL_BRIEF is a single pass under the short prompt and cannot be combined with a split, stepwise or explore")
+		if opts.Cohorts > 1 || opts.Mode == review.ModeExplore {
+			t.Fatal("REDLINE_EVAL_BRIEF is a single pass under the short prompt and cannot be combined with a split or explore")
 		}
 		// The short prompt writes the walkthrough and the findings in one call
 		// and carries no synopsis contract, so the default describing call
@@ -753,7 +743,7 @@ func TestSweep(t *testing.T) {
 	// The describing call is the default, so what distinguishes a row is its
 	// absence. A row labelled the old way would read as the arm under test
 	// when it is now the shipped shape.
-	if !opts.Synopsis && opts.Cohorts <= 1 && !opts.Stepwise && !opts.Brief {
+	if !opts.Synopsis && opts.Cohorts <= 1 && !opts.Brief {
 		label += " no-synopsis"
 	}
 	if opts.Cohorts > 1 {
@@ -761,9 +751,6 @@ func TestSweep(t *testing.T) {
 		if os.Getenv("REDLINE_EVAL_NO_CROSS_SUMMARIES") != "" {
 			label += " no-cross"
 		}
-	}
-	if opts.Stepwise {
-		label += " stepwise"
 	}
 	// The long prompt is the default, so the row that has to say so is the one
 	// under the short prompt.

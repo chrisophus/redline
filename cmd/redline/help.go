@@ -172,7 +172,6 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.BoolVar(&o.brief, "brief", false, "one call under the short prompt")
 	fs.BoolVar(&o.noBrief, "no-brief", false, "the long prompt, which is already the default")
 	fs.IntVar(&o.cohorts, "cohorts", 0, "split the change into at most this many cohorts and judge each in its own call (default 1, no split)")
-	fs.BoolVar(&o.stepwise, "stepwise", false, "one conversation: describe from the diff, then judge once the rest of the packet arrives")
 	fs.IntVar(&o.minCohortFiles, "min-cohort-files", 0, "below this many shown files a split run is one cohort (default 3)")
 	fs.BoolVar(&o.crossSummaries, "cross-summaries", false, "give each cohort the other cohorts' summaries (on by default)")
 	fs.BoolVar(&o.noCrossSummaries, "no-cross-summaries", false, "each cohort reviews its files knowing nothing of the others")
@@ -362,7 +361,7 @@ shape:
                     placeholder in place of a review on 22 of 168 calls,
                     where the long prompt did on none of 42, and left about
                     twice the unlabelled comments. It cannot be combined with
-                    --cohorts above 1, --stepwise or --mode explore, each
+                    --cohorts above 1 or --mode explore, each
                     defined by a tool contract the short prompt does not
                     describe.
   --no-brief        the long prompt, which is the default. Kept so scripts
@@ -375,13 +374,6 @@ shape:
                     front of it spends its finding-count on the first few.
                     Stage one draws fewer when the change has fewer groups
                     in it; the tripwire prices the bound.
-  --stepwise        one conversation in two turns: the first sees the change
-                    and its diff and writes the walkthrough, the second gets
-                    the findings, coverage and context and writes the
-                    comments. The second resends the first, so it reads that
-                    from the cache. Anthropic wire only, and it cannot be
-                    combined with --cohorts above 1, --brief or --mode
-                    explore.
   --min-cohort-files N
                     below this many shown files a split run is one cohort
                     (default 3).

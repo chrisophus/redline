@@ -44,13 +44,6 @@ type completion struct {
 	// one requested: an alias resolves to a snapshot, and a gateway can route
 	// elsewhere without saying so anywhere else.
 	model string
-	// message is the assistant turn converted back into a request parameter by
-	// the SDK, and toolUses the ids of the tool calls in it. The stepwise
-	// pipeline's second turn resends the first unchanged and has to answer
-	// every call the first made. Empty on the OpenAI and batch paths, which
-	// continue no conversation.
-	message  anthropic.MessageParam
-	toolUses []string
 }
 
 // completeAnthropic is the Messages API call. Streamed because the input is
@@ -122,12 +115,6 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 		usage:      usage(),
 		truncated:  msg.StopReason == anthropic.StopReasonMaxTokens,
 		model:      string(msg.Model),
-		message:    msg.ToParam(),
-	}
-	for _, block := range msg.Content {
-		if t, ok := block.AsAny().(anthropic.ToolUseBlock); ok {
-			c.toolUses = append(c.toolUses, t.ID)
-		}
 	}
 	if msg.StopReason == anthropic.StopReasonRefusal {
 		c.refused = true
@@ -159,19 +146,9 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	// of it. On the system block instead it would cache a few thousand tokens
 	// of the hundred and seventy thousand that matter; behind the stage's
 	// instruction it would cache bytes the next call does not send.
-	//
-	// A turn that continues a conversation places no breakpoint of its own.
-	// The one that pays sits on the turn before it, which this request resends
-	// unchanged, and nothing after this call reads what a second one would
-	// write at a quarter above base input.
 	var blocks []anthropic.ContentBlockParamUnion
-	// The results lead the user turn, because the endpoint wants every tool_use
-	// of the turn before answered at the start of the turn after it.
-	for _, id := range res.answering {
-		blocks = append(blocks, anthropic.NewToolResultBlock(id, stepwiseAck, false))
-	}
 	prefix := anthropic.NewTextBlock(res.Prompt)
-	if opts.cacheOn() && len(res.history) == 0 {
+	if opts.cacheOn() {
 		prefix.OfText.CacheControl = anthropic.CacheControlEphemeralParam{
 			TTL: anthropic.CacheControlEphemeralTTL(opts.CacheTTL),
 		}
@@ -193,10 +170,7 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		Model:     anthropic.Model(opts.Model),
 		MaxTokens: opts.MaxTokens,
 		System:    []anthropic.TextBlockParam{{Text: res.System}},
-		// Empty history on every call but a stepwise turn 2, which is then one
-		// user turn exactly as it always was.
-		Messages: append(append([]anthropic.MessageParam(nil), res.history...),
-			anthropic.NewUserMessage(blocks...)),
+		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(blocks...)},
 	}
 	// The whole catalogue, every time, with the stage chosen by name. See
 	// tools.go for why the contract cannot be a per-call output format.
