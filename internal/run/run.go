@@ -142,17 +142,25 @@ func Run(opts Options) (*Result, error) {
 	}
 	changed = excludeOwnOutput(changed, opts.Out, repo.Root)
 
+	configRoot := harnessConfigRoot(opts.Dir, tgt)
+	// exclude covers the generators that say nothing about themselves: no
+	// marker in the file, no name only a generator would write. Without it
+	// such a tree has no way to keep its machine output out of a review.
+	exclude, err := change.LoadExclude(configRoot)
+	if err != nil {
+		return nil, err
+	}
+
 	// Generated output leaves the change here, before any pane or the report
 	// sees it, so the coverage denominator counts files a reviewer would
 	// actually read. What was dropped is recorded and shown: an exclusion the
 	// reader cannot see is indistinguishable from a file that never changed.
-	changed, generated := change.Generated(tgt.Dir, changed, repo.AttrSet("linguist-generated", changed))
+	changed, generated := change.Generated(tgt.Dir, changed, repo.AttrSet("linguist-generated", changed), exclude)
 
-	cfg, err := harness.Load(harnessConfigRoot(opts.Dir, tgt))
+	cfg, err := harness.Load(configRoot)
 	if err != nil {
 		return nil, err
 	}
-	configRoot := harnessConfigRoot(opts.Dir, tgt)
 	prepared := map[string]bool{}
 	roots := harness.Roots{Observe: tgt.Dir, Origin: originCoverageDir(opts.Dir, tgt), Caller: configRoot}
 	if err := harness.Require(roots, changed, cfg, harness.RequireOpts{

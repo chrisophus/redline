@@ -8,6 +8,26 @@
 #
 # Copy this to .redline.yml and delete the tools you do not use.
 
+# exclude — paths to keep out of the review.
+#
+# Redline already drops what generators say is theirs: files marked
+# linguist-generated, files carrying "Code generated ... DO NOT EDIT" or
+# "@generated", lockfiles, vendor/, and names only a generator writes
+# (*.pb.go, oas_*.go, *.sql.go, minified bundles). This is for a generator
+# that does none of that and writes ordinary filenames.
+#
+# Excluded files are not hidden. They are counted and named on the report and
+# in the review prompt, the same as generated ones, because a file dropped
+# without the reader knowing is worse than a file they had to skip.
+#
+# Patterns read like .gitignore: a bare name matches at any depth, a trailing
+# slash takes a directory, ** crosses directories and * does not.
+#
+# exclude:
+#   - "internal/oas/"          # ogen output, package and all
+#   - "**/*.gen.ts"            # a codegen suffix only this repo knows
+#   - "*.snap"                 # snapshots, anywhere in the tree
+
 tools:
   # vacuum — OpenAPI linter, Spectral-compatible JSON via `spectral-report`.
   # `spectral-report <spec> <out>` writes to a file, so point it at /dev/stdout.

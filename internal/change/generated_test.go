@@ -126,7 +126,7 @@ func TestGeneratedSplitsAndExplainsEveryExclusion(t *testing.T) {
 	paths := []string{"go.sum", "hand.go", "marked.go", "attr.txt"}
 	attrs := map[string]bool{"attr.txt": true}
 
-	kept, generated := Generated(dir, paths, attrs)
+	kept, generated := Generated(dir, paths, attrs, nil)
 
 	if len(kept) != 1 || kept[0] != "hand.go" {
 		t.Fatalf("kept = %v, want [hand.go]", kept)
@@ -135,14 +135,14 @@ func TestGeneratedSplitsAndExplainsEveryExclusion(t *testing.T) {
 		t.Fatalf("generated = %v, want go.sum, marked.go and attr.txt", generated)
 	}
 	for _, path := range generated {
-		if GeneratedReason(dir, path, attrs) == "" {
+		if GeneratedReason(dir, path, attrs, nil) == "" {
 			t.Errorf("%s: excluded without a stated reason", path)
 		}
 	}
-	if got := GeneratedReason(dir, "attr.txt", attrs); got != "marked linguist-generated" {
+	if got := GeneratedReason(dir, "attr.txt", attrs, nil); got != "marked linguist-generated" {
 		t.Errorf("attr.txt reason = %q, want the gitattributes reason", got)
 	}
-	if got := GeneratedReason(dir, "hand.go", attrs); got != "" {
+	if got := GeneratedReason(dir, "hand.go", attrs, nil); got != "" {
 		t.Errorf("hand.go reason = %q, want none", got)
 	}
 }

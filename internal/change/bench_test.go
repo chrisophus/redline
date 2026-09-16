@@ -61,7 +61,7 @@ func BenchmarkGenerated(b *testing.B) {
 	paths := realisticChangedPaths(500)
 	b.ReportAllocs()
 	for b.Loop() {
-		kept, generated := change.Generated("", paths, nil)
+		kept, generated := change.Generated("", paths, nil, nil)
 		if len(kept)+len(generated) != len(paths) {
 			b.Fatal("Generated lost or duplicated paths")
 		}

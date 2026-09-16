@@ -287,9 +287,14 @@ func intentOf(repo *gitx.Repo, base string) string {
 // here rather than guessed at again from file names.
 func generatedIn(repo *gitx.Repo, paths []string) map[string]string {
 	attrs := repo.AttrSet("linguist-generated", paths)
+	// A config this cannot read leaves the exclude list empty, which shows the
+	// scout more of the change rather than less. redline itself reads the same
+	// file and fails the run on a broken one, so the error has a louder home
+	// than this advisory pass.
+	exclude, _ := change.LoadExclude(repo.Root)
 	out := map[string]string{}
 	for _, p := range paths {
-		if reason := change.GeneratedReason(repo.Root, p, attrs); reason != "" {
+		if reason := change.GeneratedReason(repo.Root, p, attrs, exclude); reason != "" {
 			out[p] = reason
 		}
 	}

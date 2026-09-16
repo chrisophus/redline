@@ -679,6 +679,21 @@ markers, then filenames only a generator produces.
 Every exclusion is **named** on the report. Hiding a hand-written file is the
 one way this can go wrong, and listing them is what makes that recoverable.
 
+A generator that says nothing about itself, writing ordinary filenames with no
+marker, is the case detection cannot reach. An `exclude:` list in
+`.redline.yml` covers it:
+
+```yaml
+exclude:
+  - "internal/oas/"     # a directory and everything under it
+  - "**/*.gen.ts"       # a suffix only this repository knows
+  - "*.snap"            # a bare name matches at any depth
+```
+
+Those paths leave the change the same way generated ones do, and are named on
+the report the same way. The patterns read like `.gitignore`: `**` crosses
+directories, `*` does not, and a trailing slash takes everything below.
+
 Test file contents are not rendered either; they are counted, and the
 coverage number stands in for reading them.
 

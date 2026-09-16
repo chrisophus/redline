@@ -22,9 +22,12 @@ import (
 // reviewer never learns it existed. So this looks for markers that generators
 // write about themselves and for filenames that only generators produce, and
 // everything it excludes is named on the report.
-func Generated(dir string, paths []string, attrSet map[string]bool) (kept, generated []string) {
+// exclude is the patterns from .redline.yml, for generators that write
+// ordinary filenames and no marker. They drop a path the same way, and are
+// reported the same way.
+func Generated(dir string, paths []string, attrSet map[string]bool, exclude []string) (kept, generated []string) {
 	for _, p := range paths {
-		if GeneratedReason(dir, p, attrSet) != "" {
+		if GeneratedReason(dir, p, attrSet, exclude) != "" {
 			generated = append(generated, p)
 			continue
 		}
@@ -36,9 +39,12 @@ func Generated(dir string, paths []string, attrSet map[string]bool) (kept, gener
 // GeneratedReason names why a path is machine output, or returns empty when it
 // is not. The reason is reported, so a wrong exclusion is visible rather than
 // silent.
-func GeneratedReason(dir, path string, attrSet map[string]bool) string {
+func GeneratedReason(dir, path string, attrSet map[string]bool, exclude []string) string {
 	if attrSet[path] {
 		return "marked linguist-generated"
+	}
+	if why := ExcludeReason(path, exclude); why != "" {
+		return why
 	}
 	if why := generatedByName(path); why != "" {
 		return why
