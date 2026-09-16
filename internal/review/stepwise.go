@@ -90,7 +90,11 @@ func (in Input) stepwiseRest(budget envelope.Budgeted) string {
 func (r *Result) stepwiseDescribeRequest(opts Options, in Input) *Result {
 	out := r.clone()
 	out.Stage = StageSynopsis
-	out.Prompt = in.stepwiseOpening()
+	// The describing instruction is part of the block, not a block after it.
+	// The breakpoint sits at the end of this one and turn 2 resends exactly
+	// what turn 1 sent to read it back; a second block would fall outside that
+	// and be paid for twice.
+	out.Prompt = in.stepwiseOpening() + describingTail
 	out.Tail = ""
 	out.InputEstimate = envelope.EstimateTokens(r.System) + envelope.EstimateTokens(out.Prompt)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedSynopsisTokens)

@@ -359,6 +359,14 @@ func cmdReview(o opts) error {
 		fmt.Println(out.System)
 		fmt.Println("--- prompt ---")
 		fmt.Print(out.Prompt)
+		// The stage's own instruction rides after the packet, in its own
+		// block, and it is the half that says what this call is for. A dry run
+		// that stopped at the prompt would show the material and not the
+		// instruction the model acts on.
+		if out.Tail != "" {
+			fmt.Println("\n--- this pass ---")
+			fmt.Print(out.Tail)
+		}
 		fmt.Fprintf(os.Stderr, "\nredline: %d input tokens estimated; expect %s, at most %s\n",
 			out.InputEstimate,
 			review.FormatCost(out.CostUSD, out.CostKnown),

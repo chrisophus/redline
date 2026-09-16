@@ -152,7 +152,11 @@ func runExplore(ctx context.Context, in Input, opts Options, res *Result) (*Resu
 		MaxTokens: opts.MaxTokens,
 		Betas:     []anthropic.AnthropicBeta{anthropic.AnthropicBetaTaskBudgets2026_03_13},
 		System: []anthropic.BetaTextBlockParam{{
-			Text:         systemPrompt + exploreAddendum + languageFragments(in.Envelopes),
+			// Explore has no tail: it is one conversation whose prefix must not
+			// move between turns, so the stage instruction rides in the system
+			// block. It writes the whole review, so it carries both halves.
+			Text: systemPrompt + describingTail + judgingTail + exploreAddendum +
+				languageFragments(in.Envelopes),
 			CacheControl: anthropic.NewBetaCacheControlEphemeralParam(),
 		}},
 		Tools: []anthropic.BetaToolUnionParam{fetchToolParam()},

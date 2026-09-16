@@ -36,7 +36,10 @@ const ExpectedSynopsisTokens int64 = 3000
 func (r *Result) synopsisRequest(opts Options, in Input) *Result {
 	out := r.clone()
 	out.Stage = StageSynopsis
-	out.Tail = synopsisTail(in)
+	// The describing half and nothing else. This call is not judging the
+	// change, so the judging tail would be two thousand tokens telling it what
+	// to do with findings it has been told not to write.
+	out.Tail = describingTail + synopsisTail(in)
 	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedSynopsisTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)

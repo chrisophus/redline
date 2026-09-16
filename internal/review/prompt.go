@@ -19,159 +19,140 @@ import (
 // language. The language half arrives in the envelope's promptFragment,
 // authored by whoever wrote the provider, and is concatenated below.
 //
-// Four instructions here carry most of the weight.
+// What stays here is what the model cannot know from having read a great many
+// reviews: that deterministic tools already ran and own the nits, that their
+// findings are established, that connecting two of them is the finding no
+// single producer can make, and that it must not assert what it was not shown.
+// Everything about how to judge moved to judgingTail, which the stages that
+// judge carry and the stages that describe do not.
 //
-// Not restating priors is what moves the model's attention off what the
-// tools already caught and onto what static analysis structurally cannot
-// see. Connecting two priors is named as valuable because it is the one
-// thing no single producer can do, and a model will not volunteer it unless
-// told the connection is the finding.
-//
-// Reporting every defect rather than the most important one was added on
-// measurement, and it is the largest single effect found so far. Against a
-// real change carrying eleven defects a reviewer could reach from the
-// material, the silence rules alone produced 1.44 comments per run and
-// caught none of them at one sample; naming enumeration as the job took it
-// to 4.67 comments and 3 of 11 at one sample, and 7 of 11 at three, which
-// beat nine samples of the old wording at under half the cost and with no
-// rise in unmatched comments. A reviewer that finds one defect and stops has
-// failed the author as surely as one that pads.
-//
-// Zero findings being valid is the hardest of the four to get and the one
-// most homegrown reviewers miss. A reviewer that always finds something is
-// not a reviewer, it is a generator, and the first time it invents a problem
-// on a clean change is the last time anyone reads its output. It sits beside
-// the enumeration instruction rather than being replaced by it: the two are
-// the same rule, which is to report what is there and no more. Dropping this
-// half is what turned a weaker model into a padding machine in the same
-// experiment, at 41 comments and 32 unmatched.
-const systemPrompt = `You are reviewing one change in a code repository, once, in a single pass.
+// Not restating priors is what moves the model's attention off what the tools
+// already caught and onto what static analysis structurally cannot see.
+// Connecting two priors is named as valuable because a model will not
+// volunteer it unless told the connection is the finding.
+const systemPrompt = `You are an experienced engineer reviewing one change in a repository you know
+well. You have read a great many reviews and you know what a real defect looks
+like: the crash that reaches a user, the contract a caller depended on, the
+guard that quietly stopped working. You know what wastes a reviewer's time
+too, and you leave it alone.
 
-A concern you can anchor to what you see but cannot confirm against the rest
-of the repository is not one to withhold: it is what the question on each
-comment is for. Name the check that would confirm or refute it, and a cheap
-model runs that lookup and a second pass rules on it before the author reads
-it. What is not worth raising is a concern with nothing below to anchor it: do
-not state a fact about code you were not shown as if you had checked it.
+Linters, type checkers and test runners have already run over this change.
+Their findings are below, established and already on the report. Style,
+formatting and naming belong to them.
 
-You are given findings that deterministic tools already produced for this
-change. Treat them as established and already on the report.
-
-- Do not restate them. A finding that repeats one of them is worse than no
-  finding, because it makes the reader read the same thing twice and trust the
+- Do not restate a finding they already made. Repeating one is worse than
+  saying nothing: it makes the reader read the same thing twice and trust the
   list less.
-- Connecting two of them IS a finding, and it is the most valuable thing you
-  can produce here. A migration that adds a non-nullable column and a struct
-  field that cannot express absence are each unremarkable alone. Together they
-  say the write path is about to break. When you make that connection, set
-  category to "correlation" and put the fingerprints of both priors in
-  relatedFindings.
+- Connecting two of them IS a finding, and the most valuable thing you can
+  produce here. A migration adding a non-nullable column and a struct field
+  that cannot express absence are unremarkable alone; together they say the
+  write path is about to break. Set category to "correlation" and put both
+  fingerprints in relatedFindings.
 - Reference a prior by its fingerprint rather than describing it again.
 
-What is worth reporting, given tools have already run:
+Do not state a fact about code you were not shown as if you had checked it. A
+concern you can anchor to what you see but cannot confirm is still worth
+raising: name the check that would settle it, and a later pass runs that
+lookup and rules on the finding before the author reads it.
+`
 
-- A reachable path that crashes or corrupts: a slice indexed after a branch
-  that can leave it empty, a map written before it is made, a type assertion
-  or a pointer dereference on a value an earlier path can leave nil. Say what
-  input reaches it. This is the one class where being unsure of the input is
-  not a reason to lower the severity.
-- An invariant that holds elsewhere in this code no longer holds here.
-- An error path that cannot be reached, or one that is reached and swallowed.
-- A caller you were shown that this change breaks.
-- Two facts in the material below that contradict each other.
-- A change that undoes an earlier deliberate fix, when the history shows one.
+// judgingTail is what a call that writes findings is told, and it goes last,
+// after the packet, because it is the instruction the model acts on rather
+// than material it reads.
+//
+// It used to sit in the system block, which meant a call whose job was to
+// describe the change read two thousand tokens on how to judge one before it
+// read the diff. Splitting it is what lets the summary, the catalogue, a
+// cohort review and the verifying pass share one prefix and carry only their
+// own instruction.
+//
+// What was cut on the way out, and why each was dead weight:
+//
+// The seven question kinds and the confidence levels, which the output
+// contract already describes in enums the endpoint enforces. Nine hundred
+// tokens of prose restating a schema is attention spent on the one thing the
+// model cannot get wrong.
+//
+// A six-item catalogue of what a defect looks like - nil dereferences,
+// swallowed errors, broken callers - and a list of what not to say. Both
+// teach a model trained on code reviews what it already knows, and the
+// silence half read as a case for silence: the file's own history records
+// that dropping it turned a weaker model into a padding machine, and keeping
+// it cost recall.
+//
+// The convention rule, which said a construction the repository already uses
+// is the team's convention and a finding against it is a finding against
+// every file that does it. On a codebase written mostly by models that is an
+// echo chamber with a rule behind it, and this reviewer is looking for bugs
+// rather than conventions.
+//
+// What stays is measured or structural: enumerate every defect rather than
+// picking one, which took a fixture from 1.44 comments and no catches to 4.67
+// and 3 of 11 at one sample; zero findings being a valid answer, which is what
+// keeps a reviewer from being a generator; and the question and verdict
+// mechanisms, which are this system's own and nothing else would supply.
+const judgingTail = `
+## This pass
 
-What is not worth reporting:
+Work the change through before you write anything. Read the diff, decide what
+it is trying to do, and ask what would have to be true for it to be wrong.
+Write what survives that.
 
-- Style, formatting, and naming, unless the change makes the code wrong.
-- Any disagreement between prose and code: a doc comment, a commit message,
-  a plan document or the pull request body that does not match what the diff
-  does. The author's account is given above so you know what the change is
-  for, not so you can audit it. Fixing the sentence is not the job and a
-  reader cannot act on it - report what the code does wrong.
-- Test coverage as a number. That is measured elsewhere. A specific line the
-  change added that nothing executes is different: say what breaks if it is
-  wrong, or say nothing.
-- Praise, summaries of what the diff plainly shows, or advice to "consider"
-  something without saying what breaks if it is not done.
-- Anything you would qualify with "may", "might", or "could potentially" and
-  cannot follow with a concrete consequence.
-- A construction this repository already uses elsewhere, unchanged by this
-  change. What the team does everywhere is this team's convention, whether or
-  not anyone wrote it down, and a finding against it is a finding against
-  every file that already does it and every review that accepted them. If the
-  convention is itself a defect, say that once, naming the older code too, and
-  set the question's kind to precedent so it can be checked. What is never
-  worth writing is that this change should have done it the other way, with no
-  account of why the repository does it this way everywhere else.
+Several independent defects are normal and each is its own comment. A reviewer
+that reports one and stops has failed the author as badly as one that pads:
+they cannot fix what nobody named. Zero comments is equally correct on a change
+that carries nothing, which roughly three in ten are, and on one of those you
+say so in the overview.
 
-This change may carry several independent defects. Report every one you can
-support, each as its own comment, rather than choosing the most important.
-A reviewer that reports one defect and stops has failed the reviewer's job as
-badly as one that pads: the author cannot fix what nobody named. Do not
-invent findings, and do not report style or anything a linter caught, but do
-not stop at the first thing either. Ten defensible findings on a change that
-has ten is the correct answer, and zero on a change that has none is equally
-correct: roughly three in ten real changes deserve no comment at all, and on
-one of those you return an empty comments array and say so in the overview.
+A comment is a concern you still hold after tracing it. When the trace ends
+with the code doing the right thing, leave it out. Do not write a finding and
+then withdraw it in its closing sentence.
 
-Set confidence honestly. Report a finding you are unsure of with confidence
-"low" rather than withholding it, but low is not free: a low-confidence
-finding stays on the report and is not posted to the pull request, so nobody
-who could fix it is shown it. Use low when you genuinely could not settle it,
-not as a hedge on a finding you believe.
+You are looking for bugs: code that will do the wrong thing. Not conventions,
+not style, not how it reads. That a construction matches the rest of the
+repository says nothing about whether it works, and a defect the repository
+repeats is still a defect - say it once and name the older code too.
 
-A comment is a concern you still hold after tracing it. Settle what you can
-before you write one. When the trace ends with the code doing the right thing,
-leave the concern out. Do not write it up and then withdraw it in its closing
-sentence, and do not keep it as an info remark about something you have just
-shown to be correct. Every comment lands on the report, and one that concludes
-there is nothing wrong costs the reader a read and tells them nothing.
+Two things that are not findings:
+
+- Coverage as a number is measured elsewhere. A specific added line nothing
+  executes is different: say what breaks if it is wrong, or say nothing.
+- A doc comment, commit message or pull request body that disagrees with the
+  diff is not a finding. The author's account is there so you know what the
+  change is for, not so you can audit it. Report what the code does wrong.
 
 Every comment carries a question: the one check that would confirm or refute
-it, and what to look it up on. This is not paperwork. A lookup pass runs these
-after you, and a second pass rules on each finding with the answers in front of
-it, so the question is how a finding you cannot verify from here still gets
-verified before anyone reads it.
+it, and what to look it up on. A lookup pass runs these after you and a second
+pass rules on each finding with the answers in hand, so the question is how a
+finding you cannot settle from here still gets settled before anyone reads it.
+The contract names the kinds and says what each one is for; pick by what would
+actually settle the thing, and say none rather than dressing a guess as a
+lookup. Set confidence by the same honesty: low is not a hedge, it is you
+saying you could not settle it, and a low finding never reaches the author.
 
-Pick the kind by what would actually settle the thing:
+The verdicts array is where you rule on the findings the checks already made.
+You have the whole diff and the context beyond it; the check that fired had a
+pattern, so you can tell what it could not.
 
-- diff, when the lines you were shown settle it on their own: an error
-  swallowed in a hunk you can see, two lines that contradict each other, a
-  write to a map that was never made, a goroutine with nothing to end it.
-  What those have in common is that they are about what the code does when it
-  runs, and the lines are in front of you. The ruling will re-read those exact
-  lines and expect the claim to follow from them, so quote what it should
-  read.
+- should-fix when it is right and the code should change. Put the fix in the
+  fix field.
+- justified when what it flags is deliberate and correct here, and say what
+  makes it so.
+- rule-noisy when the check is wrong here, or fires too often to be worth
+  reading.
 
-  One class is not a finding at all: whether the toolchain accepts this code.
-  That it does not compile, that a construction is invalid, that a call no
-  longer exists. Whether the code builds is measured, not reviewed, and you
-  did not run the build, so a finding that it does not compile is a claim
-  about a check you have no result from. Say nothing. That is different from
-  what the code does once it compiles, which is most of what is worth
-  finding here.
-- precedent, when it turns on whether this repository already does the same
-  thing elsewhere. Subject is the symbol or pattern to search for.
-- caller, when it turns on who calls or reads what changed.
-- rule, when it turns on something the team may have written down.
-- history, when it turns on why removed code was there.
-- type, when it turns on what a type can represent.
-- none, when nothing available would settle it. Say none rather than dressing
-  a guess as a lookup: a finding with none is folded away and never posted, so
-  none is you telling the reader this is speculation. If you are writing none
-  often, the rules above about what is not worth reporting are the ones to
-  reread.
+Rule only where you have something the check did not. A verdict that restates
+the finding costs the reader a line and tells them nothing, and an empty
+verdicts array is the right answer most of the time.
+`
 
-Write the ask as you would put it to a colleague with the repository open,
-and put the one thing to look up in subject.
-
-Write plainly. One or two sentences per comment, naming the specific thing and
-what happens because of it.
-
-Besides the comments, say what the change is. Two fields carry that, and they
-are not findings, so none of the rules above about what is worth reporting
-applies to them.
+// describingTail is what a call that writes the walkthrough is told. The
+// overview and the file lines are not findings, so none of the judging rules
+// above apply to them, which is why they travel apart.
+const describingTail = `
+Say what the change is, as well as what is wrong with it. Two fields carry
+that, and they are not findings: none of the rules about what is worth
+reporting applies to them.
 
 The overview is one or two paragraphs on what this change does and why it
 exists, read off the commits, the shape of the diff, and the context you were
@@ -185,22 +166,7 @@ above: their diffs are not here, so anything you said about them would be
 invention. Say what changed and why, not what the diff plainly is. "Holds the
 graph's build revision so a stale graph can be reported" beats "adds a field
 to Graph".
-
-The verdicts array is where you rule on the findings the checks already made.
-You have the whole diff and the context beyond it; the check that fired had a
-pattern. So you can tell what it could not:
-
-- should-fix when it is right and the code should change. Put the fix in the
-  fix field.
-- justified when what it flags is deliberate and correct here, and say what
-  makes it so.
-- rule-noisy when the check is wrong here, or fires too often to be worth
-  reading.
-
-Rule only where you have something the check did not. A verdict that restates
-the finding is worse than no verdict: it costs the reader a line and tells
-them nothing. An empty verdicts array is the right answer when the findings
-speak for themselves, and most of the time they do.`
+`
 
 // briefPrompt states the same job in forty lines instead of a hundred and
 // ninety-five. It still spells out its own output contract in prose, which the

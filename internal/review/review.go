@@ -580,12 +580,24 @@ func (r *Result) Summary() string {
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
 	system := systemFor(opts, StageReview) + oneShotAddendum + languageFragments(in.Envelopes)
+	// The one-shot shape writes the walkthrough and the findings in one call,
+	// so it carries both halves: judging first because it is the bulk of the
+	// job, then the two description fields. Run swaps in the findings tail
+	// alone when the describing call has already written the walkthrough.
+	//
+	// It rides inside the prompt block rather than after it. The breakpoint
+	// sits at the end of that block, and every later call of the run - the
+	// ruling, and the fallback when the describing call fails - resends it to
+	// read it back, so an instruction in a block of its own would fall outside
+	// what they pay for once.
+	tail := judgingTail + describingTail
 	// Every stage sends the catalogue on both wires, so it is reserved for
 	// unconditionally. This was once zeroed for a brief run, which was right on
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
 	// wire sent them anyway, and the reservation came up short by the whole
 	// catalogue and overfilled the context by that much.
-	fixed := toolsTokens(opts) + envelope.EstimateTokens(system) + envelope.EstimateTokens(in.fixed())
+	fixed := toolsTokens(opts) + envelope.EstimateTokens(system) +
+		envelope.EstimateTokens(tail) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
 		// The block's own header is written after FitAll has fitted the
 		// expansions, so it has to be reserved here or the assembled prompt
@@ -611,7 +623,8 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	budget := envelope.FitAllFilter(in.Envelopes, room, in.shownLines(), in.contextFilter())
 	prompt := in.build(budget)
 	parts := promptParts(in, opts, system, budget)
-	est := envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt)
+	est := envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
+		envelope.EstimateTokens(tail)
 	expected := opts.ExpectedOutput
 	if expected <= 0 {
 		expected = ExpectedOutputTokens
@@ -636,7 +649,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		Pipeline:       opts.Pipeline,
 		Budget:         budget,
 		FilesShown:     len(in.ShownFiles()),
-		Prompt:         prompt,
+		Prompt:         prompt + tail,
 		System:         system,
 		InputEstimate:  est,
 		FixedEstimate:  fixed,
@@ -818,7 +831,7 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	if opts.Synopsis {
 		walkthrough, synUsage, synWritten, synFailed = describe(ctx, in, opts, res)
 		if synFailed == "" {
-			res.Stage, res.Tail = StageFindings, findingsPrompt
+			res.Stage, res.Tail = StageFindings, judgingTail+findingsPrompt
 		} else if opts.Progress != nil {
 			opts.Progress("the describing call did not produce a walkthrough (" + synFailed +
 				"); this review writes its own")

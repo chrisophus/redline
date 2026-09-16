@@ -13,7 +13,9 @@ import (
 // the prompt asked for either, so the model was filling two required fields
 // with no idea what they were for.
 func TestThePromptAsksForTheOverviewAndTheFileSummaries(t *testing.T) {
-	sys := systemPrompt
+	// The describing half travels apart from the judging half, so a call told
+	// to describe and not to judge carries this and nothing about findings.
+	sys := describingTail
 	for _, want := range []string{
 		"The overview is one or two paragraphs",
 		"The files array is one line per file",

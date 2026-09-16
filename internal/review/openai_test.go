@@ -121,8 +121,12 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 	if got.ReasoningEffort != "low" {
 		t.Fatalf("effort must pass through, got %q", got.ReasoningEffort)
 	}
+	// The stage's instruction rides in the same user message here, not in a
+	// second block. The Anthropic wire keeps them apart so the cache
+	// breakpoint can sit between them; this wire places no breakpoint, so
+	// there is nothing to keep apart and the model reads one turn.
 	if len(got.Messages) != 2 || got.Messages[0].Role != "system" || got.Messages[0].Content != res.System ||
-		got.Messages[1].Role != "user" || got.Messages[1].Content != res.Prompt {
+		got.Messages[1].Role != "user" || got.Messages[1].Content != res.Prompt+res.Tail {
 		t.Fatal("the system block and the prompt must be sent exactly as assembled and priced")
 	}
 	// The schemas go as functions the model is forced to choose between, not
