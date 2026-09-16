@@ -13,11 +13,18 @@ Effort is rough: **S** days, **M** weeks, **L** multi-week. Each item names
 what blocks it, the evidence that put it here, and the test that ends it. An
 item with no evidence is a guess and says so.
 
-Three invariants hold across everything here, and an item that breaks one is
-refused rather than weighed. `redline run` calls no model. The session is the
-whole input to a review, so a fixture replays it, and a lookup pass keeps that
-true by freezing what the scout found into the session before the reviewer is
-called. A finding reaches a pull request only through the ruling's gate.
+Two rules hold across everything here. `redline run` calls no model, so
+observing a change is free and can run anywhere. A finding reaches a pull
+request only through the ruling's gate.
+
+One rule used to be written here and is gone: that a review must be a pure
+function of a saved session so the eval can replay it. Reviews are not
+deterministic and are not supposed to be. Two runs over one change find
+different real problems, which is why `--samples` unions them and why the
+describing split and the one-call shape catch nearly disjoint sets. The thing
+that has to stay still is the request bytes within a single run, because that
+is what the prompt cache reads back, and that is a caching rule rather than a
+claim about reviews.
 
 ## Where the review stands
 
@@ -42,14 +49,11 @@ expansions of any role in two reviews of one change came back with fourteen
 once it was wired in. Deletions rank apart from other history under the
 `removal` role, at rank 2.
 
-The best recall recorded is `--pipeline staged` at three samples, 16 of 35
-labelled defects, against 11 for the describing split and 4 for one call. The
-three ran in one sweep at the same sample count on the same labels, so they
-order each other (2026-09-13, `claude-sonnet-5`, ten fixtures). None of them
-compares to a run made today: the fixture set has since gained a crash
-fixture, clean twins for each synthetic defect, and about a hundred relabelled
-comments, and the priors cut made some expectations unreachable (#62). Any arm
-scored from here needs its own baseline first.
+There are old scores on the fixture set: the fan-out at three samples caught
+16 of 35 labelled defects, against 11 for the describing split and 4 for one
+call (2026-09-13, `claude-sonnet-5`). Do not lean on them. The labels have
+moved three times since, and the Measuring it section explains why that
+instrument is being retired. They are here as history.
 
 ## The gap every measurement points at
 
@@ -76,17 +80,17 @@ neither was idiom in the prompt.
 
 | Item | What | Effort |
 |---|---|---|
-| **The review runs its own lookups** | The one shape nothing has tested. `fetch_context` in explore mode indexes expansions the packet already resolved and cannot grep the tree, so a loop there buys a smaller prompt rather than more thought. A real search tool in the judging call, answers arriving in context, no separate pass to reconcile, is what addresses "a self-certified `diff` question is never checked", two rows down. A 170k prefix re-read at the cached rate is about $0.034 a turn on `claude-sonnet-5`, so five turns of self-service lookup is cents. It would collapse `internal/scout` and the ruling stage that exists to reconcile answers with findings written before they arrived. It becomes the default when an equal-sample comparison beats the shipped shape on recall at no more than twice the cost, and a session with the lookups frozen into it still replays. The cents estimate is the thing to hold loosely: Alibaba's `ocr`, an agentic search loop over a 43-file change at medium effort in September 2026, ran past $20 a review, overshot its own 5M token cap by 150% to 235% before stopping itself, and asserted two false positives at high severity while finding one real bug nothing else found. Reach and an unreliable cost profile come together unless the loop is bounded by something firmer than a budget flag. | L |
-| **A targeted check for the cross-file question** | The cache-key miss in the section opening is one specific question asked of every changed `useQuery` and mutation: name what invalidates it, and show that the invalidation covers it. Whether that belongs in a prompt as a distinct pass, or in a pane as a structural check, is untested, and the evidence so far says more idiom prose will not do it. Run the controlled test before building either: the fixture is the cache-key change, and the test is whether the arm names the uncovered invalidation on a majority of samples. | S |
+| **The review runs its own lookups** | The one shape nothing has tested. `fetch_context` in explore mode indexes expansions the packet already resolved and cannot grep the tree, so a loop there buys a smaller prompt rather than more thought. A real search tool in the judging call, answers arriving in context, no separate pass to reconcile, is what addresses "a self-certified `diff` question is never checked", two rows down. A 170k prefix re-read at the cached rate is about $0.034 a turn on `claude-sonnet-5`, so five turns of self-service lookup is cents. It would collapse `internal/scout` and the ruling stage that exists to reconcile answers with findings written before they arrived. It becomes the default when it finds things on real pull requests that the shipped shape does not, at a cost somebody is willing to pay. The cents estimate is the thing to hold loosely: Alibaba's `ocr`, an agentic search loop over a 43-file change at medium effort in September 2026, ran past $20 a review, overshot its own 5M token cap by 150% to 235% before stopping itself, and asserted two false positives at high severity while finding one real bug nothing else found. Reach and an unreliable cost profile come together unless the loop is bounded by something firmer than a budget flag. | L |
+| **A targeted check for the cross-file question** | The cache-key miss in the section opening is one specific question asked of every changed `useQuery` and mutation: name what invalidates it, and show that the invalidation covers it. Whether that belongs in a prompt as a distinct pass, or in a pane as a structural check, is untested, and the evidence so far says more idiom prose will not do it. Try it on the change that exposed the gap, where the answer is known: does the reviewer name the invalidation that does not cover the new query key. | S |
 | **A self-certified `diff` question is never checked** | `rule.go:266` reads `QuestionDiff` as "the material already shown settles this" and skips the lookup. Nothing validates the claim against what was actually shown. On the PR #46 run, six of the nine findings that came back `unverifiable` carried `kind: diff`, and the review delivered five of fifteen, so this cost two thirds of it. A `diff` question whose subject does not appear in the shown material should be promoted to a lookup. | S |
 | **Nothing in the pipeline can run the code** | Three of four questions on one run were settled in minutes by marshalling a request and printing the JSON, and by sending one probe. Read and grep reach none of that. The worktrees under `~/.redline/worktrees` are already checkouts at the reviewed revision, so a bounded execution step (build, run one test, marshal one request) is reachable, and it is the class of evidence the real risks lived in. | M |
 | **Findings are conditionals, not claims** | Six findings over two runs were all "if the SDK does X then this breaks". A reviewer producing only conditionals has moved the whole burden onto a lookup pass priced at a sixth of it. Score it as a column: the fraction of findings whose body depends on a fact the producer could not reach. | S |
 | **A decidable crash belongs in a pane** | An index into a slice a branch can leave empty is decidable without a model. Four runs shown that exact line reported nothing, so this is not prompt work. | M |
 | **The ruling reads everything to rule on a handful of findings** | One ruling call carried 274,471 characters to weigh six findings with two answers. Caching hides the cost and not the effect: a judge working under 120k tokens of unrelated context. Send the findings, the hunks they anchor to, and the answers. | M |
-| **Send the evidence that the tree compiles** | `golangci-lint` cannot run without a successful build, so a lint pane that ran is proof the code compiles. Pass that to both calls and say nothing when the pane failed. It is the only refutation for a false belief about the language, which no lookup can touch: `for turn := range opts.MaxTurns` was called invalid Go in four runs out of four under `go 1.26`. Blocked by "`gorefactor lint --json` panics" under Lint and external tools, which is why the pane keeps failing on this repository. Done when four runs over the same fixture stop calling legal Go invalid. | S |
+| **Send the evidence that the tree compiles** | `golangci-lint` cannot run without a successful build, so a lint pane that ran is proof the code compiles. Pass that to both calls and say nothing when the pane failed. It is the only refutation for a false belief about the language, which no lookup can touch: `for turn := range opts.MaxTurns` was called invalid Go in four runs out of four under `go 1.26`. Blocked by "`gorefactor lint --json` panics" under Lint and external tools, which is why the pane keeps failing on this repository. Done when a review of code using range-over-int stops calling it invalid Go. | S |
 | **Rank a declaration above a sibling call site** | A ruling settled a question about SDK behaviour on a repository habit (`internal/scout/tools.go` builds the same type the same way) when the answer was a struct tag one file away in the module cache. The answering brief ranks evidence against a finding above evidence for it; it does not rank a definition above a call site. | S |
 | **The scout cannot see outside the tree** | The honest negative shipped: an empty search says what it searched and what is outside the repository. The module cache is still not in scope, so a question about a dependency still ends at "nobody can check it here". | M |
-| **Effort thins verification** | `--effort high` asked one question against three findings; `--effort low` asked two against six. The finding that got a lookup is the one that reached the pull request. Worth an arm before any default moves; `REDLINE_EVAL_EFFORT` exists. | S |
+| **Effort thins verification** | `--effort high` asked one question against three findings; `--effort low` asked two against six. The finding that got a lookup is the one that reached the pull request. Worth knowing before any default moves, and the place to see it is a real review's postmortem, which already records which findings were asked about. | S |
 
 ## The staged pipeline
 
@@ -97,17 +101,14 @@ own.
 
 | Item | What | Effort |
 |---|---|---|
-| **Cohorts stop being a pipeline** | `--pipeline` carries two decisions at once, so a run cannot describe the change separately and fan out as independent choices, and an arm cannot move one of them. Switching to staged today turns on the fan-out, swaps the describing contract from `synopsis` to `synopsis_cohorts`, and drops the `review` contract from the tools array, so 16 of 35 against 11 of 35 cannot be read as what the fan-out bought. `staged.go:28` already says a partition of one cohort is the synopsis path exactly, and `cohortBound` draws one whenever the change is smaller than `--min-cohort-files`, so the two shapes meet at N=1 and the enum is what keeps them apart. Make `--cohorts N` the dial, default 1, and drop `--pipeline staged` with no synonym. `--pipeline stepwise` comes off the enum too, since what the describing call sees is a third question. Two refusals in `cmdReview` go away, the ones that exist only to say a flag was already implied by its own shape, and `runStaged` folds into the one path in `Run`. | M |
+| **Cohorts stop being a pipeline** | `--pipeline` carries two decisions at once: whether a separate call describes the change, and whether the judging is one call or several. They are independent choices and a caller cannot make them independently. Switching to staged today also swaps the describing contract from `synopsis` to `synopsis_cohorts` and drops the `review` contract from the tools array, so nobody can say which of the three changes did anything. `staged.go:28` already says a partition of one cohort is the synopsis path exactly, and `cohortBound` draws one whenever the change is smaller than `--min-cohort-files`, so the two shapes meet at N=1 and the enum is what keeps them apart. Make `--cohorts N` the dial, default 1, and drop `--pipeline staged` with no synonym. `--pipeline stepwise` comes off the enum too, since what the describing call sees is a third question. Two refusals in `cmdReview` go away, the ones that exist only to say a flag was already implied by its own shape, and `runStaged` folds into the one path in `Run`. | M |
 | **One describing contract, and what it costs** | The partition rides on the describing contract as an optional field, so one contract serves both N=1 and N>1. The array cannot then carry `review` as well: serialized, `review + ruling + findings + cohorts` is 6,937 bytes and is the array that returned "the compiled grammar is too large", against 6,292 for the shipped synopsis array and 4,257 for the shipped staged one. `review` is the largest schema at 2,680 bytes and its only job is the single call that writes the walkthrough and the findings together, so the shapes that describe separately send `ruling + findings + describe` at 4,257, the size that already ships, and `--no-synopsis` and `--brief` keep their own array. The trade is the fallback: a failed describing call can no longer ask the next call for the whole review, so it asks for findings alone and the report carries `SynopsisFailed` and no walkthrough. That is better than what the fan-out does today, which is to reassemble under a different array and read no cache. Done when one live call confirms `ruling + findings + describe` is accepted with the partition field present. | S |
 | **The merge stage** | One call behind the cohorts that receives every cohort's findings numbered across cohorts, plus the scout's answers, and emits the rulings, the deduplicated comments and the final review. Dedup by `UnionKey`, which prefers the finding's question over its prose. With one cohort it degenerates to `Verify` as it ships today. `--merge-context prefix\|findings` decides whether it reads the whole cached prefix, which is where cross-cohort correlation is recovered, or the findings and the change section, which is cheaper and makes it a merger. | M |
 | **Divide the scout's allowance** | `--scout-budget shared\|per-cohort`. `DefaultMaxCostUSD` is one scout's allowance for one change at $0.25, and one scout per cohort spends it N times. Shared divides it; per-cohort multiplies the bill knowingly. | S |
-| **Label what the staged arm said** | The staged sweep wrote 97 unlabelled comments across thirty reviews, two and a half times the one-call arm's. None of it scores as wrong until somebody reads it, so the arm cannot be called better rather than louder until those dumps go through the `reject` list. Done when the staged arm's unlabelled count is zero, every comment being an `expect` hit or a `reject`. | S |
-| **Score `stepwise`, `--plan` and `--only-cohorts`** | All three ship unmeasured. Explore mode shipped unmeasured too and came last but one when it was finally scored. Done when each has a sweep row against a baseline taken on the same labels. | S |
-| **Equal-sample comparisons** | Every cross-arm number on record compares a union of three samples against one sample, or different denominators. Nothing supports a claim about shape until two arms run at the same sample count on the same labels. | S |
 | **Review only the cohorts that changed** | On the second round of reviewing one pull request, redraw nothing and judge only the cohorts whose files moved since the last round. The pieces missing are the partition in `session.json` kept for reuse, a lookup from a target to the head SHA of its last review (the ledger records `revision` as `baseSHA:headSHA` and nothing queries it by pull request), mapping `git diff lastSHA..newHEAD` onto the saved partition by file path with `repairPartition`'s fallback for files that are new or moved, and a CI step that restores the prior `.redline` artifact, which the workflow already uploads per run with fourteen-day retention. What this saves is stage one's redraw and the cohort calls for files nobody touched. It does not save the cache write: the TTL is minutes and a review round is days. | M |
 | **Spend the freed budget on context when reviewing narrow** | A single-cohort review leaves most of the ceiling unused, because only that cohort's files compete for room. That headroom could carry what a full review drops: design docs and path-scoped rules for the touched area, fuller test context, and the language-agnostic tail through a graph provider. Untested, and it depends on "review only the cohorts that changed". Done when a narrow run's ceiling carries the extra context and an equal-sample comparison shows what it bought. | M |
 | **Settle the premise** | `redline review --stats` on a real ledger, now that it groups by shape. The test is arithmetic: median output scaled by the model's output-to-input rate ratio, five on Sonnet, against median input. If input wins then no rearrangement of stages saves money and the staging argument is about quality and latency. | S |
-| **Retune the defaults** | A shape becomes the default when an equal-sample comparison puts it ahead on recall without losing correlation survival, and not before. That needs "the merge stage", "label what the staged arm said" and "equal-sample comparisons" first. Until then staged stays opt-in. | S |
+| **Retune the defaults** | The fan-out is off by default and there is no measurement that would turn it on, now that arm sweeps are retired. Decide it from use: run it on real changes for a while, see whether the comments are better and whether anyone minds the cost. Until somebody has that experience, it stays opt-in. | S |
 
 Constraints a new stage inherits, each measured rather than read from
 documentation:
@@ -156,12 +157,12 @@ file worries them, and which question they want asked. The PR #1360 miss is
 the case. The reader could have named the cross-file question in a sentence,
 and there was nowhere to put it.
 
-Three rules hold for everything in this section, because a typed input is
-still an input. Whatever a person says is written into the session before the
-call, so a fixture still replays. It ranks below a committed rule, the way a
-learning does. And it reaches the review as context, so it can direct
-attention and cannot pass a finding through the ruling's gate or hold one
-back.
+Three rules hold for everything in this section. Whatever a person types is
+written into the session, so the report and `redline postmortem` can show what
+the review was told. It ranks below a rule the team committed to the
+repository, the way a learning does. And it reaches the review as context, so
+it can point attention somewhere and cannot push a finding past the ruling's
+gate or hold one back.
 
 | Item | What | Effort |
 |---|---|---|
@@ -169,51 +170,54 @@ back.
 | **Judge the files a person names** | `--only-files a.go,b.tsx`, which under `--pipeline staged` means the cohorts holding them. Most of it exists: `--only-cohorts` already falls back to matching a file path inside a cohort, which is what makes the selector stable across runs. Three pieces are missing. It works only under staged, so the default shape has no equivalent. A path selector can be swallowed by a cohort whose *name* happens to contain the same substring, since the name pass wins and stops the path pass. And it narrows what is judged, not what is read: stage one still partitions the whole change and every call still carries the whole prefix, so the saving is output and wall time. Done when naming one file under either shape judges it, reports which files were not judged, and says so in the report rather than reading as a clean review of the rest. | S |
 | **Put extra files in front of the reviewer** | `--include path` for files a person knows matter and no provider resolved: the sibling in another repository's shape, a design note, the interface the change implements. They are read at the reviewed revision, written into the session as expansions from a provider named for the person rather than a resolver, and budgeted like any other expansion so they compete rather than displace. A role has to be picked: `enclosing` overstates what they are, and an unknown role ranks last and is reported, which is the honest default and the one the graph adapter already uses. Done when an included file appears in the packet under its own provider name, a rerun of the same session sends the same bytes, and the budget summary counts what it displaced. | S |
 
-Build them in that order. Score them as one arm rather than three: a note the
-model ignores and a selection that narrows to the wrong cohort both look like
-a quiet review from outside, and only a fixture where the steer is known to
-matter can tell them apart.
+Build them in that order, and judge them on real changes. A note the model
+ignores and a file selection that picks the wrong group both look the same
+from outside: a quiet review. The way to tell is to use them on a change where
+you already know what the reviewer should have said.
 
 ## Measuring it
 
-An arm reports recall on labelled defects, correlation survival, the clean
-rate, comments per changed file, walkthrough completeness, cache reads and
-writes per stage, and cost and wall time per shape. A mean across shapes is a
-price nobody was charged.
+The fixture set has not earned its cost, and the roadmap should stop spending
+on it. Roughly $100 of sweeps produced one conclusion that had to be taken
+back, two results that sat inside the noise, and nothing that changed what
+ships. The ladder said a forty-line prompt beat the shipped one; every paid
+run in it had gone through a proxy that rewrote the system prompt, and rerun
+directly the rungs land at 9, 10 and 7 of 31. Free-form output against the
+strict grammar differed by two points, which is inside the noise floor of
+about 3.6. Effort turned out to be a price dial. The labels moved three times,
+so the staged arm's 16 of 35 no longer compares to anything.
 
-Two arms may be compared when the label set, the sample count and the fixture
-set are the same on both. Anything else is evidence about one arm and cannot
-order two, which is what most of the numbers on record are. Two bars decide
-whether an arm may become a default: correlation survival does not fall, since
-a staged arm that gains recall while losing cross-cohort findings has traded
-away the reason the producer exists, and the labelled defects survive the
-ruling, since a ruling tuned on precision alone learns to withdraw.
+Meanwhile every real defect on record was found by something else: an agent
+reading PR #46 found eight, Copilot found two on the dogfood change, `ocr`
+found one, and a person reading the code found the cache-key bug. The fixtures
+have never predicted a field failure.
+
+So the measurement that matters is what happens to a comment after it is
+posted. Reviews are already running on real pull requests. Every comment gets
+a reply, a fix, a thumbs-down, or silence, and that is sitting in GitHub for
+free. It answers the question a fixture cannot: was this comment worth
+interrupting somebody for. The work is in the next section.
+
+What to do with the fixtures: keep them, stop scoring arms on them. They are
+still useful as a smoke test, which is the one thing they do cheaply. A change
+that makes the reviewer return nothing, or crash, or write a walkthrough for
+files it was never shown, shows up on a single fixture at one sample for a few
+cents. Run them for that. Do not run a sweep to decide whether one shape beats
+another, because five attempts to do that produced no answer anybody acted on.
+
+What that costs, stated plainly: nothing catches a prompt edit that quietly
+loses recall. The fixture set was not catching that either, given that its
+arms disagree at the noise floor and its own conclusions were twice withdrawn,
+but it is the reason somebody might want this section back.
 
 | Item | What | Effort |
 |---|---|---|
-| **Score the agent, not only the producer** | A `review.json` written by any agent already scores through `eval.Score`. An `--arm agent` that emits the two prompt files and scores whatever comes back keeps the premise measured as the packet changes. The throwaway that measured it once was deleted. | S |
-| **Measure per expansion, not per envelope** | Every context comparison so far is all-or-nothing. Scoring by role says which ones pay: history bought `baseline-not-relocked-for-the-new-rules`, the graph's neighbour expansions bought nothing measurable at 60% more input. | M |
-| **Freeze the field sessions** | The reviews the consumer's agent dismissed have sessions in that repository's `.redline` directory and a stated reason each. They become fixtures with the reason as a `reject` entry, marked as a reader's opinion rather than a verified fact. This has been waiting on those directories. | S |
-| **Per-finding ledger rows** | `reviews.jsonl` keeps cost, duration, stop reason and a finding count; `review.json` is overwritten each run. Append a row per finding with its id, confidence and ruling verdict, and "low confidence predicts nothing" becomes a number instead of an argument. | S |
-| **Rerun the sampling overlap** | Zero overlap across forty samples was measured when a finding's identity was its normalised wording. Identity is the question now, so agreement across samples may be a usable signal and `--samples` may stop multiplying noise. | S |
+| **Smoke-test run** | One fixture, one sample, on a change to the prompts or the assembly. Checks that a review comes back, parses, and writes a walkthrough only for files it was shown. Cents, not sweeps. | S |
+| **Per-finding ledger rows** | `reviews.jsonl` keeps cost, duration, stop reason and a finding count, and `review.json` is overwritten every run, so nothing survives to be counted. Write a row per finding with its id, confidence and ruling. This is the denominator for everything in the next section. | S |
 
-Settled, so nobody pays for them twice:
-
-- The ladder that showed a forty-line prompt beating the shipped one did not
-  survive direct measurement. Every earlier paid run went through a local
-  proxy that appended an instruction block to the system prompt. Run directly
-  at three samples the rungs catch 9, 10 and 7 of 31 and differ mainly in
-  unlabelled comments, 12 against 4 against 2. The long prompt is the default.
-- Free-form output against the strict grammar is inside the noise floor, so
-  brief runs the short prompt over the grammar and both wires send the same
-  request.
-- Effort is a cost dial. Three arms at 2.4x the price caught 4, 2 and 5 of 32.
-- The describing split buys a complete walkthrough and slightly fewer
-  unlabelled comments, and no recall on its own. It is the default because a
-  reader of a large change had roughly a one in three chance of a report with
-  no walkthrough on it.
-- The packet beats the diff alone on quiet rather than on catches: 12 against
-  11 caught, with unlabelled comments falling from 25 to 16.
+Two older items are dropped rather than carried: scoring the agent arm against
+the producer, and scoring each expansion role on its own. Both are sweeps, and
+both were justified by the instrument this section is retiring.
 
 ## Reading back what happened to a finding
 
@@ -414,5 +418,5 @@ so consumers need placeholder directories; document it in the setup skill.
 8. Per-finding ledger rows, which are the denominator for everything in the
    read-back section.
 9. Generated-drift pane, Go only first.
-10. The merge stage, and the labelling that lets the staged arm be called
-    better rather than louder.
+10. The merge stage, so the fan-out's findings get deduplicated and ruled in
+    one place.
