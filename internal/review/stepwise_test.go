@@ -224,8 +224,8 @@ func keys(m map[string][]byte) []string {
 }
 
 // Turn 1 never costs the review. A turn that refuses or writes no overview
-// leaves the run on the one-shot contract, billed for both calls, and says
-// why, so the row is not read as a stepwise run.
+// leaves the run on one judging call for findings alone, billed for both
+// calls, and says why, so the row is not read as a stepwise run.
 func TestAFailedFirstTurnFallsBackToOneCall(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -237,7 +237,7 @@ func TestAFailedFirstTurnFallsBackToOneCall(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			api := serveSSE(t, tc.first,
-				anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t2", StageReview, reviewBody)))
+				anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t2", StageFindings, findingsBody)))
 			var said []string
 			opts := stepwiseOpts(api)
 			opts.Progress = func(s string) { said = append(said, s) }
@@ -249,8 +249,8 @@ func TestAFailedFirstTurnFallsBackToOneCall(t *testing.T) {
 				t.Errorf("the fallback must be recorded: pipeline=%q fellBack=%q synopsisFailed=%q synopsis=%v",
 					res.Pipeline, res.FellBack, res.SynopsisFailed, res.Synopsis)
 			}
-			if len(res.Review.Comments) != 1 || res.Review.Overview == "" {
-				t.Errorf("the fallback must produce a whole review: %+v", res.Review)
+			if len(res.Review.Comments) != 1 || !strings.Contains(res.Review.Overview, "No walkthrough") {
+				t.Errorf("the fallback must produce findings and say the walkthrough is missing: %+v", res.Review)
 			}
 			if res.Usage.InputTokens != 110 {
 				t.Errorf("input = %d, want both calls' 110: turn 1 was billed", res.Usage.InputTokens)
@@ -260,8 +260,8 @@ func TestAFailedFirstTurnFallsBackToOneCall(t *testing.T) {
 				t.Fatalf("the fallback is one call after turn 1, got %d", len(seen))
 			}
 			req, _ := decodeStepwise(t, seen[1])
-			if len(req.Messages) != 1 || req.ToolChoice.Name != StageReview {
-				t.Errorf("the fallback call is one user turn under the review contract: %d message(s), tool %q",
+			if len(req.Messages) != 1 || req.ToolChoice.Name != StageFindings {
+				t.Errorf("the fallback call is one user turn under the findings contract: %d message(s), tool %q",
 					len(req.Messages), req.ToolChoice.Name)
 			}
 			if !slices.ContainsFunc(said, func(s string) bool { return strings.Contains(s, "did not produce a walkthrough") }) {
@@ -371,7 +371,7 @@ func TestTheStepwiseCatalogueCarriesEveryTurnsContract(t *testing.T) {
 	for _, tool := range stageTools(Options{Stepwise: true}) {
 		names = append(names, tool.Name)
 	}
-	for _, want := range []string{StageSynopsis, StageFindings, StageReview} {
+	for _, want := range []string{StageSynopsis, StageFindings} {
 		if !slices.Contains(names, want) {
 			t.Errorf("the stepwise catalogue is missing %s: %v", want, names)
 		}

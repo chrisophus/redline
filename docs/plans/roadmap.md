@@ -87,12 +87,11 @@ So it was not missing context and it was not missing advice.
 
 A review can split the files into groups and judge each group in its own call.
 That ships, off by default, as `--cohorts N` on an ordinary review: one, the
-default, is no split. The item below is what is left of making the split a dial
-rather than a separate pipeline.
+default, is no split. The split rides on the describing form as a field, so a
+split run and an unsplit one send the same tools.
 
 | Item | What | Effort |
 |---|---|---|
-| **One describing form, and what it costs** | The file split rides on the describing form as an optional field, so one form covers both one group and several. The request cannot then also carry the plain review form. Measured: the four forms together come to 6,937 bytes and that is the combination the API refused as "the compiled grammar is too large", against 6,292 for the set that ships today with the two-call shape and 4,257 for the set that ships with the split. The plain review form is the biggest at 2,680 bytes and is only needed by the single call that writes the walkthrough and the findings together, so shapes that describe separately send the smaller set, and `--no-synopsis` and `--brief` keep their own. The trade is what happens when the describing call fails: it can no longer ask the next call for the whole review, so it asks for findings alone and the report says the walkthrough is missing. That is better than what the split does today, which is to rebuild the request differently and lose the cache. Done when one live call confirms the smaller set is accepted with the split field on it. | S |
 | **The merge stage** | One call behind the groups that gets every group's findings numbered together, plus the scout's answers, and returns the rulings, the deduplicated comments and the final review. Dedup by `UnionKey`, which prefers the finding's question to its wording. With one group it is the ruling as it ships today. `--merge-context` decides whether it reads the whole cached prompt, which is where a connection between two groups can still be spotted, or only the findings and the change summary, which is cheaper. | M |
 | **Divide the scout's allowance** | `--scout-budget shared\|per-cohort`. The allowance is $0.25 for one change, and one scout per group spends that N times over. Shared divides it; per-cohort multiplies the bill on purpose. | S |
 | **Judge only the groups that changed** | On the second round of reviewing a pull request, don't redraw anything and judge only the groups whose files moved. What's missing: keeping the split in `session.json`, a way to look up the head SHA of the last review of this pull request (the ledger stores `revision` as `baseSHA:headSHA` and nothing queries it by pull request), matching `git diff lastSHA..newHEAD` onto the saved split by file path with `repairPartition`'s fallback for new or moved files, and a CI step that restores the previous `.redline` artifact, which the workflow already uploads with fourteen-day retention. This saves the describing call and the judging calls for files nobody touched. It does not save the cache, which expires in minutes while a review round takes days. | M |
@@ -110,7 +109,11 @@ document:
   `claude-sonnet-5`, which is the opposite of what the API docs say. Check it
   again on another model, and any time cache reads come back zero.
 - All the forms compile into one grammar and there is a size limit on the
-  total. See the row above for the measured numbers.
+  total. Review, ruling, findings and a separate partition form together were
+  refused as "the compiled grammar is too large". Ruling, findings and the
+  describing form with the partition as a field are accepted (2026-09-16,
+  `claude-sonnet-5`), and that is what every shape that describes separately
+  now sends.
 - Model and effort have to stay the same across a cached run on Sonnet. The
   ways around that are Opus 5 and Fable 5.1 only.
 - The cache lives five minutes or an hour, measured from the start of the last

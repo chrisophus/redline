@@ -61,7 +61,6 @@ type Cohort struct {
 // prefix and tail, under the contract that also carries the partition.
 func (r *Result) cohortsRequest(opts Options, in Input) *Result {
 	out := r.synopsisRequest(opts, in)
-	out.Stage = StageCohorts
 	// The bound the rest of the run enforces, not the raw flag. The tripwire
 	// prices cohortBound, the progress line prints it and repairPartition
 	// folds anything above it, so a stage one told a larger number spends
@@ -207,14 +206,11 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		// better than no review.
 		if opts.Progress != nil {
 			opts.Progress("the describing call did not produce a walkthrough (" + failed +
-				"); this review is one call and writes its own")
+				"); this review is one call for findings alone")
 		}
-		// Under the one-shot shape, which is what the fallback call is: the
-		// staged catalogue does not carry the review contract, because the
-		// endpoint refuses the two together.
-		flat := opts
-		flat.Cohorts = 1
-		out, rerr := runOnce(ctx, in, flat, res)
+		// One judging call over the whole change, under the same tools the
+		// failed call sent, so it reads the prefix that call wrote.
+		out, rerr := runOnce(ctx, in, opts, res.judgingRequest(false))
 		// Stage one was billed whether or not it answered, and the write it
 		// made over the whole prefix is the expensive half. Folding it in
 		// here is what stops a run that paid for two calls from joining the

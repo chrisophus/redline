@@ -1,6 +1,7 @@
 package review
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"strings"
@@ -95,17 +96,18 @@ func TestBothStagesSendOneSharedPrefixAndDifferentTails(t *testing.T) {
 	}
 }
 
-// A describing call that breaks must not cost the review. The run falls back
-// to the contract that writes its own walkthrough, and says which happened:
-// a thin walkthrough from a fallback and a thin walkthrough from the model are
-// otherwise the same artifact.
-func TestAFailedDescribingCallFallsBackToTheWholeReview(t *testing.T) {
+// A describing call that breaks must not cost the review. The run goes on for
+// findings alone, under the same tools and the same prefix as the call that
+// failed, so it reads what that call cached, and it says the walkthrough is
+// missing rather than rendering a review with no summary.
+func TestAFailedDescribingCallGoesOnForFindingsAlone(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageSynopsis, `{"overview":"","files":[]}`)),
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t2", StageReview, reviewBody)),
+		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageSynopsis, `{"overview":"","files":[],"cohorts":[]}`)),
+		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t2", StageFindings, findingsBody)),
 	)
 	var said []string
 	opts := synopsisOpts(api)
+	opts.Cache, opts.CacheTTL = true, CacheTTL5m
 	opts.Progress = func(s string) { said = append(said, s) }
 	res, err := Run(context.Background(), exploreInput(), opts)
 	if err != nil {
@@ -129,12 +131,36 @@ func TestAFailedDescribingCallFallsBackToTheWholeReview(t *testing.T) {
 	if !warned {
 		t.Errorf("the fallback was silent on the terminal: %q", said)
 	}
-	var req wireRequest
-	if err := json.Unmarshal(api.seen()[1], &req); err != nil {
+	if !strings.Contains(res.Review.Overview, "No walkthrough") {
+		t.Errorf("the review must say its walkthrough is missing, got overview %q", res.Review.Overview)
+	}
+	seen := api.seen()
+	var failed, fallback wireRequest
+	if err := json.Unmarshal(seen[0], &failed); err != nil {
 		t.Fatal(err)
 	}
-	if got := req.Messages[0].Content; len(got) != 1 {
-		t.Fatalf("the fallback call must send the prefix alone, got %d block(s)", len(got))
+	if err := json.Unmarshal(seen[1], &fallback); err != nil {
+		t.Fatal(err)
+	}
+	if a, b := failed.Messages[0].Content[0], fallback.Messages[0].Content[0]; a.Text != b.Text || !hasCacheControl(b) {
+		t.Error("the fallback must resend the failed call's cached prefix byte for byte")
+	}
+	var tools [2]struct {
+		Tools      json.RawMessage `json:"tools"`
+		ToolChoice struct {
+			Name string `json:"name"`
+		} `json:"tool_choice"`
+	}
+	for i := range tools {
+		if err := json.Unmarshal(seen[i], &tools[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !bytes.Equal(tools[0].Tools, tools[1].Tools) {
+		t.Error("the fallback must send the same tools as the failed call, or the cache is lost")
+	}
+	if tools[1].ToolChoice.Name != StageFindings {
+		t.Errorf("the fallback asks for findings alone, got tool %q", tools[1].ToolChoice.Name)
 	}
 }
 

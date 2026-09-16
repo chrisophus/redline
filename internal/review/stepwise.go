@@ -179,8 +179,8 @@ func stepwiseTurn(opts Options, n int) Options {
 // the rest of the packet.
 //
 // Turn 1 never fails the review. A turn that errors, refuses, truncates or
-// writes no overview leaves the run on the one-shot contract, the way describe
-// and runStaged degrade, and says why. The fallback call sends the same system
+// writes no overview leaves the run on one judging call for findings alone, the
+// way describe and runStaged degrade, and says why. The fallback call sends the same system
 // block and the same catalogue as turn 1, so it still reads those back. Turn 2
 // failing fails the run, because it is the judging call and there is nothing
 // left to fall back to that has not already been paid for.
@@ -198,9 +198,9 @@ func runStepwise(ctx context.Context, in Input, opts Options, res *Result) (*Res
 	if failed != "" {
 		if opts.Progress != nil {
 			opts.Progress("the describing turn did not produce a walkthrough (" + failed +
-				"); this review is one call and writes its own")
+				"); this review is one call for findings alone")
 		}
-		out, rerr := runOnce(ctx, in, opts, res)
+		out, rerr := runOnce(ctx, in, opts, res.judgingRequest(false))
 		// Turn 1 was billed whether or not it answered, so it is folded in
 		// here for the reason runStaged folds its stage one in.
 		applySynopsis(out, opts.Model, findings.Review{}, usage, written, failed)

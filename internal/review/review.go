@@ -504,10 +504,10 @@ type Result struct {
 	// separate call on a separate model under its own governor.
 	ScoutCostUSD float64 `json:"scoutCostUSD,omitempty"`
 	// Synopsis records that the describing stage ran and its walkthrough is
-	// the one on this review; SynopsisFailed says why the run fell back to
-	// the one-shot contract when it did not. Same distinction the verifying
-	// pass makes: a review whose description came from the judging call and
-	// one whose describing call broke look identical without it.
+	// the one on this review; SynopsisFailed says why the review has no
+	// walkthrough when it did not. Same distinction the verifying pass makes:
+	// a review the model described and one whose describing call broke should
+	// not read the same.
 	Synopsis       bool   `json:"synopsis,omitempty"`
 	SynopsisFailed string `json:"synopsisFailed,omitempty"`
 	// SynopsisOutputTokens is what the describing stage wrote, kept out of
@@ -884,12 +884,11 @@ func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 	var synFailed string
 	if opts.Synopsis {
 		walkthrough, synUsage, synWritten, synFailed = describe(ctx, in, opts, res)
-		if synFailed == "" {
-			res.Stage, res.Tail = StageFindings, judgingTail+findingsPrompt
-		} else if opts.Progress != nil {
+		if synFailed != "" && opts.Progress != nil {
 			opts.Progress("the describing call did not produce a walkthrough (" + synFailed +
-				"); this review writes its own")
+				"); this review goes on for findings alone")
 		}
+		res = res.judgingRequest(synFailed == "")
 	}
 	var out *Result
 	var err error
@@ -1115,10 +1114,11 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 				"it answered the contract without judging the change", stubs)
 	}
 	res.Review = *rev
-	// The partition rides on stage one's answer under its own contract, and
-	// findings.Review has no field for it: it is this producer's scaffolding,
-	// not part of the review a reader is handed or the file a skill writes.
-	if stage == StageCohorts {
+	// The partition rides on the describing call's answer, and findings.Review
+	// has no field for it: it is this producer's scaffolding, not part of the
+	// review a reader is handed or the file a skill writes. An unsplit
+	// describing call sends it back empty.
+	if stage == StageSynopsis {
 		var wire struct {
 			Cohorts []Cohort `json:"cohorts"`
 		}
