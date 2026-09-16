@@ -18,7 +18,8 @@ the reviewer is whoever is reading: a person in the browser, an agent
 reading `findings.json`, or `redline review`, the one command that calls a
 model. All three see the same facts and write their decisions onto the same
 report, and every finding and every ruling says which of them produced it.
-See `redline-design.md` for the design and the plan.
+See `redline-design.md` for the design and the plan, and `CHANGELOG.md` for
+what each release changed.
 
 Reviewing is read-only; posting is not, and never happens on its own.
 `redline post` is the one command that writes to GitHub: it submits the
@@ -57,7 +58,7 @@ uncommitted work, and on an open pull request. `--pr` fetches via `gh`
 | sqlc staleness, spec-vs-handler agreement, vacuum linting | not started |
 | Deterministic UI capture | not started |
 | Context envelope and provider registry | shipped |
-| `redline review`: one model call over the run's own output | shipped |
+| `redline review`: a describing call and a judging call over the run's own output | shipped |
 | `redline postmortem`: what the review proposed, what the lookups found, what was ruled | shipped |
 | Migration adds a NOT NULL column with no default | shipped |
 | Provider parity: a capability added to one of a set of parallel implementations | shipped |
@@ -181,8 +182,8 @@ Three panes, scoped to the change, none of which re-reports what CI gates:
 
 ## Review
 
-`run` measures. `review` judges, in one model call over what `run` already
-wrote, and it is the only command that spends money.
+`run` measures. `review` judges, over what `run` already wrote, and it is the
+only command that spends money.
 
 ```
 redline run
@@ -221,10 +222,18 @@ it may still disagree where it has material the author did not. The threads
 are read by `run` and saved into the session, so `review` stays a pure
 function of what it was given.
 
-One turn, no tools. Context is cheap and turns are expensive: ten tool-use
-turns over a growing context cost several dollars, because every turn
-re-sends the whole conversation. So the context is generous and the loop is
-one call.
+No tool-use loop. Context is cheap and turns are expensive: ten tool-use turns
+over a growing context cost several dollars, because every turn re-sends the
+whole conversation. So the context is generous and nothing iterates.
+
+A default review is two calls. The first describes the change and writes the
+walkthrough; the second is asked for findings alone, over the same prefix,
+which prompt caching serves at a fraction of the input rate. One call had left
+a reader of a large change roughly a one in three chance of a report with no
+walkthrough on it: above 34k tokens, 23% to 40% of stored samples returned a
+junk overview and no file lines, and a single sample that skips the
+walkthrough has nothing to cover for it. `--no-synopsis` asks for the old
+one-call shape.
 
 Test code is not part of it. Changed test files are named on the request with
 how many lines moved in them, and their bodies are left out, the same bargain
@@ -290,7 +299,7 @@ prefers that, so the measurement is worth taking again.
 
 ### Checking the findings before posting them
 
-A review is one call with no tools, so it cannot check a claim about the rest
+A review has no tools, so it cannot check a claim about the rest
 of the repository. That is where the false positives came from in real use:
 findings that were accurate observations about code the team had deliberately
 written that way, dismissed in seconds by a reader who had the repository
@@ -556,8 +565,8 @@ locations, never code: the program reads those bytes from the tree itself, so
 the reviewer gets real source under a selection a model made, and a model's
 recollection of a function can never reach the review looking like source. It
 explores under a cost cap and its findings are frozen into the envelope, which
-is what keeps the review a single call over a fixed payload while the
-exploring happens at a fraction of the rate. Running out of budget is not a
+is what keeps the review itself a fixed payload with no exploring of its own,
+while the exploring happens at a fraction of the rate. Running out of budget is not a
 failure: it stops, says so in the notes, and the review still happens. It is
 off unless a repository names it, because `run` costing nothing is worth
 keeping by default.
@@ -761,7 +770,8 @@ internal/pane/parity       capabilities added to one of a set of parallel
 internal/post         the PR review payload and merge-gate profile
 internal/provider     finding and running language context providers
 internal/postmortem   what a review did, kept for `redline postmortem`
-internal/review       the one model call: prompt, schema, cost
+internal/review       the model calls: prompts, schema, cost
+internal/review/prompts    the prompt text, embedded at build time
 internal/report       markdown and self-contained HTML
 internal/run          dispatcher
 internal/target       working tree, branch, or PR
