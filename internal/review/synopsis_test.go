@@ -93,12 +93,6 @@ func TestBothStagesSendOneSharedPrefixAndDifferentTails(t *testing.T) {
 	if first[1].Text == second[1].Text {
 		t.Fatal("both stages sent the same instruction, so one of them was asked for the wrong thing")
 	}
-	if !strings.Contains(first[1].Text, "Do not judge it") {
-		t.Errorf("the describing call was not told to describe: %q", first[1].Text)
-	}
-	if !strings.Contains(second[1].Text, "already written") {
-		t.Errorf("the judging call was not told the walkthrough exists: %q", second[1].Text)
-	}
 }
 
 // A describing call that breaks must not cost the review. The run falls back

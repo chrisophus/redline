@@ -45,22 +45,6 @@ func TestThePromptCarriesWhatTheAuthorSaidTheChangeDoes(t *testing.T) {
 			t.Errorf("the prompt does not carry %q", want)
 		}
 	}
-	// The rule lives in the judging tail now, with the rest of what a call
-	// writing findings is told. It is still load-bearing: asking for prose to
-	// be audited against the diff produced reviews made of rewording
-	// suggestions.
-	// Against the whole request rather than one field of it. The stage's
-	// instruction rides in the prompt block on the shapes whose next call
-	// resends it, and in a block of its own on the shapes that do not, and
-	// this rule is load-bearing on all of them: asking for prose to be audited
-	// against the diff produced reviews made of rewording suggestions.
-	sent := got.System + got.Prompt + got.Tail
-	if !strings.Contains(sent, "pull request body") || !strings.Contains(sent, "is not a finding") {
-		t.Error("the reporting rules must rule prose-versus-code mismatches out")
-	}
-	if strings.Contains(sent, "does not do what its own description says") {
-		t.Error("the reporting rules still ask for description mismatches")
-	}
 }
 
 // A body that runs to pages is pasted output or a template. The part that

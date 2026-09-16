@@ -81,11 +81,10 @@ var judgingTail string
 //go:embed prompts/describing.md
 var describingTail string
 
-// briefPrompt states the same job in forty lines instead of a hundred and
-// ninety-five. It still spells out its own output contract in prose, which the
-// tool grammar now carries as well. The duplication is deliberate: every number
-// below was produced by these exact bytes, and rewording them to match the
-// request would mean the shipped prompt is no longer the measured one.
+// briefPrompt states the same job in a page. It once spelled out its own
+// output contract in prose as well; the tool grammar carries that on both
+// wires now, so the prose went. The numbers below were measured against the
+// longer bytes, which git history has.
 //
 // The prompt and the emission were first measured together, on eleven fixtures
 // at one sample on claude-sonnet-5 with the packet held constant: this prompt

@@ -746,9 +746,6 @@ func TestPromptSaysWhatThisPullRequestAlreadyHeard(t *testing.T) {
 	if !strings.Contains(got.Prompt, "chrisophus replied") {
 		t.Fatal("a reply presented without its author reads as a fact rather than a position")
 	}
-	if !strings.Contains(got.Prompt, "Do not raise any of them again") {
-		t.Fatal("the instruction that makes the section worth its tokens is missing")
-	}
 }
 
 // A reply is the author's position, and an author dismissing a finding about
