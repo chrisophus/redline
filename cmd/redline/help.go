@@ -333,11 +333,13 @@ shape:
   --no-verify       skip the checking pass, which is already the default
   --synopsis        describe the change in its own call, then judge it in a
                     second one that writes only the comments and the
-                    verdicts. The two share a prefix, so the second reads
-                    what the first cached. Off by default; --no-synopsis is
-                    the explicit off. What it buys is a walkthrough that
+                    verdicts. Already the default; kept so scripts that pass
+                    it still run. The two share a prefix, so the second reads
+                    what the first cached. What it buys is a walkthrough that
                     covers every shown file and an output cap the findings no
-                    longer share with fifty file summaries.
+                    longer share with fifty file summaries: on the stored
+                    samples, one call in three above 34k tokens wrote no
+                    walkthrough at all.
   --no-synopsis     one call writes the walkthrough and the findings together
   --brief           one call under the forty-line short prompt, carried by
                     the same tool grammar every other stage uses. Measured on

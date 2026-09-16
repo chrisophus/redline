@@ -128,11 +128,20 @@ func cmdReview(o opts) error {
 	default:
 		return fmt.Errorf("--cache-ttl is %s or %s, not %q", review.CacheTTL5m, review.CacheTTL1h, o.cacheTTL)
 	}
-	// The describing stage is off by default. It is a second call, and the
-	// case for it is measured on the fixtures rather than assumed: what it
-	// has to show is a walkthrough that covers every shown file and a judging
-	// call that stops losing findings to the output cap.
-	ropts.Synopsis = o.synopsis && !o.noSynopsis
+	// The describing stage runs on every review that can have one.
+	//
+	// What decided it: across about 400 stored samples, replies that skipped
+	// the walkthrough entirely - a junk overview, no file lines, findings only
+	// - ran at 23% to 40% on every packet above 34k tokens and at 0% to 7% on
+	// the six small ones. The sweep never showed it, because it scores the
+	// union of three samples and one sample writing the walkthrough hides two
+	// that did not. A default run takes one sample.
+	//
+	// The second call is most of a call's input read back from cache at a
+	// tenth of base rate, and it buys a walkthrough that covers every shown
+	// file and a judging call whose output cap is not shared with fifty file
+	// summaries. --no-synopsis is the way back to one call.
+	ropts.Synopsis = !o.noSynopsis
 	// The pipeline shape. Staged implies the describing call - it is the call
 	// that draws the partition - so --synopsis is not also required, and
 	// --no-synopsis does not switch it off: a run asked to fan out cannot be
@@ -153,13 +162,17 @@ func cmdReview(o opts) error {
 		case o.brief:
 			return fmt.Errorf("--brief is a single pass under the review contract, and --pipeline %s is two turns under contracts the short prompt does not describe; pass one or the other",
 				review.PipelineStepwise)
-		case ropts.Synopsis:
+		case o.synopsis:
 			return fmt.Errorf("--pipeline %s already describes the change in its first turn, so --synopsis has nothing to add; pass one or the other",
 				review.PipelineStepwise)
 		case o.mode == review.ModeExplore:
 			return fmt.Errorf("--pipeline %s and --mode explore are both multi-turn conversations over the packet; pass one or the other",
 				review.PipelineStepwise)
 		}
+		// Turn one is the describing call, so the default one has nothing to
+		// add. The library ignores it under this shape either way; clearing it
+		// keeps the options saying what the run will do.
+		ropts.Synopsis = false
 	}
 	// One call under the short prompt, when --brief asks for it.
 	//
@@ -191,11 +204,15 @@ func cmdReview(o opts) error {
 		case ropts.Pipeline == review.PipelineStaged:
 			return fmt.Errorf("--brief is a single pass under the review contract, so it cannot draw the %s partition; pass one or the other",
 				review.PipelineStaged)
-		case ropts.Synopsis:
+		case o.synopsis:
 			return fmt.Errorf("--brief writes the walkthrough in the same call, so --synopsis has nothing to add; pass one or the other")
 		case o.mode == review.ModeExplore:
 			return fmt.Errorf("--brief is a single pass and --mode explore is a tool loop; pass one or the other")
 		}
+		// The short prompt describes and judges in one call and carries no
+		// synopsis contract, so the default describing call has to come off
+		// here rather than be sent under a prompt that cannot answer it.
+		ropts.Synopsis = false
 	}
 	ropts.Cohorts = o.cohorts
 	ropts.MinCohortFiles = o.minCohortFiles

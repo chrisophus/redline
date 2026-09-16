@@ -470,14 +470,19 @@ func TestSweep(t *testing.T) {
 	// it could not check would show up here as lost labelled defects,
 	// and that is the failure mode worth paying to detect.
 	opts.Verify = os.Getenv("REDLINE_EVAL_VERIFY") != ""
-	// The arm this sweep exists to settle next: the description in its own
-	// call. It cannot go over the batch tier - the judging call reads what
-	// the describing one wrote, and a batch's results arrive over a window
-	// no cache entry survives - so this arm runs interactively, where the
-	// second call reads the prefix the first one wrote.
-	opts.Synopsis = os.Getenv("REDLINE_EVAL_SYNOPSIS") != ""
+	// The describing call, which the command now runs on every review that can
+	// have one. The sweep follows the command, so this is on unless the arm
+	// asks for the single call, and REDLINE_EVAL_NO_SYNOPSIS is that arm.
+	//
+	// It cannot go over the batch tier - the judging call reads what the
+	// describing one wrote, and a batch's results arrive over a window no cache
+	// entry survives - so a batched sweep is the one-call shape.
+	if os.Getenv("REDLINE_EVAL_SYNOPSIS") != "" {
+		t.Fatal("REDLINE_EVAL_SYNOPSIS is the default now; unset it, or set REDLINE_EVAL_NO_SYNOPSIS for the one-call arm")
+	}
+	opts.Synopsis = os.Getenv("REDLINE_EVAL_NO_SYNOPSIS") == ""
 	if opts.Synopsis && os.Getenv("REDLINE_EVAL_BATCH") != "" {
-		t.Fatal("REDLINE_EVAL_SYNOPSIS and REDLINE_EVAL_BATCH ask for two calls that read each other over a tier that cannot pair them; drop the batch")
+		t.Fatal("the describing call and the judging call read each other over a tier that cannot pair them; set REDLINE_EVAL_NO_SYNOPSIS to batch this sweep")
 	}
 	// The multi-turn arm. Explore ships behind --mode explore and has never
 	// been scored: it hands the reviewer a catalogue and a fetch tool instead
@@ -504,9 +509,9 @@ func TestSweep(t *testing.T) {
 		if os.Getenv("REDLINE_EVAL_BATCH") != "" {
 			t.Fatal("a stepwise run is two turns of one conversation, the second resending the first's answer; the batch tier cannot pair them")
 		}
-		if opts.Synopsis {
-			t.Fatal("REDLINE_EVAL_PIPELINE=stepwise already describes the change in its first turn; unset REDLINE_EVAL_SYNOPSIS")
-		}
+		// Turn one is the describing call, so the default one has nothing to
+		// add. The command clears it under this shape for the same reason.
+		opts.Synopsis = false
 	}
 	// Brief last, and by the product's own rule (cmd/redline/review.go): off
 	// unless asked for, and refused beside a shape that replaces it. The sweep
@@ -519,9 +524,15 @@ func TestSweep(t *testing.T) {
 		t.Fatal("REDLINE_EVAL_NO_BRIEF is the default now; unset it, or set REDLINE_EVAL_BRIEF for the short prompt")
 	}
 	opts.Brief = os.Getenv("REDLINE_EVAL_BRIEF") != ""
-	if opts.Brief && (opts.Pipeline == review.PipelineStaged || opts.Pipeline == review.PipelineStepwise ||
-		opts.Synopsis || opts.Mode == review.ModeExplore) {
-		t.Fatal("REDLINE_EVAL_BRIEF is a single pass under the short prompt and cannot be combined with staged, stepwise, synopsis or explore")
+	if opts.Brief {
+		if opts.Pipeline == review.PipelineStaged || opts.Pipeline == review.PipelineStepwise ||
+			opts.Mode == review.ModeExplore {
+			t.Fatal("REDLINE_EVAL_BRIEF is a single pass under the short prompt and cannot be combined with staged, stepwise or explore")
+		}
+		// The short prompt writes the walkthrough and the findings in one call
+		// and carries no synopsis contract, so the default describing call
+		// comes off here, as it does in the command.
+		opts.Synopsis = false
 	}
 	// REDLINE_EVAL_THINKING offers each stage's tool instead of pinning it, which
 	// is what lets the model think; see review.Options.Thinking.
@@ -702,8 +713,11 @@ func TestSweep(t *testing.T) {
 	if os.Getenv("REDLINE_EVAL_VERIFY") != "" {
 		label += " verified"
 	}
-	if os.Getenv("REDLINE_EVAL_SYNOPSIS") != "" {
-		label += " synopsis"
+	// The describing call is the default, so what distinguishes a row is its
+	// absence. A row labelled the old way would read as the arm under test
+	// when it is now the shipped shape.
+	if !opts.Synopsis && opts.Pipeline != review.PipelineStaged && opts.Pipeline != review.PipelineStepwise && !opts.Brief {
+		label += " no-synopsis"
 	}
 	if os.Getenv("REDLINE_EVAL_PIPELINE") == review.PipelineStaged {
 		label += " staged"
