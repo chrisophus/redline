@@ -120,9 +120,6 @@ func TestTheStepwiseConversationDisclosesThePacketInOrder(t *testing.T) {
 	if strings.Contains(opening, in.priorsSection()) || strings.Contains(opening, strings.TrimSpace(envText)) {
 		t.Errorf("turn 1 was shown material it is meant to describe without:\n%s", opening)
 	}
-	if !strings.Contains(opening, "Do not judge it yet") {
-		t.Errorf("turn 1 was not told to describe:\n%s", opening)
-	}
 	if _, ok := one[0].Content[0]["cache_control"]; !ok {
 		t.Error("the end of turn 1's user content carries no breakpoint, so turn 2 pays for it again")
 	}

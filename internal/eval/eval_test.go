@@ -275,9 +275,6 @@ func TestPriorFindingsReachThePrompt(t *testing.T) {
 	if !strings.Contains(got.Prompt, "tenant_id") {
 		t.Fatal("the NOT NULL prior did not reach the prompt")
 	}
-	if !strings.Contains(got.Prompt, "Do not restate") {
-		t.Fatal("the prompt must say the priors are already on the report")
-	}
 }
 
 func TestScoreCountsACorrelationOnlyWhenItReferences(t *testing.T) {

@@ -57,73 +57,52 @@ type Question struct {
 func answerPrompt(tools []string, turns int) string {
 	return fmt.Sprintf(`You are checking a code review's findings before anyone reads them.
 
-A model reviewed a change and wrote down, for each thing it flagged, the one
-lookup that would confirm or refute it. Your job is to run those lookups and
-put what you find in front of the model that rules on them next. You do not
-rule. You do not review. You find the evidence and record where it is.
+A reviewer wrote down, for each thing it flagged, the one lookup that would
+confirm or refute it. Run those lookups and record where the evidence is.
+You do not rule and you do not review.
 
-You are not writing the evidence. You record a file and a line range, and the
-program reads those bytes from the repository itself. So never retype code,
-never summarise a function, never describe what something does. Record where
-it is, and tag the record with the id of the question it answers.
+You record a file and a line range, and the program reads those bytes from
+the repository. Never retype code, summarise a function, or describe what
+something does. Tag every record with the id of the question it answers; an
+untagged record reaches the ruling tied to nothing.
 
 How to answer each kind:
 
-- precedent: does this repository already do the same thing elsewhere, in code
-  this change did not touch? Grep for the pattern or the symbol. Record the
-  clearest one or two places that do it, and say in your notes how many you
-  found. This is the kind that matters most: a finding against something the
-  repository does everywhere is a finding against the whole repository, and
-  the reviewer had no way to know.
-- caller: what calls or reads the thing that changed? Use gorefactor when the
-  language is Go and it is available, because its callers are resolved rather
-  than matched by name. Otherwise grep. Record the call sites that would
-  actually break if the claim is right. When the question is what the called
-  thing does with what it is given, the answer is in the callee and the call
-  site only says where to look: record the body that uses it.
-- rule: did the team write this down? Look in the repository's own rules and
-  design notes with list_docs and read_lines, and record the specific lines
-  that bear on the claim, not the whole file.
+- precedent: does this repository already do the same thing elsewhere, in
+  code this change did not touch? Grep for it. Record the clearest one or two
+  places and say in your notes how many you found. This kind matters most: a
+  finding against something the repository does everywhere is wrong, and the
+  reviewer had no way to know.
+- caller: what calls or reads the thing that changed? Use gorefactor for Go
+  when it is available, since its callers are resolved rather than matched by
+  name; otherwise grep. Record the call sites that would break if the claim
+  is right. When the question is what the callee does with what it is given,
+  record the callee's body.
+- rule: did the team write this down? Look with list_docs and read_lines and
+  record the specific lines, not the whole file.
 - history: why was the removed code there? Record the lines under the history
   role and git will be asked what happened to them.
 - type: what can this type represent? Record the declaration.
 
-Evidence against the finding is worth more than evidence for it. You are
-trying to save the author from reading something wrong, so a search that
-turns up thirty files already doing the flagged thing is the most useful
-result you can return, and you should record it plainly and say the count.
+Evidence against a finding is worth more than evidence for it. Thirty files
+already doing the flagged thing is the most useful result you can return:
+record it plainly and say the count.
 
-If you cannot settle a question, say so in your notes for that finding, in one
-sentence, naming what you looked for. A finding nobody could check is folded
-away rather than posted, so an honest "no precedent found for X, searched the
-whole tree" and a silence are read very differently: the first is an answer.
-Start every note with the id of the question it is about, in brackets, the
-way the brief writes it: the ruling reads the notes beside the findings and
-a note that names no finding is a note it cannot place.
+If you cannot settle a question, say so in a one-sentence note naming what
+you looked for, starting with the question's id in brackets. A finding
+nobody could check is folded away rather than posted, so "[c2] no precedent
+found for X, searched the whole tree" and silence are read very differently.
+When the question is about code outside this tree, a library or a
+dependency's type, say that: an empty grep says nothing about it.
 
-Some questions are about code that is not in this repository: what a library
-does with what it is handed, what a dependency's type can hold. Your tools
-search this tree and nothing else, so an empty grep says nothing either way
-about any of that. Say which it is in the note, in as many words: "this is in
-anthropic-sdk-go, outside the tree, so it could not be checked here" is an
-answer the ruling can use, and an empty search reported as a negative is one
-it cannot.
+Do not record test files; Redline holds test context back. One or two
+records per question, and none for a question whose answer is that nothing
+turned up.
 
-Tag every record with the id of the question it answers. A record with no id
-reaches the ruling as something found but tied to nothing, and a finding it
-would have settled reads as unchecked.
-
-Do not record test files. Redline holds test context back.
-
-Be frugal. One or two records per question, and none at all for a question
-whose answer is simply that nothing turned up. Every line you record is a line
-the ruling has to read.
-
-You have %d turns, and the last of them is for filing rather than searching.
-Every tool call in one turn runs before you see any result, at one turn's
-cost, so run the lookups for several questions in the same turn: the greps
-for each precedent question, the caller query for each caller question.
-Record as soon as a lookup settles a range rather than at the end.
+You have %d turns, and the last is for filing. Every tool call in one turn
+runs before you see any result, at one turn's cost, so run the lookups for
+several questions in the same turn. Record as soon as a lookup settles a
+range.
 
 When you have worked through the questions, call done.
 
@@ -146,8 +125,8 @@ Your tools: %s.`, turns, strings.Join(tools, ", "))
 // prompt it shares as its cache prefix.
 func answerBrief(opts Options) string {
 	var b strings.Builder
-	b.WriteString("Questions to answer. Each one belongs to a finding a reviewer made ")
-	b.WriteString("about this change, and the id is what to tag your records with.\n\n")
+	b.WriteString("Questions to answer. Each belongs to a finding on this change; ")
+	b.WriteString("tag your records with its id.\n\n")
 	for _, q := range opts.Questions {
 		fmt.Fprintf(&b, "[%s] %s\n", q.ID, q.Kind)
 		if loc := location(q); loc != "" {
@@ -207,18 +186,16 @@ func oneLine(s string) string {
 // rather than reviewing, and what it most needs to know is that an absent
 // answer is not a negative one.
 const answeringPromptFragment = `The context tagged scout was gathered to check
-particular findings. A lookup pass was given each finding and the lookup its
-author said would settle it, and it went and ran them. Every block is the real
-file, copied from the repository at the revision under review, so the code is
-exactly what is there. What is a judgement is the selection: which lines it
-thought answered the question. Each block says which finding it was fetched
-for.
+particular findings: a lookup step ran the check each finding's author said
+would settle it. Every block is the real file at the revision under review,
+and each says which finding it was fetched for. The judgement is the
+selection: which lines it thought answered the question.
 
 Its notes say what it looked for and could not establish. Read those as
-carefully as the blocks. "No precedent found for X, searched the whole tree" is
-an answer and a strong one. A question with neither a block nor a note is one
-nobody managed to check, which is not the same as one that came back negative,
-and a finding resting on it has not been verified by anything.`
+carefully as the blocks: "no precedent found for X, searched the whole tree"
+is a strong answer. A question with neither a block nor a note is one nobody
+managed to check, which is not the same as one that came back negative, and
+a finding resting on it has not been verified.`
 
 // promptFor, briefFor and fragmentFor are the three places the two jobs
 // differ. Everything else in the loop is the same code doing the same thing,
@@ -249,24 +226,19 @@ func briefFor(opts Options) string {
 // exploring scout told that has been handed a brief about a stage it is not
 // in.
 const (
-	closingBrief = `That is the last of the turns. Look nothing else up: the searching is over.
+	closingBrief = `That is the last of the turns. Look nothing else up.
 
-File what you have now. Call record for every location that bears on a
-question, even a partial answer, and say in the note what is still missing.
-Then call done, and put what you could not establish in its notes.
+Call record for every location that bears on a question, even a partial
+answer, and say in the note what is still missing. Then call done, with what
+you could not establish in its notes. Anything not recorded is lost, and a
+question with nothing against it reads as one nobody could answer.`
 
-Anything you do not record is lost. The findings are ruled on with whatever
-is filed here, and a question with nothing against it reads as a question
-nobody could answer.`
+	exploringClosingBrief = `That is the last of the turns. Look nothing else up.
 
-	exploringClosingBrief = `That is the last of the turns. Look nothing else up: the searching is over.
-
-File what you have now. Call record for every location you have already read
-that the reviewer needs and the diff does not show, then call done, and put
-what you went looking for and did not reach in its notes.
-
-Anything you do not record is lost. The reviewer sees the diff and what is
-filed here, and a gap nobody names reads exactly like a gap that is not there.`
+Call record for every location you have already read that the reviewer needs
+and the diff does not show, then call done, with what you went looking for
+and did not reach in its notes. Anything not recorded is lost, and a gap
+nobody names reads like a gap that is not there.`
 )
 
 func closingFor(opts Options) string {

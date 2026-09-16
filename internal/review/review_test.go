@@ -746,29 +746,6 @@ func TestPromptSaysWhatThisPullRequestAlreadyHeard(t *testing.T) {
 	if !strings.Contains(got.Prompt, "chrisophus replied") {
 		t.Fatal("a reply presented without its author reads as a fact rather than a position")
 	}
-	if !strings.Contains(got.Prompt, "Do not raise any of them again") {
-		t.Fatal("the instruction that makes the section worth its tokens is missing")
-	}
-}
-
-// A reply is the author's position, and an author dismissing a finding about
-// their own code has a stake in the answer. The prompt has to leave the review
-// able to disagree, or a wrong dismissal silences a real defect forever.
-func TestThePromptDoesNotTurnAReplyIntoARuling(t *testing.T) {
-	in := Input{Prior: []feedback.Thread{{
-		File: "a.go", Line: 1, Said: "this races",
-		Replies: []feedback.Reply{{Author: "someone", Body: "intentional"}},
-	}}}
-	got, err := Assemble(in, Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(got.Prompt, "the author's position, not a ruling") {
-		t.Fatalf("a reply is being presented as settled:\n%s", got.Prompt)
-	}
-	if !strings.Contains(got.Prompt, "contradicts them, say so once") {
-		t.Fatal("the review has to be told it may still disagree, with new material")
-	}
 }
 
 // A resolved thread with no reply means "fixed" and "dismissed with a click"

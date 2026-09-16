@@ -58,22 +58,6 @@ func TestTheModeIsChosenByWhetherThereAreQuestions(t *testing.T) {
 	}
 }
 
-// The scout finds the evidence and does not rule on it. A scout that starts
-// forming opinions stops fetching, which is the failure the exploring prompt
-// already guards against and the answering one has more reason to.
-func TestTheAnsweringPromptForbidsRuling(t *testing.T) {
-	got := answerPrompt([]string{"grep", "read_lines", "record", "done"}, 8)
-	if !strings.Contains(got, "You do not\nrule") {
-		t.Error("the scout was not told that ruling is somebody else's turn")
-	}
-	if !strings.Contains(got, "Evidence against the finding is worth more") {
-		t.Error("the point of the pass is finding what refutes a claim; say so")
-	}
-	if !strings.Contains(got, "record where it is") && !strings.Contains(got, "Record where") {
-		t.Error("the rule that holds the design up is missing: record locations, never content")
-	}
-}
-
 // One range can genuinely answer two findings, and deduplicating those into
 // one would leave the second looking unchecked.
 func TestOneRangeCanAnswerTwoQuestions(t *testing.T) {

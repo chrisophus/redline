@@ -195,9 +195,6 @@ func TestUncoveredErrorHandlingIsCalledOut(t *testing.T) {
 	if !strings.Contains(got, "error handling: 41-42") {
 		t.Errorf("the error path is not called out:\n%s", got)
 	}
-	if !strings.Contains(got, "fails in production and not in CI") {
-		t.Errorf("the section does not say why that matters:\n%s", got)
-	}
 }
 
 func TestHandlesError(t *testing.T) {

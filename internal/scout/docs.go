@@ -189,9 +189,8 @@ func guidelineBrief(root string, found []docFile, inlineLines, totalLines int) s
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\nThis repository's own rules. They govern what a good review of it says, ")
-	b.WriteString("so read them before you decide what matters, and record the parts that bear on this change ")
-	b.WriteString("under the guideline role. The reviewer does not see them unless you do.\n")
+	b.WriteString("\nThis repository's own rules. Record the parts that bear on this change ")
+	b.WriteString("under the guideline role; the reviewer does not see them unless you do.\n")
 
 	budget := totalLines
 	for _, f := range found {
