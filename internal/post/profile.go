@@ -184,9 +184,10 @@ func gates(f findings.Finding) bool {
 	return f.Source != findings.SourceLLM
 }
 
-// reviewAttestMarker is the hidden line a merge gate scans for.
+// reviewAttestMarker is the hidden line a merge gate scans for. An empty
+// verdict is a review that attests nothing, so it carries no marker.
 func reviewAttestMarker(p *Profile, verdict, head string) string {
-	if p == nil {
+	if p == nil || verdict == "" {
 		return ""
 	}
 	return marker(fmt.Sprintf("%s verdict=%s head=%s", p.ReviewMarker, verdict, head))

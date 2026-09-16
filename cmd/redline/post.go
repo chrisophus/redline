@@ -72,7 +72,7 @@ func cmdPost(o opts) error {
 		if perr != nil {
 			return perr
 		}
-		if err := enforceProfile(o.dryRun, prof, tgt, owner, repo, num); err != nil {
+		if err := enforceProfile(o.dryRun, prof, tgt, num); err != nil {
 			return err
 		}
 	}
@@ -86,21 +86,29 @@ func cmdPost(o opts) error {
 	}
 
 	// A session outlives the head it observed, so a review can be posted
-	// against a commit that is no longer the tip. require_head refuses that,
-	// but only when a profile asked for it; without one the review used to go
-	// up silently describing code that had moved. The body is the artifact
-	// that stays on the pull request, so the notice belongs there rather than
-	// only on this terminal.
-	if head, err := ghPRHead(owner, repo, num); err != nil {
+	// against a commit that is no longer the tip. In CI that is a race, not a
+	// mistake: a push lands between the review step and the post step. The
+	// review still posts, with a notice in the body, because the body is what
+	// stays on the pull request and the review is already paid for. What a
+	// profile's require_head withholds is the gate verdict, so a stale review
+	// cannot satisfy a gate that wants one covering the current commit. It
+	// used to refuse the whole post, which threw the review away.
+	head, headErr := ghPRHead(owner, repo, num)
+	switch {
+	case headErr != nil && prof != nil && prof.RequireHead && !o.dryRun:
+		return fmt.Errorf("profile require_head: could not read the PR head: %w", headErr)
+	case headErr != nil:
 		fmt.Fprintf(os.Stderr, "redline: could not read the PR head (%v); "+
-			"cannot say whether this review describes the current commit\n", err)
-	} else if head != tgt.Head {
+			"cannot say whether this review describes the current commit\n", headErr)
+	case head != tgt.Head:
+		payload = payload.Stale(head)
 		fmt.Fprintf(os.Stderr, "redline: this session reviewed %s and the PR head is now %s; "+
-			"re-run `redline run --pr %d` for a review of the current commit\n",
+			"posting with a notice, re-run `redline run --pr %d` for a review of the current commit\n",
 			shortSHA(tgt.Head), shortSHA(head), num)
-		payload.Body = fmt.Sprintf("> This review is of `%s`, which is no longer the head of this "+
-			"pull request (`%s`). Findings below may already be addressed.\n\n",
-			shortSHA(tgt.Head), shortSHA(head)) + payload.Body
+		if prof != nil && !payload.Attested() {
+			fmt.Fprintf(os.Stderr, "redline: profile require_head: the review carries no gate verdict, "+
+				"since it is not of the PR head\n")
+		}
 	}
 
 	if o.dryRun {
@@ -134,7 +142,7 @@ func cmdPost(o opts) error {
 	payload = payload.Unposted(posted)
 	alreadyReviewed := post.ReviewedAt(reviewBodies, tgt.Head)
 	attestSame := true
-	if prof != nil {
+	if payload.Attested() {
 		prev := post.AttestedVerdict(reviewBodies, prof.ReviewMarker, tgt.Head)
 		attestSame = prev == payload.GateVerdict
 	}
@@ -152,16 +160,21 @@ func cmdPost(o opts) error {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Posted review to %s (%d new line comment(s))", tgt.PR.URL, len(payload.Comments))
-	if payload.GateVerdict != "" {
+	switch {
+	case payload.Attested():
 		fmt.Fprintf(os.Stderr, " verdict=%s", payload.GateVerdict)
+	case payload.GateVerdict != "":
+		fmt.Fprint(os.Stderr, " verdict withheld: not of the PR head")
 	}
 	fmt.Fprintln(os.Stderr)
 	return nil
 }
 
-// enforceProfile applies author-only and HEAD freshness. Dry-run without gh
+// enforceProfile applies author-only. HEAD freshness is not a refusal: a
+// review of a commit the PR has moved past still posts, and cmdPost withholds
+// its gate verdict when the profile requires the head. Dry-run without gh
 // skips the network checks so the payload can still be previewed offline.
-func enforceProfile(dryRun bool, prof *post.Profile, tgt *target.Target, owner, repo string, num int) error {
+func enforceProfile(dryRun bool, prof *post.Profile, tgt *target.Target, num int) error {
 	if prof == nil {
 		return nil
 	}
@@ -190,18 +203,6 @@ func enforceProfile(dryRun bool, prof *post.Profile, tgt *target.Target, owner, 
 			if login != author {
 				return fmt.Errorf("profile author_only: only the PR author (%s) may post (gh user: %s)", author, login)
 			}
-		}
-	}
-	if prof.RequireHead {
-		head, err := ghPRHead(owner, repo, num)
-		if err != nil {
-			if dryRun {
-				fmt.Fprintf(os.Stderr, "redline: could not read PR head (%v); skipping HEAD check\n", err)
-			} else {
-				return err
-			}
-		} else if head != tgt.Head {
-			return fmt.Errorf("profile require_head: session reviewed %s but PR head is %s; re-run `redline run --pr %d`", shortSHA(tgt.Head), shortSHA(head), num)
 		}
 	}
 	return nil

@@ -14,6 +14,8 @@ blocking:
   - warning
 
 author_only: true
+# The gate verdict must be of the PR's current head. A review of an older
+# commit still posts, with a notice, but carries no verdict marker.
 require_head: true
 # A pane that applied to the change but did not run is fail, even with no
 # findings. A missing check must not read as pass.

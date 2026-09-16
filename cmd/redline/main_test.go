@@ -334,6 +334,13 @@ type ghItem struct {
 // an already-posted payload must never reach submitReview.
 func fakeGh(t *testing.T, login string, comments, reviews []ghItem) {
 	t.Helper()
+	fakeGhAt(t, login, prSessionTarget().Head, comments, reviews)
+}
+
+// fakeGhAt is fakeGh with the PR head it reports, for a pull request that has
+// moved past the commit the session reviewed.
+func fakeGhAt(t *testing.T, login, head string, comments, reviews []ghItem) {
+	t.Helper()
 	bin := t.TempDir()
 	// The stand-in is a shell script so the test does not need to compile a
 	// second Go binary. It classifies the call by scanning every argument, then
@@ -357,7 +364,7 @@ func fakeGh(t *testing.T, login string, comments, reviews []ghItem) {
 	b.WriteString("done\n")
 	b.WriteString("case \"$sub\" in\n")
 	fmt.Fprintf(&b, "  user) printf '%%s\\n' %s;;\n", shQuote(login))
-	fmt.Fprintf(&b, "  head) printf '%%s\\n' %s;;\n", shQuote(prSessionTarget().Head))
+	fmt.Fprintf(&b, "  head) printf '%%s\\n' %s;;\n", shQuote(head))
 	b.WriteString("  files) printf '%s\\n' '[[]]';;\n")
 	fmt.Fprintf(&b, "  comments) printf '%%s' %s;;\n", shQuote(ghPagesJSON(t, comments)))
 	fmt.Fprintf(&b, "  reviews) printf '%%s' %s;;\n", shQuote(ghPagesJSON(t, reviews)))
@@ -426,6 +433,50 @@ func TestPostSkipsWhenAlreadyReviewedWithNoNewFindings(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "nothing to post") {
 		t.Fatalf("stderr should say nothing to post, got: %q", stderr)
+	}
+}
+
+// A push that lands between the review step and the post step must not throw
+// the review away. Under a profile that requires the head, the review still
+// posts with a notice, keeps its finding markers, and withholds the gate
+// verdict, so a gate that wants a verdict on the current commit is not handed
+// one about an older commit.
+func TestPostToAMovedHeadPostsWithoutTheGateVerdict(t *testing.T) {
+	dir := prSession(t)
+	prof := filepath.Join(t.TempDir(), "redline-review.yml")
+	body := "review_marker: example-agent-review:v1\nfinding_marker: example-agent-finding:v1\nauthor_only: false\n"
+	if err := os.WriteFile(prof, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fakeGhAt(t, "redline-bot", "cafef00d", nil, nil)
+	var err error
+	var out string
+	stderr := captureStderr(t, func() {
+		out = captureStdout(t, func() {
+			err = cmdPost(opts{out: dir, pr: "7", profile: prof, dryRun: true, port: 41400, noOpen: true})
+		})
+	})
+	if err != nil {
+		t.Fatalf("a review of a commit the PR moved past must still post: %v", err)
+	}
+	var req ghReviewRequest
+	if jsonErr := json.Unmarshal([]byte(out), &req); jsonErr != nil {
+		t.Fatalf("dry run JSON: %v\n%s", jsonErr, out)
+	}
+	if !strings.Contains(req.Body, "no longer the head") || !strings.Contains(req.Body, "carries no gate verdict") {
+		t.Errorf("the body must say the review is stale and unattested:\n%s", req.Body)
+	}
+	if strings.Contains(req.Body, "verdict=") {
+		t.Errorf("a stale review must not carry the gate verdict marker:\n%s", req.Body)
+	}
+	if len(req.Comments) != 1 || !strings.Contains(req.Comments[0].Body, "example-agent-finding:v1 severity=high") {
+		t.Errorf("the finding marker describes its line and stays: %+v", req.Comments)
+	}
+	if req.CommitID != "deadbeef" {
+		t.Errorf("the review stays anchored to the commit it is of, got %q", req.CommitID)
+	}
+	if !strings.Contains(stderr, "no gate verdict") {
+		t.Errorf("the terminal must say the verdict was withheld: %q", stderr)
 	}
 }
 
