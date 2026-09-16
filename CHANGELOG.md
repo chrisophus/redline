@@ -11,6 +11,16 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Removed
+- **`--stepwise` is gone.** It ran the review as one conversation in two
+  turns, describing the change from its diff before the rest of the packet
+  arrived. Measured as a hillclimb arm on 2026-09-14 it was noisier and cost
+  twice as much, and it was never made the default. The review's calls are
+  moving to a turn loop of small tool calls, and stepwise's own conversation
+  would have had to be rebuilt on top of that for a shape nobody uses.
+  `REDLINE_EVAL_STEPWISE` stops the eval harness with a message. Ledger rows it
+  wrote are still grouped apart by `--stats`.
+
 ### Added
 - **`--note` tells the reviewer what to look at.** `redline review --note
   "..."`, or `--note-file path`, adds a note from whoever asked for the review

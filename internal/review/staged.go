@@ -30,7 +30,9 @@ import (
 // four cohorts of five is worth more than no review.
 
 // Shapes a run is recorded under. None of them is a setting: Options.Shape
-// reads them off Cohorts and Stepwise, and the ledger groups rows by them.
+// reads them off Cohorts, and the ledger groups rows by them. Stepwise is no
+// longer a shape a run can take; it stays so ledger rows written by it are
+// still grouped apart.
 const (
 	PipelineOneShot  = "oneshot"
 	PipelineStaged   = "staged"

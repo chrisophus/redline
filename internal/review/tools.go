@@ -107,7 +107,7 @@ func stageTools(opts Options) []stageTool {
 	switch {
 	case opts.Synopsis || opts.Shape() != PipelineOneShot:
 		// Every shape that describes in its own call sends this one array: the
-		// unsplit review, the split and the stepwise conversation. The review
+		// unsplit review and the split. The review
 		// contract is left out, and that is measured rather than chosen:
 		// review + ruling + findings + the old separate partition contract is
 		// the array that got the 400, and ruling + findings + partition was

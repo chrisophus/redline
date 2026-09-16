@@ -58,6 +58,7 @@ func cmdReview(o opts) error {
 		// call per cohort and a one-shot run is one call, so an average over
 		// both is a price nobody was charged.
 		byShape := review.SummarizeByShape(entries)
+		// Stepwise is gone as a shape, but rows it wrote are still printed apart.
 		for _, shape := range []string{review.PipelineOneShot, review.PipelineStaged, review.PipelineStepwise} {
 			if s, ok := byShape[shape]; ok {
 				fmt.Println(s.String())
@@ -90,7 +91,7 @@ func cmdReview(o opts) error {
 		// Priced against this shape's own rows. A staged row's output is a
 		// describing call plus one per cohort, and using it to price a
 		// one-shot call would quote several calls for one.
-		shape := review.Options{Cohorts: o.cohorts, Stepwise: o.stepwise}.Shape()
+		shape := review.Options{Cohorts: o.cohorts}.Shape()
 		expected = review.SummarizeByShape(entries)[shape].ExpectedOutput()
 	}
 	ropts := review.Options{
@@ -147,14 +148,6 @@ func cmdReview(o opts) error {
 	// file and a judging call whose output cap is not shared with fifty file
 	// summaries. --no-synopsis is the way back to one call.
 	ropts.Synopsis = !o.noSynopsis
-	// Stepwise replaces the describing split rather than combining with it: its
-	// first turn is the describing call, so the default one comes off. The
-	// combinations it cannot run under are refused by the library, before
-	// anything is priced.
-	ropts.Stepwise = o.stepwise
-	if o.stepwise {
-		ropts.Synopsis = false
-	}
 	// One call under the short prompt, when --brief asks for it.
 	//
 	// It was the default until 2026-09-14, on measurements later found to have
@@ -174,7 +167,7 @@ func cmdReview(o opts) error {
 	ropts.Brief = o.brief
 	ropts.Thinking = o.thinking
 	if o.thinking && o.mode == review.ModeExplore {
-		return fmt.Errorf("--thinking changes how the one-shot, split and stepwise calls are sent, and --mode explore builds its own; pass one or the other")
+		return fmt.Errorf("--thinking changes how the one-shot and split calls are sent, and --mode explore builds its own; pass one or the other")
 	}
 	if o.brief {
 		switch {
@@ -386,9 +379,7 @@ func cmdReview(o opts) error {
 	// Turns counts samples too, so this line has to name the mode it is
 	// about: a three-sample one-shot review has no turns and fetched
 	// nothing.
-	// A stepwise run is two turns that fetch nothing, so the line is left to
-	// the shapes it describes.
-	if out.Samples == 0 && out.Turns > 1 && out.Pipeline != review.PipelineStepwise {
+	if out.Samples == 0 && out.Turns > 1 {
 		fmt.Fprintf(os.Stderr, "redline: %d turns, %d context entries fetched", out.Turns, out.Fetched)
 		if out.CapHit {
 			fmt.Fprint(os.Stderr, ", stopped by the cost cap")

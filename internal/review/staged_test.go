@@ -317,10 +317,10 @@ func TestTheCatalogueCarriesOnlyTheShapesContracts(t *testing.T) {
 	// One array for every shape that describes separately. review + ruling +
 	// findings + a separate partition contract is the one that got the 400;
 	// the partition is a field on the synopsis contract now, so the split, the
-	// unsplit describing call and the stepwise conversation send the same
+	// unsplit describing call send the same
 	// bytes, and a fallback after a failed describing call sends them too.
 	want := []string{StageRuling, StageFindings, StageSynopsis}
-	for _, o := range []Options{{Cohorts: 6}, {Synopsis: true}, {Synopsis: true, Verify: true}, {Stepwise: true}} {
+	for _, o := range []Options{{Cohorts: 6}, {Synopsis: true}, {Synopsis: true, Verify: true}} {
 		if got := names(o.withDefaults()); !slices.Equal(got, want) {
 			t.Errorf("%+v carries %v, want %v", o, got, want)
 		}
@@ -386,8 +386,8 @@ func TestTheLedgerNeverAveragesAcrossShapes(t *testing.T) {
 }
 
 // The shape is read off the options, not set: one cohort is the unsplit
-// review, more is the split, and stepwise is its own. The default is one.
-func TestTheShapeIsReadOffCohortsAndStepwise(t *testing.T) {
+// review, and more is the split. The default is one.
+func TestTheShapeIsReadOffCohorts(t *testing.T) {
 	for _, tc := range []struct {
 		o    Options
 		want string
@@ -395,7 +395,6 @@ func TestTheShapeIsReadOffCohortsAndStepwise(t *testing.T) {
 		{Options{}, PipelineOneShot},
 		{Options{Cohorts: 1}, PipelineOneShot},
 		{Options{Cohorts: 2}, PipelineStaged},
-		{Options{Stepwise: true}, PipelineStepwise},
 	} {
 		if got := tc.o.withDefaults().Shape(); got != tc.want {
 			t.Errorf("%+v: shape %q, want %q", tc.o, got, tc.want)

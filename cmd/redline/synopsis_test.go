@@ -9,7 +9,7 @@ import (
 
 // The describing call runs on every review that can have one, so the shapes
 // that write their own walkthrough have to clear it rather than refuse it.
-// Before the default flipped, --brief and stepwise were refused
+// Before the default flipped, --brief was refused
 // beside --synopsis, and a default that still tripped those refusals would
 // have made both shapes unrunnable.
 //
@@ -24,7 +24,6 @@ func TestTheDefaultDescribingCallDoesNotBreakTheShapesThatReplaceIt(t *testing.T
 		{"one call, by --no-synopsis", opts{noSynopsis: true}},
 		{"the short prompt", opts{brief: true}},
 		{"a fan-out", opts{cohorts: 4}},
-		{"a conversation", opts{stepwise: true}},
 		{"a tool loop", opts{mode: review.ModeExplore}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -50,7 +49,6 @@ func TestAnExplicitSynopsisBesideTheShapesThatReplaceItIsAccepted(t *testing.T) 
 		o    opts
 	}{
 		{"the short prompt", opts{brief: true, synopsis: true}},
-		{"a conversation", opts{stepwise: true, synopsis: true}},
 		{"a fan-out", opts{cohorts: 4, synopsis: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

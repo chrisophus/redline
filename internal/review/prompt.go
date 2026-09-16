@@ -188,28 +188,6 @@ func synopsisTail(in Input) string {
 	return withRoster(synopsisPrompt, in)
 }
 
-// stepwisePrompt is turn 1 of the stepwise conversation. It differs from
-// synopsisPrompt in what it can truthfully say about the material: this turn
-// has the change and the diff and nothing else, and the rest arrives in the
-// same conversation once the description is written.
-//
-//nolint:gosec // G101 reads the "pw" in "stepwise" as a password.
-//go:embed prompts/stepwise.md
-var stepwisePrompt string
-
-// stepwiseLead opens turn 2's material, so the model reads what follows as the
-// part of the packet its description was written without.
-//
-//nolint:gosec // G101 reads the "pw" in "stepwise" as a password.
-//go:embed prompts/stepwise-lead.md
-var stepwiseLead string
-
-// stepwiseDescribeTail is turn 1's instruction with the same roster the
-// describing call gets, for the same reason.
-func stepwiseDescribeTail(in Input) string {
-	return withRoster(stepwisePrompt, in)
-}
-
 // withRoster appends the files a describing instruction may write a line for.
 func withRoster(prompt string, in Input) string {
 	shown := in.ShownFiles()

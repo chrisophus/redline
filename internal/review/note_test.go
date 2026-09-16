@@ -59,7 +59,7 @@ func TestTheNoteGoesAfterThePromptAndIsPriced(t *testing.T) {
 func TestOnlyTheJudgingCallsCarryTheNote(t *testing.T) {
 	in := exploreInput()
 	in.Note = testNote
-	opts := Options{Cohorts: 3, Stepwise: false}.withDefaults()
+	opts := Options{Cohorts: 3}.withDefaults()
 	res, err := Assemble(in, opts)
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +70,6 @@ func TestOnlyTheJudgingCallsCarryTheNote(t *testing.T) {
 		"the judging call after a walkthrough": res.judgingRequest(true),
 		"the judging call without one":         res.judgingRequest(false),
 		"a cohort call":                        res.cohortRequest(opts, one, []Cohort{one}, 0, 1),
-		"stepwise turn 2":                      res.stepwiseJudgeRequest(opts, in, res.stepwiseDescribeRequest(opts, in), 100),
 	} {
 		if !carries(r) {
 			t.Errorf("%s does not carry the note", name)
@@ -79,7 +78,6 @@ func TestOnlyTheJudgingCallsCarryTheNote(t *testing.T) {
 	for name, r := range map[string]*Result{
 		"the describing call":   res.synopsisRequest(opts, in),
 		"the split's describer": res.cohortsRequest(opts, in),
-		"stepwise turn 1":       res.stepwiseDescribeRequest(opts, in),
 		"the ruling":            res.ruleRequest(in, opts, nil, nil),
 	} {
 		if carries(r) {
