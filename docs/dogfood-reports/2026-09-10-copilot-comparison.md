@@ -113,7 +113,7 @@ of bug it lost on here.
 
 ## Lessons
 
-Filed as enhancement items in [../plans/potential-enhancements.md](../plans/potential-enhancements.md)
+Filed as enhancement items in [../plans/roadmap.md](../plans/roadmap.md)
 under "Review quality (Copilot comparison)".
 
 1. Extract the PR's stated invariants from the description and rationale, then

@@ -139,8 +139,8 @@ func listDocs(root string, max int) []docFile {
 }
 
 // describe reads a file's size and its first heading. The heading is the
-// file's own words, which is what makes a listing worth reading: "Report
-// roadmap" says more about docs/plans/report-roadmap.md than its path does.
+// file's own words, which is what makes a listing worth reading: "What is
+// left" says more about docs/plans/roadmap.md than its path does.
 func describe(root, rel string) (docFile, bool) {
 	full := filepath.Join(root, filepath.FromSlash(rel))
 	st, err := os.Stat(full)

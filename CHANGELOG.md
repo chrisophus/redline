@@ -11,6 +11,16 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Changed
+- **The plan documents are one document.** Eight documents under `docs/plans`
+  had grown past three thousand lines, most of it describing work that has
+  since shipped, and several of their measurements were overturned by later
+  runs (the prompt ladder, which turned out to be measuring a proxy that
+  rewrote the system prompt). `docs/plans/roadmap.md` carries what is still
+  open, with the evidence each item rests on and the numbers that still hold.
+  What shipped is in this file, the README status table and the doc comments
+  beside the code; the arguments are in `git log --follow -- docs/plans`.
+
 ## [0.10.1] - 2026-09-16
 
 ### Added
