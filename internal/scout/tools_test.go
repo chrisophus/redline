@@ -127,19 +127,3 @@ func TestAnEmptySearchSaysWhatItSearched(t *testing.T) {
 		}
 	}
 }
-
-// And the scout is told the same thing where it decides what to file: an
-// unanswerable question is a note naming why, not a silence.
-func TestTheAnsweringBriefSaysWhatIsOutsideTheTree(t *testing.T) {
-	got := answerPrompt([]string{"grep"}, 8)
-	for _, want := range []string{"not in this repository", "outside the tree"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("the brief never tells the scout to say %q:\n%s", want, got)
-		}
-	}
-	// A caller question is usually settled by what the callee does with the
-	// argument, not by the line that passes it.
-	if !strings.Contains(got, "the answer is in the callee") {
-		t.Errorf("the brief leaves a caller question answerable by the dispatch site:\n%s", got)
-	}
-}

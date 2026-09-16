@@ -251,15 +251,14 @@ func cohortsTail(in Input, bound int) string {
 
 ### The cohorts
 
-Also split the files above into at most %d group(s) of files that are best
-reviewed together, and call the cohorts tool rather than the synopsis one.
-Every file on that list belongs to exactly one group and no group is empty.
+Also split the files above into at most %d group(s) best reviewed together,
+and call the cohorts tool rather than the synopsis one. Every file belongs to
+exactly one group and no group is empty.
 
-Group by what a reviewer would have to hold in mind at once - a schema change
-and the code that reads it belong together even in different directories, and
-two unrelated fixes in one package do not. Each group's summary is what the
-reviewers of the other groups will be shown of this one, so write it for
-somebody who cannot see these lines.`, bound)
+Group by what a reviewer has to hold in mind at once: a schema change and the
+code that reads it belong together across directories, and two unrelated
+fixes in one package do not. Each group's summary is what the other groups'
+reviewers see of it, so write it for someone who cannot see these lines.`, bound)
 	return b.String()
 }
 
@@ -295,15 +294,14 @@ func cohortTail(mine Cohort, all []Cohort, mineIdx int, crossSummaries bool) str
 		return b.String()
 	}
 	if !crossSummaries {
-		b.WriteString("\nOther reviewers have the rest of this change. " +
-			"A defect outside your files is theirs to report.\n")
+		b.WriteString("\nOther reviewers have the rest of this change; " +
+			"a defect outside your files is theirs to report.\n")
 		return b.String()
 	}
 	b.WriteString("\n### The rest of the change\n\n" +
 		"Another reviewer has each of these, and a defect inside one is theirs to report. " +
-		"Their diffs are above and you may read them. Raise one only where it bears on " +
-		"your own files - a call your files make, an assumption they rely on - and say so " +
-		"as a correlation against the file of yours that it affects.\n\n")
+		"Their diffs are above. Raise one only where it bears on your own files, as a " +
+		"correlation against the file of yours it affects.\n\n")
 	for _, c := range others {
 		fmt.Fprintf(&b, "- **%s** (%d file(s)): %s\n", c.Name, len(c.Files), strings.TrimSpace(c.Summary))
 	}
@@ -400,8 +398,8 @@ func (in Input) testsLine() string {
 		return ""
 	}
 	return fmt.Sprintf("%d test file(s) also changed (+%d -%d) and are not shown: %s. "+
-		"They moved, so the change is not untested. Whether what they assert is enough is measured "+
-		"by the checks whose findings you were given, not read here. Judge the code they test.",
+		"The change is not untested; whether the tests are enough is measured by the checks. "+
+		"Judge the code they test.",
 		len(paths), added, removed, strings.Join(paths, ", "))
 }
 
@@ -512,15 +510,12 @@ func (in Input) heardSection() string {
 	}
 	var b strings.Builder
 	b.WriteString("## Already said on this pull request\n\n")
-	b.WriteString("Redline left these comments on an earlier run, and this is what happened to " +
-		"each. Do not raise any of them again: the author has seen it, and saying it twice is " +
-		"how a reader learns to stop reading.\n\n")
-	b.WriteString("A reply is the author's position, not a ruling. Where one explains that " +
-		"something is deliberate, treat it as this repository's convention for the rest of this " +
-		"review, and hold anything else the change does the same way to the same standard. " +
-		"Where you have material the author did not, in the diff or the context below, and it " +
-		"contradicts them, say so once, as a new finding, naming what you saw that they did " +
-		"not. What you must not do is repeat the original comment as though nothing was said.\n\n")
+	b.WriteString("Redline left these comments on an earlier run, with what happened to each. " +
+		"Do not raise any of them again.\n\n")
+	b.WriteString("A reply is the author's position, not a ruling. Where it says something is " +
+		"deliberate, treat that as this repository's convention for the rest of this review. " +
+		"Where the diff or the context below contradicts them, say so once, as a new finding, " +
+		"naming what you saw that they did not.\n\n")
 	for _, t := range in.Prior {
 		loc := t.File
 		if t.Line > 0 {
@@ -788,11 +783,9 @@ func (in Input) intentSection() string {
 	if b.Len() == 0 {
 		return ""
 	}
-	return "What the author says it does, in their words. This is orientation: it tells you " +
-		"what the change is for, so you can judge whether the code achieves it. It is a " +
-		"claim, not evidence - a description that says a case is handled does not handle " +
-		"it - and it is not itself under review. Do not report where the prose and the " +
-		"diff disagree; report what the code does wrong.\n\n" +
+	return "What the author says it does, in their words. It tells you what the change is " +
+		"for. It is a claim, not evidence, and it is not itself under review: report what " +
+		"the code does wrong, not where the prose and the diff disagree.\n\n" +
 		b.String()
 }
 
@@ -841,7 +834,7 @@ func (in Input) generatedLine() string {
 		}
 	}
 	return fmt.Sprintf("%d generated file(s) also changed and are not shown: %s. "+
-		"They are machine output. Judge the source they were generated from, not them.",
+		"Judge the source they were generated from.",
 		len(uniq), strings.Join(uniq, ", "))
 }
 
@@ -869,8 +862,8 @@ func (in Input) priorsSection() string {
 	}
 	var b strings.Builder
 	b.WriteString("## Findings already established\n\n")
-	b.WriteString("These are on the report already. Do not restate them. ")
-	b.WriteString("Each is written as [id]; put that id in relatedFindings to reference it.\n\n")
+	b.WriteString("On the report already; do not restate them. ")
+	b.WriteString("Reference one by putting its [id] in relatedFindings.\n\n")
 	for _, f := range in.Report.Findings {
 		if f.Source == findings.SourceLLM {
 			// A previous reviewer's remark is not an established fact and
@@ -918,7 +911,7 @@ func lintSentence(r *findings.Report) string {
 		return ""
 	}
 	return "Linters ran over this change: " + strings.Join(names, ", ") +
-		". What they catch is already in the findings above, so leave it to them.\n\n"
+		". Leave what they catch to them.\n\n"
 }
 
 // coverageSection is the lines this change added that no test executes.
@@ -974,9 +967,8 @@ func (in Input) coverageSection() string {
 	}
 	return "## Added lines no test executes\n\n" +
 		"From the coverage profile, for the files it covers. Use it to sharpen a " +
-		"finding you already have, not to report a number. Lines marked error " +
-		"handling are the ones worth looking at first: an error path nothing " +
-		"exercises is the case that fails in production and not in CI.\n\n" +
+		"finding, not to report a number. Look at the lines marked error handling " +
+		"first.\n\n" +
 		b.String() + "\n"
 }
 
@@ -1058,7 +1050,7 @@ func (in Input) absentSection() string {
 	for _, a := range in.Absent {
 		b.WriteString("- " + a + "\n")
 	}
-	b.WriteString("\nTreat these areas as unexamined. Their silence is not a pass.\n\n")
+	b.WriteString("\nThese areas are unexamined; their silence is not a pass.\n\n")
 	return b.String()
 }
 
@@ -1068,11 +1060,9 @@ func (in Input) diffSection() string {
 	}
 	var b strings.Builder
 	b.WriteString("## The diff\n\n")
-	b.WriteString("Where a file is small enough it is given whole, at its state after the " +
-		"change, with the changed line ranges named and any removed lines listed above it. " +
-		"The invariant a change breaks usually lives in the part of the file the change did " +
-		"not touch, and the added lines are already in the file, so repeating them as a diff " +
-		"would only send them twice. Larger files are shown as a diff instead.\n\n")
+	b.WriteString("A small file is given whole, as it is after the change, with the changed " +
+		"line ranges named and any removed lines listed above it. Larger files are shown " +
+		"as a diff.\n\n")
 	shown := in.ShownFiles()
 	for _, f := range in.Change.Files {
 		if !shown[f.Path] {

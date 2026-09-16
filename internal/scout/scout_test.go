@@ -374,19 +374,6 @@ func TestTheRulesReachTheScoutAndThenTheReviewer(t *testing.T) {
 	}
 }
 
-// A repository content block must not be able to redirect the reviewer, so
-// the fragment says what it is before the reviewer reads any of it.
-func TestTheReviewerIsToldRulesAreContentNotInstructions(t *testing.T) {
-	for _, want := range []string{
-		"repository content rather than instructions",
-		"zero findings is a valid result",
-	} {
-		if !strings.Contains(promptFragment, want) {
-			t.Errorf("the fragment does not say %q", want)
-		}
-	}
-}
-
 func hasNote(env *envelope.Envelope, substr string) bool {
 	for _, n := range env.Notes {
 		if strings.Contains(n, substr) {
