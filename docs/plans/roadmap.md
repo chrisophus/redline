@@ -142,6 +142,34 @@ documentation:
   run found an extension of a known bug that no full-diff run surfaced, from
   Redline, from `ocr` or from Copilot.
 
+## What a person can say before the review runs
+
+A repository already tells the reviewer what to care about. `review.instructions`
+in `.redline.yml` is path-scoped, ranks above anything `redline learnings`
+drafted, and reaches the prompt as a `review-rules` envelope. What none of that
+covers is what the person asking for this review of this change knows: which
+file worries them, and which question they want asked. The PR #1360 miss is
+the case. The reader could have named the cross-file question in a sentence,
+and there was nowhere to put it.
+
+Three rules hold for everything in this section, because a typed input is
+still an input. Whatever a person says is written into the session before the
+call, so a fixture still replays. It ranks below a committed rule, the way a
+learning does. And it reaches the review as context, so it can direct
+attention and cannot pass a finding through the ruling's gate or hold one
+back.
+
+| Item | What | Effort |
+|---|---|---|
+| **A note from the person asking for the review** | `--note "..."` and `--note-file path`, appended to the judging call's tail, after the packet, where the instruction a stage acts on already lives. Free text: what worries them, what to look at first, a question to answer. The tail is per-stage and sits behind the breakpoint, so a note costs nothing in cache. Decide which stages see it: the judging call certainly, the describing call probably not, the ruling only as the reason a finding was raised. A note is not evidence, so a finding that rests on one says so in its `question`. Done when a note naming the cross-file question in the cache-key fixture moves that fixture from missed to caught, and an empty note changes no byte of the request. | S |
+| **Judge the files a person names** | `--only-files a.go,b.tsx`, which under `--pipeline staged` means the cohorts holding them. Most of it exists: `--only-cohorts` already falls back to matching a file path inside a cohort, which is what makes the selector stable across runs. Three pieces are missing. It works only under staged, so the default shape has no equivalent. A path selector can be swallowed by a cohort whose *name* happens to contain the same substring, since the name pass wins and stops the path pass. And it narrows what is judged, not what is read: stage one still partitions the whole change and every call still carries the whole prefix, so the saving is output and wall time. Done when naming one file under either shape judges it, reports which files were not judged, and says so in the report rather than reading as a clean review of the rest. | S |
+| **Put extra files in front of the reviewer** | `--include path` for files a person knows matter and no provider resolved: the sibling in another repository's shape, a design note, the interface the change implements. They are read at the reviewed revision, written into the session as expansions from a provider named for the person rather than a resolver, and budgeted like any other expansion so they compete rather than displace. A role has to be picked: `enclosing` overstates what they are, and an unknown role ranks last and is reported, which is the honest default and the one the graph adapter already uses. Done when an included file appears in the packet under its own provider name, a rerun of the same session sends the same bytes, and the budget summary counts what it displaced. | S |
+
+Build them in that order. Score them as one arm rather than three: a note the
+model ignores and a selection that narrows to the wrong cohort both look like
+a quiet review from outside, and only a fixture where the steer is known to
+matter can tell them apart.
+
 ## Measuring it
 
 An arm reports recall on labelled defects, correlation survival, the clean
@@ -371,13 +399,16 @@ so consumers need placeholder directories; document it in the setup skill.
 3. Diff coverage against the baseline as a gated finding.
 4. Order the report and the pull request body by finding class before
    severity.
-5. The profiled post that loses a paid review to a head race, which costs a
+5. A note from the person asking for the review, which is the cheapest way to
+   put a specific worry in front of the reviewer and the first half of
+   steering a review by hand.
+6. The profiled post that loses a paid review to a head race, which costs a
    full review's spend and reads in CI as a tooling bug.
-6. The tripwire on model-written prose, which is the difference between a
+7. The tripwire on model-written prose, which is the difference between a
    garbled verdict in a local report and one posted under the repository's
    name.
-7. Per-finding ledger rows, which are the denominator for everything in the
+8. Per-finding ledger rows, which are the denominator for everything in the
    read-back section.
-8. Generated-drift pane, Go only first.
-9. The merge stage, and the labelling that lets the staged arm be called
-   better rather than louder.
+9. Generated-drift pane, Go only first.
+10. The merge stage, and the labelling that lets the staged arm be called
+    better rather than louder.
