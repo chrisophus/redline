@@ -3,14 +3,14 @@
   "origin": "synthetic, built by make-synthetic.sh",
   "summary": "A migration widens users with a NOT NULL tenant_id column, and the struct that writes the row gains a plain string field in the same commit. Each half is unremarkable. Together they say every insert that does not set TenantID writes an empty string into a column the schema was just made to require, and the migration itself fails outright if the table has rows.",
   "clean": false,
-  "why_this_fixture_exists": "This is the case that justifies a second wave at all. The migration pane sees SQL and no Go. A Go provider sees a new struct field and no SQL. Neither can reach the conclusion, and an LLM given both can.",
+  "why_this_fixture_exists": "Two files that are unremarkable apart and a defect together: the migration pane sees SQL and no Go, a Go provider sees a new struct field and no SQL, and neither reaches the conclusion. It was written as the case for connecting two wave-one findings, and that mechanism is gone: the review is not shown what the checks found. What the fixture measures now is whether a reviewer reading both diffs sees it on its own, which is the harder version of the same question.",
   "expect": [
     {
       "key": "not-null-against-the-struct-field",
-      "what": "The new NOT NULL column and the new non-pointer struct field are about the same data, and nothing fills the column for rows that already exist or for inserts that omit the field.",
-      "correlation": true,
-      "relates_to_rules": ["migration-add-not-null-no-default"],
-      "any_of": ["tenant", "not null", "default", "backfill", "empty"]
+      "what": "The migration makes users.tenant_id NOT NULL with no default, and the struct that writes the row gains a plain string field in the same commit. Nothing fills the column for rows that already exist, and an insert that omits the field writes an empty string into a column the schema was just widened to require.",
+      "any_of": ["tenant", "not null", "default", "backfill", "empty"],
+      "all_of": ["tenant"],
+      "note": "Was a correlation label: it required category correlation and references resolving against the frozen session. The review is no longer shown the checks' findings, so it has no ids to reference and no correlation to make. The defect did not go anywhere - both files are in the diff - so this asks for it in prose instead."
     }
   ],
   "quiet": [

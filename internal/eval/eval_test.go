@@ -154,17 +154,21 @@ func TestFixturesLoadOffline(t *testing.T) {
 
 // The fixture set must keep covering the cases the design argues about. A set
 // that drifts into whatever was convenient stops testing the hard half.
+//
+// Correlation used to be one of them: a finding that connects two the checks
+// already made. The review is no longer shown those findings, so nothing can
+// produce one, and requiring the case here would demand a label no reviewer
+// can reach. The defect behind the correlation fixture is still labelled, in
+// prose, and the one case that cannot survive without the findings is kept as
+// a known gap.
 func TestFixtureSetCoversTheDeliberateCases(t *testing.T) {
 	fx := load(t)
-	var clean, correlation, knownGap, history int
+	var clean, knownGap, history int
 	for _, f := range fx {
 		if f.Annotation.Clean {
 			clean++
 		}
 		for _, e := range f.Annotation.Expect {
-			if e.Correlation {
-				correlation++
-			}
 			if e.KnownGap != "" {
 				knownGap++
 			}
@@ -175,9 +179,6 @@ func TestFixtureSetCoversTheDeliberateCases(t *testing.T) {
 	}
 	if clean == 0 {
 		t.Error("no fixture expects a clean review; the 29 percent is the harder target")
-	}
-	if correlation == 0 {
-		t.Error("no fixture requires correlating two producers; that case is the argument for a second wave")
 	}
 	if knownGap == 0 {
 		t.Error("no fixture states a known gap; gaps that leave the fixture set stop being tracked")
@@ -277,14 +278,35 @@ func TestPriorFindingsReachThePrompt(t *testing.T) {
 	}
 }
 
+// Correlation scoring is dormant rather than gone: no label sets it, because
+// the review is no longer shown what the checks found and so has no ids to
+// reference. The guarantee is kept under test on a fixture built here, so
+// restoring the capability is a label change rather than a rebuild.
+//
+// What it guarantees: a correlation counts only when its references resolve,
+// through the same path the report resolves them. Counting a non-empty
+// relatedFindings as enough made the score meaningless - a stale id, an
+// invented id and [""] all read as caught.
 func TestScoreCountsACorrelationOnlyWhenItReferences(t *testing.T) {
-	f, err := LoadOne(fixtureDir + "/correlation-not-null-column")
-	if err != nil {
-		t.Fatal(err)
+	report := &findings.Report{Findings: []findings.Finding{
+		{Rule: "migration-add-not-null-no-default", Substrate: "redline/sql",
+			File: "m/0002.up.sql", Category: findings.CategorySchema,
+			Severity: findings.SeverityWarning,
+			Message:  "adds NOT NULL column users.tenant_id with no default"},
+		{Rule: "suppression-added", Substrate: "redline/suppressions",
+			File: "a.go", Line: 3, Category: findings.CategoryReview,
+			Severity: findings.SeverityInfo, Message: "adds //nolint"},
+	}}
+	report.Finalize()
+	f := Fixture{
+		Annotation: Annotation{Name: "synthetic-correlation", Expect: []Expectation{{
+			Key:            "two-facts",
+			Correlation:    true,
+			RelatesToRules: []string{"migration-add-not-null-no-default"},
+			AnyOf:          []string{"tenant"},
+		}}},
+		Session: &run.Result{Report: *report},
 	}
-	// The reference is read out of the fixture rather than written into the
-	// test: the annotation names a rule, and the score is only meaningful if
-	// it resolves the comment's reference to that rule's finding.
 	var prior, other string
 	for _, fd := range f.Session.Report.Findings {
 		switch {
@@ -295,42 +317,52 @@ func TestScoreCountsACorrelationOnlyWhenItReferences(t *testing.T) {
 		}
 	}
 	if prior == "" || other == "" {
-		t.Fatalf("this fixture needs the NOT NULL prior and one other finding to reference: %+v",
+		t.Fatalf("the fixture needs the prior and one other finding to reference: %+v",
 			f.Session.Report.Findings)
 	}
 	correlation := func(refs ...string) findings.Review {
 		return findings.Review{Comments: []findings.ReviewComment{{
-			File: "internal/store/user.go", Line: 8,
-			Body:            "TenantID is a plain string while the migration makes tenant_id NOT NULL with no default, so any insert that omits it writes an empty string.",
+			File:            "internal/store/user.go",
+			Line:            8,
+			Body:            "TenantID is a plain string while the migration makes tenant_id NOT NULL with no default.",
 			Category:        findings.CategoryCorrelation,
 			RelatedFindings: refs,
 		}}}
 	}
-	// The right answer: a correlation whose reference lands on the rule the
-	// annotation says it has to connect to.
 	if sc := Score(f, correlation(prior)); len(sc.Caught) != 1 {
 		t.Fatalf("a correct correlation scored as %+v", sc)
 	}
-	// An id from some other run reads as a correlation and connects nothing.
 	if sc := Score(f, correlation("f00000000000")); len(sc.Caught) != 0 {
 		t.Fatalf("a reference that resolves to nothing scored as caught: %+v", sc)
 	}
-	// Neither does one that resolves to a different finding.
 	if sc := Score(f, correlation(other)); len(sc.Caught) != 0 {
 		t.Fatalf("a reference to the wrong rule scored as caught: %+v", sc)
 	}
-	// The same words with no reference and no category is the failure mode
-	// this fixture exists to catch: restating the prior.
+	// The same words with no reference and no category do not satisfy a
+	// correlation label, whatever they say.
+	plain := findings.Review{Comments: []findings.ReviewComment{{
+		File: "internal/store/user.go", Line: 8,
+		Body: "the migration makes tenant_id NOT NULL with no default",
+	}}}
+	if sc := Score(f, plain); len(sc.Caught) != 0 {
+		t.Fatalf("prose scored as a correlation: %+v", sc)
+	}
+}
+
+// Restating what a check already found is the false positive the correlation
+// fixture's quiet rule names, and that holds whether or not the label asking
+// for the defect is a correlation.
+func TestRestatingAPriorIsAQuietViolation(t *testing.T) {
+	f, err := LoadOne(fixtureDir + "/correlation-not-null-column")
+	if err != nil {
+		t.Fatal(err)
+	}
 	weak := findings.Review{Comments: []findings.ReviewComment{{
 		File: "internal/store/user.go", Line: 8,
 		Body: "migration 0002 adds a NOT NULL column with no default",
 	}}}
-	sc := Score(f, weak)
-	if len(sc.Caught) != 0 {
-		t.Fatal("restating a prior must not score as a correlation")
-	}
-	if len(sc.QuietViolations) == 0 {
-		t.Fatal("restating a prior is the false positive the annotation names")
+	if sc := Score(f, weak); len(sc.QuietViolations) == 0 {
+		t.Fatalf("restating a prior is the false positive the annotation names: %+v", sc)
 	}
 }
 
