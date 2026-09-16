@@ -115,7 +115,7 @@ func TestScopeClaimsOnlyFilesInAParallelSet(t *testing.T) {
 	p := &Pane{byDir: groupByDir(providerTree)}
 	got := p.Scope([]string{
 		"README.md",
-		"docs/plans/graph-context.md",
+		"docs/plans/roadmap.md",
 		"internal/pane/lint/lint.go",
 		"internal/provider/gcp/offer.go",
 	})

@@ -278,7 +278,8 @@ config, several merge into one budget, and the roles are language-agnostic. A
 graph provider would sit beside the Go one and Redline would not know the
 difference. What that adapter would emit, which roles a name-resolved edge may
 honestly claim, and why the graph has to be treated as a harness artifact with
-a staleness check are worked out in docs/plans/graph-context.md.
+a staleness check are recorded in docs/plans/roadmap.md, along with what
+the first adapter measured.
 
 ### What is still open
 
@@ -313,8 +314,9 @@ wrote it, the scout runs between the two calls, and a lookup that runs long
 enough pays the write premium for a read that never happens. A ruling that
 asked for the cache and read none of it says so on the terminal, and the
 ledger records `cached` beside the read and write counts, so the TTL decision
-is a measurement rather than a guess. Worked out in
-[docs/plans/staged-review.md](docs/plans/staged-review.md).
+is a measurement rather than a guess. The constraints that arrangement puts
+on any further stage are in
+[docs/plans/roadmap.md](docs/plans/roadmap.md).
 
 ## The product
 
