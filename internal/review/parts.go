@@ -39,6 +39,7 @@ func promptParts(in Input, opts Options, system string, budget envelope.Budgeted
 		// describing call and the judging call send the same packet and differ
 		// only here.
 		{"this pass", envelope.EstimateTokens(judgingTail + describingTail)},
+		{"note", envelope.EstimateTokens(in.noteTail())},
 	}
 }
 

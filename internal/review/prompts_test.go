@@ -26,6 +26,7 @@ func TestEveryPromptIsLoaded(t *testing.T) {
 		{"stepwise-lead.md", stepwiseLead},
 		{"findings.md", findingsPrompt},
 		{"findings-undescribed.md", undescribedPrompt},
+		{"note.md", notePrompt},
 		{"ruling.md", rulePrompt},
 		{"explore-addendum.md", exploreAddendum},
 	} {

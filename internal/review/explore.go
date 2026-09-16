@@ -144,8 +144,9 @@ func runExplore(ctx context.Context, in Input, opts Options, res *Result) (*Resu
 	// same two the one-shot call carries. Every turn of this loop resends
 	// the whole conversation, and the diff plus the catalogue is most of it;
 	// without the breakpoints each turn paid the full input rate for a
-	// prefix the previous turn had already sent.
-	opening := anthropic.NewBetaTextBlock(res.Prompt)
+	// prefix the previous turn had already sent. The note goes last in the
+	// opening, since explore has no tail block to carry it.
+	opening := anthropic.NewBetaTextBlock(res.Prompt + res.note)
 	opening.OfText.CacheControl = anthropic.NewBetaCacheControlEphemeralParam()
 	msgs := []anthropic.BetaMessageParam{anthropic.NewBetaUserMessage(opening)}
 	params := anthropic.BetaMessageNewParams{

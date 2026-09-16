@@ -243,7 +243,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 </div>
 {{if .Overview}}
 <h2 id="review">Review</h2>
-<div class="overview"><span class="tag vd">agent</span><p>{{.Overview}}</p></div>
+<div class="overview"><span class="tag vd">agent</span><p>{{.Overview}}</p>{{if .Note}}<p class="note">Asked to look at: {{.Note}}</p>{{end}}</div>
 {{end}}
 
 {{if .UITouched}}

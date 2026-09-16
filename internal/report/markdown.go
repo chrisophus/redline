@@ -45,6 +45,9 @@ func overviewSection(b *strings.Builder, rep *findings.Report) {
 		return
 	}
 	fmt.Fprintf(b, "## Review (agent)\n\n%s\n\n", rep.Agent.Overview)
+	if rep.Agent.Note != "" {
+		fmt.Fprintf(b, "The reviewer was given this note: %s\n\n", rep.Agent.Note)
+	}
 }
 
 // mutationSection renders the diff-scoped gomutants result, when a report was

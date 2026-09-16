@@ -49,6 +49,9 @@ func (t *Trace) header(b *strings.Builder) {
 	if !t.Wrote.IsZero() {
 		fmt.Fprintf(b, "  reviewed   %s\n", t.Wrote.Format("2006-01-02 15:04:05 MST"))
 	}
+	if t.Note != "" {
+		fmt.Fprintf(b, "  note       %s\n", strings.ReplaceAll(t.Note, "\n", "\n             "))
+	}
 	model := t.Model
 	if t.API != "" {
 		model += " over " + t.API

@@ -11,6 +11,17 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Added
+- **`--note` tells the reviewer what to look at.** `redline review --note
+  "..."`, or `--note-file path`, adds a note from whoever asked for the review
+  to the end of every judging call: which file worries them, what to look at
+  first, a question to answer. The describing call and the ruling do not see
+  it. The prompt says the note is not evidence, that a rule the repository
+  committed outranks it, and that a finding resting on it says so. The note is
+  saved in `review.json` and the postmortem trace and shown on the report. With
+  no note the request is unchanged. Whether a note turns a known miss into a
+  catch has not been measured yet.
+
 ### Fixed
 - **A profiled post no longer throws away a review when the PR head moves.**
   With `require_head: true`, the default, a commit landing between the review
