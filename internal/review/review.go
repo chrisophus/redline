@@ -259,6 +259,21 @@ type Options struct {
 	// instruction. Off is cheaper in input and gives up the correlation a
 	// cohort call can raise about a neighbour it was told nothing about.
 	CrossSummaries bool
+	// PlanOnly stops a staged run after stage one: the describing call and
+	// the partition it draws, with no cohort call sent. It exists for the
+	// same reason --dry-run does, one level in - a caller who wants to see
+	// how a change would be split, or how much narrower a cohort's task
+	// would be, without paying for the judgment those cohorts would write.
+	// Ignored outside PipelineStaged, because every other shape has no
+	// partition to stop before.
+	PlanOnly bool
+	// OnlyCohorts narrows a staged run to the cohorts stage one drew that
+	// match one of these selectors - a 1-based index into the partition as
+	// printed, or a case-insensitive substring of a cohort's name - so a
+	// caller who has already seen the plan can pay for one cohort's
+	// judgment rather than every one's. Empty runs every cohort the bound
+	// allows, which is the same as not passing it.
+	OnlyCohorts []string
 }
 
 func (o Options) withDefaults() Options {
@@ -498,6 +513,11 @@ type Result struct {
 	// CohortsFailed how many of their calls did not answer. Both are on the
 	// result because a merge over four cohorts of six is not a review of the
 	// change, and nothing downstream can tell without being told.
+	// PlanOnly marks a result that stopped after the partition and sent no
+	// cohort call, so Comments is empty because nothing judged the change,
+	// not because the change was clean. Summary reads this rather than
+	// printing a findings count that would say the opposite.
+	PlanOnly      bool     `json:"planOnly,omitempty"`
 	Cohorts       []Cohort `json:"cohorts,omitempty"`
 	CohortsFailed int      `json:"cohortsFailed,omitempty"`
 
@@ -529,10 +549,17 @@ type Result struct {
 // the numbers this whole design is accountable to, so they are printed
 // rather than left to a dashboard.
 func (r *Result) Summary() string {
-	s := fmt.Sprintf("api=%s model=%s turns=%d in=%d out=%d cost=%s wall=%s findings=%d",
+	// A plan-only result sent no cohort call, so len(Comments) is zero
+	// because nothing judged the change, not because the review found it
+	// clean. Printing "findings=0" here would read as the latter.
+	verdict := fmt.Sprintf("findings=%d", len(r.Review.Comments))
+	if r.PlanOnly {
+		verdict = fmt.Sprintf("plan-only cohorts=%d", len(r.Cohorts))
+	}
+	s := fmt.Sprintf("api=%s model=%s turns=%d in=%d out=%d cost=%s wall=%s %s",
 		r.API, r.Model, r.Turns, r.Usage.InputTokens, r.Usage.OutputTokens,
 		FormatCost(r.CostUSD, r.CostKnown),
-		r.Duration.Round(time.Millisecond), len(r.Review.Comments))
+		r.Duration.Round(time.Millisecond), verdict)
 	if r.Usage.CacheReadTokens > 0 {
 		// Without this a cached call reads as `in=3`, which looks like a
 		// request that was never sent. The prompt is the same on every
@@ -730,8 +757,12 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 		// carries the whole prefix, so lowering --cohorts removes a whole
 		// call's input and lowering --ceiling shaves a slice off all of them.
 		shape, advice := "", "Raise --max-cost to proceed, or lower --ceiling"
-		if opts.Pipeline == PipelineStaged {
-			bound := cohortBound(opts, in)
+		switch {
+		case opts.Pipeline == PipelineStaged && opts.PlanOnly:
+			shape = " --plan sends only the describing call, at the full response allowance."
+			advice = "Raise --max-cost to proceed, or lower --ceiling"
+		case opts.Pipeline == PipelineStaged:
+			bound := pricingCohortBound(opts, in)
 			shape = fmt.Sprintf(" A staged run is stage one plus up to %d cohort call(s), "+
 				"each carrying the whole prefix and capped at %d response token(s).",
 				bound, cohortMaxTokens(opts, bound))

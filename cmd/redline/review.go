@@ -214,6 +214,30 @@ func cmdReview(o opts) error {
 		// here rather than be sent under a prompt that cannot answer it.
 		ropts.Synopsis = false
 	}
+	if o.planOnly && ropts.Pipeline != review.PipelineStaged {
+		shape := ropts.Pipeline
+		if shape == "" {
+			shape = review.PipelineOneShot
+		}
+		return fmt.Errorf("--plan stops before the cohort calls --pipeline %s sends, and %s has none; pass --pipeline %s",
+			review.PipelineStaged, shape, review.PipelineStaged)
+	}
+	ropts.PlanOnly = o.planOnly
+	if o.onlyCohorts != "" {
+		if ropts.Pipeline != review.PipelineStaged {
+			shape := ropts.Pipeline
+			if shape == "" {
+				shape = review.PipelineOneShot
+			}
+			return fmt.Errorf("--only-cohorts selects among the cohorts --pipeline %s draws, and %s has none; pass --pipeline %s",
+				review.PipelineStaged, shape, review.PipelineStaged)
+		}
+		for _, sel := range strings.Split(o.onlyCohorts, ",") {
+			if sel = strings.TrimSpace(sel); sel != "" {
+				ropts.OnlyCohorts = append(ropts.OnlyCohorts, sel)
+			}
+		}
+	}
 	ropts.Cohorts = o.cohorts
 	ropts.MinCohortFiles = o.minCohortFiles
 	// On unless the off flag is given, the way the cache is: the summaries

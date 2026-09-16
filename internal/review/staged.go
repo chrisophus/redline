@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -95,11 +96,17 @@ func stagedCeilingCost(opts Options, in Input, res *Result) float64 {
 	if opts.Pipeline != PipelineStaged || res == nil {
 		return 0
 	}
-	bound := cohortBound(opts, in)
 	one, ok := CeilingCost(opts.Model, res.cohortsRequest(opts, in).InputEstimate, opts.MaxTokens)
 	if !ok {
 		return 0
 	}
+	if opts.PlanOnly {
+		// No cohort call is sent under --plan, so pricing the fan-out here
+		// would refuse a run for calls it will never make. Stage one is the
+		// whole bill.
+		return one
+	}
+	bound := pricingCohortBound(opts, in)
 	// Priced off a cohort request rather than the bare prefix: a cohort's
 	// tail carries its file list and, with cross-summaries on, a line for
 	// every other cohort, and undercounting it once per call is undercounting
@@ -166,6 +173,20 @@ func cohortBound(opts Options, in Input) int {
 	return opts.Cohorts
 }
 
+// pricingCohortBound is cohortBound narrowed by OnlyCohorts, for the tripwire
+// and its message. Stage one has not run when either reads this, so there is
+// no real partition to count selector matches against; one call per
+// selector is the same approximation cohortBound already makes for the
+// unfiltered case, capped at the bound so a caller cannot buy more by naming
+// more selectors than the partition could ever hold.
+func pricingCohortBound(opts Options, in Input) int {
+	bound := cohortBound(opts, in)
+	if len(opts.OnlyCohorts) > 0 && len(opts.OnlyCohorts) < bound {
+		return len(opts.OnlyCohorts)
+	}
+	return bound
+}
+
 // runStaged is the pipeline: describe and partition, then judge per cohort.
 //
 // It returns a Result the rest of Run does not have to know is staged: the
@@ -213,6 +234,29 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 	if opts.Progress != nil {
 		opts.Progress(fmt.Sprintf("described %d file(s) in %d cohort(s): %s",
 			len(walkthrough.Files), len(cohorts), cohortNames(cohorts)))
+	}
+	if len(opts.OnlyCohorts) > 0 {
+		selected, serr := selectCohorts(cohorts, opts.OnlyCohorts)
+		if serr != nil {
+			return nil, serr
+		}
+		cohorts = selected
+		if opts.Progress != nil {
+			opts.Progress(fmt.Sprintf("restricted to %d cohort(s): %s",
+				len(cohorts), cohortNames(cohorts)))
+		}
+	}
+	if opts.PlanOnly {
+		// Stop here: the partition is drawn and stage one is paid for, but
+		// no cohort call goes out. Comments is empty because nothing judged
+		// the change, which is what PlanOnly on the result says so Summary
+		// does not read it as a clean review.
+		out := res.clone()
+		applySynopsis(out, opts.Model, walkthrough, usage, written, "")
+		out.Pipeline = PipelineStaged
+		out.Cohorts = cohorts
+		out.PlanOnly = true
+		return out, nil
 	}
 
 	merged, err := fanOut(ctx, in, opts, res, cohorts)
@@ -403,6 +447,81 @@ func repairPartition(shown map[string]bool, cohorts []Cohort, bound int) ([]Coho
 		notes = append(notes[:3], fmt.Sprintf("and %d more", len(notes)-3))
 	}
 	return kept, strings.Join(notes, ", ")
+}
+
+// selectCohorts narrows a drawn partition to the ones a caller asked for by
+// position, by name, or by a file inside one, so a run can pay for one
+// cohort's judgment after --plan showed what stage one would draw.
+//
+// A selector is a 1-based index into cohorts as printed, or a
+// case-insensitive substring tried first against every cohort's name and,
+// only where that matches nothing, against the files inside each one. The
+// name is stage one's to word fresh on every run - two calls over the same
+// change can describe it in different words - so a selector kept from an
+// earlier plan is chasing wording that may already have moved. A file path
+// does not move, which is what makes it the fallback rather than the first
+// try: naming a phrase from the summary is what a caller remembers, and
+// naming a file is what still works when the summary said something else
+// this time. A selector matching nothing is an error naming the selector,
+// not a silent empty result: a partition of zero cohorts reads as a change
+// with nothing to review, and it would be a filter that missed rather than
+// a change that is clean.
+func selectCohorts(cohorts []Cohort, selectors []string) ([]Cohort, error) {
+	var out []Cohort
+	seen := map[int]bool{}
+	for _, sel := range selectors {
+		sel = strings.TrimSpace(sel)
+		if sel == "" {
+			continue
+		}
+		matched := false
+		if n, err := strconv.Atoi(sel); err == nil {
+			if n >= 1 && n <= len(cohorts) {
+				idx := n - 1
+				if !seen[idx] {
+					seen[idx] = true
+					out = append(out, cohorts[idx])
+				}
+				matched = true
+			}
+		} else {
+			// Falls through to a file path when no cohort name matches,
+			// because the name is stage one's to word fresh on every run and
+			// a selector kept from an earlier plan is chasing wording that
+			// may already have changed; a file path is the one thing about
+			// a cohort that does not move between runs.
+			needle := strings.ToLower(sel)
+			for i, c := range cohorts {
+				if strings.Contains(strings.ToLower(c.Name), needle) {
+					if !seen[i] {
+						seen[i] = true
+						out = append(out, cohorts[i])
+					}
+					matched = true
+				}
+			}
+			if !matched {
+				for i, c := range cohorts {
+					for _, f := range c.Files {
+						if strings.Contains(strings.ToLower(f), needle) {
+							if !seen[i] {
+								seen[i] = true
+								out = append(out, cohorts[i])
+							}
+							matched = true
+							break
+						}
+					}
+				}
+			}
+		}
+		if !matched {
+			return nil, fmt.Errorf(
+				"--only-cohorts %q matched no cohort: stage one drew %s",
+				sel, cohortNames(cohorts))
+		}
+	}
+	return out, nil
 }
 
 func cohortNames(cohorts []Cohort) string {

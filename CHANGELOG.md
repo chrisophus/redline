@@ -11,6 +11,26 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-16
+
+### Added
+- **`--plan` stops a staged run after the describing call.** It draws the
+  partition and pays for stage one, then sends no cohort call: Comments comes
+  back empty because nothing judged the change, not because it was clean, so
+  Summary and the report say plan-only rather than a finding count. The cost
+  tripwire prices stage one alone under it rather than the full fan-out, which
+  it was refusing at before this — a `--plan` run was priced as if it were
+  about to send the cohort calls it never sends.
+- **`--only-cohorts` judges a subset of a staged partition.** Each
+  comma-separated selector is a 1-based index into the partition as printed,
+  a substring of a cohort's name, or — only where no name matches — a
+  substring of a file path inside one. The file-path fallback exists because
+  the name is stage one's to word fresh on every run: two calls over the same
+  change can describe it differently, so a selector kept from an earlier
+  `--plan` may be chasing wording that has already moved, and a file path is
+  the one identifier that does not. A selector matching nothing is refused
+  rather than silently reviewing none of the change.
+
 ## [0.10.0] - 2026-09-15
 
 ### Changed

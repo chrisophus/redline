@@ -174,6 +174,8 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.IntVar(&o.minCohortFiles, "min-cohort-files", 0, "below this many shown files a staged run is one cohort (default 3)")
 	fs.BoolVar(&o.crossSummaries, "cross-summaries", false, "give each cohort the other cohorts' summaries (on by default)")
 	fs.BoolVar(&o.noCrossSummaries, "no-cross-summaries", false, "each cohort reviews its files knowing nothing of the others")
+	fs.BoolVar(&o.planOnly, "plan", false, "with --pipeline staged: describe and partition, then stop before judging any cohort")
+	fs.StringVar(&o.onlyCohorts, "only-cohorts", "", "with --pipeline staged: comma-separated cohort names or 1-based indices to judge, skipping the rest")
 	fs.BoolVar(&o.debug, "debug", false, "log each model request, response, and scout tool call to stderr")
 	fs.IntVar(&o.ceiling, "ceiling", 0, "token ceiling for the whole request")
 	fs.IntVar(&o.maxTokens, "max-tokens", 0, "cap on the response")
@@ -377,6 +379,24 @@ shape:
                     each cohort is told nothing about its neighbours.
                     Cheaper, and gives up the correlations a cohort call
                     raises about a change it can see but was not given.
+  --plan            with --pipeline staged: describe the change and draw the
+                    partition, then stop. No cohort call is sent, so
+                    Comments comes back empty because nothing judged the
+                    change, not because it was clean; the report and
+                    Summary say plan-only rather than a finding count.
+                    Ignored under any other pipeline, which has no
+                    partition to stop before.
+  --only-cohorts LIST
+                    with --pipeline staged: judge only the cohorts stage one
+                    drew that match one of a comma-separated list of
+                    selectors, and skip the rest. Each is a 1-based index
+                    into the partition as printed, a substring of a
+                    cohort's name, or - only where no name matches - a
+                    substring of one of its file paths, which is the one
+                    identifier stable across separate runs since the name
+                    is worded fresh each time. Combine with --plan to see
+                    the partition first; a selector matching nothing is
+                    refused rather than silently reviewing none of it.
 
 cost and caching:
   --cache           mark the prompt the review and the ruling share for the

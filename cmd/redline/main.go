@@ -66,6 +66,8 @@ type opts struct {
 	maxCost                                                           float64
 	cacheTTL, pipeline                                                string
 	crossSummaries, noCrossSummaries                                  bool
+	planOnly                                                          bool
+	onlyCohorts                                                       string
 	// observe is review's --run. session is --session; root is the --out the
 	// caller gave, and sessionKey the session resolveSession chose under it.
 	observe                   bool
