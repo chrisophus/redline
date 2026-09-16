@@ -322,6 +322,8 @@ type ToolStatus struct {
 type AgentReview struct {
 	Overview string            `json:"overview,omitempty"`
 	Files    map[string]string `json:"files,omitempty"`
+	// Note is what the person asking for the review told the reviewer.
+	Note string `json:"note,omitempty"`
 }
 
 // FailedSubstrates returns panes that applied but did not run. Redline is

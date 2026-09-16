@@ -77,7 +77,7 @@ func (r *Result) cohortsRequest(opts Options, in Input) *Result {
 func (r *Result) cohortRequest(opts Options, mine Cohort, others []Cohort, mineIdx, bound int) *Result {
 	out := r.clone()
 	out.Stage = StageFindings
-	out.Tail = cohortTail(mine, others, mineIdx, opts.CrossSummaries)
+	out.Tail = cohortTail(mine, others, mineIdx, opts.CrossSummaries) + r.note
 	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedOutputTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, cohortMaxTokens(opts, bound))

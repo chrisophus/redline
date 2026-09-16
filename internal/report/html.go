@@ -49,6 +49,9 @@ type view struct {
 	// when the agent wrote none; the Review section and its nav entry render
 	// only when it is present.
 	Overview string
+	// Note is what the person asking for the review told the reviewer, shown
+	// with the overview so a finding it pointed to reads as pointed to.
+	Note string
 
 	// Mutation is the diff-scoped gomutants result, when a report was on disk.
 	// Nil leaves the Mutation section and its nav entry off the page.
@@ -230,6 +233,7 @@ func buildView(in HTMLInput) view {
 	v.Banner = bannerText(rep)
 	if rep.Agent != nil {
 		v.Overview = rep.Agent.Overview
+		v.Note = rep.Agent.Note
 	}
 	v.Mutation = rep.Mutation
 

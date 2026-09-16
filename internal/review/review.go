@@ -99,6 +99,13 @@ type Input struct {
 	// session, so a review that is shown the conversation is still a pure
 	// function of what it was given.
 	Prior []feedback.Thread
+	// Note is what the person asking for this review wrote about it: where to
+	// look, what worries them, a question to answer. It goes at the end of
+	// every judging call, after the material and the instruction, and nowhere
+	// else: the describing call is not judging and the ruling weighs findings
+	// against code, not against what someone hoped they would say. Empty sends
+	// a request byte for byte what it was without the note.
+	Note string
 }
 
 // Options configures one call.
@@ -547,6 +554,11 @@ type Result struct {
 	Questions []Question         `json:"-"`
 	Answers   *envelope.Envelope `json:"-"`
 
+	// note is the note from whoever asked for this review, as every judging
+	// call appends it, and empty when there is none. Kept on the result
+	// because the judging requests are built from it after the tails that
+	// assembled it have been swapped out.
+	note string
 	// history is the conversation a stepwise turn continues, sent ahead of
 	// this call's own user turn, and answering the ids of the tool calls in it
 	// that the user turn answers first. reply and replyToolUses are what this
@@ -631,13 +643,17 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// read it back, so an instruction in a block of its own would fall outside
 	// what they pay for once.
 	tail := judgingTail + describingTail
+	// Behind the breakpoint in a block of its own, unlike the instruction
+	// above, so the calls that resend the prompt block without judging - the
+	// describing call and the ruling - do not carry it.
+	note := in.noteTail()
 	// Every stage sends the catalogue on both wires, so it is reserved for
 	// unconditionally. This was once zeroed for a brief run, which was right on
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
 	// wire sent them anyway, and the reservation came up short by the whole
 	// catalogue and overfilled the context by that much.
 	fixed := toolsTokens(opts) + envelope.EstimateTokens(system) +
-		envelope.EstimateTokens(tail) + envelope.EstimateTokens(in.fixed())
+		envelope.EstimateTokens(tail) + envelope.EstimateTokens(note) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
 		// The block's own header is written after FitAll has fitted the
 		// expansions, so it has to be reserved here or the assembled prompt
@@ -664,7 +680,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	prompt := in.build(budget)
 	parts := promptParts(in, opts, system, budget)
 	est := envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
-		envelope.EstimateTokens(tail)
+		envelope.EstimateTokens(tail) + envelope.EstimateTokens(note)
 	expected := opts.ExpectedOutput
 	if expected <= 0 {
 		expected = ExpectedOutputTokens
@@ -690,6 +706,8 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		Budget:         budget,
 		FilesShown:     len(in.ShownFiles()),
 		Prompt:         prompt + tail,
+		Tail:           note,
+		note:           note,
 		System:         system,
 		InputEstimate:  est,
 		FixedEstimate:  fixed,

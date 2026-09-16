@@ -105,9 +105,9 @@ func describe(ctx context.Context, in Input, opts Options, res *Result) (finding
 func (r *Result) judgingRequest(described bool) *Result {
 	out := r.clone()
 	out.Stage = StageFindings
-	out.Tail = judgingTail + findingsPrompt
+	out.Tail = judgingTail + findingsPrompt + r.note
 	if !described {
-		out.Tail = judgingTail + undescribedPrompt
+		out.Tail = judgingTail + undescribedPrompt + r.note
 	}
 	return out
 }

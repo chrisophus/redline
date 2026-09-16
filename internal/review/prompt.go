@@ -247,6 +247,23 @@ var findingsPrompt string
 //go:embed prompts/findings-undescribed.md
 var undescribedPrompt string
 
+// notePrompt introduces the note from whoever asked for this review, and says
+// what it is and is not.
+//
+//go:embed prompts/note.md
+var notePrompt string
+
+// noteTail is the note as a judging call carries it, and empty when there is
+// no note, so a run without one sends exactly what it did before notes
+// existed.
+func (in Input) noteTail() string {
+	note := strings.TrimSpace(in.Note)
+	if note == "" {
+		return ""
+	}
+	return notePrompt + "\n" + note + "\n"
+}
+
 // cohortsTail is stage one's turn when the run fans out: describe, and draw
 // the partition the fan-out reviews.
 //

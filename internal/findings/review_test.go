@@ -92,3 +92,19 @@ func TestCommentFindingsCarriesSide(t *testing.T) {
 		t.Fatalf("an unnamed side must stay empty, got %q", fs[1].Side)
 	}
 }
+
+// The note a review was given is kept in review.json and read back trimmed,
+// so the report can show what the reviewer was pointed to.
+func TestReviewKeepsTheNoteItWasGiven(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "review.json")
+	if err := os.WriteFile(path, []byte(`{"overview":"o","note":"  Check the cache key.\n"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rev, err := findings.LoadReview(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rev.Note != "Check the cache key." {
+		t.Errorf("note = %q", rev.Note)
+	}
+}

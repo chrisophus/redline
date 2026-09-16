@@ -26,6 +26,13 @@ import (
 // is a fixture the eval can replay. It also means `run` stays model-free, and
 // a repository with no API key still gets the whole report.
 func cmdReview(o opts) error {
+	// Read before anything is observed or sent, so a note that cannot be read
+	// is refused before it costs a run.
+	note, err := reviewNote(o)
+	if err != nil {
+		return err
+	}
+	o.note, o.noteFile = note, ""
 	if o.observe {
 		if o.stats {
 			return fmt.Errorf("--stats reads the cost ledger and observes nothing; drop --run")
@@ -74,6 +81,7 @@ func cmdReview(o opts) error {
 		// is the last consumer that had no access to it.
 		LineCoverage: res.LineCoverage,
 		Prior:        res.PriorReview,
+		Note:         note,
 	}
 	// Price the estimate against what this installation's reviews actually
 	// emit, when it has emitted any.
@@ -400,6 +408,10 @@ func cmdReview(o opts) error {
 	// outlives the session it came from.
 	reviewed := out.Review
 	reviewed.Revision = change.ReviewIdentity(res.Report.BaseSHA, res.Change)
+	// What the review was told, kept with what it said, so a reader of the
+	// report can tell a finding the reviewer arrived at from one it was
+	// pointed to.
+	reviewed.Note = note
 	// Carried into the file so a later `run`, `report`, or `post` that renders
 	// review.json without this command's Result can still say the ruling broke
 	// rather than merging the unchecked findings as if the pass had run.
@@ -472,6 +484,7 @@ func writeTrace(o opts, res *run.Result, out *review.Result, tally *scoutTally) 
 	t.Effort = o.effort
 	t.Target = describeSession(res)
 	t.Revision = change.ReviewIdentity(res.Report.BaseSHA, res.Change)
+	t.Note = o.note
 	return postmortem.Write(o.out, t)
 }
 
@@ -629,4 +642,20 @@ func diffOf(res *run.Result) string {
 		fmt.Fprintf(&b, "--- %s\n%s\n", f.Path, strings.TrimRight(f.Diff, "\n"))
 	}
 	return b.String()
+}
+
+// reviewNote is the note from whoever asked for this review, from --note or
+// --note-file, trimmed. Empty when neither is given.
+func reviewNote(o opts) (string, error) {
+	switch {
+	case o.note != "" && o.noteFile != "":
+		return "", fmt.Errorf("--note and --note-file both give the note; pass one or the other")
+	case o.noteFile != "":
+		raw, err := os.ReadFile(o.noteFile)
+		if err != nil {
+			return "", fmt.Errorf("--note-file: %w", err)
+		}
+		return strings.TrimSpace(string(raw)), nil
+	}
+	return strings.TrimSpace(o.note), nil
 }

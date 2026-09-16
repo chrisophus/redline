@@ -113,7 +113,7 @@ func (r *Result) stepwiseJudgeRequest(opts Options, in Input, one *Result, writt
 	out := r.clone()
 	out.Stage = StageFindings
 	out.Prompt = in.stepwiseRest(r.Budget)
-	out.Tail = findingsPrompt
+	out.Tail = findingsPrompt + r.note
 	out.InputEstimate = one.InputEstimate + int(written) + envelope.EstimateTokens(stepwiseAck) +
 		envelope.EstimateTokens(out.Prompt) + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedOutputTokens)

@@ -56,6 +56,10 @@ type Trace struct {
 	// able to say which change it is about.
 	Target   string `json:"target,omitempty"`
 	Revision string `json:"revision,omitempty"`
+	// Note is what the person asking for the review told the reviewer, empty
+	// when nothing. A finding that answers it is one the reviewer was pointed
+	// to, which matters when reading why it was found.
+	Note string `json:"note,omitempty"`
 
 	API    string `json:"api,omitempty"`
 	Model  string `json:"model,omitempty"`

@@ -38,6 +38,11 @@ type Review struct {
 	// wrote it can still say the findings below were left unchecked. Empty
 	// when the pass completed or never ran.
 	VerifyFailed string `json:"verifyFailed,omitempty"`
+	// Note is what the person who asked for this review told the reviewer,
+	// from `redline review --note`. It is recorded so a reader can tell a
+	// finding the reviewer arrived at from one it was pointed to. Empty when
+	// no note was given.
+	Note string `json:"note,omitempty"`
 }
 
 // ReviewComment is one remark the agent left on a line, shaped like a GitHub
@@ -83,6 +88,7 @@ type reviewWire struct {
 	Revision         string             `json:"revision"`
 	MutationVerdicts map[string]Verdict `json:"mutationVerdicts"`
 	VerifyFailed     string             `json:"verifyFailed"`
+	Note             string             `json:"note"`
 }
 
 type reviewCommentWire struct {
@@ -171,6 +177,7 @@ func LoadReview(path string) (*Review, error) {
 	r.Revision = strings.TrimSpace(wire.Revision)
 	r.MutationVerdicts = wire.MutationVerdicts
 	r.VerifyFailed = strings.TrimSpace(wire.VerifyFailed)
+	r.Note = strings.TrimSpace(wire.Note)
 	r.Overview = strings.TrimSpace(wire.Overview)
 	if r.Overview == "" {
 		r.Overview = strings.TrimSpace(wire.WhatItDoes)

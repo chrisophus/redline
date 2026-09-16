@@ -160,6 +160,8 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.mode, "mode", "", "oneshot or explore")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "with --mode explore: turn limit")
 	fs.IntVar(&o.samples, "samples", 0, "independent reviews to union")
+	fs.StringVar(&o.note, "note", "", "what to look at or what worries you, added to every judging call")
+	fs.StringVar(&o.noteFile, "note-file", "", "read the note from a file")
 	fs.BoolVar(&o.verify, "verify", false, "check each finding against the repository before posting it")
 	fs.BoolVar(&o.noVerify, "no-verify", false, "skip the checking pass")
 	fs.BoolVar(&o.cache, "cache", false, "mark the shared prefix for the prompt cache (on by default)")
@@ -308,6 +310,17 @@ model:
                     and asks for adaptive thinking; the thinking is billed as
                     output. Not yet measured on the eval. Cannot be combined
                     with --brief or --mode explore.
+
+what to look at:
+  --note TEXT       a note from you to the reviewer: which file worries you,
+                    what to look at first, a question to answer. It goes at
+                    the end of every judging call, after the material, and
+                    not to the describing call or the ruling. It points the
+                    reviewer's attention and is not evidence, so a finding
+                    that rests on it says so, and a rule the repository
+                    committed outranks it. Saved in review.json and the
+                    postmortem, and shown on the report.
+  --note-file PATH  the same, read from a file. Pass one or the other.
 
 shape:
   --mode MODE       oneshot (default) sends the context Redline chose;
