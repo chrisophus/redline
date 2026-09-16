@@ -644,7 +644,10 @@ the full report (e.g. a CI artifact) from the review body.
 
 `--profile PATH` is how a repo's merge gate reads the review. The YAML names
 the hidden markers, which severities fail (default: error and warning), and
-whether posting is author-only and must match current PR HEAD. A pane that
+whether posting is author-only and whether the gate verdict must be of the
+current PR HEAD. A review whose commit the PR has moved past still posts, with
+a notice in the body; under `require_head` it carries no gate verdict, so it
+cannot satisfy a gate that wants one covering the current commit. A pane that
 applied but did not run fails the gate unless the profile says otherwise: a
 missing check must not read as pass. `post` still uses event `COMMENT` and
 never approves. A `pass` review with no blocking findings still posts, so a

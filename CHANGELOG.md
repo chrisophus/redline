@@ -11,6 +11,19 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Fixed
+- **A profiled post no longer throws away a review when the PR head moves.**
+  With `require_head: true`, the default, a commit landing between the review
+  step and the post step in one CI run ended as `session reviewed <old> but PR
+  head is <new>` and exit 1, and the finished, paid review never posted. It
+  now posts with a notice that it is of an older commit, keeps its finding
+  markers, and withholds only the gate verdict marker, so a stale review still
+  cannot satisfy a gate that wants one covering the current commit.
+- **The stale-commit notice reaches the pull request.** It was prepended to
+  the body after the payload was built, and the step that drops findings
+  already posted renders the body again, so a real post lost the notice. Only
+  `--dry-run` showed it.
+
 ### Changed
 - **One describing form, and a failed describing call keeps the cache.** The
   split is now a field on the describing form, not a separate form, so the

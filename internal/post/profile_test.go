@@ -3,9 +3,11 @@ package post
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/target"
 )
 
 func TestLoadProfileDefaultsBlockErrorAndWarning(t *testing.T) {
@@ -85,4 +87,38 @@ func writeProfile(t *testing.T, body string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// Stale renders its notice with the body, so it survives Unposted rendering the
+// body again. Only a profile that requires the head withholds the verdict.
+func TestAStaleReviewKeepsItsNoticeAndWithholdsOnlyWhenRequired(t *testing.T) {
+	rep := &findings.Report{Findings: []findings.Finding{{
+		File: "a.go", Line: 3, Rule: "r", Substrate: "migrations",
+		Severity: findings.SeverityError, Message: "m",
+	}}}
+	rep.Finalize()
+	tgt := &target.Target{Kind: target.KindPR, Head: "deadbeef"}
+	for _, tc := range []struct {
+		name        string
+		requireHead bool
+		wantMarker  bool
+	}{
+		{"require_head", true, false},
+		{"head not required", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prof := &Profile{ReviewMarker: "gate:v1", FindingMarker: "finding:v1",
+				Blocking: []findings.Severity{findings.SeverityError}, RequireHead: tc.requireHead}
+			p := BuildAttest(rep, tgt, "", nil, prof, nil).Stale("cafef00d").Unposted(map[string]bool{})
+			if !strings.Contains(p.Body, "no longer the head") {
+				t.Errorf("the stale notice was lost when the body was rendered again:\n%s", p.Body)
+			}
+			if got := strings.Contains(p.Body, "gate:v1 verdict=fail head=deadbeef"); got != tc.wantMarker {
+				t.Errorf("verdict marker present = %v, want %v:\n%s", got, tc.wantMarker, p.Body)
+			}
+			if p.Attested() != tc.wantMarker {
+				t.Errorf("Attested() = %v, want %v", p.Attested(), tc.wantMarker)
+			}
+		})
+	}
 }

@@ -135,6 +135,56 @@ type Payload struct {
 	// with, set by the command from gh once it is known. Empty renders nothing.
 	intent     string
 	reviewedBy string
+	// staleHead is the pull request's head when it is no longer the commit
+	// this review is of, and empty otherwise. unattested withholds the gate
+	// verdict marker, for a profile that wants its verdict to cover the
+	// current head. Both are rendered with the body rather than prepended to
+	// it, because Unposted renders the body again and a prefix would be lost.
+	staleHead  string
+	unattested bool
+}
+
+// Stale records that the pull request's head has moved past the commit this
+// review is of. The body opens with a notice saying so. When the profile
+// requires the head, the review also withholds its gate verdict: it still
+// posts, so the findings a paid review found are not thrown away, but a gate
+// that wants a verdict on the current commit is not handed one about an older
+// commit. Finding markers stay, because they describe the lines they sit on.
+func (p Payload) Stale(head string) Payload {
+	p.staleHead = head
+	if p.profile != nil && p.profile.RequireHead {
+		p.unattested = true
+	}
+	p.Body = p.renderBody()
+	return p
+}
+
+// Attested reports whether the body carries a gate verdict marker: a profile
+// was supplied and the verdict was not withheld for a stale head.
+func (p Payload) Attested() bool {
+	return p.GateVerdict != "" && !p.unattested
+}
+
+// attestedVerdict is the verdict the body's marker carries, empty when none.
+func (p Payload) attestedVerdict() string {
+	if !p.Attested() {
+		return ""
+	}
+	return p.GateVerdict
+}
+
+// staleNotice opens the body of a review whose commit is no longer the head.
+func (p Payload) staleNotice() string {
+	if p.staleHead == "" {
+		return ""
+	}
+	notice := fmt.Sprintf("> This review is of `%s`, which is no longer the head of this "+
+		"pull request (`%s`). Findings below may already be addressed.",
+		shortSHA12(p.CommitID), shortSHA12(p.staleHead))
+	if p.unattested {
+		notice += " It carries no gate verdict; the review of the current head does."
+	}
+	return notice + "\n\n"
 }
 
 // NothingNew reports that this payload has no finding Redline has not already
@@ -522,9 +572,10 @@ func bodyTail(reportURL, head string, prof *Profile, gateVerdict string, withhel
 // Copilot-style body a profile opts into with body_style.
 func (p Payload) renderBody() string {
 	if p.profile != nil && p.profile.BodyStyle == BodyWalkthrough {
-		return buildBodyWalkthrough(p)
+		return p.staleNotice() + buildBodyWalkthrough(p)
 	}
-	return buildBody(p.rep, p.CommitID, p.reportURL, p.bodyFindings, p.lowConf, p.profile, p.GateVerdict, p.withheld, p.hedged, p.lint)
+	return p.staleNotice() + buildBody(p.rep, p.CommitID, p.reportURL, p.bodyFindings, p.lowConf,
+		p.profile, p.attestedVerdict(), p.withheld, p.hedged, p.lint)
 }
 
 // WithMeta stamps the PR metadata the walkthrough body opens with and
@@ -575,7 +626,7 @@ func buildBodyWalkthrough(p Payload) string {
 	if p.profile.includes("unknowns") {
 		head0.WriteString(unknownsSection(p.rep))
 	}
-	tail := bodyTail(p.reportURL, p.CommitID, p.profile, p.GateVerdict, p.withheld, p.hedged, p.lint)
+	tail := bodyTail(p.reportURL, p.CommitID, p.profile, p.attestedVerdict(), p.withheld, p.hedged, p.lint)
 	budget := maxBody - head0.Len() - len(tail)
 	middle := notShownSection(leftover, p.CommitID, p.profile, budget)
 	low := lowConfidenceSection(p.lowConf, p.CommitID, p.profile, budget-len(middle))
