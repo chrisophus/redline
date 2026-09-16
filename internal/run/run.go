@@ -360,6 +360,11 @@ func Run(opts Options) (*Result, error) {
 	}
 	res.Report.Finalize()
 	if review != nil {
+		// A review file a skill wrote can still carry verdicts, and merging
+		// them is the agent boundary: packet in, review JSON out, Redline
+		// renders. What changed is that the model this command calls is no
+		// longer shown the checks' findings and so is not asked to rule on
+		// them; a verdict that arrives anyway is still the reader's.
 		res.Report.MergeVerdicts(review.Verdicts)
 	}
 	findings.Sort(res.Report.Findings)

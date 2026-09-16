@@ -5,9 +5,8 @@ comment. A change often carries several. Do not invent findings: zero
 comments is the right answer on a clean change, and the overview is where you
 say so.
 
-Static checks have already run and their findings are listed below. Do not
-restate them. Connecting two of them is a finding: set category to
-"correlation" and put both ids in relatedFindings.
+Static checks have already run over this change. Style, formatting and
+naming belong to them.
 
 Anchor every comment to a line you were shown. Do not state a fact about code
 you were not shown as if you had checked it: that is what the comment's

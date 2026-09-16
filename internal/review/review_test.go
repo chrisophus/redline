@@ -30,38 +30,43 @@ func priors() *findings.Report {
 	return r
 }
 
-func TestPromptGivesPriorsAPrintableId(t *testing.T) {
-	in := Input{Report: priors()}
-	got, err := Assemble(in, Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.ContainsRune(got.Prompt, 0) {
-		t.Fatal("the prompt carries NUL bytes; a model cannot echo a raw fingerprint back")
-	}
-	id := priors().Findings[0].ID
-	if id == "" || !strings.Contains(got.Prompt, "["+id+"]") {
-		t.Fatalf("prior finding id %q is not referenceable in the prompt", id)
-	}
-}
-
-func TestPromptDoesNotPresentAPriorReviewAsEstablishedFact(t *testing.T) {
+// The packet carries no finding at all now, not the checks' own and not a
+// previous reviewer's. A reviewer reading a list of what the panes already
+// caught spends its attention on their ground, and the report carries those
+// findings whether or not the model saw them.
+func TestTheChecksFindingsDoNotReachThePacket(t *testing.T) {
 	got, err := Assemble(Input{Report: priors()}, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(got.Prompt, "a previous reviewer said this") {
-		t.Fatal("another reviewer's remark is not an established fact and must not be shown as one")
+	for _, gone := range []string{
+		// A deterministic finding, its id, and the words that introduced the
+		// list it used to sit in.
+		"adds NOT NULL column users.tenant_id",
+		"[" + priors().Findings[0].ID + "]",
+		"Findings already established",
+		// And a previous reviewer's remark, which was never an established
+		// fact and must not arrive as one if the section ever grows back.
+		"a previous reviewer said this",
+	} {
+		if strings.Contains(got.Prompt, gone) {
+			t.Errorf("the packet still carries %q", gone)
+		}
 	}
-}
-
-func TestPromptSaysWhenNothingWasEstablished(t *testing.T) {
-	got, err := Assemble(Input{Report: &findings.Report{}}, Options{})
+	// What stays is what the checks say about themselves rather than what they
+	// found. priors() records no tool run, and lintSentence says nothing when
+	// none did, so the sentence is checked against a report that has one.
+	ran := priors()
+	ran.Tools = []findings.ToolStatus{{Name: "golangci-lint", Status: "ran"}}
+	with, err := Assemble(Input{Report: ran}, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got.Prompt, "None.") {
-		t.Fatal("an empty prior list must be stated, not omitted")
+	if !strings.Contains(with.Prompt, "Linters ran over this change") {
+		t.Error("the reviewer is no longer told which linters ran, so it cannot leave their ground to them")
+	}
+	if strings.Contains(with.Prompt, "adds NOT NULL column users.tenant_id") {
+		t.Error("naming the linters brought their findings back with them")
 	}
 }
 
@@ -72,7 +77,7 @@ func TestPromptDistinguishesAMissingReportFromAnEmptyOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(got.Prompt, "found nothing to report") {
+	if strings.Contains(got.Prompt, "found nothing") {
 		t.Fatal("an absent report must not be presented as checks that found nothing")
 	}
 	if !strings.Contains(got.Prompt, "not available") {
@@ -267,7 +272,7 @@ func TestSchemaForcesEveryFieldToBePresent(t *testing.T) {
 	// The set rather than a count: a field added to the schema and left out
 	// of required is the failure this guards, and a count says nothing about
 	// which field that is.
-	want := map[string]bool{"overview": true, "files": true, "comments": true, "verdicts": true}
+	want := map[string]bool{"overview": true, "files": true, "comments": true}
 	if len(req) != len(want) {
 		t.Fatalf("required = %v, want %v", req, want)
 	}
@@ -287,17 +292,14 @@ func TestSchemaForcesEveryFieldToBePresent(t *testing.T) {
 		t.Fatal("a comment must not carry fields the contract does not define")
 	}
 	itemReq := item["required"].([]string)
-	var hasRelated, hasConfidence bool
+	var hasConfidence bool
 	for _, r := range itemReq {
-		if r == "relatedFindings" {
-			hasRelated = true
-		}
 		if r == "confidence" {
 			hasConfidence = true
 		}
 	}
-	if !hasRelated || !hasConfidence {
-		t.Fatal("the fields that carry the correlation and the fold must be required, or they get dropped quietly")
+	if !hasConfidence {
+		t.Fatal("the field that carries the fold must be required, or it gets dropped quietly")
 	}
 }
 

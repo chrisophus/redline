@@ -81,8 +81,8 @@ type Input struct {
 	// Change is the diff under review.
 	Change *change.Set
 	// Envelopes are the resolved context, one per language provider that
-	// ran. Empty is a valid input: the review then works from the diff and
-	// the findings alone, which is what a repository with no provider gets.
+	// ran. Empty is a valid input: the review then works from the diff alone,
+	// which is what a repository with no provider gets.
 	Envelopes []*envelope.Envelope
 	// Absent names producers that did not run, so the eval can tell a
 	// genuine miss from a missing input.
@@ -1035,29 +1035,28 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 	// labels. That reads as a reviewer that looked and found nothing, and it
 	// was a reviewer that never started.
 	//
-	// All three have to be empty together, and the packet has to have had
-	// files. Zero comments is the right answer on a change with no defects and
+	// Both have to be empty together, and the packet has to have had files. Zero comments is the right answer on a change with no defects and
 	// has to stay reachable, which is also why the schemas carry no minItems.
 	// Zero file lines on a packet that showed files is not an answer any
 	// correct review gives. Only the review stage is checked: the findings
 	// contract has no file lines by design.
 	if stage == StageReview && res.FilesShown > 0 &&
-		len(rev.Files) == 0 && len(rev.Comments) == 0 && len(rev.Verdicts) == 0 {
+		len(rev.Files) == 0 && len(rev.Comments) == 0 {
 		return fmt.Errorf(
-			"the model was shown %d file(s) and returned no file lines, no comments and no verdicts; "+
+			"the model was shown %d file(s) and returned no file lines and no comments; "+
 				"it answered the contract without reviewing the change",
 			res.FilesShown)
 	}
 	// The findings contract gets no equivalent of the check above, and this is
-	// deliberate. It has no file lines, so what is left to test is zero comments
-	// and zero verdicts, which is the right answer on a clean change and has to
-	// stay reachable. On the synopsis and stepwise paths the part of the reply
+	// deliberate. It has no file lines, so what is left to test is zero
+	// comments, which is the right answer on a clean change and has to stay
+	// reachable. On the synopsis and stepwise paths the part of the reply
 	// that could show a model never started is the walkthrough, and describedBy
 	// already refuses one with no overview before this call is sent.
 	//
 	// The one reply that can be told apart here is a findings call whose
 	// comments were all stubs. A clean answer drops nothing, so a reply that
-	// lost every comment to dropStubs and kept no verdict wrote placeholders,
+	// lost every comment to dropStubs wrote placeholders,
 	// and scoring it as a review that found nothing is the lie the check above
 	// exists to stop.
 	//
@@ -1066,9 +1065,9 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 	// changes what a cohort counts as and what their sweeps have measured, and
 	// that is a change to make on its own with its own measurement.
 	if stage == StageFindings && res.Pipeline == PipelineStepwise &&
-		stubs > 0 && len(rev.Comments) == 0 && len(rev.Verdicts) == 0 {
+		stubs > 0 && len(rev.Comments) == 0 {
 		return fmt.Errorf(
-			"every one of the %d comment(s) the findings call returned was a stub, and it returned no verdicts; "+
+			"every one of the %d comment(s) the findings call returned was a stub; "+
 				"it answered the contract without judging the change", stubs)
 	}
 	res.Review = *rev

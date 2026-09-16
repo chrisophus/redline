@@ -19,12 +19,11 @@ func outputSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"overview", "files", "comments", "verdicts"},
+		"required":             []string{"overview", "files", "comments"},
 		"properties": map[string]any{
 			"overview": overviewSchema(),
 			"files":    map[string]any{"type": "array", "items": fileSchema()},
 			"comments": map[string]any{"type": "array", "items": commentSchema()},
-			"verdicts": map[string]any{"type": "array", "items": verdictSchema()},
 		},
 	}
 }
@@ -101,10 +100,9 @@ func findingsSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"comments", "verdicts"},
+		"required":             []string{"comments"},
 		"properties": map[string]any{
 			"comments": map[string]any{"type": "array", "items": commentSchema()},
-			"verdicts": map[string]any{"type": "array", "items": verdictSchema()},
 		},
 	}
 }
@@ -121,8 +119,7 @@ func commentSchema() map[string]any {
 		"type":                 "object",
 		"additionalProperties": false,
 		"required": []string{
-			"file", "line", "severity", "confidence", "category",
-			"relatedFindings", "body", "question",
+			"file", "line", "severity", "confidence", "body", "question",
 		},
 		"properties": map[string]any{
 			"file": map[string]any{
@@ -152,17 +149,6 @@ func commentSchema() map[string]any {
 					"could fix it is shown it. Use low when you genuinely could not " +
 					"settle it from what you were given, not as a hedge on a claim the " +
 					"lines in front of you support.",
-			},
-			"category": map[string]any{
-				"type": "string",
-				"enum": []string{"review", "correlation"},
-				"description": "correlation when the finding connects two of the " +
-					"prior findings you were given. review otherwise.",
-			},
-			"relatedFindings": map[string]any{
-				"type":        "array",
-				"items":       map[string]any{"type": "string"},
-				"description": "Ids of the prior findings this one builds on, exactly as given in brackets above. Empty for an ordinary remark.",
 			},
 			"body": map[string]any{
 				"type":        "string",
@@ -214,44 +200,6 @@ func fileSchema() map[string]any {
 		"properties": map[string]any{
 			"path":    map[string]any{"type": "string"},
 			"summary": map[string]any{"type": "string", "description": "One line on what this file's change does."},
-		},
-	}
-}
-
-// verdictSchema is a ruling on one finding a deterministic check already made.
-// The three words are the ones the report already renders and the skill
-// already documents for an agent writing review.json; this is the same
-// vocabulary reaching the same fields from the one command that calls a
-// model, rather than a second vocabulary meaning the same things.
-//
-// It is an array here and a map keyed by fingerprint on disk. A strict
-// output schema cannot describe an object whose keys are not known in
-// advance, and the fingerprints are not: parseReview does the conversion.
-func verdictSchema() map[string]any {
-	return map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"required":             []string{"finding", "ruling", "rationale", "fix"},
-		"properties": map[string]any{
-			"finding": map[string]any{
-				"type":        "string",
-				"description": "Id of the finding being ruled on, exactly as given in brackets above.",
-			},
-			"ruling": map[string]any{
-				"type": "string",
-				"enum": []string{"should-fix", "justified", "rule-noisy"},
-				"description": "should-fix: the finding is right and the code should change. " +
-					"justified: what it flags is deliberate and correct here. " +
-					"rule-noisy: the check is wrong here, or fires too often to be worth reading.",
-			},
-			"rationale": map[string]any{
-				"type":        "string",
-				"description": "One line on why, naming what you saw that the check could not.",
-			},
-			"fix": map[string]any{
-				"type":        "string",
-				"description": "How to resolve it, one or two lines. Empty unless the ruling is should-fix.",
-			},
 		},
 	}
 }

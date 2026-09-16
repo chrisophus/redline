@@ -28,9 +28,11 @@ func anthropicSignedThinking(index int, thinking, signature string) string {
 func stepwiseInput(t *testing.T) Input {
 	t.Helper()
 	in := exploreInput()
-	in.Report = priors()
-	if in.priorsSection() == "" {
-		t.Fatal("the fixture needs prior findings, or nothing below can tell turn 1 from turn 2")
+	// The context envelope is what turn 1 is denied and turn 2 is given, so it
+	// is the marker the disclosure assertions read. It used to be the priors,
+	// which are no longer sent to any turn.
+	if len(in.Envelopes) == 0 || len(in.Envelopes[0].Expansions) == 0 {
+		t.Fatal("the fixture needs a context expansion, or nothing below can tell turn 1 from turn 2")
 	}
 	return in
 }
@@ -117,7 +119,7 @@ func TestTheStepwiseConversationDisclosesThePacketInOrder(t *testing.T) {
 	if !strings.Contains(opening, in.changeSection()) || !strings.Contains(opening, in.diffSection()) {
 		t.Errorf("turn 1 must carry the change description and the diff:\n%s", opening)
 	}
-	if strings.Contains(opening, in.priorsSection()) || strings.Contains(opening, strings.TrimSpace(envText)) {
+	if strings.Contains(opening, strings.TrimSpace(envText)) {
 		t.Errorf("turn 1 was shown material it is meant to describe without:\n%s", opening)
 	}
 	if _, ok := one[0].Content[0]["cache_control"]; !ok {

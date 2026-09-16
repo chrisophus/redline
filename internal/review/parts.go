@@ -26,7 +26,9 @@ func promptParts(in Input, opts Options, system string, budget envelope.Budgeted
 		{"system", envelope.EstimateTokens(system)},
 		{"tools", toolsTokens(opts)},
 		{"description", envelope.EstimateTokens(in.changeSection())},
-		{"findings", envelope.EstimateTokens(in.priorsSection())},
+		// Not the findings: those are not sent. This is which linters ran and
+		// what no check determined.
+		{"checks", envelope.EstimateTokens(in.priorsSection())},
 		{"threads", envelope.EstimateTokens(in.heardSection())},
 		{"coverage", envelope.EstimateTokens(in.coverageSection())},
 		{"missing context", envelope.EstimateTokens(in.absentSection())},

@@ -838,52 +838,26 @@ func (in Input) generatedLine() string {
 		len(uniq), strings.Join(uniq, ", "))
 }
 
-// priorsSection is wave one's output, marked as already known. Each finding
-// carries its fingerprint, which is the id wave two references it by.
+// priorsSection is what the checks say about themselves, which is not the same
+// as what they found.
 //
-// A missing report and a report with nothing in it are different facts, and
-// the model acts on the difference: "the checks found nothing" is evidence
-// about the change, and a reviewer told that will not raise what the checks
-// cover. When there is no report at all, nothing was checked, and saying
-// otherwise invents a clean result out of an absent one.
+// It used to paste every deterministic finding into the packet so the review
+// could reference them by id, rule on them, and connect two of them into a
+// correlation. That is gone: a reviewer reading a list of what the panes
+// already caught spends its attention on their ground, and the report carries
+// their findings whether or not the model saw them.
+//
+// What is left is the two things that are about the checks rather than their
+// output. Which linters ran, so the reviewer leaves their ground to them; and
+// what nothing determined, so silence is not read as a pass.
 func (in Input) priorsSection() string {
 	if in.Report == nil {
-		var b strings.Builder
-		b.WriteString("## Findings already established\n\n")
-		b.WriteString("The deterministic findings were not available for this review.\n\n")
-		return b.String()
-	}
-	if len(in.Report.Findings) == 0 {
-		var b strings.Builder
-		b.WriteString("## Findings already established\n\n")
-		b.WriteString("None. The deterministic checks that ran found nothing to report.\n\n")
-		b.WriteString(lintSentence(in.Report))
-		return b.String()
+		// No report is not a clean report. Silence here would read as checks
+		// that ran and found nothing, which tells the reviewer a surface is
+		// covered when nothing looked at it.
+		return "The static checks are not available for this review.\n\n"
 	}
 	var b strings.Builder
-	b.WriteString("## Findings already established\n\n")
-	b.WriteString("On the report already; do not restate them. ")
-	b.WriteString("Reference one by putting its [id] in relatedFindings.\n\n")
-	for _, f := range in.Report.Findings {
-		if f.Source == findings.SourceLLM {
-			// A previous reviewer's remark is not an established fact and
-			// must not be presented to this one as though it were.
-			continue
-		}
-		loc := f.File
-		if f.Line > 0 {
-			loc = fmt.Sprintf("%s:%d", f.File, f.Line)
-		}
-		if loc == "" && f.Anchor != nil {
-			loc = f.Anchor.Kind + " " + f.Anchor.ID
-		}
-		fmt.Fprintf(&b, "- [%s] %s · %s · %s\n  %s\n",
-			f.ID, f.Severity, f.Substrate, loc, f.Message)
-		if f.Observed != "" {
-			fmt.Fprintf(&b, "  observed: %s\n", f.Observed)
-		}
-	}
-	b.WriteString("\n")
 	b.WriteString(lintSentence(in.Report))
 	if len(in.Report.Unknowns) > 0 {
 		b.WriteString("Not determined by any check:\n")
