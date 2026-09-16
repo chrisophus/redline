@@ -5,418 +5,415 @@ each other until now (`staged-review.md`, `two-stage-review.md`,
 `potential-enhancements.md`, `report-roadmap.md`, `review-feedback.md`,
 `graph-context.md`, `copilot-style-review-body.md`,
 `redline-review-tooling-learnings.md`) and most of what they proposed is in
-the code. What shipped is described in `CHANGELOG.md`, the README status table
-and the doc comments beside the code; the arguments that produced it are in
-git history, `git log --follow -- docs/plans`.
+the code. What shipped is in `CHANGELOG.md`, the README status table and the
+comments next to the code. The arguments that produced it are in git history,
+`git log --follow -- docs/plans`.
 
-Effort is rough: **S** days, **M** weeks, **L** multi-week. Each item names
-what blocks it, the evidence that put it here, and the test that ends it. An
-item with no evidence is a guess and says so.
+Effort is rough: **S** is days, **M** is weeks, **L** is longer. Each item
+says what is blocking it, what evidence put it here, and what would count as
+finishing it. An item with no evidence is a guess and says so.
 
-Two rules hold across everything here. `redline run` calls no model, so
-observing a change is free and can run anywhere. A finding reaches a pull
-request only through the ruling's gate.
+Two rules hold across all of it. `redline run` calls no model, so looking at a
+change costs nothing and can run anywhere. A finding only reaches a pull
+request through the ruling's gate.
 
-One rule used to be written here and is gone: that a review must be a pure
-function of a saved session so the eval can replay it. Reviews are not
-deterministic and are not supposed to be. Two runs over one change find
-different real problems, which is why `--samples` unions them and why the
-describing split and the one-call shape catch nearly disjoint sets. The thing
-that has to stay still is the request bytes within a single run, because that
-is what the prompt cache reads back, and that is a caching rule rather than a
-claim about reviews.
+A third rule used to be here and is gone: that a review had to be a pure
+function of a saved session so the test fixtures could replay it. Reviews are
+not deterministic and are not meant to be. Two runs over one change turn up
+different real problems, which is why `--samples` unions them.
 
 ## Where the review stands
 
-A default `redline review` is two calls over one cached prefix. The first
-describes the change and writes the overview and one line per shown file; the
-second is asked for findings alone and reads the first call's prefix back at a
-tenth of base input. `--verify` adds the scout's lookups and a ruling behind
-them. `--pipeline staged` splits the shown files into cohorts and sends one
-judging call per cohort over the same prefix, with `--plan` to stop after the
-partition and `--only-cohorts` to judge part of it. `--pipeline stepwise`
-describes from the diff before the rest of the packet arrives. The prompts are
-files under `internal/review/prompts`, cut to what the model cannot infer. The
-packet no longer pastes in what the panes already found. `post` gates on the
-ruling, withholds low confidence and hedged wording, and keeps a reviewer's
-info findings in the body instead of on the diff.
+A plain `redline review` makes two calls. The first describes the change and
+writes the overview and one line per file. The second gets the findings, and
+reads the first call's prompt back out of the cache instead of paying for it
+again. `--verify` adds the scout's lookups and a ruling behind them.
+`--pipeline staged` splits the files into groups and sends one judging call
+per group, with `--plan` to stop after the split and `--only-cohorts` to judge
+part of it. `--pipeline stepwise` describes the change from the diff before
+the rest of the material arrives. The prompts are files under
+`internal/review/prompts`. `post` gates on the ruling, holds back low
+confidence and hedged wording, and keeps the reviewer's info findings in the
+review body instead of on the diff.
 
-Context comes from per-language providers. `gorefactor` resolves Go through
-`go/types`, and `tsrefactor` now does the same job for TypeScript through
-`ts-morph`, scoped to `ui/**`, with the same envelope contract, the same caps
-and the same byte-identical output on a repeat run. A file that had zero
-expansions of any role in two reviews of one change came back with fourteen
-once it was wired in. Deletions rank apart from other history under the
-`removal` role, at rank 2.
+Context comes from one provider per language. `gorefactor` resolves Go through
+`go/types`, and `tsrefactor` does the same for TypeScript through `ts-morph`,
+scoped to `ui/**`. A file that got no context at all in two reviews of one
+change came back with fourteen pieces once it was wired in. Deleted lines get
+their own history role, `removal`, ranked second.
 
-There are old scores on the fixture set: the fan-out at three samples caught
-16 of 35 labelled defects, against 11 for the describing split and 4 for one
-call (2026-09-13, `claude-sonnet-5`). Do not lean on them. The labels have
-moved three times since, and the Measuring it section explains why that
-instrument is being retired. They are here as history.
+There are old scores on the test fixtures: the fan-out at three samples caught
+16 of 35 labelled bugs, against 11 for the two-call shape and 4 for one call
+(2026-09-13, `claude-sonnet-5`). Don't lean on them. The labels have moved
+three times since, and the measuring section below explains why that
+instrument is being put down. They are here as history.
 
 ## The gap every measurement points at
 
-The producer checks arithmetic between things visible in the same window: this
+The reviewer checks arithmetic between things it can see in one window: this
 constant against that comment, this estimate against that cap. It does not
-follow a value into the function that consumes it. On this repository's PR #46
-an agent reading the same change at the same revision found eight real defects
-and `redline review` found none of them, and the crash it opened with,
-`failures[0]` on an empty partition, has now been shown to four runs on
-changed lines without once being reported. Naming the class in the prompt did
-not move it.
+follow a value into the function that uses it. On this repository's PR #46 an
+agent reading the same change found eight real bugs and `redline review` found
+none of them. The crash that agent opened with, `failures[0]` on an empty
+list, has since been put in front of four more runs on changed lines and none
+of them mentioned it. Naming the problem in the prompt did not help.
 
-A second change proved the same thing from the other side. A stale React Query
-cache key spanning two files was missed by two reviews, and the first
-explanation was that the frontend had no resolver, so those files were being
-read from the raw diff alone. With `tsrefactor` wired in, both halves of the
-bug were in the prompt and unclipped by the ceiling, and the review still
-missed it. The thinking trace shows the model applying the right rule several
-times, including the one already written into the provider's prompt fragment
-about a query key being a contract. It never asked the single cross-file
-question that catches this: what does the page's refresh button invalidate,
-and does it cover this component's queries. Context was not the constraint and
-neither was idiom in the prompt.
+A second case showed the same thing from the other end. A stale React Query
+cache key spread across two files was missed twice, and the first explanation
+was that the frontend had no resolver, so those files were being read from the
+raw diff. With `tsrefactor` wired in, both halves of the bug were in the
+prompt and neither was cut for space, and the review still missed it. The
+thinking trace shows the model applying the right rule several times,
+including the one already written into the provider's prompt about a query key
+being a contract. It never asked the one question that catches this: what does
+the page's refresh button clear, and does that cover this component's queries.
+So it was not missing context and it was not missing advice.
 
 | Item | What | Effort |
 |---|---|---|
-| **The review runs its own lookups** | The one shape nothing has tested. `fetch_context` in explore mode indexes expansions the packet already resolved and cannot grep the tree, so a loop there buys a smaller prompt rather than more thought. A real search tool in the judging call, answers arriving in context, no separate pass to reconcile, is what addresses "a self-certified `diff` question is never checked", two rows down. A 170k prefix re-read at the cached rate is about $0.034 a turn on `claude-sonnet-5`, so five turns of self-service lookup is cents. It would collapse `internal/scout` and the ruling stage that exists to reconcile answers with findings written before they arrived. It becomes the default when it finds things on real pull requests that the shipped shape does not, at a cost somebody is willing to pay. The cents estimate is the thing to hold loosely: Alibaba's `ocr`, an agentic search loop over a 43-file change at medium effort in September 2026, ran past $20 a review, overshot its own 5M token cap by 150% to 235% before stopping itself, and asserted two false positives at high severity while finding one real bug nothing else found. Reach and an unreliable cost profile come together unless the loop is bounded by something firmer than a budget flag. | L |
-| **A targeted check for the cross-file question** | The cache-key miss in the section opening is one specific question asked of every changed `useQuery` and mutation: name what invalidates it, and show that the invalidation covers it. Whether that belongs in a prompt as a distinct pass, or in a pane as a structural check, is untested, and the evidence so far says more idiom prose will not do it. Try it on the change that exposed the gap, where the answer is known: does the reviewer name the invalidation that does not cover the new query key. | S |
-| **A self-certified `diff` question is never checked** | `rule.go:266` reads `QuestionDiff` as "the material already shown settles this" and skips the lookup. Nothing validates the claim against what was actually shown. On the PR #46 run, six of the nine findings that came back `unverifiable` carried `kind: diff`, and the review delivered five of fifteen, so this cost two thirds of it. A `diff` question whose subject does not appear in the shown material should be promoted to a lookup. | S |
-| **Nothing in the pipeline can run the code** | Three of four questions on one run were settled in minutes by marshalling a request and printing the JSON, and by sending one probe. Read and grep reach none of that. The worktrees under `~/.redline/worktrees` are already checkouts at the reviewed revision, so a bounded execution step (build, run one test, marshal one request) is reachable, and it is the class of evidence the real risks lived in. | M |
-| **Findings are conditionals, not claims** | Six findings over two runs were all "if the SDK does X then this breaks". A reviewer producing only conditionals has moved the whole burden onto a lookup pass priced at a sixth of it. Score it as a column: the fraction of findings whose body depends on a fact the producer could not reach. | S |
-| **A decidable crash belongs in a pane** | An index into a slice a branch can leave empty is decidable without a model. Four runs shown that exact line reported nothing, so this is not prompt work. | M |
-| **The ruling reads everything to rule on a handful of findings** | One ruling call carried 274,471 characters to weigh six findings with two answers. Caching hides the cost and not the effect: a judge working under 120k tokens of unrelated context. Send the findings, the hunks they anchor to, and the answers. | M |
-| **Send the evidence that the tree compiles** | `golangci-lint` cannot run without a successful build, so a lint pane that ran is proof the code compiles. Pass that to both calls and say nothing when the pane failed. It is the only refutation for a false belief about the language, which no lookup can touch: `for turn := range opts.MaxTurns` was called invalid Go in four runs out of four under `go 1.26`. Blocked by "`gorefactor lint --json` panics" under Lint and external tools, which is why the pane keeps failing on this repository. Done when a review of code using range-over-int stops calling it invalid Go. | S |
-| **Rank a declaration above a sibling call site** | A ruling settled a question about SDK behaviour on a repository habit (`internal/scout/tools.go` builds the same type the same way) when the answer was a struct tag one file away in the module cache. The answering brief ranks evidence against a finding above evidence for it; it does not rank a definition above a call site. | S |
-| **The scout cannot see outside the tree** | The honest negative shipped: an empty search says what it searched and what is outside the repository. The module cache is still not in scope, so a question about a dependency still ends at "nobody can check it here". | M |
-| **Effort thins verification** | `--effort high` asked one question against three findings; `--effort low` asked two against six. The finding that got a lookup is the one that reached the pull request. Worth knowing before any default moves, and the place to see it is a real review's postmortem, which already records which findings were asked about. | S |
+| **Let the review look things up itself** | The one shape nobody has tried. Explore mode's `fetch_context` only indexes what the packet already resolved and cannot search the tree, so that loop buys a shorter prompt rather than more thought. Give the judging call a real search tool, let the answers arrive in the conversation, and there is nothing left for a separate ruling to reconcile. It would replace `internal/scout` and the ruling stage. It becomes the default when it finds things on real pull requests that the current shape does not, at a price somebody is willing to pay. Hold the cost estimate loosely: Alibaba's `ocr` is this shape, and on a 43-file change it ran past $20 a review, blew through its own token cap by 150% to 235%, and posted two confident false positives while finding one real bug nothing else found. | L |
+| **A targeted check for the cross-file question** | The cache-key miss above is one question asked of every changed query or mutation: name what clears it, and show that what clears it covers this. Whether that belongs in the prompt as its own pass or in a pane as a structural check is untested, and what we know so far is that more advice in the prompt will not do it. Try it on the change that exposed the gap, where the answer is already known. | S |
+| **A `diff` question is taken on trust** | `rule.go:266` reads a question of kind `diff` as "what you already showed me settles this" and skips the lookup. Nothing checks that claim against what was actually shown. On the PR #46 run, six of the nine findings the ruling could not settle were of this kind, and the review delivered five of fifteen findings, so this cost two thirds of it. If the thing a `diff` question is about does not appear in the material, it should become a lookup. | S |
+| **Nothing here can run the code** | Three of four questions on one run were settled in minutes by building a request and printing it, and by sending one probe. Reading and grepping cannot get at that. The worktrees under `~/.redline/worktrees` are already checkouts of the revision under review, so building, running one test, or printing one request is within reach, and that is where the real risks were. | M |
+| **Findings are "if X then Y", not claims** | Six findings over two runs were all of the form "if the SDK does X then this breaks". A reviewer that only produces those has handed the whole job to a lookup pass that costs a sixth as much. Worth counting on real runs: how many findings depend on a fact the reviewer could not get at. | S |
+| **A crash that can be found without a model belongs in a pane** | An index into a list a branch can leave empty is decidable by reading the code. Four runs were shown that exact line and said nothing, so this is not prompt work. | M |
+| **The ruling reads everything to judge a handful of findings** | One ruling call carried 274,471 characters to weigh six findings with two answers attached. The cache hides the cost but not the effect: a judge working under 120k tokens of unrelated material. Send it the findings, the hunks they point at, and the answers. | M |
+| **Tell it the code compiles** | `golangci-lint` cannot run unless the build succeeded, so a lint pane that ran is proof the code compiles. Pass that along, and say nothing when the pane failed. It is the only way to head off a false belief about the language, which no lookup can fix: `for turn := range opts.MaxTurns` was called invalid Go four times out of four under `go 1.26`. Blocked by the gorefactor crash under Lint and external tools, which is why that pane keeps failing here. Done when a review of range-over-int stops calling it invalid. | S |
+| **Prefer a definition to a habit** | A ruling settled a question about what the SDK does by pointing at `internal/scout/tools.go` building the same type the same way, when the answer was a struct tag one file away in the module cache. The scout's brief ranks evidence against a finding above evidence for it, and does not rank a definition above another call site. | S |
+| **The scout cannot look outside the repository** | It now says so honestly: an empty search reports what it searched and what lies outside. The module cache is still out of scope, so a question about a dependency still ends at "nobody can check that here". | M |
+| **Effort quietly thins the checking** | At `--effort high` the reviewer asked one question about three findings; at `low` it asked two about six. The finding that got a lookup is the one that reached the pull request. Worth knowing before any default moves, and a real run's postmortem already records which findings were asked about. | S |
 
-## The staged pipeline
+## Cohorts
 
-Cohorts ship and are off by default. What the plan called steps 6 and 7 is
-what is left of it, and the first two rows are a shape change decided since:
-the fan-out is a dial on the ordinary review rather than a pipeline of its
-own.
+A review can split the files into groups and judge each group in its own call.
+That ships, off by default. Two of the items below are a shape change decided
+after the fact: the split is a dial on an ordinary review, not a separate
+pipeline.
 
 | Item | What | Effort |
 |---|---|---|
-| **Cohorts stop being a pipeline** | `--pipeline` carries two decisions at once: whether a separate call describes the change, and whether the judging is one call or several. They are independent choices and a caller cannot make them independently. Switching to staged today also swaps the describing contract from `synopsis` to `synopsis_cohorts` and drops the `review` contract from the tools array, so nobody can say which of the three changes did anything. `staged.go:28` already says a partition of one cohort is the synopsis path exactly, and `cohortBound` draws one whenever the change is smaller than `--min-cohort-files`, so the two shapes meet at N=1 and the enum is what keeps them apart. Make `--cohorts N` the dial, default 1, and drop `--pipeline staged` with no synonym. `--pipeline stepwise` comes off the enum too, since what the describing call sees is a third question. Two refusals in `cmdReview` go away, the ones that exist only to say a flag was already implied by its own shape, and `runStaged` folds into the one path in `Run`. | M |
-| **One describing contract, and what it costs** | The partition rides on the describing contract as an optional field, so one contract serves both N=1 and N>1. The array cannot then carry `review` as well: serialized, `review + ruling + findings + cohorts` is 6,937 bytes and is the array that returned "the compiled grammar is too large", against 6,292 for the shipped synopsis array and 4,257 for the shipped staged one. `review` is the largest schema at 2,680 bytes and its only job is the single call that writes the walkthrough and the findings together, so the shapes that describe separately send `ruling + findings + describe` at 4,257, the size that already ships, and `--no-synopsis` and `--brief` keep their own array. The trade is the fallback: a failed describing call can no longer ask the next call for the whole review, so it asks for findings alone and the report carries `SynopsisFailed` and no walkthrough. That is better than what the fan-out does today, which is to reassemble under a different array and read no cache. Done when one live call confirms `ruling + findings + describe` is accepted with the partition field present. | S |
-| **The merge stage** | One call behind the cohorts that receives every cohort's findings numbered across cohorts, plus the scout's answers, and emits the rulings, the deduplicated comments and the final review. Dedup by `UnionKey`, which prefers the finding's question over its prose. With one cohort it degenerates to `Verify` as it ships today. `--merge-context prefix\|findings` decides whether it reads the whole cached prefix, which is where cross-cohort correlation is recovered, or the findings and the change section, which is cheaper and makes it a merger. | M |
-| **Divide the scout's allowance** | `--scout-budget shared\|per-cohort`. `DefaultMaxCostUSD` is one scout's allowance for one change at $0.25, and one scout per cohort spends it N times. Shared divides it; per-cohort multiplies the bill knowingly. | S |
-| **Review only the cohorts that changed** | On the second round of reviewing one pull request, redraw nothing and judge only the cohorts whose files moved since the last round. The pieces missing are the partition in `session.json` kept for reuse, a lookup from a target to the head SHA of its last review (the ledger records `revision` as `baseSHA:headSHA` and nothing queries it by pull request), mapping `git diff lastSHA..newHEAD` onto the saved partition by file path with `repairPartition`'s fallback for files that are new or moved, and a CI step that restores the prior `.redline` artifact, which the workflow already uploads per run with fourteen-day retention. What this saves is stage one's redraw and the cohort calls for files nobody touched. It does not save the cache write: the TTL is minutes and a review round is days. | M |
-| **Spend the freed budget on context when reviewing narrow** | A single-cohort review leaves most of the ceiling unused, because only that cohort's files compete for room. That headroom could carry what a full review drops: design docs and path-scoped rules for the touched area, fuller test context, and the language-agnostic tail through a graph provider. Untested, and it depends on "review only the cohorts that changed". Done when a narrow run's ceiling carries the extra context and an equal-sample comparison shows what it bought. | M |
-| **Settle the premise** | `redline review --stats` on a real ledger, now that it groups by shape. The test is arithmetic: median output scaled by the model's output-to-input rate ratio, five on Sonnet, against median input. If input wins then no rearrangement of stages saves money and the staging argument is about quality and latency. | S |
-| **Retune the defaults** | The fan-out is off by default and there is no measurement that would turn it on, now that arm sweeps are retired. Decide it from use: run it on real changes for a while, see whether the comments are better and whether anyone minds the cost. Until somebody has that experience, it stays opt-in. | S |
+| **Drop `--pipeline staged`** | The flag decides two things at once: whether a separate call describes the change, and whether the judging is one call or several. Those are independent and a caller cannot set them independently. Switching to staged also swaps the describing output form and drops the plain review form from the request, so nobody can say which of the three changes did anything. `staged.go:28` already says a split with one group is exactly the two-call shape, and `cohortBound` draws one group whenever the change is smaller than `--min-cohort-files`, so the two shapes already meet at one group. Make `--cohorts N` the dial, default 1, and drop `--pipeline staged` with no synonym kept. Stepwise comes off the same flag, since what the describing call sees is a third question. Two error messages in `cmdReview` go away, the ones that only exist to say a flag was already implied, and `runStaged` folds into the one path in `Run`. | M |
+| **One describing form, and what it costs** | The file split rides on the describing form as an optional field, so one form covers both one group and several. The request cannot then also carry the plain review form. Measured: the four forms together come to 6,937 bytes and that is the combination the API refused as "the compiled grammar is too large", against 6,292 for the set that ships today with the two-call shape and 4,257 for the set that ships with the split. The plain review form is the biggest at 2,680 bytes and is only needed by the single call that writes the walkthrough and the findings together, so shapes that describe separately send the smaller set, and `--no-synopsis` and `--brief` keep their own. The trade is what happens when the describing call fails: it can no longer ask the next call for the whole review, so it asks for findings alone and the report says the walkthrough is missing. That is better than what the split does today, which is to rebuild the request differently and lose the cache. Done when one live call confirms the smaller set is accepted with the split field on it. | S |
+| **The merge stage** | One call behind the groups that gets every group's findings numbered together, plus the scout's answers, and returns the rulings, the deduplicated comments and the final review. Dedup by `UnionKey`, which prefers the finding's question to its wording. With one group it is the ruling as it ships today. `--merge-context` decides whether it reads the whole cached prompt, which is where a connection between two groups can still be spotted, or only the findings and the change summary, which is cheaper. | M |
+| **Divide the scout's allowance** | `--scout-budget shared\|per-cohort`. The allowance is $0.25 for one change, and one scout per group spends that N times over. Shared divides it; per-cohort multiplies the bill on purpose. | S |
+| **Judge only the groups that changed** | On the second round of reviewing a pull request, don't redraw anything and judge only the groups whose files moved. What's missing: keeping the split in `session.json`, a way to look up the head SHA of the last review of this pull request (the ledger stores `revision` as `baseSHA:headSHA` and nothing queries it by pull request), matching `git diff lastSHA..newHEAD` onto the saved split by file path with `repairPartition`'s fallback for new or moved files, and a CI step that restores the previous `.redline` artifact, which the workflow already uploads with fourteen-day retention. This saves the describing call and the judging calls for files nobody touched. It does not save the cache, which expires in minutes while a review round takes days. | M |
+| **Spend the freed room on context when reviewing narrowly** | A review of one group leaves most of the size limit unused, because only that group's files are competing for it. That room could carry what a full review drops: design notes and path-scoped rules for the area, more test context, and the languages no resolver covers. Untested, and it needs the row above first. | M |
+| **Check the premise** | `redline review --stats` on a real ledger, which now groups by shape. The arithmetic: median output times the model's output-to-input price ratio, five on Sonnet, against median input. If input wins, then no rearrangement of calls saves money and the case for splitting is about quality and speed. | S |
+| **Decide the default** | The split is off by default and there is no measurement that would turn it on now that arm sweeps are retired. Decide it from use: run it on real changes for a while and see whether the comments are better and whether anyone minds the cost. | S |
 
-Constraints a new stage inherits, each measured rather than read from
-documentation:
+Things a new stage has to live with, each measured rather than read in a
+document:
 
-- Every cached stage sees the whole shared prefix. Scoping is done by the
-  instruction after the breakpoint, never by withholding input, or the prefix
-  is not byte-identical and nothing caches.
-- The output contract travels as a constant tools array selected by
-  `tool_choice`. A `tool_choice` change preserves all three caches on
-  `claude-sonnet-5`, which the API documentation says it does not. Re-check it
-  on another model, and on any run whose cache reads come back zero.
-- The array has a ceiling: `review + ruling + findings + cohorts` was refused
-  with "the compiled grammar is too large", `ruling + findings + cohorts` was
-  accepted. The array carries the contracts a run's shape can ask for.
-- Effort and model are pinned across a cached pipeline on Sonnet. The
-  mid-conversation forms that would let them vary are Opus 5 and Fable 5.1
-  only.
-- The TTL question is the start-to-start gap between consecutive calls sharing
-  the prefix. The 1-hour write costs twice the 5-minute one and buys nothing
-  while that gap stays under five minutes; the merge is the exposed call,
-  because the scout runs on its own prefix and refreshes nothing.
-- Forced `tool_choice` returns 400 on Fable 5.1 and Mythos 5.1, so the staged
-  shape is refused there before anything is sent.
-- Cohorts shrink the task a call is given and not the tokens it reads. Every
-  call carries the whole prefix, which is what the cache is keyed on.
-- `--plan` is not a cheap preview. It pays the full cache write for the prefix,
-  $0.72 to $0.95 on a 43-file change on `claude-sonnet-5`, and only pays off if
-  a cohort call follows and reads what it wrote.
-- Cohort names come from a live call, so two runs over one change can name and
-  split it differently. That is why `--only-cohorts` falls back to matching a
-  file path when no name matches.
-- `--thinking` is a large multiplier with unclear return. One eight-file cohort on
-  `claude-sonnet-5` took 10m26s and $1.41 with it, against 8.6s and $0.056
-  without, and produced three findings, two of them useful.
-- Narrowing does buy precision on the files a call is given. The single-cohort
-  run found an extension of a known bug that no full-diff run surfaced, from
-  Redline, from `ocr` or from Copilot.
+- Every call in a run carries the whole prompt. What a call is told to work on
+  is set by the instruction at the end, not by giving it less to read.
+- The output forms travel as tools and the stage is picked with `tool_choice`.
+  Changing `tool_choice` between calls does not cost the cache on
+  `claude-sonnet-5`, which is the opposite of what the API docs say. Check it
+  again on another model, and any time cache reads come back zero.
+- All the forms compile into one grammar and there is a size limit on the
+  total. See the row above for the measured numbers.
+- Model and effort have to stay the same across a cached run on Sonnet. The
+  ways around that are Opus 5 and Fable 5.1 only.
+- The cache lives five minutes or an hour, measured from the start of the last
+  call that used it. The one-hour write costs twice as much and buys nothing
+  while calls are seconds apart.
+- Forced `tool_choice` is refused outright on Fable 5.1 and Mythos 5.1, so the
+  split is refused there before anything is sent.
+- Splitting shrinks the job a call is given, not the tokens it reads.
+- `--plan` is not a cheap preview. It pays the full cache write, $0.72 to
+  $0.95 on a 43-file change on Sonnet, and only pays off if a judging call
+  follows and reads what it wrote.
+- Group names come from a live model call, so two runs over one change can
+  name and split it differently. That is why `--only-cohorts` falls back to
+  matching a file path.
+- `--thinking` is a big multiplier with unclear return. One eight-file group
+  took 10m26s and $1.41 with it, against 8.6s and $0.056 without, and produced
+  three findings, two of them useful.
+- Narrowing does buy precision on the files a call is given. The one-group run
+  found an extension of a known bug that no full-diff run surfaced, from
+  Redline, `ocr` or Copilot.
+
+## Using the API the way it is meant to be used
+
+Almost every awkward thing above exists to keep the prompt cache warm. The
+forms travel as tools because the normal way to ask for structured output sits
+in front of the prompt and changing it between calls throws the cache away.
+All the forms ride on every call for the same reason, which is why they hit a
+size limit. Model and effort are pinned for the whole run. The calls are
+siblings rather than a conversation, each one re-sending the same material
+with a different instruction stuck on the end.
+
+What that buys, measured once: $0.3161 of input against $0.2196 on the same
+pair of calls, so about 30% of the input and 16% of the run. Worth having.
+Probably not worth the shape of the whole program.
+
+Worth trying, and nobody has:
+
+| Item | What | Effort |
+|---|---|---|
+| **Make it a conversation** | Describing call, then the judging turn as the next message in the same conversation. History that only grows is what the cache is designed for, so the saving mostly comes for free instead of being engineered for. It also means the judging call can see what the describing call actually said rather than being handed a rendering of it. What it gives up is running the groups at the same time, since a conversation is a chain. | M |
+| **Use structured outputs like everyone else** | Ask for JSON the documented way, per call, with the form that fits that call. Costs a cache write per shape change. Price it: one review both ways, same change, compare the bill and the findings. | S |
+| **Let each call pick its own model and effort** | The describing call does not need the model that finds bugs. Cheaper there, stronger where it counts, is the obvious arrangement and the cache is the only reason it is off the table. Same test: run it both ways and read the bill. | S |
+| **Use tools for looking things up** | Tools are for doing things. Here they carry output shapes while the reviewer has no way to look anything up, which is backwards and is the same point as the first row of the gap section. | L |
+
+The decision this section is heading for: keep engineering around the cache,
+or take the simpler shape and pay more. Two reviews of one real change, run
+both ways, would settle it.
 
 ## What a person can say before the review runs
 
-A repository already tells the reviewer what to care about. `review.instructions`
-in `.redline.yml` is path-scoped, ranks above anything `redline learnings`
-drafted, and reaches the prompt as a `review-rules` envelope. What none of that
-covers is what the person asking for this review of this change knows: which
-file worries them, and which question they want asked. The PR #1360 miss is
-the case. The reader could have named the cross-file question in a sentence,
-and there was nowhere to put it.
+A repository can already tell the reviewer what to care about.
+`review.instructions` in `.redline.yml` is path-scoped, outranks anything
+`redline learnings` drafted, and reaches the prompt as context. What none of
+it covers is what the person asking for this review of this change knows:
+which file worries them, and what they want asked. The PR #1360 miss is the
+case. The reader could have named the question in one sentence and there was
+nowhere to put it.
 
-Three rules hold for everything in this section. Whatever a person types is
-written into the session, so the report and `redline postmortem` can show what
-the review was told. It ranks below a rule the team committed to the
-repository, the way a learning does. And it reaches the review as context, so
-it can point attention somewhere and cannot push a finding past the ruling's
-gate or hold one back.
+Three rules for everything in this section. What a person types is written
+into the session, so the report and `redline postmortem` can show what the
+review was told. It ranks below a rule the team committed to the repository.
+And it arrives as context, so it can point attention somewhere and cannot push
+a finding past the ruling's gate or hold one back.
 
 | Item | What | Effort |
 |---|---|---|
-| **A note from the person asking for the review** | `--note "..."` and `--note-file path`, appended to the judging call's tail, after the packet, where the instruction a stage acts on already lives. Free text: what worries them, what to look at first, a question to answer. The tail is per-stage and sits behind the breakpoint, so a note costs nothing in cache. Decide which stages see it: the judging call certainly, the describing call probably not, the ruling only as the reason a finding was raised. A note is not evidence, so a finding that rests on one says so in its `question`. Done when a note naming the cross-file question in the cache-key fixture moves that fixture from missed to caught, and an empty note changes no byte of the request. | S |
-| **Judge the files a person names** | `--only-files a.go,b.tsx`, which under `--pipeline staged` means the cohorts holding them. Most of it exists: `--only-cohorts` already falls back to matching a file path inside a cohort, which is what makes the selector stable across runs. Three pieces are missing. It works only under staged, so the default shape has no equivalent. A path selector can be swallowed by a cohort whose *name* happens to contain the same substring, since the name pass wins and stops the path pass. And it narrows what is judged, not what is read: stage one still partitions the whole change and every call still carries the whole prefix, so the saving is output and wall time. Done when naming one file under either shape judges it, reports which files were not judged, and says so in the report rather than reading as a clean review of the rest. | S |
-| **Put extra files in front of the reviewer** | `--include path` for files a person knows matter and no provider resolved: the sibling in another repository's shape, a design note, the interface the change implements. They are read at the reviewed revision, written into the session as expansions from a provider named for the person rather than a resolver, and budgeted like any other expansion so they compete rather than displace. A role has to be picked: `enclosing` overstates what they are, and an unknown role ranks last and is reported, which is the honest default and the one the graph adapter already uses. Done when an included file appears in the packet under its own provider name, a rerun of the same session sends the same bytes, and the budget summary counts what it displaced. | S |
+| **A note from whoever asked for the review** | `--note "..."` and `--note-file path`, added to the end of the judging call, after the material, which is where the instruction a call acts on already goes. Free text: what worries them, what to look at first, a question to answer. Decide which calls see it: the judging call certainly, the describing call probably not, the ruling only as the reason a finding exists. A note is not evidence, so a finding resting on one should say so. Done when a note naming the cross-file question turns that known miss into a catch, and an empty note changes nothing about the request. | S |
+| **Judge the files a person names** | `--only-files a.go,b.tsx`. Most of it exists: `--only-cohorts` already falls back to matching a file path inside a group, which is what makes it stable between runs. Three gaps. It only works with the split turned on. A path can be swallowed by a group whose name happens to contain the same text, because the name match runs first and stops the path match. And it narrows what gets judged, not what gets read, so the saving is output and time. Done when naming one file works under either shape and the report says which files were not judged, rather than reading like a clean review of everything. | S |
+| **Put extra files in front of the reviewer** | `--include path`, for files a person knows matter and no resolver found: a sibling in another shape, a design note, the interface being implemented. Read at the revision under review, written into the session, and budgeted like any other context so they compete for room rather than shove something else out. A role has to be picked, and an unknown role ranks last and gets reported, which is the honest default. Done when an included file shows up in the packet under its own name and the budget summary says what it displaced. | S |
 
-Build them in that order, and judge them on real changes. A note the model
+Build them in that order and judge them on real changes. A note the model
 ignores and a file selection that picks the wrong group both look the same
-from outside: a quiet review. The way to tell is to use them on a change where
-you already know what the reviewer should have said.
+from outside: a quiet review. The way to tell them apart is to use them on a
+change where you already know what the reviewer should have said.
 
 ## Measuring it
 
-The fixture set has not earned its cost, and the roadmap should stop spending
-on it. Roughly $100 of sweeps produced one conclusion that had to be taken
-back, two results that sat inside the noise, and nothing that changed what
-ships. The ladder said a forty-line prompt beat the shipped one; every paid
-run in it had gone through a proxy that rewrote the system prompt, and rerun
-directly the rungs land at 9, 10 and 7 of 31. Free-form output against the
-strict grammar differed by two points, which is inside the noise floor of
-about 3.6. Effort turned out to be a price dial. The labels moved three times,
-so the staged arm's 16 of 35 no longer compares to anything.
+The test fixtures have not earned their cost and the roadmap should stop
+spending on them. About $100 of sweeps produced one conclusion that had to be
+withdrawn, two results inside the noise, and nothing that changed what ships.
+The ladder said a forty-line prompt beat the shipped one; every paid run in it
+went through a proxy that rewrote the system prompt, and rerun directly the
+rungs land at 9, 10 and 7 of 31. Free-form output against the strict forms
+differed by two points, inside a noise floor of about 3.6. Effort turned out
+to be a price dial. The labels moved three times, so the 16 of 35 no longer
+compares to anything.
 
-Meanwhile every real defect on record was found by something else: an agent
+Meanwhile every real bug on record was found by something else: an agent
 reading PR #46 found eight, Copilot found two on the dogfood change, `ocr`
 found one, and a person reading the code found the cache-key bug. The fixtures
-have never predicted a field failure.
+have never predicted a failure in the field.
 
 So the measurement that matters is what happens to a comment after it is
 posted. Reviews are already running on real pull requests. Every comment gets
-a reply, a fix, a thumbs-down, or silence, and that is sitting in GitHub for
-free. It answers the question a fixture cannot: was this comment worth
-interrupting somebody for. The work is in the next section.
+a reply, a fix, a thumbs-down, or silence, and all of that is sitting in
+GitHub for free. It answers the question a fixture cannot: was this comment
+worth interrupting somebody for. The work is in the next section.
 
-What to do with the fixtures: keep them, stop scoring arms on them. They are
-still useful as a smoke test, which is the one thing they do cheaply. A change
-that makes the reviewer return nothing, or crash, or write a walkthrough for
-files it was never shown, shows up on a single fixture at one sample for a few
-cents. Run them for that. Do not run a sweep to decide whether one shape beats
-another, because five attempts to do that produced no answer anybody acted on.
+Keep the fixtures, stop scoring arms on them. They are still a cheap smoke
+test. A change that makes the reviewer return nothing, or crash, or describe
+files it was never shown, turns up on one fixture at one sample for a few
+cents. Run them for that.
 
-What that costs, stated plainly: nothing catches a prompt edit that quietly
-loses recall. The fixture set was not catching that either, given that its
-arms disagree at the noise floor and its own conclusions were twice withdrawn,
-but it is the reason somebody might want this section back.
+What that gives up: nothing catches a prompt edit that quietly loses recall.
+The fixtures were not catching that either, given that arms disagree at the
+noise floor and two of their conclusions were withdrawn, but it is the reason
+somebody might want this section back.
 
 | Item | What | Effort |
 |---|---|---|
-| **Smoke-test run** | One fixture, one sample, on a change to the prompts or the assembly. Checks that a review comes back, parses, and writes a walkthrough only for files it was shown. Cents, not sweeps. | S |
-| **Per-finding ledger rows** | `reviews.jsonl` keeps cost, duration, stop reason and a finding count, and `review.json` is overwritten every run, so nothing survives to be counted. Write a row per finding with its id, confidence and ruling. This is the denominator for everything in the next section. | S |
-
-Two older items are dropped rather than carried: scoring the agent arm against
-the producer, and scoring each expansion role on its own. Both are sweeps, and
-both were justified by the instrument this section is retiring.
+| **Smoke test** | One fixture, one sample, whenever the prompts or the assembly change. Does a review come back, does it parse, does it describe only the files it was shown. Cents, not sweeps. | S |
+| **A ledger row per finding** | `reviews.jsonl` keeps cost, duration, stop reason and a count, and `review.json` is overwritten every run, so nothing survives to be counted later. Write a row per finding with its id, confidence and ruling. This is the denominator for everything in the next section. | S |
 
 ## Reading back what happened to a finding
 
-Nothing measures whether a posted finding was any good. The people reading the
-reviews already say what they think: they resolve a thread, react to it, reply
-explaining why it is wrong, or merge without touching it. A finding never
-replied to, never reacted to, and sitting on lines the author never touched
-again is the shape of noise; one replied to and followed by a commit on those
-lines is the shape of value. None of the signals is clean alone, and the one
-worth adding rather than inferring is a reaction convention documented in the
-review body: thumbs up useful, thumbs down wrong.
+Nothing measures whether a posted finding was any good. The people reading
+these reviews already say what they think: they resolve a thread, react to it,
+reply explaining why it is wrong, or merge without touching it. A finding
+nobody replied to, nobody reacted to, sitting on lines the author never went
+back to, is the shape of noise. One that got a reply and then a commit on
+those lines is the shape of value. No single signal is clean, and the one
+worth asking for rather than inferring is a convention in the review body:
+thumbs up useful, thumbs down wrong.
 
-The numbers do not go in the report. A per-change report is the wrong place
-for a cross-change statistic.
+The numbers don't go in the report. A report about one change is the wrong
+place for a statistic about all of them.
 
 | Item | What | Effort |
 |---|---|---|
-| **Record what was posted** | One row per finding at `post` time, keyed by fingerprint plus repository and PR. Without it there is no denominator. Half of it is "per-finding ledger rows" under Measuring it, which writes the same row at review time. | S |
-| **Read the threads back** | `redline feedback --pr N`, or a scheduled job over recently posted PRs, matching threads to fingerprints by marker and writing outcomes: disputed, acted on, ignored, resolved silently. `internal/feedback` already reads the markers and exposes `Answered` and `Disputed`; count an attributed reply as answered without waiting for the thread to close, because the consumer replies first and lets the merge gate close it. | M |
-| **Report it** | `redline stats`: per substrate, per severity, per source, per ruling, over a window. It answers which substrates get disputed most, whether `source: llm` findings land better than deterministic ones, and whether the clean rate on real changes is near the three in ten the prompt assumes. | S |
-| **Act on it** | A substrate disputed more often than acted on is a candidate for demotion to info; a rule disputed on the same grounds repeatedly is a candidate for a scope exclusion. A tool that tunes itself toward what reviewers accept will learn to say less, and the finding people most want to ignore is sometimes the one they most need, so the numbers inform a person changing a default and do not close the loop themselves. | M |
-| **Pin, and write one rule down** | Not this repository. The consumer's `REDLINE_VERSION` on a build that carries the thread-memory work, and a committed `review.instructions` for feed ingest parity. `redline learnings` drafts path-scoped rules from replies and nobody ran it between two reviews of the same head, which is why the field paid for the same lesson twice. Two findings from the PR #1360 investigation are also still open on that repository's main, a `clearAllFilters` scope leak and a no-usage rule that lost its `UsageHistory` guard, drafted as a ticket and not filed. | S |
+| **Record what was posted** | A row per finding when `post` runs, keyed by fingerprint plus repository and pull request. Without it there is no denominator. Half of it is the ledger row in the section above. | S |
+| **Read the threads back** | `redline feedback --pr N`, or a scheduled job over recent pull requests, matching threads to fingerprints and writing down what happened: disputed, acted on, ignored, quietly resolved. `internal/feedback` already reads the markers and has `Answered` and `Disputed`. Count a reply as answered without waiting for the thread to close, because people reply first and close later. | M |
+| **Report it** | `redline stats`: by substrate, by severity, by source, by ruling, over a window. It answers which checks get argued with most, whether model findings land better or worse than deterministic ones, and whether the share of changes that deserve no comment is anywhere near the three in ten the prompt assumes. | S |
+| **Act on it** | A check that gets disputed more often than acted on is a candidate for demotion to info. A rule disputed on the same grounds repeatedly is a candidate for an exclusion. A tool that tunes itself toward what reviewers accept will learn to say less, and the finding people most want to ignore is sometimes the one they most need, so this informs a person changing a default rather than closing the loop on its own. | M |
+| **Pin, and write one rule down** | Not this repository. The consumer's `REDLINE_VERSION` on a build that has the thread-memory work, and a committed `review.instructions` for feed ingest parity. `redline learnings` drafts path-scoped rules from replies and nobody ran it between two reviews of the same commit, which is why the same lesson got paid for twice. Two findings from the PR #1360 investigation are also still open on that repository's main, a `clearAllFilters` scope leak and a no-usage rule that lost its `UsageHistory` guard, written up as a ticket and not filed. | S |
 
-The target is stated so it can be missed: disputed under one in ten posted
-findings, which is the low end of what the commercial tools report, while the
-labelled-defect bar in the eval holds. A configuration that gets the first by
-losing the second is not an improvement.
+The target, stated so it can be missed: fewer than one posted finding in ten
+gets argued with. That is the low end of what the commercial tools claim for
+themselves.
 
 ## What the reader is handed
 
 | Item | What | Effort |
 |---|---|---|
-| A profiled post throws away a paid review on a head race | `require_head: true` is the default and `enforceProfile` runs before the payload is built, so a commit landing between the review step and the post step in one CI run ends as `session reviewed <old> but PR head is <new>` and exit 1. The review is computed, paid for and never posted. The fix is the non-profiled branch of the same function: plain `redline post` handles the same staleness by warning, prepending a notice that the review is of a superseded commit, and posting anyway. The profile should do that and withhold only the freshness credit, so a stale review still cannot satisfy a gate that wants one review covering current head. Two concerns are conflated into one hard failure and only the second needs enforcing. | S |
-| Order by finding class, severity second | The only ERROR on one packet was `file-size`, 501 lines against a limit of 500, while the behavioural defect was INFO. Passing the tool's severity through is right, and gating is what severity is for, so the fix is in how the report and the pull request body order what they print. | S |
-| A tripwire on model-written prose | A ruling emitted `…the finding claims.dependencies.python.org.(placeholder)` into a verdict, absent from both requests and from the review response. It rendered into `report.md` and would have reached a pull request comment. Bare domains and placeholder-shaped fragments in `source: "llm"` text are cheap to catch. | S |
-| Report revision-sync integrity | `report.md` claimed no agent review was merged while `review.json` recorded the change under review and the report printed its five comments. The staleness note and the merged findings must not be able to disagree. | S |
-| Let the reviewer contradict a pane | Two `sibling-missing-file` findings claimed a capability was tested on one side only, and a test file in the same diff tested it on both. A `correlation` finding can build on a pane finding and has no way to say one is wrong. Wants a rebuttal in the review schema, checked by the scout like any finding, never over an ERROR gate. | M |
-| Route the unknowns to the reviewer | Two Copilot findings landed exactly in Redline's own "what could not be determined" list. That list is printed for the human and not handed to the reviewer as tasks. | S |
-| Falsify the stated invariants | The pull request title, body and commit bodies now render under `## The change`. What is left is asking the reviewer to test each stated invariant against the code rather than read it as background. Copilot did this by default and caught two bugs with it. | S |
-| Click a line, see the tests that cover it | The profile knows covered from uncovered and not which test ran a line. Needs per-test coverage, which means running the suite many times, so it cannot be default `run`: an opt-in command writing a line-to-tests map the report reads. Same data mutation testing wants, so build it once, and it holds the first invariant only while `run` never calls it. | L |
-| Interface section | A permanent placeholder that only ever renders a gap. Agent-supplied route screenshots, a deterministic list of what UI moved, or drop the section. | M |
-| Verdict vocabulary | Whether a coverage gap wants "risk / acceptable" and config drift "reasonable / hiding something", or whether justified, should-fix and rule-noisy carry those too. Decide it against real reviews. | S |
-| Verdicts on mutation survivors | "needs test", "equivalent", "acceptable" per survivor, keyed on the stable mutant id. | S |
-| Post verdicts to the pull request | Whether human and agent decisions ride on `redline post` or stay local. | M |
-| Multi-reviewer `review.json` | Merge two agents, or an agent and Bugbot, into one report without overwriting, keyed by a `reviewer` field. | M |
-| `redline serve` live loop | Replace the copy-paste handoff with a websocket or stdin bridge. | L |
-| Whether a refused record should cost a cap slot | The scout filed one range twice under the same finding id. The resolver dedups identical ranges, so the cost is a wasted turn and a consumed slot rather than doubled evidence. A design decision, not a bug. | S |
+| A profiled post throws away a paid review on a race | `require_head: true` is the default and `enforceProfile` runs before the review payload is even built, so a commit landing between the review step and the post step in one CI run ends as `session reviewed <old> but PR head is <new>` and exit 1. The review is finished, paid for, and never posted. The fix is the other branch of the same function: plain `redline post` handles the same case by warning, adding a note that the review is of an older commit, and posting anyway. The profile should do that and withhold only the credit for freshness, so a stale review still cannot satisfy a gate that wants one covering the current commit. Two concerns are stuck together in one hard failure and only the second needs enforcing. | S |
+| Order by kind of finding, severity second | The only error on one packet was a file 501 lines long against a limit of 500, while the actual bug was filed as info. Passing the tool's severity through is right and gating is what severity is for, so the fix is in the order the report and the pull request body print things. | S |
+| Catch model-written junk before it posts | A ruling once emitted `…the finding claims.dependencies.python.org.(placeholder)` into a verdict. It was in neither request nor the review response, so the model made it up, and it rendered into `report.md` and would have gone to a pull request. Bare domains and placeholder-shaped fragments in model text are cheap to catch. | S |
+| The report must not contradict itself | `report.md` said no agent review was merged while `review.json` recorded the change under review and the report printed its five comments. The staleness note and the merged findings cannot be allowed to disagree. | S |
+| Let the reviewer say a pane is wrong | Two `sibling-missing-file` findings claimed a capability was tested on one side only, and a test file in the same diff tested both. The reviewer can build on a pane's finding but has no way to contradict one. Wants a rebuttal in the output form, checked like any other finding, and never able to clear an error-level gate. | M |
+| Hand the unknowns to the reviewer | Two Copilot findings landed exactly in Redline's own list of what it could not determine. That list is printed for the person and never given to the reviewer as work. | S |
+| Test the claims in the description | The pull request title, body and commit messages now render under `## The change`. What is left is asking the reviewer to check each claim against the code rather than read it as background. Copilot does this by default and caught two bugs that way. | S |
+| Click a line, see the tests that cover it | The coverage profile knows covered from uncovered but not which test ran a line. That needs per-test coverage, which means running the suite many times, so it cannot be part of `run`, which stays free. An opt-in command that writes a line-to-tests map the report reads. Mutation testing wants the same data, so build it once. | L |
+| Interface section | A placeholder that only ever renders a gap. Screenshots from an agent, a deterministic list of what UI moved, or drop the section. | M |
+| Verdict wording | Whether a coverage gap wants "risk / acceptable" and config drift wants "reasonable / hiding something", or whether the three words already in use cover them. Decide it against real reviews. | S |
+| Verdicts on surviving mutants | "needs test", "equivalent", "acceptable" per survivor, keyed on the mutant id. | S |
+| Post verdicts to the pull request | Whether decisions by a person or an agent ride along on `redline post` or stay local. | M |
+| More than one reviewer in `review.json` | Merge two agents, or an agent and Bugbot, into one report without overwriting, keyed by who wrote it. | M |
+| `redline serve` live loop | Replace the copy-paste handoff with a socket or stdin bridge. | L |
+| Should a refused record cost a turn | The scout filed the same range twice under one finding. The resolver already dedups identical ranges, so the cost is a wasted turn rather than doubled evidence. A design question, not a bug. | S |
 
 ## The deterministic half
 
-The observation half is the part with no competition, and across the twenty
-four commits before this was written it received zero added lines against
-4,011 for `internal/review`. The packet measurably earns its cost and the
-in-process reviewer measurably does not, which is the argument for spending
-here: more panes, more of the change observed, and the eval arms that say
-which expansions are worth their tokens.
+This is the part with no competition, and in the twenty four commits before
+this was written it got no new lines at all, against 4,011 for
+`internal/review`. The packet earns its cost. The reviewer, on the evidence so
+far, does not. That is the argument for spending here: more panes, more of the
+change actually looked at.
 
 ### Coverage
 
 | Item | What | Effort |
 |---|---|---|
-| Diff coverage against the repository baseline as a finding | Diff coverage renders as a markdown table with no severity and no `findings` entry. One dogfood change ran 49% against a 79% baseline in a repository whose own rules say never lower coverage thresholds. Threshold configurable per adopter. | S |
-| Measured mode (`--measure`) | Run the repository's test command with coverage at head when no profile exists or the artifact is stale. Off by default so `run` never silently starts a ten-minute suite. | M |
-| Function-level findings | Name new or rewritten functions with no executing test, anchored at the declaration. | M |
+| Diff coverage against the repository's baseline as a finding | Today it renders as a table with no severity and no entry in `findings`. One dogfood change ran 49% against a 79% baseline, in a repository whose own rules say never lower coverage. Threshold configurable per adopter. | S |
+| Measured mode (`--measure`) | Run the repository's test command with coverage when no profile exists or the one on disk is stale. Off by default so `run` never quietly starts a ten-minute suite. | M |
+| Function-level findings | Name new or rewritten functions with no test running them, anchored at the declaration. | M |
 | Coverage delta | Per-package percentage at base and head on the two-worktree runner. A drop becomes a finding with the number in it. | M |
 | TypeScript and lcov profiles | Read lcov or istanbul output the way Go's `coverage.out` is read. | M |
-| CI profile ingest | Read a profile from a CI artifact path or URL when local produce is too heavy. | M |
+| Coverage from CI | Read a profile from a CI artifact when producing one locally is too slow. | M |
 
 ### Lint and external tools
 
 | Item | What | Effort |
 |---|---|---|
-| `gorefactor lint --json` panics | `panic: ast.Walk: unexpected node type <nil>` from `analyzer/block_naming.go:180`: a `for` with no condition gives `s.Cond == nil` and `loopCollection` walks it. Reproduced on v0.16.0. `redline/lint` reads `failed` on every run in this repository, so the lint delta is missing from every dogfood review. Upstream, not this repository. | S |
-| Built-in `tsc` wrapper | A small reporter so TypeScript errors join the lint delta without every consumer inventing JSON flattening. | S |
+| `gorefactor lint --json` crashes | `panic: ast.Walk: unexpected node type <nil>` from `analyzer/block_naming.go:180`: a `for` with no condition leaves `s.Cond` nil and `loopCollection` walks it. Reproduced on v0.16.0. `redline/lint` reads as failed on every run here, so the lint delta is missing from every dogfood review. Upstream, not this repository. | S |
+| A `tsc` wrapper | A small reporter so TypeScript errors join the lint delta without every consumer writing their own JSON flattening. | S |
 | SARIF as a documented pattern | Docs and a setup recipe for tools that only emit SARIF. | S |
-| Companion checks beside differs | Repositories pair an OpenAPI lint with a second command on the same file. Document the pattern; setup could emit sibling entries. | S |
+| Companion checks beside differs | Repositories pair an OpenAPI lint with a second command on the same file. Document it; setup could propose the pair. | S |
 | Markdown lint | `markdownlint-cli2` on changed `*.md`. Docs-only changes are common and CI often skips them. | S |
-| Scope suppressions out of `_test.go` | Fuzz seeds and fixture `//nolint` read as real suppressions today. | S |
-| `untested-function` on the diff | Whether a changed function has any test at all, which diff percentage does not answer. Blocked on repo-relative paths from gorefactor. | S |
-| Smell findings with line anchors | Gorefactor smells and duplicate-block rules report no node position, so nothing can place them on a line. Upstream, not this repository. | M |
-| Baseline files in setup | `baseline: {mode: file}` is implemented; `/redline-setup` should detect committed debt files and wire them. | S |
+| Keep suppressions out of `_test.go` | Fuzz seeds and fixture `//nolint` read as real suppressions today. | S |
+| `untested-function` on the diff | Whether a changed function has any test at all, which a coverage percentage does not answer. Blocked on gorefactor emitting repository-relative paths. | S |
+| Smells need line numbers | Gorefactor's smell and duplicate-block rules report no position, so nothing can put them on a line. Upstream, not this repository. | M |
+| Baseline files in setup | `baseline: {mode: file}` works; `/redline-setup` should find committed debt files and wire them up. | S |
 
 ### Harness and worktree preparation
 
 | Item | What | Effort |
 |---|---|---|
-| Dependency install steps | `ui/node_modules` in a detached review worktree, confirmed live: eslint failed for a missing `ui/node_modules/.bin/eslint`, so every UI-touching change reviewed from a detached worktree gets zero lint coverage. Same `produce`-on-`when: missing` shape as the shipped `ui-embed` entry. | S |
-| Mutation produce, opt-in | A profile with `produce: make mutate` scoped to changed packages. Slow and database-dependent, so never on default `--prepare`. | S |
-| Generated-code drift pane | Run codegen and diff, reporting which generated paths drifted. | M |
-| Staleness hints for slow profiles | When `coverage.out` or `mutants.json` is older than the diff, say how stale in the report and in `findings.json`. Partial today. | S |
-| Multi-profile merge | Go coverage beside UI lcov: apply scope per profile and merge examined files and unknowns without double counting. | M |
-| `redline.toml` runtime config | One config for database URL, migrate command, seed and routes, designed when the first runtime pane ships. | L |
+| Install steps for dependencies | `ui/node_modules` in a detached review worktree, confirmed live: eslint failed because `ui/node_modules/.bin/eslint` was missing, so every UI change reviewed from a detached worktree gets no lint at all. Same shape as the `ui-embed` entry that already ships. | S |
+| Mutation runs, opt-in | A profile with `produce: make mutate` scoped to changed packages. Slow and needs a database, so never part of the default prepare step. | S |
+| Generated-code drift pane | Run the generators and diff, reporting which generated files drifted. | M |
+| Say how stale a slow profile is | When `coverage.out` or `mutants.json` is older than the diff, say by how much in the report and in `findings.json`. Half done. | S |
+| More than one profile at once | Go coverage beside UI lcov: apply scope per profile and merge what was examined without double counting. | M |
+| `redline.toml` runtime config | One config for database URL, migrate command, seed and routes, to be designed when the first runtime pane ships. | L |
 
-### New panes and substrates
+### New panes
 
 | Item | What | Effort |
 |---|---|---|
-| As-of provenance trace | When a change introduces a snapshot or as-of value, follow it through the call graph and flag every sibling time source not derived from it (`now`, `CURRENT_DATE`, `UTCStartOfDay(now)`). One check catches both bugs Copilot found and Redline missed. | M |
-| Response-shape detector | A collection field whose size scales with entity count and has no pagination. Structural heuristic on the OpenAPI schema and its consumers, no model. | M |
-| React Query cache-key hygiene | A new `useQuery` key not nested under the prefix the page's refresh invalidates, which goes stale for as long as the refresh interval. This is the deterministic half of "a targeted check for the cross-file question", and the one bug in this class that has been traced end to end: the reviewer had both files in front of it and the rule in its prompt. | M |
-| OpenAPI rule lint as built-in | Detect ruleset and spec paths and run vacuum without every repository duplicating the YAML. | M |
+| As-of provenance trace | When a change introduces a snapshot or as-of value, follow it through the call graph and flag every nearby time source not derived from it (`now`, `CURRENT_DATE`, `UTCStartOfDay(now)`). One check catches both bugs Copilot found and Redline missed. | M |
+| Response-shape detector | A collection field whose size grows with the number of records and has no paging. A structural check on the OpenAPI schema and what consumes it, no model. | M |
+| React Query cache-key hygiene | A new query key that is not underneath the prefix the page's refresh clears, so it stays stale until the refresh interval. This is the deterministic half of the targeted check above, and the one bug of this kind traced end to end. | M |
+| OpenAPI rule lint built in | Find the ruleset and spec paths and run vacuum without every repository repeating the YAML. | M |
 | sqlc and codegen staleness | Regenerate and diff. Same family as generated drift. | M |
-| Spec against handler | The OpenAPI pane is contract diff only. Checking handlers match needs a running API or a static crosswalk. | L |
-| Migration execution against Postgres | Apply migrations in a throwaway database: lock class, rewrite risk, timing, down migration, constraint violations on seed data. The git checks are the cheap half and they ship. | L |
-| Fixture and seed safety scan | Scan changed testdata for real identifiers. | M |
+| Spec against handler | The OpenAPI pane compares contracts only. Checking that handlers match needs a running API or a static crosswalk. | L |
+| Migrations against a real Postgres | Apply them to a throwaway database: lock class, rewrite risk, timing, the down migration, constraint violations against seed data. The git-level checks are the cheap half and they ship. | L |
+| Fixture and seed safety scan | Look for real identifiers in changed testdata. | M |
 | Import and architecture lint | `go-arch-lint` or a depguard matrix as a scoped custom tool. | S |
-| UI capture | Pinned browser, route screenshots, console errors, failed requests. No perceptual diff. | L |
-| Report-level mutation efficacy | A one-liner from `test_efficacy`, `mutants_total`, `mutants_killed` and `mutants_lived`, caveated when `infra_errors > 0`. | S |
-| Mutation ingest from CI | Read the same `mutants.json` shape from a downloaded CI artifact path, with no local produce. | M |
-| `--run-mutant-id` in the handoff | The repro command renders on the report; it is not in "Copy for the agent". | S |
+| UI capture | Pinned browser, route screenshots, console errors, failed requests. No image diffing. | L |
+| Mutation summary line | One line from `test_efficacy`, `mutants_total`, `mutants_killed` and `mutants_lived`, with a caveat when there were infrastructure errors. | S |
+| Mutation results from CI | Read the same `mutants.json` from a downloaded CI artifact, with no local run. | M |
+| The rerun command in the handoff | The repro command shows on the report and is not in "Copy for the agent". | S |
 
 ### The standing graph
 
-`cmd/redline-graphify-context` reads `graph.json` and writes an envelope, with
-the mapping in `internal/graphify` and a boundary test keeping the rest of the
-module out of it. On this repository it sent five expansions and every one was
-`neighbor`, because the Go extractor emits no `implements` or `inherits`
-edges at all. On a single-language repository with an exact provider already
-in place, the graph adds type-definition context and little else, and the
-correlation case it was built for needs a repository whose changes span kinds.
+`cmd/redline-graphify-context` reads `graph.json` and writes context, with the
+mapping in `internal/graphify` and a test keeping the rest of the module away
+from it. On this repository it produced five pieces of context and every one
+came back under the catch-all role, because the Go extractor emits no
+interface edges at all. On a single-language repository that already has a
+real resolver, the graph adds type definitions and not much else.
 
-What it is for is settled now, and it is narrower than this started as. A
-graph provider was tried as the answer to the TypeScript gap and could not see
-that one page called a hook it imported, because resolving a destructured hook
-return needs real symbol binding and tree-sitter parses syntax. A language
-with a resolver gets a resolver, `gorefactor` or `tsrefactor`. What the graph
-is left holding is the tail nobody will write a resolver for: SQL, YAML,
-Terraform, shell, request collections.
+What it is for is narrower than this started as. A graph was tried as the
+answer to the TypeScript gap and could not see that one page called a hook it
+imported, because working that out needs real symbol resolution and
+tree-sitter only parses syntax. A language with a resolver gets a resolver.
+What the graph is left holding is everything nobody will write a resolver for:
+SQL, YAML, Terraform, shell, request collections.
 
 | Item | What | Effort |
 |---|---|---|
-| An eval fixture that spans kinds | Nothing is measured. The clean rate and the correlation findings are the open question, and this repository cannot pose it. | M |
-| The `neighbor` role | It arrives as an unknown role today and ranks last. Promote it to the vocabulary only if the correlation findings show up. | S |
-| Graph queries as scout tools | `graph_affected` and `graph_path` give the scout the cross-kind question directly rather than reconstructed from a one-hop walk. The CLI's prose answers are the wrong shape for a program and the right shape for a model. | M |
-| Graph queries in the reviewer's own loop | Needs the queries and their answers frozen into the session the way the envelope is, or a fixture cannot replay. | L |
-| Audit the installed grammars | Without `tree_sitter_sql` the SQL extractor returns an error that the merge step drops, so 88 migrations produced zero nodes with no warning anywhere. The adapter notes a claimed file the graph holds nothing for; the missing grammar itself is upstream. | S |
+| Try it where changes span languages | Nothing is measured, and this repository cannot pose the question: its changes are Go. | M |
+| The catch-all role | Context arrives under a role Redline does not know, which ranks last and gets reported. Give it a real name only if it turns out to find things. | S |
+| Graph queries as scout tools | `graph_affected` and `graph_path` ask the cross-language question directly instead of reconstructing it from a one-hop walk. The CLI answers in prose, which is wrong for a program and fine for a model. | M |
+| Graph queries in the review itself | The bigger version of the row above, and it lands with the first row of the gap section rather than before it. | L |
+| Check the grammars are installed | Without `tree_sitter_sql` the SQL extractor returns an error that the merge step drops, so 88 migrations produced no nodes and nothing said so. The adapter now notes a file it claimed and found nothing for. The missing grammar is upstream. | S |
 
-Two rules hold whatever else changes here. `caller`, `sibling` and `type` draw
-only from the tree-sitter half, because the semantic half is a model call and
-does not replay byte-identically; pulling a semantic edge into the one-shot
-envelope is a determinism regression. And a hop into a node with no
-`source_file` is an unknown rather than silence: an incremental update invents
-bare nodes for symbols defined outside the batch, 48 of them sharing the label
-`Client` on one dogfood run.
+One rule holds here whatever else changes. The roles `caller`, `sibling` and
+`type` are drawn only from what tree-sitter parsed, because the other half of
+the graph is written by a model and a guess must not be handed to the reviewer
+as a resolved fact. And a hop into a node with no source file is reported as
+an unknown rather than as silence: an incremental update invents bare nodes
+for symbols defined outside the batch, 48 of them sharing the name `Client` on
+one run.
 
 ### Gorefactor upstream
 
-Smells and duplicate-block findings carry no position, so they cannot anchor
-to a line. The `untested-*` rules emit module-qualified paths, which Redline
-strips through `go.mod`. Orphaned-config-path fires on gitignored directories,
-so consumers need placeholder directories; document it in the setup skill.
+Smells and duplicate-block findings carry no position, so they cannot go on a
+line. The `untested-*` rules emit module-qualified paths, which Redline strips
+using `go.mod`. Orphaned-config-path fires on gitignored directories, so
+consumers need placeholder directories, which the setup skill should say.
 
 ## Setup, CLI, distribution
 
 | Item | What | Effort |
 |---|---|---|
-| Setup skill: worktree steps | Propose `harness.worktree` entries when linters need generated or installed paths. | S |
-| Setup skill: harness profiles | Detect `make test-coverage` and `make mutate` and suggest profiles with the right scope and `when`. | S |
-| `redline doctor` | Validate `.redline.yml`, check tool presence, dry-run worktree produce, print what would run for the current diff. | M |
-| Version skew warning | Compare the skill pin against the binary version on `run`. | S |
-| Publish the findings schema | Document the `findings.json` version field and migration notes for consumers. | S |
+| Setup skill: worktree steps | Propose `harness.worktree` entries when linters need generated or installed files. | S |
+| Setup skill: profiles | Spot `make test-coverage` and `make mutate` and propose profiles with the right scope. | S |
+| `redline doctor` | Check `.redline.yml`, check the tools are installed, dry-run the worktree steps, print what would run for the current diff. | M |
+| Version skew warning | Compare the skill's pin against the binary version on `run`. | S |
+| Publish the findings schema | Document the version field in `findings.json` and what changed between versions. | S |
 | Artifact upload recipe | A standard Actions step uploading `report.html` and `findings.json`, with the URL passed to `redline post --report-url`. | S |
 | More merge gate profiles | Require the mutation section, require a coverage profile, allow missing UI lint when nothing under `ui/**` changed. | S |
-| PR head reuse | When CI and a developer both run at one SHA, skip re-lint if the artifacts are fresh. | M |
-| Measure what the exclusions bought | The budget summary counts held-back and redundant expansions and nothing reads those counts back across runs. | S |
+| Reuse a CI run's work | When CI and a developer both run at one commit, skip the re-lint if the artifacts are fresh. | M |
+| Check what the exclusions bought | The budget summary counts what was held back and nothing reads those counts across runs. | S |
 
 ## Adopter notes
 
 - ESLint and tsc need `ui/node_modules` in detached worktrees; only the UI
   build stub is wired.
 - Gorefactor runs in Redline's lint delta and not in a typical repository's
-  fast lint path, so Redline is stricter than the agent default. Document the
-  gap for adopters.
+  fast lint path, so Redline is stricter than the local default. Say so to
+  adopters.
 - A CI baseline compare is faster than a local `make mutate` and lives outside
-  Redline; a harness `path` to a downloaded artifact would reach it.
-- oasdiff and the built-in OpenAPI pane overlap, so the report should label
-  structural diff against oasdiff breaking rather than print the same break
-  twice.
+  Redline; pointing a harness profile at a downloaded artifact would reach it.
+- oasdiff and the built-in OpenAPI pane overlap, so the report should say which
+  is which rather than print the same break twice.
 - Shellcheck scope is usually narrower than a repository's own shell gate. The
-  setup skill should copy the real gate.
+  setup skill should copy the real one.
 
 ## If picking a small set next
 
-1. The self-certified `diff` question promoted to a lookup, which is the
-   measured constraint on two thirds of a review.
+1. The `diff` question taken on trust, which costs two thirds of a checked
+   review.
 2. `ui/node_modules` in the worktree, confirmed failing live.
-3. Diff coverage against the baseline as a gated finding.
-4. Order the report and the pull request body by finding class before
+3. Diff coverage against the baseline as a real finding.
+4. Order the report and the pull request body by kind of finding before
    severity.
-5. A note from the person asking for the review, which is the cheapest way to
-   put a specific worry in front of the reviewer and the first half of
-   steering a review by hand.
-6. The profiled post that loses a paid review to a head race, which costs a
-   full review's spend and reads in CI as a tooling bug.
-7. The tripwire on model-written prose, which is the difference between a
-   garbled verdict in a local report and one posted under the repository's
-   name.
-8. Per-finding ledger rows, which are the denominator for everything in the
-   read-back section.
-9. Generated-drift pane, Go only first.
-10. The merge stage, so the fan-out's findings get deduplicated and ruled in
-    one place.
+5. A note from whoever asked for the review, the cheapest way to put a
+   specific worry in front of the reviewer.
+6. The profiled post that loses a paid review to a race, which throws away a
+   whole review's spend and reads in CI as a tooling bug.
+7. Catching model-written junk before it posts.
+8. A ledger row per finding, the denominator for the read-back section.
+9. Generated-drift pane, Go only to start.
+10. The merge stage, so the split's findings get deduplicated and ruled in one
+    place.
