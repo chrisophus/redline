@@ -16,8 +16,8 @@ const (
 	APIOpenAI    = "openai"
 )
 
-// completion is what one backend returns from one turn, in terms Run reads
-// without knowing which API produced them.
+// completion is what one pass returned, across all its turns, in terms Run
+// reads without knowing which API produced them.
 type completion struct {
 	text       string
 	stopReason string
@@ -28,12 +28,17 @@ type completion struct {
 	// usage is filled on every path, including the ones that fail, because
 	// the input is billed as soon as the request is accepted.
 	usage Usage
-	// fromTool records that the body came out of a tool call rather than the
-	// content channel. Every stage forces a call, so false means something
-	// declined to honour that: a gateway that dropped tool_choice, or a model
-	// that answered in prose. The body is then unconstrained and has to be
-	// narrowed to its JSON object before it is parsed.
+	// fromTool records that the body was assembled from tool calls rather
+	// than read from the content channel. False means the model answered in
+	// prose even after being asked for calls: the body is then unconstrained
+	// and has to be narrowed to its JSON object before it is parsed.
 	fromTool bool
+	// turns is how many turns the pass took, rejected how many calls in them
+	// were refused for failing their schema, and stopped why the pass ended
+	// before the model called done, empty when it did.
+	turns    int
+	rejected int
+	stopped  string
 	// refused is set when the model declined the request. detail says why,
 	// when the API said.
 	refused bool
@@ -46,10 +51,9 @@ type completion struct {
 	model string
 }
 
-// completeAnthropic is the Messages API call. Streamed because the input is
-// large and the response may be too: a non-streaming request at this size
-// risks an HTTP timeout, and a timeout after paying for 120k of input is the
-// worst outcome available.
+// completeAnthropic runs one pass over the Messages API. Each turn is
+// streamed, because the input is large and a non-streaming request at this
+// size risks an HTTP timeout after the input has been paid for.
 func completeAnthropic(ctx context.Context, opts Options, res *Result) (completion, error) {
 	var clientOpts []option.RequestOption
 	if opts.APIKey != "" {
@@ -58,69 +62,119 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 	if opts.BaseURL != "" {
 		clientOpts = append(clientOpts, option.WithBaseURL(opts.BaseURL))
 	}
-	client := anthropic.NewClient(clientOpts...)
+	conv := &anthropicConversation{
+		client: anthropic.NewClient(clientOpts...),
+		opts:   opts,
+		stage:  res.stage(),
+		params: anthropicParams(opts, res),
+	}
+	return converse(ctx, opts, res, conv)
+}
 
-	// This path marks a cache breakpoint now, and anthropicParams places it.
-	// What blocked one for a long time was the response schema: it sits in
-	// front of the system block and the ruling sent a different one from the
-	// review it follows, so each call wrote the shared prefix and read none of
-	// it, at 171,690 and 170,601 tokens on a real run. The contract goes as a
-	// constant tool array with the stage picked by tool_choice, so the review
-	// and the ruling send the same bytes ahead of the prompt and the write is
-	// read back.
-	//
-	// Not every run marks one, and cacheOn is the one place that decides:
-	// samples go out together over one fresh prefix, so each would write it and
-	// none would read it, the OpenAI wire has no breakpoint to place, and the
-	// batch tier's window outlives a five-minute entry. Explore mode keeps its
-	// own breakpoints, where one growing conversation means a later turn really
-	// does read an earlier one.
-	stream := client.Messages.NewStreaming(ctx, anthropicParams(opts, res))
+// anthropicConversation is one pass's conversation on the Messages API.
+//
+// The prompt carries a cache breakpoint, placed by anthropicParams, and each
+// turn after the first moves a second one to the end of the conversation, so
+// a turn reads everything before it from the cache and pays full rate only
+// for what the previous turn added. Two breakpoints of the four the endpoint
+// allows.
+type anthropicConversation struct {
+	client anthropic.Client
+	opts   Options
+	stage  string
+	params anthropic.MessageNewParams
+	last   anthropic.Message
+	// rolling is where the moving breakpoint sits, so the next turn can take
+	// it off before placing its own.
+	rolling *anthropic.CacheControlEphemeralParam
+}
+
+func (a *anthropicConversation) send(ctx context.Context, maxTokens int64) (turnReply, error) {
+	a.params.MaxTokens = maxTokens
+	stream := a.client.Messages.NewStreaming(ctx, a.params)
 	// Next returning false at the end of the stream does not close the
-	// response body; only Close does. One per call here, so a deferred close
-	// is enough.
+	// response body; only Close does.
 	defer func() { _ = stream.Close() }()
 	var msg anthropic.Message
 	// The message_start event carries the input count before any content
 	// arrives, so a stream that breaks partway still reports what it cost.
-	usage := func() Usage {
-		return Usage{
-			InputTokens:      msg.Usage.InputTokens,
-			OutputTokens:     msg.Usage.OutputTokens,
-			CacheReadTokens:  msg.Usage.CacheReadInputTokens,
-			CacheWriteTokens: msg.Usage.CacheCreationInputTokens,
-			ThinkingTokens:   msg.Usage.OutputTokensDetails.ThinkingTokens,
+	reply := func() turnReply {
+		return turnReply{
+			usage: Usage{
+				InputTokens:      msg.Usage.InputTokens,
+				OutputTokens:     msg.Usage.OutputTokens,
+				CacheReadTokens:  msg.Usage.CacheReadInputTokens,
+				CacheWriteTokens: msg.Usage.CacheCreationInputTokens,
+				ThinkingTokens:   msg.Usage.OutputTokensDetails.ThinkingTokens,
+			},
+			thinking: thinkingOf(msg),
+			model:    string(msg.Model),
 		}
 	}
-	hb := newHeartbeat(opts, res.stage())
+	hb := newHeartbeat(a.opts, a.stage)
 	for stream.Next() {
 		ev := stream.Current()
 		if err := msg.Accumulate(ev); err != nil {
-			return completion{usage: usage(), thinking: thinkingOf(msg)}, err
+			return reply(), err
 		}
 		hb.observe(ev.Delta.Type, ev.Delta.Text, ev.Delta.Thinking, ev.Delta.PartialJSON)
-		if opts.onOutput != nil && ev.Type == "content_block_start" {
-			opts.onOutput()
+		if a.opts.onOutput != nil && ev.Type == "content_block_start" {
+			a.opts.onOutput()
 		}
 	}
 	if err := stream.Err(); err != nil {
-		return completion{usage: usage(), thinking: thinkingOf(msg)}, err
+		return reply(), err
 	}
-	body, fromTool := structuredOf(msg)
-	c := completion{
-		text:       body,
-		thinking:   thinkingOf(msg),
-		fromTool:   fromTool,
-		stopReason: string(msg.StopReason),
-		usage:      usage(),
-		truncated:  msg.StopReason == anthropic.StopReasonMaxTokens,
-		model:      string(msg.Model),
-	}
+	a.last = msg
+	r := reply()
+	r.stopReason = string(msg.StopReason)
+	r.truncated = msg.StopReason == anthropic.StopReasonMaxTokens
 	if msg.StopReason == anthropic.StopReasonRefusal {
-		c.refused = true
-		c.detail = string(msg.StopDetails.Category)
+		r.refused = true
+		r.detail = string(msg.StopDetails.Category)
 	}
-	return c, nil
+	r.text = textOf(msg)
+	for _, block := range msg.Content {
+		if t, ok := block.AsAny().(anthropic.ToolUseBlock); ok {
+			r.calls = append(r.calls, toolCall{ID: t.ID, Name: t.Name, Input: t.Input})
+		}
+	}
+	return r, nil
+}
+
+func (a *anthropicConversation) answer(_ turnReply, results []callResult) {
+	blocks := make([]anthropic.ContentBlockParamUnion, 0, len(results))
+	for _, r := range results {
+		blocks = append(blocks, anthropic.NewToolResultBlock(r.id, r.content, r.isError))
+	}
+	a.extend(blocks)
+}
+
+func (a *anthropicConversation) nudge(_ turnReply, text string) {
+	a.extend([]anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(text)})
+}
+
+// extend appends the model's last reply and the user turn that answers it,
+// and moves the rolling breakpoint onto the end of that turn.
+func (a *anthropicConversation) extend(blocks []anthropic.ContentBlockParamUnion) {
+	a.params.Messages = append(a.params.Messages, a.last.ToParam(), anthropic.NewUserMessage(blocks...))
+	if !a.opts.cacheOn() || len(blocks) == 0 {
+		return
+	}
+	if a.rolling != nil {
+		*a.rolling = anthropic.CacheControlEphemeralParam{}
+	}
+	content := a.params.Messages[len(a.params.Messages)-1].Content
+	end := &content[len(content)-1]
+	cc := anthropic.CacheControlEphemeralParam{TTL: anthropic.CacheControlEphemeralTTL(a.opts.CacheTTL)}
+	switch {
+	case end.OfToolResult != nil:
+		end.OfToolResult.CacheControl = cc
+		a.rolling = &end.OfToolResult.CacheControl
+	case end.OfText != nil:
+		end.OfText.CacheControl = cc
+		a.rolling = &end.OfText.CacheControl
+	}
 }
 
 // thinkingOf joins the text of a message's thinking blocks. A stream that broke
@@ -153,36 +207,25 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 			TTL: anthropic.CacheControlEphemeralTTL(opts.CacheTTL),
 		}
 	}
-	blocks = append(blocks, prefix)
+	// Which calls answer this pass, after the cached prompt so every pass of a
+	// run reads the same entry, and ahead of the pass's own instruction.
+	blocks = append(blocks, prefix, anthropic.NewTextBlock(callsBlock(res.stage())))
 	if res.Tail != "" {
 		blocks = append(blocks, anthropic.NewTextBlock(res.Tail))
 	}
-	// A model that will not be pinned to one tool has to be told in words which
-	// stage this call is for, because tool_choice is what says it otherwise.
-	// The block goes after the cached prefix, so a run that degrades still
-	// reads the same cache entry as one that does not.
 	forced := forcesStage(opts)
-	if !forced {
-		blocks = append(blocks, anthropic.NewTextBlock(
-			"\nReturn your answer by calling the "+res.stage()+" tool, and do not answer in prose."))
-	}
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(opts.Model),
 		MaxTokens: opts.MaxTokens,
 		System:    []anthropic.TextBlockParam{{Text: res.System}},
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(blocks...)},
 	}
-	// The whole catalogue, every time, with the stage chosen by name. See
-	// tools.go for why the contract cannot be a per-call output format.
-	//
-	// A brief review used to be the exception, dropping the tools so the reply
-	// came back as free text. That shape was measurable here and nowhere else:
-	// completeOpenAI sends the catalogue on every call. Measured apart, the two
-	// emissions did not separate, so the exception is gone and both wires send
-	// the same request.
-	params.Tools = anthropicTools(opts)
+	// Every tool, every time: the same bytes on every call of a run. A pinned
+	// call must call some tool, and the calls block says which; a model that
+	// refuses the pin is left to choose and told the same thing in words.
+	params.Tools = anthropicTools()
 	if forced {
-		params.ToolChoice = anthropic.ToolChoiceParamOfTool(res.stage())
+		params.ToolChoice = anthropic.ToolChoiceUnionParam{OfAny: &anthropic.ToolChoiceAnyParam{}}
 	} else {
 		params.ToolChoice = anthropic.ToolChoiceUnionParam{OfAuto: &anthropic.ToolChoiceAutoParam{}}
 	}
@@ -190,7 +233,7 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	if thinkingOff {
 		// Off for a brief review. The reason recorded here once was a cost and
 		// recall measurement taken through a proxy that rewrote the system
-		// prompt, against a free-form reply the tool grammar has since
+		// prompt, against a free-form reply the tool calls have since
 		// replaced, and it is void. Taken again on 2026-09-14, turning thinking
 		// back on left the short prompt's stub replies where they were, 5 of 42
 		// against 17 of 126 with it off, so the setting was left alone.
@@ -199,11 +242,10 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		}
 		// No output format here. It existed to bound a reply nothing else
 		// bounded, back when this call sent no tools and the model picked a
-		// different wrapper on every sample. The tool grammar carries the
-		// contract now, and it is the same contract on both wires, which the
-		// format could never be: tools.go records that a gateway serving one
-		// vendor's model over another's protocol ignored response_format on one
-		// review in four.
+		// different wrapper on every sample. The tool calls carry the answer
+		// now, the same calls on both wires, which the format could never be:
+		// openai.go records that a gateway serving one vendor's model over
+		// another's protocol ignored response_format on one review in four.
 	}
 	if opts.Thinking && !thinkingOff {
 		// Asked for although Sonnet 5 thinks unasked, because an older model
@@ -221,17 +263,16 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	return params
 }
 
-// forcesTools reports whether this model accepts tool_choice pinned to one
-// tool.
+// forcesTools reports whether this model accepts a tool_choice that requires a
+// tool call.
 //
-// Every stage declares the whole catalogue and picks its contract by name, so
-// pinning is how a call says which stage it is. Not every model takes it:
-// claude-fable-5-1 answers 400 with `tool_choice: type "tool" and "any" are not
-// supported for this model`, which failed the run outright rather than
-// degrading. The same request with tool_choice auto returns 200 and calls the
-// tool, so the fallback is to ask for the stage in the prompt and let the model
-// reach for it. If it answers in prose anyway the extractor already handles
-// that: absorb keys on where the body came from, not on which model sent it.
+// Requiring one keeps a pass from answering in prose. Not every model takes
+// it: claude-fable-5-1 answers 400 with `tool_choice: type "tool" and "any"
+// are not supported for this model`, which failed the run outright rather than
+// degrading. The same request with tool_choice auto returns 200 and makes the
+// calls, and the calls block already says which calls answer the pass. If it
+// answers in prose anyway the loop asks once for the calls, and then hands the
+// prose to the parser.
 //
 // The test names what was observed to refuse rather than what is known to
 // accept, so an unrecognised model keeps the pinned choice and the stronger
@@ -240,9 +281,9 @@ func forcesTools(model string) bool {
 	return !strings.Contains(model, "fable")
 }
 
-// forcesStage reports whether this call pins tool_choice to its stage's tool:
-// never for a model that refuses the pin, and never for a call asked to think,
-// since a pinned call does not think. See Options.Thinking.
+// forcesStage reports whether this call requires a tool call: never for a
+// model that refuses it, and never for a call asked to think, since a call
+// pinned to the tools does not think. See Options.Thinking.
 func forcesStage(opts Options) bool {
 	return forcesTools(opts.Model) && !opts.Thinking
 }
@@ -272,24 +313,6 @@ func cappedEffort(effort string, thinkingOff bool) string {
 		return "high"
 	}
 	return effort
-}
-
-// structuredOf is the body the parser is handed: the arguments of the tool
-// call the request forced. The second return says whether that is what it
-// found, so the caller knows whether anything constrained the body.
-//
-// It falls back to the text blocks when no tool call came back. A model that
-// answers a forced tool_choice in prose is a broken contract, not a review
-// with no findings, and the parse below will say so with the body in front of
-// it. Returning nothing here would report it as an empty response instead,
-// which is the one thing this producer must not do.
-func structuredOf(msg anthropic.Message) (string, bool) {
-	for _, block := range msg.Content {
-		if t, ok := block.AsAny().(anthropic.ToolUseBlock); ok {
-			return string(t.Input), true
-		}
-	}
-	return textOf(msg), false
 }
 
 func textOf(msg anthropic.Message) string {

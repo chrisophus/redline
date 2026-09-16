@@ -27,13 +27,15 @@ func TestTheSharedPrefixCarriesTheOnlyBreakpoint(t *testing.T) {
 		res    *Result
 		blocks int
 	}{
-		{StageReview, &Result{System: "the system prompt", Prompt: prefix, Stage: StageReview}, 1},
+		// The prefix, then the block that says which calls answer the pass,
+		// then the pass's own tail when it has one.
+		{StageReview, &Result{System: "the system prompt", Prompt: prefix, Stage: StageReview}, 2},
 		{StageRuling, &Result{
 			System: "the system prompt",
 			Prompt: prefix,
 			Tail:   "\n## The findings to rule on\n",
 			Stage:  StageRuling,
-		}, 2},
+		}, 3},
 	} {
 		t.Run(tc.stage, func(t *testing.T) {
 			api := serveSSE(t, anthropicSSE("end_turn", 10, 5, anthropicText(0, "{}")))
@@ -83,15 +85,15 @@ func TestWithoutTheFlagNothingIsMarked(t *testing.T) {
 		t.Errorf("the system block is marked with the cache off: %+v", req.System)
 	}
 	blocks := req.Messages[0].Content
-	if len(blocks) != 2 {
-		t.Fatalf("the user turn is %d block(s), want the prefix and the tail", len(blocks))
+	if len(blocks) != 3 {
+		t.Fatalf("the user turn is %d block(s), want the prefix, the calls block and the tail", len(blocks))
 	}
 	for i, b := range blocks {
 		if hasCacheControl(b) {
 			t.Errorf("user block %d is marked with the cache off: %+v", i, b)
 		}
 	}
-	if !strings.Contains(blocks[0].Text, res.Prompt) || !strings.Contains(blocks[1].Text, res.Tail) {
+	if !strings.Contains(blocks[0].Text, res.Prompt) || !strings.Contains(blocks[2].Text, res.Tail) {
 		t.Errorf("the prompt and its tail did not reach the wire whole: %+v", blocks)
 	}
 }

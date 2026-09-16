@@ -31,8 +31,8 @@ func synopsisOpts(api *exploreAPI) Options {
 // one's worth.
 func TestTheWalkthroughComesFromItsOwnCall(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageSynopsis, synopsisBody)),
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t2", StageFindings, findingsBody)),
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageSynopsis, synopsisBody)),
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageFindings, findingsBody)),
 	)
 	res, err := Run(context.Background(), exploreInput(), synopsisOpts(api))
 	if err != nil {
@@ -57,8 +57,8 @@ func TestTheWalkthroughComesFromItsOwnCall(t *testing.T) {
 // affordable because of that.
 func TestBothStagesSendOneSharedPrefixAndDifferentTails(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageSynopsis, synopsisBody)),
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t2", StageFindings, findingsBody)),
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageSynopsis, synopsisBody)),
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageFindings, findingsBody)),
 	)
 	opts := synopsisOpts(api)
 	opts.Cache = true
@@ -82,8 +82,8 @@ func TestBothStagesSendOneSharedPrefixAndDifferentTails(t *testing.T) {
 		t.Error("the two stages send different system blocks, so nothing before the prompt caches")
 	}
 	first, second := reqs[0].Messages[0].Content, reqs[1].Messages[0].Content
-	if len(first) != 2 || len(second) != 2 {
-		t.Fatalf("each stage sends the shared prefix and its own tail: %d and %d block(s)", len(first), len(second))
+	if len(first) != 3 || len(second) != 3 {
+		t.Fatalf("each stage sends the shared prefix, its calls block and its own tail: %d and %d block(s)", len(first), len(second))
 	}
 	if first[0].Text != second[0].Text {
 		t.Error("the block the cache entry is keyed on differs between the stages")
@@ -91,19 +91,18 @@ func TestBothStagesSendOneSharedPrefixAndDifferentTails(t *testing.T) {
 	if !hasCacheControl(first[0]) || !hasCacheControl(second[0]) {
 		t.Error("the shared block carries no breakpoint on one of the stages")
 	}
-	if first[1].Text == second[1].Text {
+	if first[2].Text == second[2].Text {
 		t.Fatal("both stages sent the same instruction, so one of them was asked for the wrong thing")
 	}
 }
 
-// A describing call that breaks must not cost the review. The run goes on for
-// findings alone, under the same tools and the same prefix as the call that
-// failed, so it reads what that call cached, and it says the walkthrough is
-// missing rather than rendering a review with no summary.
-func TestAFailedDescribingCallGoesOnForFindingsAlone(t *testing.T) {
+// A describing call that breaks must not cost the review. The run falls back
+// to one call that writes the whole review, under the same tools and the same
+// prefix as the call that failed, so it reads what that call cached.
+func TestAFailedDescribingCallFallsBackToTheWholeReview(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageSynopsis, `{"overview":"","files":[],"cohorts":[]}`)),
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t2", StageFindings, findingsBody)),
+		anthropicSSE("refusal", 10, 0),
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageReview, exploreReviewJSON)),
 	)
 	var said []string
 	opts := synopsisOpts(api)
@@ -131,8 +130,8 @@ func TestAFailedDescribingCallGoesOnForFindingsAlone(t *testing.T) {
 	if !warned {
 		t.Errorf("the fallback was silent on the terminal: %q", said)
 	}
-	if !strings.Contains(res.Review.Overview, "No walkthrough") {
-		t.Errorf("the review must say its walkthrough is missing, got overview %q", res.Review.Overview)
+	if res.Review.Overview != "Removes a nil guard." {
+		t.Errorf("the fallback writes its own walkthrough, got overview %q", res.Review.Overview)
 	}
 	seen := api.seen()
 	var failed, fallback wireRequest
@@ -146,10 +145,7 @@ func TestAFailedDescribingCallGoesOnForFindingsAlone(t *testing.T) {
 		t.Error("the fallback must resend the failed call's cached prefix byte for byte")
 	}
 	var tools [2]struct {
-		Tools      json.RawMessage `json:"tools"`
-		ToolChoice struct {
-			Name string `json:"name"`
-		} `json:"tool_choice"`
+		Tools json.RawMessage `json:"tools"`
 	}
 	for i := range tools {
 		if err := json.Unmarshal(seen[i], &tools[i]); err != nil {
@@ -159,8 +155,9 @@ func TestAFailedDescribingCallGoesOnForFindingsAlone(t *testing.T) {
 	if !bytes.Equal(tools[0].Tools, tools[1].Tools) {
 		t.Error("the fallback must send the same tools as the failed call, or the cache is lost")
 	}
-	if tools[1].ToolChoice.Name != StageFindings {
-		t.Errorf("the fallback asks for findings alone, got tool %q", tools[1].ToolChoice.Name)
+	if !strings.Contains(string(seen[1]), "add_comment once per comment") ||
+		!strings.Contains(string(seen[1]), "set_overview once") {
+		t.Error("the fallback must ask for the whole review: the overview, the file lines and the comments")
 	}
 }
 
@@ -170,8 +167,8 @@ func TestAFailedDescribingCallGoesOnForFindingsAlone(t *testing.T) {
 // it - the same reason the ruling's output is kept apart.
 func TestTheDescribingCallsOutputIsCountedApart(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("tool_use", 100, 40, anthropicToolUse(0, "t1", StageSynopsis, synopsisBody)),
-		anthropicSSE("tool_use", 200, 7, anthropicToolUse(0, "t2", StageFindings, findingsBody)),
+		anthropicSSE("tool_use", 100, 40, flatCalls(StageSynopsis, synopsisBody)),
+		anthropicSSE("tool_use", 200, 7, flatCalls(StageFindings, findingsBody)),
 	)
 	res, err := Run(context.Background(), exploreInput(), synopsisOpts(api))
 	if err != nil {

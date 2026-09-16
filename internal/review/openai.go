@@ -40,6 +40,19 @@ var openAIHTTPClient = &http.Client{Timeout: 10 * time.Minute}
 type openAIMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+	// ToolCalls is what an assistant turn called, resent as it came back, and
+	// ToolCallID says which call a tool message answers.
+	ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
+}
+
+type openAIToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }
 
 type openAIRequest struct {
@@ -48,8 +61,8 @@ type openAIRequest struct {
 	// MaxCompletionTokens is the current name for the output cap; the older
 	// max_tokens is rejected by reasoning models.
 	MaxCompletionTokens int64 `json:"max_completion_tokens"`
-	// Tools carries the schema as a single function, and ToolChoice forces the
-	// model to call it. This is asked for instead of response_format because a
+	// Tools carries every call as a function, and ToolChoice requires the
+	// model to call one. This is asked for instead of response_format because a
 	// gateway that serves one vendor's model over another's protocol does not
 	// enforce response_format: on the internal gateway this repository is run
 	// through, one review in four came back with the schema's array as a JSON string or
@@ -80,14 +93,9 @@ type openAIResponse struct {
 	Model   string `json:"model"`
 	Choices []struct {
 		Message struct {
-			Content   string `json:"content"`
-			Refusal   string `json:"refusal"`
-			ToolCalls []struct {
-				Function struct {
-					Name      string `json:"name"`
-					Arguments string `json:"arguments"`
-				} `json:"function"`
-			} `json:"tool_calls"`
+			Content   string           `json:"content"`
+			Refusal   string           `json:"refusal"`
+			ToolCalls []openAIToolCall `json:"tool_calls"`
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -109,10 +117,9 @@ type openAIError struct {
 	Type    string `json:"type"`
 }
 
-// completeOpenAI sends the assembled request as one forced tool call and reads
-// the reply. Non-streaming for the same reason the scout is: a tool call is
-// read off a finished turn, and streaming its arguments back would buy nothing
-// but reassembly.
+// completeOpenAI runs one pass over chat completions. Each turn is one
+// non-streamed request: a tool call is read off a finished turn, and streaming
+// its arguments back would buy nothing but reassembly.
 func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion, error) {
 	base := strings.TrimRight(opts.BaseURL, "/")
 	if base == "" {
@@ -124,62 +131,88 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 		// to find out.
 		return completion{}, errors.New("OPENAI_API_KEY is not set")
 	}
-
-	// Every stage's function goes out on every call and the stage is chosen by
-	// name, which is what the Anthropic wire now does too. Here it buys
-	// nothing directly: a gateway's cache is its own business and this
-	// protocol says nothing about one. It is done anyway so that a request is
-	// the same request over either wire, which is the property that lets the
-	// eval compare an arm run over one against an arm run over the other.
-	fn := res.stage()
-	// Pinned unless the call is asked to think, for the reason Options.Thinking
-	// records; a proxy serving Sonnet over this protocol passes the pin through.
-	var choice any = map[string]any{"type": "function", "function": map[string]any{"name": fn}}
-	user := res.Prompt + res.Tail
+	// Required unless the call is asked to think, for the reason
+	// Options.Thinking records; a proxy serving Sonnet over this protocol
+	// passes it through. The calls block says which calls answer the pass
+	// either way.
+	var choice any = "required"
 	if opts.Thinking {
 		choice = "auto"
-		user += "\nReturn your answer by calling the " + fn + " function, and do not answer in prose."
 	}
-	body := openAIRequest{
-		Model: opts.Model,
-		Messages: []openAIMessage{
-			{Role: "system", Content: res.System},
-			// One string, because this protocol's user turn is one string and
-			// there is no breakpoint here to keep the two apart for.
-			{Role: "user", Content: user},
+	conv := &openAIConversation{
+		opts: opts,
+		url:  base + "/chat/completions",
+		req: openAIRequest{
+			Model: opts.Model,
+			Messages: []openAIMessage{
+				{Role: "system", Content: res.System},
+				// One string, because this protocol's user turn is one string
+				// and there is no breakpoint here to keep the parts apart for.
+				{Role: "user", Content: res.Prompt + callsBlock(res.stage()) + res.Tail},
+			},
+			Tools:           openAITools(),
+			ToolChoice:      choice,
+			ReasoningEffort: opts.Effort,
 		},
-		MaxCompletionTokens: opts.MaxTokens,
-		Tools:               openAITools(opts),
-		ToolChoice:          choice,
-		ReasoningEffort:     opts.Effort,
 	}
-	buf, err := json.Marshal(body)
+	return converse(ctx, opts, res, conv)
+}
+
+// openAIConversation is one pass's conversation over chat completions.
+type openAIConversation struct {
+	opts Options
+	url  string
+	req  openAIRequest
+	last openAIMessage
+}
+
+func (o *openAIConversation) send(ctx context.Context, maxTokens int64) (turnReply, error) {
+	o.req.MaxCompletionTokens = maxTokens
+	buf, err := json.Marshal(o.req)
 	if err != nil {
-		return completion{}, err
+		return turnReply{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/chat/completions", bytes.NewReader(buf))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.url, bytes.NewReader(buf))
 	if err != nil {
-		return completion{}, err
+		return turnReply{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	if token := bearerToken(opts); token != "" {
+	if token := bearerToken(o.opts); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-
 	resp, err := openAIHTTPClient.Do(req)
 	if err != nil {
-		return completion{}, err
+		return turnReply{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return completion{}, openAIStatusError(resp)
+		return turnReply{}, openAIStatusError(resp)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
-		return completion{}, err
+		return turnReply{}, err
 	}
-	return readOpenAIResponse(raw)
+	r, msg, err := readOpenAIResponse(raw)
+	o.last = msg
+	return r, err
+}
+
+func (o *openAIConversation) answer(_ turnReply, results []callResult) {
+	o.req.Messages = append(o.req.Messages, o.last)
+	for _, r := range results {
+		content := r.content
+		if r.isError {
+			// This protocol has no error flag on a tool message, so the
+			// rejection says so in its text, which already starts "Not".
+			content = "Error. " + content
+		}
+		o.req.Messages = append(o.req.Messages, openAIMessage{Role: "tool", ToolCallID: r.id, Content: content})
+	}
+}
+
+func (o *openAIConversation) nudge(_ turnReply, text string) {
+	o.req.Messages = append(o.req.Messages, o.last, openAIMessage{Role: "user", Content: text})
 }
 
 // bearerToken is what follows "Bearer" in the Authorization header. A
@@ -209,24 +242,22 @@ func openAIStatusError(resp *http.Response) error {
 	return errors.New(resp.Status)
 }
 
-// readOpenAIResponse turns the reply into a completion. The structured body is
-// the forced tool call's arguments; a gateway that ignored tool_choice and
-// answered in content is still read, fenced or not, so a dropped constraint
-// degrades to prose in the body rather than an empty review.
-func readOpenAIResponse(raw []byte) (completion, error) {
+// readOpenAIResponse turns one reply into a turn, and returns the assistant
+// message as it goes back on the next request.
+func readOpenAIResponse(raw []byte) (turnReply, openAIMessage, error) {
 	var r openAIResponse
 	if err := json.Unmarshal(raw, &r); err != nil {
-		return completion{}, fmt.Errorf("unreadable response: %w", err)
+		return turnReply{}, openAIMessage{}, fmt.Errorf("unreadable response: %w", err)
 	}
 	if r.Error != nil && strings.TrimSpace(r.Error.Message) != "" {
-		return completion{}, fmt.Errorf("response error: %s", r.Error.Message)
+		return turnReply{}, openAIMessage{}, fmt.Errorf("response error: %s", r.Error.Message)
 	}
-	c := completion{model: r.Model}
+	t := turnReply{model: r.Model}
 	if r.Usage != nil {
 		// The vendor counts cached tokens inside prompt_tokens; Usage keeps
 		// them apart so they price at the cached rate.
 		cached := r.Usage.PromptTokensDetails.CachedTokens
-		c.usage = Usage{
+		t.usage = Usage{
 			InputTokens:     r.Usage.PromptTokens - cached,
 			OutputTokens:    r.Usage.CompletionTokens,
 			ThinkingTokens:  r.Usage.CompletionTokensDetails.ReasoningTokens,
@@ -234,31 +265,36 @@ func readOpenAIResponse(raw []byte) (completion, error) {
 		}
 	}
 	if len(r.Choices) == 0 {
-		return c, errors.New("the response carried no choices")
+		return t, openAIMessage{}, errors.New("the response carried no choices")
 	}
 	ch := r.Choices[0]
-	c.stopReason = ch.FinishReason
-	for _, tc := range ch.Message.ToolCalls {
-		if strings.TrimSpace(tc.Function.Arguments) != "" {
-			c.text = tc.Function.Arguments
-			c.fromTool = true
-			break
+	t.stopReason = ch.FinishReason
+	msg := openAIMessage{Role: "assistant", Content: ch.Message.Content, ToolCalls: ch.Message.ToolCalls}
+	for i, tc := range ch.Message.ToolCalls {
+		id := tc.ID
+		if id == "" {
+			// A gateway that drops call ids still has to be answered one
+			// call at a time, so each gets a stable one here.
+			id = fmt.Sprintf("call_%d", i)
+			msg.ToolCalls[i].ID = id
 		}
+		if msg.ToolCalls[i].Type == "" {
+			msg.ToolCalls[i].Type = "function"
+		}
+		t.calls = append(t.calls, toolCall{ID: id, Name: tc.Function.Name, Input: json.RawMessage(tc.Function.Arguments)})
 	}
-	if c.text == "" {
-		c.text = stripFences(ch.Message.Content)
-	}
+	t.text = stripFences(ch.Message.Content)
 	switch {
 	case strings.TrimSpace(ch.Message.Refusal) != "":
-		c.refused = true
-		c.detail = strings.TrimSpace(ch.Message.Refusal)
+		t.refused = true
+		t.detail = strings.TrimSpace(ch.Message.Refusal)
 	case ch.FinishReason == "content_filter":
-		c.refused = true
-		c.detail = "content filter"
+		t.refused = true
+		t.detail = "content filter"
 	case ch.FinishReason == "length":
-		c.truncated = true
+		t.truncated = true
 	}
-	return c, nil
+	return t, msg, nil
 }
 
 // stripFences removes a Markdown code fence around a JSON body. A model held

@@ -38,6 +38,12 @@ type Review struct {
 	// wrote it can still say the findings below were left unchecked. Empty
 	// when the pass completed or never ran.
 	VerifyFailed string `json:"verifyFailed,omitempty"`
+	// Incomplete says which of the review's passes stopped before the model
+	// called done, and why. What those passes recorded is kept, so the review
+	// is not wrong, but it may be missing comments or file lines, and the
+	// report says so rather than reading as a review with nothing more to
+	// say. Empty when every pass finished.
+	Incomplete []string `json:"incomplete,omitempty"`
 	// Note is what the person who asked for this review told the reviewer,
 	// from `redline review --note`. It is recorded so a reader can tell a
 	// finding the reviewer arrived at from one it was pointed to. Empty when
@@ -89,6 +95,7 @@ type reviewWire struct {
 	MutationVerdicts map[string]Verdict `json:"mutationVerdicts"`
 	VerifyFailed     string             `json:"verifyFailed"`
 	Note             string             `json:"note"`
+	Incomplete       []string           `json:"incomplete"`
 }
 
 type reviewCommentWire struct {
@@ -178,6 +185,7 @@ func LoadReview(path string) (*Review, error) {
 	r.MutationVerdicts = wire.MutationVerdicts
 	r.VerifyFailed = strings.TrimSpace(wire.VerifyFailed)
 	r.Note = strings.TrimSpace(wire.Note)
+	r.Incomplete = wire.Incomplete
 	r.Overview = strings.TrimSpace(wire.Overview)
 	if r.Overview == "" {
 		r.Overview = strings.TrimSpace(wire.WhatItDoes)

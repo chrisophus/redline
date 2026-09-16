@@ -77,6 +77,13 @@ func (t *Trace) header(b *strings.Builder) {
 	default:
 		b.WriteString("  scout      not asked anything\n")
 	}
+	if t.CallTurns > 0 {
+		fmt.Fprintf(b, "  turns      %d across the review's passes, %d call(s) sent back for failing their schema\n",
+			t.CallTurns, t.Rejected)
+	}
+	for _, s := range t.Stopped {
+		fmt.Fprintf(b, "  incomplete %s\n", s)
+	}
 	if t.CostUSD > 0 || t.CostKnown {
 		fmt.Fprintf(b, "  cost       %s in total, %s of it the lookups\n",
 			review.FormatCost(t.CostUSD, t.CostKnown),

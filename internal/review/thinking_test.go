@@ -26,7 +26,7 @@ func sentThinkingWire(t *testing.T, thinking bool) thinkingWire {
 	t.Helper()
 	api := serveSSE(t, anthropicSSE("tool_use", 10, 5, anthropicText(0, "{}")))
 	if _, err := completeAnthropic(context.Background(), Options{
-		BaseURL: api.srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 100, Thinking: thinking,
+		BaseURL: api.srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 2000, Thinking: thinking,
 	}, &Result{System: "s", Prompt: "p", Stage: StageReview}); err != nil {
 		t.Fatal(err)
 	}
@@ -37,9 +37,9 @@ func sentThinkingWire(t *testing.T, thinking bool) thinkingWire {
 	return got
 }
 
-// A call pinned to one tool does not think on Sonnet 5, so a call asked to
-// think offers the tool, says in words which one to call, and asks for
-// adaptive thinking with its summary on the stream.
+// A call pinned to the tools does not think on Sonnet 5, so a call asked to
+// think leaves the choice to the model, says in words which calls answer it,
+// and asks for adaptive thinking with its summary on the stream.
 func TestThinkingOffersTheToolAndAsksForAdaptiveThinking(t *testing.T) {
 	got := sentThinkingWire(t, true)
 	if got.ToolChoice.Type != "auto" {
@@ -51,7 +51,7 @@ func TestThinkingOffersTheToolAndAsksForAdaptiveThinking(t *testing.T) {
 	var said bool
 	for _, m := range got.Messages {
 		for _, c := range m.Content {
-			said = said || strings.Contains(c.Text, "calling the review tool")
+			said = said || strings.Contains(c.Text, "Answer with tool calls")
 		}
 	}
 	if !said {
@@ -61,8 +61,8 @@ func TestThinkingOffersTheToolAndAsksForAdaptiveThinking(t *testing.T) {
 
 func TestWithoutThinkingTheStageIsPinned(t *testing.T) {
 	got := sentThinkingWire(t, false)
-	if got.ToolChoice.Type != "tool" || got.ToolChoice.Name != StageReview {
-		t.Errorf("tool_choice %+v, want the review tool pinned", got.ToolChoice)
+	if got.ToolChoice.Type != "any" {
+		t.Errorf("tool_choice %+v, want a tool call required", got.ToolChoice)
 	}
 	if got.Thinking != nil {
 		t.Errorf("thinking %v sent on a call that did not ask for it", got.Thinking)

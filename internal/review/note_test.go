@@ -90,8 +90,8 @@ func TestOnlyTheJudgingCallsCarryTheNote(t *testing.T) {
 // call with it, both reading the same cached prompt block.
 func TestTheNoteReachesTheJudgingCallOnTheWire(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageSynopsis, synopsisBody)),
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t2", StageFindings, findingsBody)),
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageSynopsis, synopsisBody)),
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageFindings, findingsBody)),
 	)
 	in := exploreInput()
 	in.Note = testNote

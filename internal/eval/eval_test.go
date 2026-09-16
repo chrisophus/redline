@@ -411,25 +411,6 @@ func TestSumBuildsTheComparisonTable(t *testing.T) {
 	}
 }
 
-// inputsFor is the review input each fixture stands for, in fixture order.
-// The batch arm needs every one of them before it sends anything, and the
-// live arm builds the same value one at a time; sharing the constructor is
-// what keeps the two arms reviewing the same thing.
-func inputsFor(fx []Fixture) []review.Input {
-	out := make([]review.Input, 0, len(fx))
-	for _, f := range fx {
-		in := review.Input{
-			Report: &f.Session.Report, Change: f.Session.Change,
-			Envelopes: f.Session.Envelopes, Absent: f.Session.ContextAbsent,
-		}
-		if os.Getenv("REDLINE_EVAL_NOCONTEXT") != "" {
-			in.Envelopes = nil
-		}
-		out = append(out, in)
-	}
-	return out
-}
-
 // TestSweep is the paid half. It calls a model once per fixture and prints the
 // comparison table, so it is opt-in: every model-side experiment costs money
 // and everything above this line costs nothing.
@@ -502,16 +483,12 @@ func TestSweep(t *testing.T) {
 	// The describing call, which the command now runs on every review that can
 	// have one. The sweep follows the command, so this is on unless the arm
 	// asks for the single call, and REDLINE_EVAL_NO_SYNOPSIS is that arm.
-	//
-	// It cannot go over the batch tier - the judging call reads what the
-	// describing one wrote, and a batch's results arrive over a window no cache
-	// entry survives - so a batched sweep is the one-call shape.
 	if os.Getenv("REDLINE_EVAL_SYNOPSIS") != "" {
 		t.Fatal("REDLINE_EVAL_SYNOPSIS is the default now; unset it, or set REDLINE_EVAL_NO_SYNOPSIS for the one-call arm")
 	}
 	opts.Synopsis = os.Getenv("REDLINE_EVAL_NO_SYNOPSIS") == ""
-	if opts.Synopsis && os.Getenv("REDLINE_EVAL_BATCH") != "" {
-		t.Fatal("the describing call and the judging call read each other over a tier that cannot pair them; set REDLINE_EVAL_NO_SYNOPSIS to batch this sweep")
+	if os.Getenv("REDLINE_EVAL_BATCH") != "" {
+		t.Fatal("REDLINE_EVAL_BATCH is gone: every review call is a turn loop now, and a batched request is one turn")
 	}
 	// The multi-turn arm. Explore ships behind --mode explore and has never
 	// been scored: it hands the reviewer a catalogue and a fetch tool instead
@@ -534,9 +511,6 @@ func TestSweep(t *testing.T) {
 	}
 	if opts.Cohorts > 1 {
 		opts.CrossSummaries = os.Getenv("REDLINE_EVAL_NO_CROSS_SUMMARIES") == ""
-		if os.Getenv("REDLINE_EVAL_BATCH") != "" {
-			t.Fatal("a split run is a call per cohort over what stage one wrote; the batch tier cannot pair them")
-		}
 	}
 	if os.Getenv("REDLINE_EVAL_STEPWISE") != "" {
 		t.Fatal("REDLINE_EVAL_STEPWISE is gone with --stepwise; the stepwise arm was removed")
@@ -600,32 +574,6 @@ func TestSweep(t *testing.T) {
 		opts.APIUser = os.Getenv("OPENAI_USER")
 	}
 
-	// Nobody waits on a sweep, so REDLINE_EVAL_BATCH sends it over the
-	// Message Batches tier at half price. That is worth having for its own
-	// sake and worth more than that: every question this sweep exists to
-	// answer is settled by running it repeatedly, and the discount is what
-	// makes repeating it affordable.
-	//
-	// The whole matrix cell goes out as one batch before the scoring loop
-	// and is read inside it, so the two arms score identically and only the
-	// wire differs. Order is sample-major so slot si*len(fx)+fi is fixture
-	// fi's sample si.
-	var batch []*review.Result
-	var batchErrs []error
-	if os.Getenv("REDLINE_EVAL_BATCH") != "" {
-		var reqs []review.Input
-		for range samples {
-			reqs = append(reqs, inputsFor(fx)...)
-		}
-		opts.Progress = func(line string) { t.Log(line) }
-		var err error
-		batch, batchErrs, err = review.RunBatch(context.Background(), reqs, opts)
-		if err != nil {
-			t.Fatalf("batch: %v", err)
-		}
-		opts.Progress = nil
-	}
-
 	var cards []Scorecard
 	var costs []float64
 	// Fixtures every sample of which failed. They are not scored as misses,
@@ -634,7 +582,7 @@ func TestSweep(t *testing.T) {
 	// the one the row is read against.
 	var failed []string
 	hc := newHillclimbRecorder(t)
-	for fi, f := range fx {
+	for _, f := range fx {
 		in := review.Input{
 			Report: &f.Session.Report, Change: f.Session.Change,
 			Envelopes: f.Session.Envelopes, Absent: f.Session.ContextAbsent,
@@ -650,14 +598,7 @@ func TestSweep(t *testing.T) {
 		var revs []findings.Review
 		var cost float64
 		for si := range samples {
-			var out *review.Result
-			var err error
-			if batch != nil {
-				slot := si*len(fx) + fi
-				out, err = batch[slot], batchErrs[slot]
-			} else {
-				out, err = review.Run(context.Background(), in, opts)
-			}
+			out, err := review.Run(context.Background(), in, opts)
 			// A sample whose model has no rate makes the fixture's cost
 			// unknown rather than smaller. Summing CostUSD would report the
 			// arm as free, which is the number the whole comparison turns on.

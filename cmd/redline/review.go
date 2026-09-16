@@ -407,6 +407,7 @@ func cmdReview(o opts) error {
 	// review.json without this command's Result can still say the ruling broke
 	// rather than merging the unchecked findings as if the pass had run.
 	reviewed.VerifyFailed = out.VerifyFailed
+	reviewed.Incomplete = out.Stopped
 	path := filepath.Join(o.out, "review.json")
 	if err := review.Merge(path, reviewed); err != nil {
 		return err

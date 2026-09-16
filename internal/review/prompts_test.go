@@ -23,7 +23,6 @@ func TestEveryPromptIsLoaded(t *testing.T) {
 		{"oneshot-addendum.md", oneShotAddendum},
 		{"synopsis.md", synopsisPrompt},
 		{"findings.md", findingsPrompt},
-		{"findings-undescribed.md", undescribedPrompt},
 		{"note.md", notePrompt},
 		{"ruling.md", rulePrompt},
 		{"explore-addendum.md", exploreAddendum},

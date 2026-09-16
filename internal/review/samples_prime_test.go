@@ -49,7 +49,7 @@ func TestTheFirstSamplePrimesTheCacheForTheRest(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher := w.(http.Flusher)
-		reply := anthropicSSE("end_turn", 100, 10, anthropicText(0, primeReviewJSON(n)))
+		reply := anthropicSSE("tool_use", 100, 10, flatCalls(StageReview, primeReviewJSON(n)))
 		if n == 0 {
 			// message_start alone, then a pause the rest would land in if they
 			// had not waited, then the content.
@@ -113,7 +113,7 @@ func TestSamplesWithTheCacheOffGoOutTogether(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, anthropicSSE("end_turn", 100, 10, anthropicText(0, primeReviewJSON(n))))
+		fmt.Fprint(w, anthropicSSE("tool_use", 100, 10, flatCalls(StageReview, primeReviewJSON(n))))
 		w.(http.Flusher).Flush()
 	}))
 	t.Cleanup(srv.Close)
@@ -145,7 +145,7 @@ func TestAFailedPrimerReleasesTheRest(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, anthropicSSE("end_turn", 100, 10, anthropicText(0, primeReviewJSON(n))))
+		fmt.Fprint(w, anthropicSSE("tool_use", 100, 10, flatCalls(StageReview, primeReviewJSON(n))))
 		w.(http.Flusher).Flush()
 	}))
 	t.Cleanup(srv.Close)

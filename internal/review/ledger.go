@@ -95,6 +95,14 @@ type Entry struct {
 	// ruling's handful of objects.
 	RulingOutputTokens int64   `json:"rulingOutputTokens,omitempty"`
 	ScoutCostUSD       float64 `json:"scoutCostUSD,omitempty"`
+	// CallTurns, Rejected and Stopped are the turn loop's: how many turns
+	// the passes took, how many calls failed their schema and were sent
+	// back, and which passes ended before the model said it was done. The
+	// rate of rejected calls on real reviews is what says whether unchecked
+	// tool input holds up.
+	CallTurns int      `json:"callTurns,omitempty"`
+	Rejected  int      `json:"rejected,omitempty"`
+	Stopped   []string `json:"stopped,omitempty"`
 }
 
 // Record appends one review to the ledger in dir. Failing to write it is not
@@ -117,6 +125,7 @@ func Record(dir string, r *Result, effort string) error {
 		Ceiling: r.Ceiling, InputEstimate: r.InputEstimate, OverCeiling: r.OverCeiling,
 		Samples: r.Samples, SamplesFailed: r.SamplesFailed,
 		RulingOutputTokens: r.RulingOutputTokens, ScoutCostUSD: r.ScoutCostUSD,
+		CallTurns: r.CallTurns, Rejected: r.Rejected, Stopped: r.Stopped,
 	}
 	buf, err := json.Marshal(e)
 	if err != nil {

@@ -15,16 +15,11 @@ import (
 	"github.com/chrisophus/redline/internal/findings"
 )
 
-// toolReply renders a non-streamed reply whose structured body rides as the
-// forced tool call's arguments, with the finish reason and usage when given.
-func toolReply(t *testing.T, args, finish, usage string) string {
+// toolReply renders a non-streamed reply that makes the calls producing body,
+// ending in done, with the finish reason and usage when given.
+func toolReply(t *testing.T, body, finish, usage string) string {
 	t.Helper()
-	msg := map[string]any{
-		"tool_calls": []any{map[string]any{
-			"function": map[string]any{"name": "review", "arguments": args},
-		}},
-	}
-	return oaEnvelope(t, msg, finish, usage)
+	return oaEnvelope(t, map[string]any{"tool_calls": openAIFlatCalls(body)}, finish, usage)
 }
 
 // contentReply renders a reply that answered in prose, for a proxy that
@@ -121,18 +116,17 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 	if got.ReasoningEffort != "low" {
 		t.Fatalf("effort must pass through, got %q", got.ReasoningEffort)
 	}
-	// The stage's instruction rides in the same user message here, not in a
-	// second block. The Anthropic wire keeps them apart so the cache
-	// breakpoint can sit between them; this wire places no breakpoint, so
-	// there is nothing to keep apart and the model reads one turn.
-	if len(got.Messages) != 2 || got.Messages[0].Role != "system" || got.Messages[0].Content != res.System ||
-		got.Messages[1].Role != "user" || got.Messages[1].Content != res.Prompt+res.Tail {
+	// The calls block and the pass's instruction ride in the same user message
+	// here, not in blocks of their own. The Anthropic wire keeps them apart so
+	// the cache breakpoint can sit between them; this wire places no
+	// breakpoint, so there is nothing to keep apart and the model reads one
+	// turn.
+	if len(got.Messages) < 2 || got.Messages[0].Role != "system" || got.Messages[0].Content != res.System ||
+		got.Messages[1].Role != "user" || got.Messages[1].Content != res.Prompt+callsBlock(StageReview)+res.Tail {
 		t.Fatal("the system block and the prompt must be sent exactly as assembled and priced")
 	}
-	// The schemas go as functions the model is forced to choose between, not
-	// as response_format, which this gateway class does not enforce. Every
-	// stage is offered on every call and the stage is picked by name, so the
-	// request is the same request the Anthropic wire builds.
+	// The schemas go as functions, not as response_format, which this gateway
+	// class does not enforce.
 	var names []string
 	for _, tool := range got.Tools {
 		if tool.Type != "function" {
@@ -143,18 +137,17 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 		}
 		names = append(names, tool.Function.Name)
 	}
-	// This run reaches the review and nothing else: the checking pass is off,
-	// so no ruling call is coming and its contract would be grammar nothing
-	// can be pinned to. The stages a run cannot ask for are left out because
-	// the endpoint compiles every strict tool into one grammar and refuses
-	// when that grammar gets too large.
-	if !slices.Equal(names, []string{StageReview}) {
-		t.Fatalf("every stage this shape can reach goes on every call, in a fixed order, got %v", names)
+	// Every call offers every tool, in the order the Anthropic wire sends
+	// them, and requires the model to call one.
+	var want []string
+	for _, tool := range callTools() {
+		want = append(want, tool.Name)
 	}
-	tc, _ := got.ToolChoice.(map[string]any)
-	fnsel, _ := tc["function"].(map[string]any)
-	if tc["type"] != "function" || fnsel["name"] != "review" {
-		t.Fatalf("the model must be forced to call the review function, got %v", got.ToolChoice)
+	if !slices.Equal(names, want) {
+		t.Fatalf("every tool goes on every call, in a fixed order, got %v", names)
+	}
+	if got.ToolChoice != "required" {
+		t.Fatalf("the model must be required to call a tool, got %v", got.ToolChoice)
 	}
 
 	if res.API != APIOpenAI || res.Turns != 1 || res.StopReason != "tool_calls" {
@@ -176,7 +169,7 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 
 func TestOpenAITruncationIsReportedNotParsed(t *testing.T) {
 	srv, _, _, _ := openAIServer(t, func(w http.ResponseWriter, req openAIRequest) {
-		_, _ = io.WriteString(w, toolReply(t, `{"overview":"cut off`, "length",
+		_, _ = io.WriteString(w, contentReply(t, `{"overview":"cut off`, "length",
 			`{"prompt_tokens":10,"completion_tokens":32000}`))
 	})
 	res, err := Run(context.Background(), smallInput(), Options{
