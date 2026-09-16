@@ -55,7 +55,6 @@ const (
 	StageRuling   = "ruling"
 	StageSynopsis = "synopsis"
 	StageFindings = "findings"
-	StageCohorts  = "synopsis_cohorts"
 )
 
 // stageTool is one stage's output contract, named so the model can be pointed
@@ -82,8 +81,9 @@ type stageTool struct {
 //
 // Stages the shape cannot reach are left out, because the endpoint compiles
 // every strict tool into one grammar and refuses when that grammar gets too
-// large. A one-shot run has no use for the partition contract and paying for
-// it costs a 400.
+// large. A run with no describing call has no use for the synopsis contract,
+// and one that describes separately has no use for the review contract.
+// Every contract at once, with the partition as a fifth, is what got the 400.
 func stageTools(opts Options) []stageTool {
 	review := stageTool{
 		Name: StageReview,
@@ -100,39 +100,30 @@ func stageTools(opts Options) []stageTool {
 	}
 	findings := stageTool{
 		Name: StageFindings,
-		Description: "Return the comments and the verdicts for this change, for a run " +
-			"whose overview and file lines are already written. Do not restate them; " +
-			"this contract has nowhere to put them.",
+		Description: "Return the comments and the verdicts for this change. The overview " +
+			"and file lines are not part of this contract; do not write them.",
 		Schema: findingsSchema(),
 	}
 	switch {
-	case opts.Shape() == PipelineStaged:
-		// The review contract is left out, and that is measured rather than
-		// chosen: review + ruling + findings + cohorts is the array that got
-		// the 400, and ruling + findings + cohorts is accepted. A staged run
-		// that loses stage one falls back to a one-shot call, which reassembles
-		// under the one-shot shape and carries the review contract then. The
-		// fallback sends a different array than the call before it and reads
-		// no cache, which costs nothing: the run it is rescuing has already
-		// lost the call that wrote one.
+	case opts.Synopsis || opts.Shape() != PipelineOneShot:
+		// Every shape that describes in its own call sends this one array: the
+		// unsplit review, the split and the stepwise conversation. The review
+		// contract is left out, and that is measured rather than chosen:
+		// review + ruling + findings + the old separate partition contract is
+		// the array that got the 400, and ruling + findings + partition was
+		// accepted. The partition now rides on the synopsis contract as a
+		// field, so the split and the unsplit describing call are one form.
+		//
+		// The review contract was only ever needed by the call that writes the
+		// walkthrough and the findings together, which on these shapes is the
+		// fallback after a failed describing call. That fallback asks for
+		// findings alone instead, under this same array, so it still reads the
+		// prefix the failed call wrote.
 		return []stageTool{ruling, findings, {
-			Name: StageCohorts,
-			Description: "Return what this change is - the overview and one line per file you " +
-				"were shown - and a partition of those files into cohorts for the reviews " +
-				"that follow. No comments and no verdicts; the judging happens in the " +
-				"calls this partition feeds.",
-			Schema: cohortsSchema(),
-		}}
-	case opts.Synopsis || opts.Stepwise:
-		// Stepwise forces the synopsis contract on turn 1 and the findings
-		// contract on turn 2, and falls back to the review contract when turn 1
-		// fails. This is the array the synopsis path already sends, so its size
-		// is one the endpoint has accepted, and the fallback call sends the same
-		// bytes as turn 1 and still reads them back.
-		return []stageTool{review, ruling, findings, {
 			Name: StageSynopsis,
 			Description: "Return what this change is: the overview and one line per file " +
-				"you were shown. No comments and no verdicts; a later call judges.",
+				"you were shown, and a partition of those files into cohorts when you are " +
+				"asked for one. No comments and no verdicts; a later call judges.",
 			Schema: synopsisSchema(),
 		}}
 	case opts.Verify:

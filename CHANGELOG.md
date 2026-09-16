@@ -12,6 +12,17 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Changed
+- **One describing form, and a failed describing call keeps the cache.** The
+  split is now a field on the describing form, not a separate form, so the
+  unsplit review, a split and `--stepwise` send the same three tools: ruling,
+  findings and the describing form. An unsplit call returns the field empty.
+  The review form, which writes the walkthrough and the findings together,
+  only travels with `--no-synopsis` and `--brief`. When the describing call
+  fails, the next call no longer asks for the whole review under a different
+  set of tools, which threw away the prefix the failed call had just paid to
+  cache. It asks for findings alone under the same tools, and the review's
+  overview says the walkthrough is missing and why. One live call confirmed the
+  endpoint accepts the set with the split field on it.
 - **`--cohorts N` is the split, and `--pipeline` is gone.** The flag decided
   two things at once, whether a separate call describes the change and
   whether the judging is one call or several, and a caller could not set them

@@ -63,11 +63,10 @@ func synopsisCeilingCost(opts Options, in Input, res *Result) float64 {
 // describe runs the stage and returns the walkthrough it wrote.
 //
 // It never fails the review. A describing call that breaks, refuses, or comes
-// back with no overview leaves the run on the one-shot contract, where the
-// judging call writes the walkthrough as it always did, and the reason is
-// recorded rather than printed and forgotten: a review whose walkthrough is
-// thin because the stage fell back and one whose model wrote a thin
-// walkthrough are the same artifact otherwise.
+// back with no overview leaves the judging call to go on for findings alone,
+// and the reason is recorded rather than printed and forgotten: a review with
+// no walkthrough because the stage failed and one whose model wrote a thin
+// walkthrough are otherwise hard to tell apart.
 //
 // The usage is folded in whichever way it ended, because the call was billed
 // either way.
@@ -95,6 +94,32 @@ func describe(ctx context.Context, in Input, opts Options, res *Result) (finding
 	return out.Review, usage, written, ""
 }
 
+// judgingRequest is the judging call on a shape that described separately:
+// findings alone, under the tail that says whether the walkthrough exists.
+//
+// A failed describing call no longer sends the next call back for the whole
+// review. The contract that carries a walkthrough is not in the array these
+// shapes send, and asking for it would mean a different array, which is a
+// different prefix and a cache the failed call already paid to write left
+// unread. The review goes out without a walkthrough and applySynopsis says so.
+func (r *Result) judgingRequest(described bool) *Result {
+	out := r.clone()
+	out.Stage = StageFindings
+	out.Tail = judgingTail + findingsPrompt
+	if !described {
+		out.Tail = judgingTail + undescribedPrompt
+	}
+	return out
+}
+
+// missingWalkthrough is the overview a review carries when its describing call
+// failed, so the report says the walkthrough is missing rather than rendering
+// a review with no summary as though it had nothing to say.
+func missingWalkthrough(failed string) string {
+	return "No walkthrough: the describing call did not produce one (" + failed +
+		"). The comments below come from the judging call alone."
+}
+
 // applySynopsis puts the walkthrough on the review the judging call wrote, and
 // records which call it came from.
 func applySynopsis(res *Result, model string, walkthrough findings.Review, usage Usage, written int64, failed string) {
@@ -109,6 +134,9 @@ func applySynopsis(res *Result, model string, walkthrough findings.Review, usage
 	res.SynopsisFailed = failed
 	res.recost(model)
 	if failed != "" {
+		if res.Review.Overview == "" {
+			res.Review.Overview = missingWalkthrough(failed)
+		}
 		return
 	}
 	res.Synopsis = true

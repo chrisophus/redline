@@ -869,7 +869,7 @@ func TestBriefPromptIsScopedToTheReviewStage(t *testing.T) {
 	if got := systemFor(brief, StageReview); got != briefPrompt {
 		t.Error("a brief review did not get the short prompt")
 	}
-	for _, stage := range []string{StageRuling, StageSynopsis, StageFindings, StageCohorts} {
+	for _, stage := range []string{StageRuling, StageSynopsis, StageFindings} {
 		if got := systemFor(brief, stage); got != systemPrompt {
 			t.Errorf("stage %s lost its instructions under --brief", stage)
 		}

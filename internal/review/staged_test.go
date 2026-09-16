@@ -58,7 +58,7 @@ func cohortFindings(file, body string) string {
 // one's walkthrough and every cohort's findings.
 func TestTheFanOutJudgesEachCohortAndMergesThem(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t0", StageCohorts, partitionBody)),
+		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t0", StageSynopsis, partitionBody)),
 		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageFindings,
 			cohortFindings("internal/queue/q.go", "the retry loses the entry"))),
 	)
@@ -95,7 +95,7 @@ func TestTheFanOutJudgesEachCohortAndMergesThem(t *testing.T) {
 // what differs between two cohort calls is the tail and only the tail.
 func TestEachCohortIsScopedByItsTailOverOneSharedPrefix(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t0", StageCohorts, partitionBody)),
+		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t0", StageSynopsis, partitionBody)),
 		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageFindings,
 			cohortFindings("internal/queue/q.go", "x"))),
 	)
@@ -160,7 +160,7 @@ func TestEachCohortIsScopedByItsTailOverOneSharedPrefix(t *testing.T) {
 // to be able to tell the two apart.
 func TestAFailedStageOneFallsBackToOneCall(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t0", StageCohorts, `{"overview":"","files":[],"cohorts":[]}`)),
+		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t0", StageSynopsis, `{"overview":"","files":[],"cohorts":[]}`)),
 		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageReview, reviewBody)),
 	)
 	res, err := Run(context.Background(), stagedInput(), stagedOpts(api))
@@ -251,7 +251,7 @@ func TestAFailedCohortIsCountedAndTheRestAreKept(t *testing.T) {
 		switch {
 		case strings.Contains(string(body), "### The cohorts"):
 			fmt.Fprint(w, anthropicSSE("tool_use", 10, 5,
-				anthropicToolUse(0, "t0", StageCohorts, partitionBody)))
+				anthropicToolUse(0, "t0", StageSynopsis, partitionBody)))
 		case strings.Contains(string(body), "Your cohort: api"):
 			w.WriteHeader(http.StatusInternalServerError)
 		default:
@@ -314,16 +314,27 @@ func TestTheCatalogueCarriesOnlyTheShapesContracts(t *testing.T) {
 	if plain := names(Options{}); !slices.Equal(plain, []string{StageReview}) {
 		t.Errorf("a run with no checking pass reaches the review alone, got %v", plain)
 	}
-	// The array the endpoint accepts, exactly. review + ruling + findings +
-	// cohorts is the one that got the 400; this is what was probed and
-	// answered 200, and the fallback call reassembles under the one-shot
-	// shape to get the review contract it needs.
-	staged := names(Options{Cohorts: 6})
-	if !slices.Equal(staged, []string{StageRuling, StageFindings, StageCohorts}) {
-		t.Errorf("a staged run carries the three contracts it can ask for, got %v", staged)
+	// One array for every shape that describes separately. review + ruling +
+	// findings + a separate partition contract is the one that got the 400;
+	// the partition is a field on the synopsis contract now, so the split, the
+	// unsplit describing call and the stepwise conversation send the same
+	// bytes, and a fallback after a failed describing call sends them too.
+	want := []string{StageRuling, StageFindings, StageSynopsis}
+	for _, o := range []Options{{Cohorts: 6}, {Synopsis: true}, {Synopsis: true, Verify: true}, {Stepwise: true}} {
+		if got := names(o.withDefaults()); !slices.Equal(got, want) {
+			t.Errorf("%+v carries %v, want %v", o, got, want)
+		}
 	}
-	if slices.Contains(names(Options{Synopsis: true}), StageCohorts) {
-		t.Error("a run with no fan-out cannot ask for a partition, so it must not carry that contract")
+	split, err := json.Marshal(stageTools(Options{Cohorts: 6}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	unsplit, err := json.Marshal(stageTools(Options{Synopsis: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(split, unsplit) {
+		t.Error("the split and the unsplit describing call must send byte-identical catalogues")
 	}
 	// Every call of one staged run sends the same array, which is the whole
 	// invariant the cache rests on.

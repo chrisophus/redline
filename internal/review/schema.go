@@ -28,30 +28,18 @@ func outputSchema() map[string]any {
 	}
 }
 
-// synopsisSchema is the describing stage's half: what the change is, and one
-// line per shown file. No comments and no verdicts, because a stage told to
-// describe and not to judge cannot be given somewhere to judge.
-func synopsisSchema() map[string]any {
-	return map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"required":             []string{"overview", "files"},
-		"properties": map[string]any{
-			"overview": overviewSchema(),
-			"files":    map[string]any{"type": "array", "items": fileSchema()},
-		},
-	}
-}
-
-// cohortsSchema is stage one's contract when the run fans out: the same
-// walkthrough, plus the partition the fan-out is drawn from.
+// synopsisSchema is the describing stage's half: what the change is, one line
+// per shown file, and the partition a split run is judged over. No comments
+// and no verdicts, because a stage told to describe and not to judge cannot be
+// given somewhere to judge.
 //
-// A separate contract rather than an optional field on the synopsis one,
-// because strict mode requires every property a schema declares: a single
-// contract would make a run with no fan-out pay output tokens for a partition
-// nothing reads. Both are declared on every call and the stage is picked by
-// tool_choice, so carrying two costs input that is cached and nothing else.
-func cohortsSchema() map[string]any {
+// One contract for every shape that describes separately, so the split is a
+// field and not a second form. The field is required, as strict mode wants
+// every declared property to be, and a run that is not split sends it back
+// empty: a few output tokens, against a second contract that pushed the
+// catalogue past the endpoint's grammar limit and made a failed split rebuild
+// its request under different tools and lose the cache.
+func synopsisSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
@@ -59,7 +47,12 @@ func cohortsSchema() map[string]any {
 		"properties": map[string]any{
 			"overview": overviewSchema(),
 			"files":    map[string]any{"type": "array", "items": fileSchema()},
-			"cohorts":  map[string]any{"type": "array", "items": cohortSchema()},
+			"cohorts": map[string]any{
+				"type":  "array",
+				"items": cohortSchema(),
+				"description": "The partition of the files into cohorts, when this pass asks " +
+					"for one. Empty when it does not.",
+			},
 		},
 	}
 }
