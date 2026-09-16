@@ -29,22 +29,22 @@ import (
 // calls that fail are counted and the rest are merged, because a review over
 // four cohorts of five is worth more than no review.
 
-// Pipeline shapes.
+// Shapes a run is recorded under. None of them is a setting: Options.Shape
+// reads them off Cohorts and Stepwise, and the ledger groups rows by them.
 const (
 	PipelineOneShot  = "oneshot"
 	PipelineStaged   = "staged"
 	PipelineStepwise = "stepwise"
 )
 
-// The fan-out's defaults, which apply only when the pipeline is staged.
+// The fan-out's defaults.
 //
-// Six is an upper bound on parallel calls, not a target: it is where the
-// per-cohort context stops being worth another call on the changes this
-// repository sees, and stage one draws fewer whenever the change has fewer
-// groups in it. Three files is where partitioning starts to mean anything at
+// One cohort is no split: the describing call and one judging call. The split
+// is off until a caller asks for it, because no measurement yet says it earns
+// its extra calls. Three files is where partitioning starts to mean anything at
 // all - below it the groups are smaller than the summaries describing them.
 const (
-	DefaultCohorts        = 6
+	DefaultCohorts        = 1
 	DefaultMinCohortFiles = 3
 )
 
@@ -93,7 +93,7 @@ func (r *Result) cohortRequest(opts Options, mine Cohort, others []Cohort, mineI
 // and the tripwire refuses before stage one runs. A guard that priced one
 // review and then paid for six is the failure it exists to prevent.
 func stagedCeilingCost(opts Options, in Input, res *Result) float64 {
-	if opts.Pipeline != PipelineStaged || res == nil {
+	if opts.Shape() != PipelineStaged || res == nil {
 		return 0
 	}
 	one, ok := CeilingCost(opts.Model, res.cohortsRequest(opts, in).InputEstimate, opts.MaxTokens)
@@ -213,7 +213,7 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		// staged catalogue does not carry the review contract, because the
 		// endpoint refuses the two together.
 		flat := opts
-		flat.Pipeline = PipelineOneShot
+		flat.Cohorts = 1
 		out, rerr := runOnce(ctx, in, flat, res)
 		// Stage one was billed whether or not it answered, and the write it
 		// made over the whole prefix is the expensive half. Folding it in

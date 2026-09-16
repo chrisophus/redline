@@ -106,7 +106,7 @@ func stageTools(opts Options) []stageTool {
 		Schema: findingsSchema(),
 	}
 	switch {
-	case opts.Pipeline == PipelineStaged:
+	case opts.Shape() == PipelineStaged:
 		// The review contract is left out, and that is measured rather than
 		// chosen: review + ruling + findings + cohorts is the array that got
 		// the 400, and ruling + findings + cohorts is accepted. A staged run
@@ -123,7 +123,7 @@ func stageTools(opts Options) []stageTool {
 				"calls this partition feeds.",
 			Schema: cohortsSchema(),
 		}}
-	case opts.Synopsis || opts.Pipeline == PipelineStepwise:
+	case opts.Synopsis || opts.Stepwise:
 		// Stepwise forces the synopsis contract on turn 1 and the findings
 		// contract on turn 2, and falls back to the review contract when turn 1
 		// fails. This is the array the synopsis path already sends, so its size

@@ -48,19 +48,22 @@ func stepwiseRefusal(opts Options) error {
 		// OpenAI wire is how Brief came apart between the two wires, and a
 		// stepwise row scored off a one-shot call would compare two arms that
 		// were the same arm.
-		return fmt.Errorf("--pipeline %s is one conversation that resends its first turn as the model wrote it, "+
-			"and that conversation is only built on the Anthropic wire; use --api %s, or another pipeline with --api %s",
-			PipelineStepwise, APIAnthropic, APIOpenAI)
+		return fmt.Errorf("--stepwise is one conversation that resends its first turn as the model wrote it, "+
+			"and that conversation is only built on the Anthropic wire; use --api %s, or drop --stepwise with --api %s",
+			APIAnthropic, APIOpenAI)
 	case opts.Samples > 1:
-		return fmt.Errorf("--samples unions independent reviews, and a %s run is two turns of one conversation; "+
-			"sampling it doubles every sample's calls", PipelineStepwise)
+		return fmt.Errorf("--samples unions independent reviews, and a stepwise run is two turns of one conversation; " +
+			"sampling it doubles every sample's calls")
+	case opts.Cohorts > 1:
+		// Both decide what the describing call is: stepwise describes from the
+		// diff alone and draws no partition, and the split needs one drawn.
+		return fmt.Errorf("--stepwise describes the change from its diff before the rest arrives and draws no partition, " +
+			"and --cohorts above 1 is judged over one; pass one or the other")
 	case opts.Brief:
-		return fmt.Errorf("--brief is a single pass under the review contract, and --pipeline %s writes the walkthrough "+
-			"and the findings in two turns under contracts the short prompt does not describe; pass one or the other",
-			PipelineStepwise)
+		return fmt.Errorf("--brief is a single pass under the review contract, and --stepwise writes the walkthrough " +
+			"and the findings in two turns under contracts the short prompt does not describe; pass one or the other")
 	case opts.Mode == ModeExplore:
-		return fmt.Errorf("--pipeline %s and --mode explore are both multi-turn conversations over the packet; pick one",
-			PipelineStepwise)
+		return fmt.Errorf("--stepwise and --mode explore are both multi-turn conversations over the packet; pick one")
 	}
 	return nil
 }
@@ -119,7 +122,7 @@ func (r *Result) stepwiseJudgeRequest(opts Options, in Input, one *Result, writt
 }
 
 // stepwiseCeilingCost is what the conversation adds to the tripwire's worst
-// case, and zero when the pipeline is something else.
+// case, and zero when the run is some other shape.
 //
 // Turn 1 is priced at its own input and the whole cap. Turn 2 is priced at the
 // full conversation it resends, with turn 1's input at the cache-read rate
@@ -134,7 +137,7 @@ func (r *Result) stepwiseJudgeRequest(opts Options, in Input, one *Result, writt
 // cap that is three full output allowances, which refuses every real fixture
 // at the $2 default for a request that never goes out.
 func stepwiseCeilingCost(opts Options, in Input, res *Result) float64 {
-	if opts.Pipeline != PipelineStepwise || res == nil {
+	if !opts.Stepwise || res == nil {
 		return 0
 	}
 	one := res.stepwiseDescribeRequest(opts, in)

@@ -239,17 +239,21 @@ type Options struct {
 	// that cap with fifty file summaries in front of the findings. The price
 	// is one more call over a prefix the first one has already paid to cache.
 	Synopsis bool
-	// Pipeline is the shape of the run: "oneshot" is one call that judges the
-	// whole change, "staged" describes it first, splits it, and judges each
-	// part in its own call.
+	// Stepwise runs the review as one conversation in two turns: the first
+	// describes the change from its diff, the second gets the rest of the
+	// packet and judges. Its first turn is the describing call, so Synopsis is
+	// not consulted under it, and it draws no partition, so it cannot be
+	// combined with Cohorts above one.
+	Stepwise bool
+	// Cohorts is the upper bound on judging calls, not a target, and the one
+	// dial for the split: one, the default, judges the change in one call;
+	// above one, the describing call also partitions the shown files and each
+	// part is judged in its own call. Stage one chooses how many to draw
+	// within the bound and the tripwire prices the bound, because a guard
+	// that priced one review and then paid for six would be no guard.
 	//
-	// Staged implies the describing call - it is the call that draws the
+	// The split implies the describing call - it is the call that draws the
 	// partition - so Synopsis is not consulted under it.
-	Pipeline string
-	// Cohorts is the upper bound on stage-two calls, not a target. Stage one
-	// chooses how many to draw within it and the tripwire prices the bound,
-	// because a guard that priced one review and then paid for six would be
-	// no guard.
 	Cohorts int
 	// MinCohortFiles is the size below which a change is reviewed as one
 	// cohort whatever the bound says. Splitting four files into six groups
@@ -264,8 +268,8 @@ type Options struct {
 	// same reason --dry-run does, one level in - a caller who wants to see
 	// how a change would be split, or how much narrower a cohort's task
 	// would be, without paying for the judgment those cohorts would write.
-	// Ignored outside PipelineStaged, because every other shape has no
-	// partition to stop before.
+	// Ignored when Cohorts is one, because there is no partition to stop
+	// before.
 	PlanOnly bool
 	// OnlyCohorts narrows a staged run to the cohorts stage one drew that
 	// match one of these selectors - a 1-based index into the partition as
@@ -274,6 +278,20 @@ type Options struct {
 	// judgment rather than every one's. Empty runs every cohort the bound
 	// allows, which is the same as not passing it.
 	OnlyCohorts []string
+}
+
+// Shape is the name the ledger groups a run under, read off the options that
+// decide it: "staged" when the split is on, "stepwise" for the conversation,
+// "oneshot" otherwise. It is a label for rows, not a setting; a combination of
+// both is refused before anything is sent.
+func (o Options) Shape() string {
+	switch {
+	case o.Stepwise:
+		return PipelineStepwise
+	case o.Cohorts > 1:
+		return PipelineStaged
+	}
+	return PipelineOneShot
 }
 
 func (o Options) withDefaults() Options {
@@ -310,22 +328,17 @@ func (o Options) withDefaults() Options {
 	if o.CacheTTL == "" {
 		o.CacheTTL = CacheTTL5m
 	}
-	if o.Pipeline == "" {
-		o.Pipeline = PipelineOneShot
-	}
-	if o.Pipeline == PipelineStaged || o.Pipeline == PipelineStepwise {
-		// Stepwise replaces the split for the same reason: its turn 1 is the
-		// describing call.
-		//
-		// Staged already describes the change - that is the call that draws
-		// the partition - so the synopsis flag has nothing left to turn on.
-		// Cleared here rather than ignored at the branch, because the
-		// tripwire reads the options and would otherwise price a describing
-		// call twice and refuse a run that fits.
-		o.Synopsis = false
-	}
 	if o.Cohorts <= 0 {
 		o.Cohorts = DefaultCohorts
+	}
+	if o.Shape() != PipelineOneShot {
+		// A split already describes the change - that is the call that draws
+		// the partition - and a stepwise turn 1 is the describing call, so the
+		// synopsis flag has nothing left to turn on under either. Cleared here
+		// rather than ignored at the branch, because the tripwire reads the
+		// options and would otherwise price a describing call twice and refuse
+		// a run that fits.
+		o.Synopsis = false
 	}
 	if o.MinCohortFiles <= 0 {
 		o.MinCohortFiles = DefaultMinCohortFiles
@@ -633,7 +646,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		// harmless direction for a bound.
 		fixed += envelope.EstimateTokens(in.contextHeader(envelopeRoles(in.Envelopes)))
 	}
-	if opts.Pipeline == PipelineStepwise {
+	if opts.Stepwise {
 		// Turn 2 is the largest request a stepwise run sends, and it carries
 		// what the one-shot prompt does not: turn 1's instruction and roster,
 		// the walkthrough turn 1 wrote, the tool result and the lead-in. Priced
@@ -673,7 +686,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		// Stamped at assembly so every row has a shape, including the rows
 		// nothing staged ever touches: a ledger where one shape is a value
 		// and the other is an empty string groups into two sets by accident.
-		Pipeline:       opts.Pipeline,
+		Pipeline:       opts.Shape(),
 		Budget:         budget,
 		FilesShown:     len(in.ShownFiles()),
 		Prompt:         prompt + tail,
@@ -733,7 +746,7 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	}
 	// Ahead of the tripwire and the dry run, so a combination the conversation
 	// cannot run under is refused the same way whether or not it would send.
-	if opts.Pipeline == PipelineStepwise {
+	if opts.Stepwise {
 		if err := stepwiseRefusal(opts); err != nil {
 			return res, err
 		}
@@ -758,18 +771,18 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 		// call's input and lowering --ceiling shaves a slice off all of them.
 		shape, advice := "", "Raise --max-cost to proceed, or lower --ceiling"
 		switch {
-		case opts.Pipeline == PipelineStaged && opts.PlanOnly:
+		case opts.Shape() == PipelineStaged && opts.PlanOnly:
 			shape = " --plan sends only the describing call, at the full response allowance."
 			advice = "Raise --max-cost to proceed, or lower --ceiling"
-		case opts.Pipeline == PipelineStaged:
+		case opts.Shape() == PipelineStaged:
 			bound := pricingCohortBound(opts, in)
-			shape = fmt.Sprintf(" A staged run is stage one plus up to %d cohort call(s), "+
+			shape = fmt.Sprintf(" A split run is stage one plus up to %d cohort call(s), "+
 				"each carrying the whole prefix and capped at %d response token(s).",
 				bound, cohortMaxTokens(opts, bound))
 			advice = "Raise --max-cost to proceed, lower --cohorts to buy fewer calls, " +
 				"or lower --ceiling to shrink every one of them"
 		}
-		if opts.Pipeline == PipelineStepwise {
+		if opts.Stepwise {
 			shape = " A stepwise run is two turns of one conversation, the second resending the first " +
 				"and its answer, each capped at the full response allowance."
 			advice = "Raise --max-cost to proceed, lower --max-tokens to shrink both turns, or lower --ceiling"
@@ -808,53 +821,63 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 			return res, fmt.Errorf("--synopsis splits one call in two, and explore's call is a " +
 				"loop that already writes its walkthrough over several turns; use --mode oneshot")
 		}
-		if opts.Pipeline == PipelineStaged {
-			return res, fmt.Errorf("--pipeline staged and --mode explore are two answers to the " +
+		if opts.Shape() == PipelineStaged {
+			return res, fmt.Errorf("--cohorts above 1 and --mode explore are two answers to the " +
 				"same question - one spends the budget on breadth, the other on turns; pick one")
 		}
 		res.Turns = 0
 		return runExplore(ctx, in, opts, res)
 	}
-	if opts.Pipeline == PipelineStaged {
+	// One path for every shape: each decides how the review is written, and
+	// the checking pass behind them is the same.
+	var out *Result
+	switch opts.Shape() {
+	case PipelineStaged:
 		if opts.Samples > 1 {
 			return res, fmt.Errorf("--samples unions independent reviews of the whole change, " +
-				"and a staged run already spends its budget on breadth; sampling a fan-out multiplies it")
+				"and a split run already spends its budget on breadth; sampling a fan-out multiplies it")
 		}
-		out, err := runStaged(ctx, in, opts, res)
-		if err != nil || !opts.Verify {
-			return out, err
-		}
-		if opts.Progress != nil {
-			opts.Progress(fmt.Sprintf("the cohorts produced %d finding(s) in %s; checking them against the repository",
-				len(out.Review.Comments), out.Duration.Round(time.Second)))
-		}
+		out, err = runStaged(ctx, in, opts, res)
+	case PipelineStepwise:
+		out, err = runStepwise(ctx, in, opts, res)
+	default:
+		out, err = runJudged(ctx, in, opts, res)
+	}
+	if err != nil || !opts.Verify {
+		return out, err
+	}
+	// The checking pass. It never fails the review: everything it can go
+	// wrong on leaves the findings as stage one wrote them and records that
+	// the check did not happen, because a review that posts unchecked is the
+	// behaviour this tool had all along and an empty one is worse than that.
+	if opts.Progress != nil {
+		opts.Progress(fmt.Sprintf("the review produced %d finding(s) in %s; checking them against the repository",
+			len(out.Review.Comments), out.Duration.Round(time.Second)))
+	}
+	if !opts.Stepwise {
 		return Verify(ctx, in, opts, out)
 	}
-	if opts.Pipeline == PipelineStepwise {
-		out, err := runStepwise(ctx, in, opts, res)
-		if err != nil || !opts.Verify {
-			return out, err
-		}
-		if opts.Progress != nil {
-			opts.Progress(fmt.Sprintf("the conversation produced %d finding(s) in %s; checking them against the repository",
-				len(out.Review.Comments), out.Duration.Round(time.Second)))
-		}
-		// The ruling is one user turn over the assembled prompt, the prefix it
-		// was written against on every other shape. The stepwise trace goes back
-		// on afterwards for the recorder.
-		trace, tail := out.Prompt, out.Tail
-		out.Prompt, out.Tail = res.Prompt, res.Tail
-		checked, err := Verify(ctx, in, opts, out)
-		if checked != nil {
-			checked.Prompt, checked.Tail = trace, tail
-		}
-		return checked, err
+	// The ruling is one user turn over the assembled prompt, the prefix it
+	// was written against on every other shape. The stepwise trace goes back
+	// on afterwards for the recorder.
+	trace, tail := out.Prompt, out.Tail
+	out.Prompt, out.Tail = res.Prompt, res.Tail
+	checked, err := Verify(ctx, in, opts, out)
+	if checked != nil {
+		checked.Prompt, checked.Tail = trace, tail
 	}
-	// The describing stage runs first, because it is the call that writes the
-	// cache the judging call reads, and because the judging call's contract
-	// depends on whether it succeeded: with a walkthrough in hand it is asked
-	// for findings alone, and without one it is asked for the whole review, as
-	// it always was.
+	return checked, err
+}
+
+// runJudged is the unsplit review: the describing call when Synopsis is on,
+// then one judging call, or several when --samples unions them.
+//
+// The describing stage runs first, because it is the call that writes the
+// cache the judging call reads, and because the judging call's contract
+// depends on whether it succeeded: with a walkthrough in hand it is asked for
+// findings alone, and without one it is asked for the whole review, as it
+// always was.
+func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Result, error) {
 	var walkthrough findings.Review
 	var synUsage Usage
 	var synWritten int64
@@ -869,6 +892,7 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 		}
 	}
 	var out *Result
+	var err error
 	if opts.Samples > 1 {
 		out, err = runSamples(ctx, in, opts, res)
 	} else {
@@ -877,18 +901,7 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	if opts.Synopsis {
 		applySynopsis(out, opts.Model, walkthrough, synUsage, synWritten, synFailed)
 	}
-	if err != nil || !opts.Verify {
-		return out, err
-	}
-	// The checking pass. It never fails the review: everything it can go
-	// wrong on leaves the findings as stage one wrote them and records that
-	// the check did not happen, because a review that posts unchecked is the
-	// behaviour this tool had all along and an empty one is worse than that.
-	if opts.Progress != nil {
-		opts.Progress(fmt.Sprintf("stage one produced %d finding(s) in %s; checking them against the repository",
-			len(out.Review.Comments), out.Duration.Round(time.Second)))
-	}
-	return Verify(ctx, in, opts, out)
+	return out, err
 }
 
 // runOnce is one call over an already-assembled prompt. Everything above it

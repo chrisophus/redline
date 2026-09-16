@@ -28,10 +28,10 @@ A plain `redline review` makes two calls. The first describes the change and
 writes the overview and one line per file. The second gets the findings, and
 reads the first call's prompt back out of the cache instead of paying for it
 again. `--verify` adds the scout's lookups and a ruling behind them.
-`--pipeline staged` splits the files into groups and sends one judging call
+`--cohorts N` above 1 splits the files into groups and sends one judging call
 per group, with `--plan` to stop after the split and `--only-cohorts` to judge
-part of it. `--pipeline stepwise` describes the change from the diff before
-the rest of the material arrives. The prompts are files under
+part of it. `--stepwise` describes the change from the diff before the rest of
+the material arrives. The prompts are files under
 `internal/review/prompts`. `post` gates on the ruling, holds back low
 confidence and hedged wording, and keeps the reviewer's info findings in the
 review body instead of on the diff.
@@ -86,13 +86,12 @@ So it was not missing context and it was not missing advice.
 ## Cohorts
 
 A review can split the files into groups and judge each group in its own call.
-That ships, off by default. Two of the items below are a shape change decided
-after the fact: the split is a dial on an ordinary review, not a separate
-pipeline.
+That ships, off by default, as `--cohorts N` on an ordinary review: one, the
+default, is no split. The item below is what is left of making the split a dial
+rather than a separate pipeline.
 
 | Item | What | Effort |
 |---|---|---|
-| **Drop `--pipeline staged`** | The flag decides two things at once: whether a separate call describes the change, and whether the judging is one call or several. Those are independent and a caller cannot set them independently. Switching to staged also swaps the describing output form and drops the plain review form from the request, so nobody can say which of the three changes did anything. `staged.go:28` already says a split with one group is exactly the two-call shape, and `cohortBound` draws one group whenever the change is smaller than `--min-cohort-files`, so the two shapes already meet at one group. Make `--cohorts N` the dial, default 1, and drop `--pipeline staged` with no synonym kept. Stepwise comes off the same flag, since what the describing call sees is a third question. Two error messages in `cmdReview` go away, the ones that only exist to say a flag was already implied, and `runStaged` folds into the one path in `Run`. | M |
 | **One describing form, and what it costs** | The file split rides on the describing form as an optional field, so one form covers both one group and several. The request cannot then also carry the plain review form. Measured: the four forms together come to 6,937 bytes and that is the combination the API refused as "the compiled grammar is too large", against 6,292 for the set that ships today with the two-call shape and 4,257 for the set that ships with the split. The plain review form is the biggest at 2,680 bytes and is only needed by the single call that writes the walkthrough and the findings together, so shapes that describe separately send the smaller set, and `--no-synopsis` and `--brief` keep their own. The trade is what happens when the describing call fails: it can no longer ask the next call for the whole review, so it asks for findings alone and the report says the walkthrough is missing. That is better than what the split does today, which is to rebuild the request differently and lose the cache. Done when one live call confirms the smaller set is accepted with the split field on it. | S |
 | **The merge stage** | One call behind the groups that gets every group's findings numbered together, plus the scout's answers, and returns the rulings, the deduplicated comments and the final review. Dedup by `UnionKey`, which prefers the finding's question to its wording. With one group it is the ruling as it ships today. `--merge-context` decides whether it reads the whole cached prompt, which is where a connection between two groups can still be spotted, or only the findings and the change summary, which is cheaper. | M |
 | **Divide the scout's allowance** | `--scout-budget shared\|per-cohort`. The allowance is $0.25 for one change, and one scout per group spends that N times over. Shared divides it; per-cohort multiplies the bill on purpose. | S |

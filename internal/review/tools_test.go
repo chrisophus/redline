@@ -82,12 +82,12 @@ func TestEveryStageSendsTheSameToolsAndDiffersOnlyInTheChoice(t *testing.T) {
 // unstable order the prefix would differ between two calls of one run and the
 // cache would miss for a reason no diff could show.
 func TestTheToolsBlockSerializesTheSameEveryTime(t *testing.T) {
-	first, err := json.Marshal(anthropicTools(Options{Pipeline: PipelineStaged}))
+	first, err := json.Marshal(anthropicTools(Options{Cohorts: 6}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := range 50 {
-		again, err := json.Marshal(anthropicTools(Options{Pipeline: PipelineStaged}))
+		again, err := json.Marshal(anthropicTools(Options{Cohorts: 6}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -101,7 +101,7 @@ func TestTheToolsBlockSerializesTheSameEveryTime(t *testing.T) {
 // emitted input validates against the schema. It needs additionalProperties
 // false on every object, so both have to survive the trip onto the wire.
 func TestEveryContractGoesOutStrictAndClosed(t *testing.T) {
-	raw, err := json.Marshal(anthropicTools(Options{Pipeline: PipelineStaged}))
+	raw, err := json.Marshal(anthropicTools(Options{Cohorts: 6}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,8 +113,8 @@ func TestEveryContractGoesOutStrictAndClosed(t *testing.T) {
 	if err := json.Unmarshal(raw, &tools); err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != len(stageTools(Options{Pipeline: PipelineStaged})) {
-		t.Fatalf("%d tool(s) reached the wire, %d were declared", len(tools), len(stageTools(Options{Pipeline: PipelineStaged})))
+	if len(tools) != len(stageTools(Options{Cohorts: 6})) {
+		t.Fatalf("%d tool(s) reached the wire, %d were declared", len(tools), len(stageTools(Options{Cohorts: 6})))
 	}
 	for _, tool := range tools {
 		if tool.Strict == nil || !*tool.Strict {
@@ -259,7 +259,7 @@ func TestEveryContractObeysTheRulesStrictModeEnforces(t *testing.T) {
 			}
 		}
 	}
-	for _, tool := range stageTools(Options{Pipeline: PipelineStaged}) {
+	for _, tool := range stageTools(Options{Cohorts: 6}) {
 		walk(tool.Name, tool.Schema)
 	}
 }
