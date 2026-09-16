@@ -48,6 +48,12 @@ type Expectation struct {
 	// Correlation requires the matching comment to be a correlation
 	// carrying references, rather than a remark that happens to use the
 	// same words.
+	//
+	// Dormant. The review is no longer shown what the deterministic checks
+	// found, so it has no ids to reference and cannot produce a correlation,
+	// and no label sets this today. Kept because the matching logic is the
+	// expensive half: restoring the capability should be a label change
+	// rather than a rebuild.
 	Correlation bool `json:"correlation"`
 	// RelatesToRules names the wave-one rules the correlation should
 	// reference. Checked against the fixture's own findings: the comment's

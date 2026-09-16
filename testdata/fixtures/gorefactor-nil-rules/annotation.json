@@ -232,14 +232,11 @@
     {
       "key": "parity-notices-are-one-rule",
       "what": "The session carries three sibling-missing-file findings, one each for the implementation, facts and test files of a single new lint rule. They are one fact reported three times, and the envelope shows why there is no counterpart to add: every other cmd_lint_* rule lives only under cmd/gorefactor. A review that says so with the three ids attached turns three notices into one.",
-      "correlation": true,
-      "relates_to_rules": [
-        "sibling-missing-file"
-      ],
+      "known_gap": "Nothing shipping can reach this. The three sibling-missing-file findings it is about are wave-one output, and the review is no longer shown what the checks found, so there is nothing in front of it to notice is one fact reported three times.",
       "all_of": [
         "parity"
       ],
-      "note": "Labelled after the fact, from two samples that each referenced all three findings. This is the fixture's only correlation label, and the bar a staged arm has to clear without losing."
+      "note": "Labelled after the fact, from two samples that each referenced all three findings, when the packet still carried them. It was a correlation label: category correlation, with the three ids attached. Kept as a gap rather than deleted, because a case that leaves the set stops being tracked, and this one is the argument for showing a reviewer what the checks found at all."
     }
   ]
 }
