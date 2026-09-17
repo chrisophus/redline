@@ -985,6 +985,14 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			// The whole array, because the whole array is what was sent and
 			// its bytes are what a cache read depends on.
 			"tools": callTools(res.pulls()), "calls": callsFor(stage, res.pulls()),
+			// instructions is the prose callsBlock sends as its own content
+			// block, on the wire but not otherwise in this file: "calls"
+			// above names which tools answer the pass, not the words that
+			// tell the model so, and it is those words - "Read the context
+			// you need with get_context before writing comments" among them
+			// - a reader asking whether a pass was actually told to defer
+			// context needs to see, not reconstruct from source.
+			"instructions": callsBlock(stage, res.pulls()),
 		}
 		req, _ := json.MarshalIndent(captured, "", "  ")
 		opts.Capture(stage+".request.json", req)

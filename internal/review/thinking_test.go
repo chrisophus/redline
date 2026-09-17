@@ -162,6 +162,33 @@ func TestTheCaptureKeepsTheThinkingSummary(t *testing.T) {
 	}
 }
 
+// callsBlock's text goes out as its own content block, on the wire but not
+// otherwise recorded: "calls" in the capture names which tools answer the
+// pass, not the words that tell the model so. A reader asking whether a
+// deferred-context pass was actually told to read before writing has to see
+// those words, not reconstruct them from source.
+func TestTheCaptureKeepsTheInstructionsSentWithTheCall(t *testing.T) {
+	api := serveSSE(t, anthropicSSE("end_turn", 1000, 60, anthropicText(0, exploreReviewJSON)))
+	opts := oneShotOpts(api)
+	opts.DeferContext = true
+	captured := map[string][]byte{}
+	opts.Capture = func(name string, data []byte) { captured[name] = data }
+	if _, err := Run(context.Background(), exploreInput(), opts); err != nil {
+		t.Fatalf("review: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(captured["review.request.json"], &got); err != nil {
+		t.Fatal(err)
+	}
+	instructions, _ := got["instructions"].(string)
+	if want := callsBlock(StageReview, true); instructions != want {
+		t.Errorf("instructions = %q, want %q", instructions, want)
+	}
+	if !strings.Contains(instructions, "Read the context you need with get_context") {
+		t.Error("the deferred-context directive must be visible in what was captured, not only in source")
+	}
+}
+
 // A call that ran out of room while it was still thinking is the one whose
 // reasoning says why, so its capture keeps what it had.
 func TestACallCutOffWhileThinkingKeepsItsReasoning(t *testing.T) {
