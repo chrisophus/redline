@@ -334,6 +334,19 @@ func (o Options) withDefaults() Options {
 	if o.MinCohortFiles <= 0 {
 		o.MinCohortFiles = DefaultMinCohortFiles
 	}
+	if o.PlanOnly {
+		// --plan sends one call, ever, in this invocation: the describing
+		// call, which never judges anything and so never needed context
+		// resolved inline in the first place. Context earns its keep by
+		// riding the shared prefix a later call reads back from cache at a
+		// tenth of the write rate; --plan has no later call to read it back,
+		// so writing it in full would pay the cache-write premium on tokens
+		// nothing ever reads. Deferred, its index costs a rounding error
+		// instead - the same shape --defer-context sends, which is the
+		// point: a --plan run and the --defer-context run it is usually
+		// planning for share one prompt shape, not two.
+		o.DeferContext = true
+	}
 	return o
 }
 

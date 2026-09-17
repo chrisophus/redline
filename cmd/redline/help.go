@@ -396,7 +396,11 @@ shape:
                     change, not because it was clean; the report and
                     Summary say plan-only rather than a finding count.
                     Refused without a split, which has no partition to
-                    stop before.
+                    stop before. Always defers context, whether or not
+                    --defer-context was also given: this one call has no
+                    later call to read a fully-written context back from
+                    cache, so writing it in full would only pay the
+                    cache-write rate on tokens nothing amortizes.
   --only-cohorts LIST
                     with --cohorts above 1: judge only the cohorts stage one
                     drew that match one of a comma-separated list of
