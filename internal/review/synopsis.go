@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/chrisophus/redline/internal/envelope"
@@ -36,6 +37,7 @@ const ExpectedSynopsisTokens int64 = 3000
 func (r *Result) synopsisRequest(opts Options, in Input) *Result {
 	out := r.clone()
 	out.Stage = StageSynopsis
+	out.expect = passExpect{files: sortedKeys(in.ShownFiles())}
 	// The describing half and nothing else. This call is not judging the
 	// change, so the judging tail would be two thousand tokens telling it what
 	// to do with findings it has been told not to write.
@@ -162,4 +164,13 @@ func (r *Result) recost(model string) {
 	if extra, ok := apart.Cost(model); ok {
 		r.CostUSD += extra
 	}
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

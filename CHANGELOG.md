@@ -40,6 +40,14 @@ Releases whose tag carries only a subject line are listed as that subject.
   than findings alone. Measured before the build on fifteen fixture reviews:
   2 of 202 calls rejected, both fixed on retry, where the same single-object
   forms without strict were unusable on 8 of 9 findings calls.
+- **A pass ends as soon as its work is visibly complete.** A describing pass
+  with the overview, a line for every file and, when asked, cohorts, and a
+  ruling with a ruling for every finding, end on that reply without waiting
+  for `done`. The model is also told a call is answered "Recorded." unless
+  something is wrong, so it can end its last reply with `done` rather than
+  wait. Each extra turn resends the whole conversation, and with thinking on
+  that includes all the reasoning so far: on a 70k-token fixture two turns
+  that only collected `done` cost about $0.29 of a $0.98 review.
 - **A pass never costs more than it was priced at.** The tripwire still prices
   each pass as one request up front. As the loop runs, each turn's output cap
   is cut to what that price can still pay for after what the pass has spent,

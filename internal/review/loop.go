@@ -90,7 +90,7 @@ const nudgeText = "Answer with the tool calls this pass asks for, not in prose. 
 // completion, the shape the rest of the review reads.
 func converse(ctx context.Context, opts Options, res *Result, conv conversation) (completion, error) {
 	stage := res.stage()
-	col := newCollector(stage)
+	col := newCollector(stage, res.expect)
 	var c completion
 	var total Usage
 	var thinking strings.Builder
@@ -176,6 +176,14 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 			break
 		}
 		if done {
+			break
+		}
+		if rejected == 0 && col.complete() {
+			// Everything the pass exists to record is in, so another request
+			// would only resend the conversation to collect done.
+			if opts.Debug != nil {
+				opts.Debug(fmt.Sprintf("%s turn %d: complete without done", stage, turn))
+			}
 			break
 		}
 		if len(r.calls) == 0 {

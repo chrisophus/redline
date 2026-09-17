@@ -308,3 +308,46 @@ func TestValidateNamesTheFieldAndTheProblem(t *testing.T) {
 		}
 	}
 }
+
+// A pass whose work is visibly complete ends on the reply that completed it:
+// another request would only resend the conversation, thinking included, to
+// collect done. A findings pass has no such test and still waits for done.
+func TestACompletePassEndsWithoutWaitingForDone(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		stage  string
+		expect passExpect
+		first  string
+		want   int
+	}{
+		{"a describing pass with every file described", StageSynopsis,
+			passExpect{files: []string{"internal/queue/q.go"}},
+			reply([2]string{CallOverview, `{"overview":"o"}`},
+				[2]string{CallFile, `{"path":"internal/queue/q.go","summary":"s"}`}), 1},
+		{"a describing pass still owed a file", StageSynopsis,
+			passExpect{files: []string{"internal/queue/q.go", "b.go"}},
+			reply([2]string{CallOverview, `{"overview":"o"}`},
+				[2]string{CallFile, `{"path":"internal/queue/q.go","summary":"s"}`}), 2},
+		{"a split's describing pass with no cohorts yet", StageSynopsis,
+			passExpect{files: []string{"internal/queue/q.go"}, cohorts: true},
+			reply([2]string{CallOverview, `{"overview":"o"}`},
+				[2]string{CallFile, `{"path":"internal/queue/q.go","summary":"s"}`}), 2},
+		{"a ruling on every finding", StageRuling,
+			passExpect{findings: []string{"c1"}},
+			reply([2]string{CallRule, `{"finding":"c1","analysis":"a","verdict":"kept","evidence":"e","why":"w"}`}), 1},
+		{"a findings pass, which has no such test", StageFindings,
+			passExpect{},
+			reply([2]string{CallComment, goodComment}), 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := serveSSE(t, tc.first, reply([2]string{CallDone, `{}`}))
+			res := &Result{System: "s", Prompt: "p", Stage: tc.stage, expect: tc.expect}
+			if _, err := runOnce(context.Background(), exploreInput(), loopOpts(api), res); err != nil {
+				t.Fatal(err)
+			}
+			if got := len(api.seen()); got != tc.want {
+				t.Errorf("%d request(s), want %d", got, tc.want)
+			}
+		})
+	}
+}

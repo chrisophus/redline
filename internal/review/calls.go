@@ -72,12 +72,12 @@ func callTools() []callTool {
 			flatObject(propsOf(fileSchema(), "path", "summary"), "path", "summary")},
 		{CallCohort, "Record one cohort of files best reviewed together. Call once per cohort, and only when the pass asks for cohorts.",
 			flatObject(propsOf(cohortSchema(), "name", "summary", "files"), "name", "summary", "files")},
-		{CallComment, "Record one review comment on the change. Call once per comment.",
+		{CallComment, "Record one review comment on the change. Call once per comment. The answer is \"Recorded.\" unless the call is malformed, so do not wait for it: send every comment in one reply.",
 			commentCallSchema()},
 		{CallRule, "Record the ruling on one finding. Call once per finding you were given.",
 			flatObject(propsOf(rulingItemSchema(), "finding", "analysis", "verdict", "evidence", "why"),
 				"finding", "analysis", "verdict", "evidence", "why")},
-		{CallDone, "Call once every other call this pass asks for has been made. It ends the pass.",
+		{CallDone, "End the pass. Call it in the same reply as your last other calls, not in a reply of its own.",
 			map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}},
 	}
 }
@@ -130,7 +130,7 @@ func callsFor(stage string) []string {
 // the same cache entry and each is told only what it may call.
 func callsBlock(stage string) string {
 	var b strings.Builder
-	b.WriteString("\n\n## How to answer\n\nAnswer with tool calls, not prose. Make as many calls in one reply as you can, and call done once every call is made. A call that is rejected comes back saying why; send it again fixed.\n\n")
+	b.WriteString("\n\n## How to answer\n\nAnswer with tool calls, not prose. A call is answered \"Recorded.\" unless something is wrong with it, so there is nothing to wait for: make every call in one reply and end that reply with done. A call that is rejected comes back saying why; send it again fixed.\n\n")
 	switch stage {
 	case StageSynopsis:
 		b.WriteString("- set_overview once\n- describe_file once per file on the list\n- add_cohort once per cohort, only if this pass asks for cohorts\n\nMake no other call.\n")
@@ -144,6 +144,17 @@ func callsBlock(stage string) string {
 	return b.String()
 }
 
+// passExpect is what makes a pass visibly complete. The describing pass is
+// complete once it has the overview, a line for every file on its roster and,
+// when it was asked for them, cohorts; the ruling once every finding it was
+// given has a ruling. A findings pass has no such test, since nothing says how
+// many comments a change deserves, and it ends only on done.
+type passExpect struct {
+	files    []string
+	cohorts  bool
+	findings []string
+}
+
 // collector records a pass's calls as they arrive and assembles the object
 // the rest of the review reads, the same one the strict forms used to carry.
 type collector struct {
@@ -155,14 +166,57 @@ type collector struct {
 	rulings  []map[string]any
 	schemas  map[string]map[string]any
 	rejected int
+	expect   passExpect
 }
 
-func newCollector(stage string) *collector {
+func newCollector(stage string, expect passExpect) *collector {
 	schemas := map[string]map[string]any{}
 	for _, t := range callTools() {
 		schemas[t.Name] = t.Schema
 	}
-	return &collector{stage: stage, schemas: schemas}
+	return &collector{stage: stage, schemas: schemas, expect: expect}
+}
+
+// complete reports whether the pass has recorded everything its expectation
+// names, so the loop can end it on the reply that finished the work rather
+// than spend another request, which resends the whole conversation, waiting
+// for done.
+func (c *collector) complete() bool {
+	switch c.stage {
+	case StageSynopsis:
+		if c.overview == "" || (c.expect.cohorts && len(c.cohorts) == 0) {
+			return false
+		}
+		described := map[string]bool{}
+		for _, f := range c.files {
+			if p, ok := f["path"].(string); ok {
+				described[p] = true
+			}
+		}
+		for _, p := range c.expect.files {
+			if !described[p] {
+				return false
+			}
+		}
+		return true
+	case StageRuling:
+		if len(c.expect.findings) == 0 {
+			return false
+		}
+		ruled := map[string]bool{}
+		for _, r := range c.rulings {
+			if id, ok := r["finding"].(string); ok {
+				ruled[id] = true
+			}
+		}
+		for _, id := range c.expect.findings {
+			if !ruled[id] {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // any reports whether anything but done has been recorded.

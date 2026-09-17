@@ -570,6 +570,10 @@ type Result struct {
 	Questions []Question         `json:"-"`
 	Answers   *envelope.Envelope `json:"-"`
 
+	// expect is what a pass has to record to be visibly complete, set by the
+	// requests whose completeness can be checked. A pass that has recorded all
+	// of it ends there, without waiting for done.
+	expect passExpect
 	// note is the note from whoever asked for this review, as every judging
 	// call appends it, and empty when there is none. Kept on the result
 	// because the judging requests are built from it after the tails that

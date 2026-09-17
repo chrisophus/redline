@@ -483,6 +483,10 @@ func (r *Result) ruleRequest(in Input, opts Options, cands []Candidate, answers 
 	// would never match.
 	out.System = r.System
 	out.Prompt = r.Prompt
+	out.expect = passExpect{}
+	for _, c := range cands {
+		out.expect.findings = append(out.expect.findings, c.ID)
+	}
 	out.Tail = "\n" + candidatesSection(cands) +
 		boundAnswers(answersSection(answers)) + rulePrompt
 	out.Stage = StageRuling
