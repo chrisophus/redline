@@ -468,6 +468,25 @@ func TestLedgerRecordsAndAverages(t *testing.T) {
 	}
 }
 
+// SynopsisOutputTokens is zero on a row with no synopsis stage and on one
+// whose walkthrough was reused for free; SynopsisReused is the only field
+// that tells the two apart, so it has to survive the round trip through the
+// ledger file, not just live on the in-memory Result.
+func TestLedgerRecordsSynopsisReused(t *testing.T) {
+	dir := t.TempDir()
+	r := &Result{Model: "claude-sonnet-5", CostUSD: 0.10, CostKnown: true, Synopsis: true, SynopsisReused: true}
+	if err := Record(dir, r, "high"); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := ReadLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || !entries[0].Synopsis || !entries[0].SynopsisReused {
+		t.Fatalf("entries = %+v, want one row with synopsis and synopsisReused both true", entries)
+	}
+}
+
 // The p90 has to be the tail, not the maximum. The old (n*9)/10 index sat one
 // rank too high, so with ten or fewer reviews p90 was always the single most
 // expensive one, and the tail statistic said nothing the max did not.

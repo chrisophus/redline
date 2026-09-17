@@ -63,6 +63,11 @@ type Entry struct {
 	// count.
 	Synopsis             bool  `json:"synopsis,omitempty"`
 	SynopsisOutputTokens int64 `json:"synopsisOutputTokens,omitempty"`
+	// SynopsisReused marks a row whose walkthrough came from --reuse-synopsis
+	// rather than a describing call this row paid for. SynopsisOutputTokens is
+	// zero either way, and a reader comparing this row's cost against one that
+	// paid for its own describing call needs to know which zero it is.
+	SynopsisReused bool `json:"synopsisReused,omitempty"`
 	// Pipeline is the shape the run came out of, Cohorts how many calls the
 	// fan-out made and CohortsFailed how many did not answer, and FellBack
 	// the reason a staged run finished as a one-shot review.
@@ -119,7 +124,7 @@ func Record(dir string, r *Result, effort string) error {
 		Seconds: r.Duration.Seconds(), Findings: len(r.Review.Comments),
 		StopReason: r.StopReason, Truncated: r.Truncated,
 		Batched: r.Batched, Cached: r.Cached,
-		Synopsis: r.Synopsis, SynopsisOutputTokens: r.SynopsisOutputTokens,
+		Synopsis: r.Synopsis, SynopsisOutputTokens: r.SynopsisOutputTokens, SynopsisReused: r.SynopsisReused,
 		Pipeline: r.Pipeline, Cohorts: len(r.Cohorts),
 		CohortsFailed: r.CohortsFailed, FellBack: r.FellBack,
 		Ceiling: r.Ceiling, InputEstimate: r.InputEstimate, OverCeiling: r.OverCeiling,

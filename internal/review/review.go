@@ -623,6 +623,12 @@ func (r *Result) Summary() string {
 	if r.CallTurns > 0 {
 		s += fmt.Sprintf(" call-turns=%d", r.CallTurns)
 	}
+	if r.SynopsisReused {
+		// SynopsisOutputTokens is zero on both a run with no synopsis stage
+		// and one whose walkthrough was reused for free; this is the only
+		// thing on the line that tells the two apart.
+		s += " synopsis-reused"
+	}
 	if r.Rejected > 0 {
 		s += fmt.Sprintf(" rejected=%d", r.Rejected)
 	}
