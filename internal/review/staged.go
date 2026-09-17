@@ -67,7 +67,7 @@ func (r *Result) cohortsRequest(opts Options, in Input) *Result {
 	// prices cohortBound, the progress line prints it and repairPartition
 	// folds anything above it, so a stage one told a larger number spends
 	// output on a partition that is then silently collapsed.
-	out.Tail = cohortsTail(in, cohortBound(opts, in))
+	out.Tail = describingTail + cohortsTail(in, cohortBound(opts, in))
 	out.expect.cohorts = true
 	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedSynopsisTokens)

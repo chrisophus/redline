@@ -105,11 +105,11 @@ func (r *Result) judgingRequest(described bool) *Result {
 	out := r.clone()
 	if !described {
 		out.Stage = StageReview
-		out.Tail = r.note
+		out.Tail = describingTail + r.note
 		return out
 	}
 	out.Stage = StageFindings
-	out.Tail = judgingTail + findingsPrompt + r.note
+	out.Tail = findingsPrompt + r.note
 	return out
 }
 

@@ -25,8 +25,8 @@ func TestAnEmptyNoteChangesNothingAboutTheRequest(t *testing.T) {
 		t.Errorf("a blank note changed the request: tail %q, estimate %d against %d",
 			blank.Tail, blank.InputEstimate, base.InputEstimate)
 	}
-	if base.Tail != "" {
-		t.Errorf("a run with no note sends no tail block on the one-call shape, got %q", base.Tail)
+	if base.Tail != describingTail {
+		t.Errorf("a run with no note sends the describing instruction alone in its tail, got %q", base.Tail)
 	}
 }
 

@@ -652,21 +652,18 @@ func (r *Result) Summary() string {
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
 	system := systemFor(opts, StageReview) + oneShotAddendum + languageFragments(in.Envelopes)
-	// The one-shot shape writes the walkthrough and the findings in one call,
-	// so it carries both halves: judging first because it is the bulk of the
-	// job, then the two description fields. Run swaps in the findings tail
-	// alone when the describing call has already written the walkthrough.
-	//
-	// It rides inside the prompt block rather than after it. The breakpoint
-	// sits at the end of that block, and every later call of the run - the
-	// ruling, and the fallback when the describing call fails - resends it to
-	// read it back, so an instruction in a block of its own would fall outside
-	// what they pay for once.
-	tail := judgingTail + describingTail
+	// The judging instruction rides inside the shared prompt block, the part
+	// every pass reads from the cache. The describing instruction does not:
+	// a findings pass that read "say what the change is" beside "the overview
+	// is already written" wrote the walkthrough anyway and had every call of
+	// it refused. It goes in the tail of the passes that describe, the
+	// one-call review here and the describing pass in synopsis.go.
+	tail := judgingTail
 	// Behind the breakpoint in a block of its own, unlike the instruction
 	// above, so the calls that resend the prompt block without judging - the
 	// describing call and the ruling - do not carry it.
 	note := in.noteTail()
+	describe := describingTail
 	// The block that says which calls answer the pass goes out with every
 	// request, so it is priced with the fixed parts.
 	calls := callsBlock(StageReview)
@@ -676,8 +673,8 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// wire sent them anyway, and the reservation came up short by the whole
 	// catalogue and overfilled the context by that much.
 	fixed := toolsTokens() + envelope.EstimateTokens(system) +
-		envelope.EstimateTokens(tail) + envelope.EstimateTokens(note) + envelope.EstimateTokens(calls) +
-		envelope.EstimateTokens(in.fixed())
+		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
+		envelope.EstimateTokens(calls) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
 		// The block's own header is written after FitAll has fitted the
 		// expansions, so it has to be reserved here or the assembled prompt
@@ -694,7 +691,8 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	prompt := in.build(budget)
 	parts := promptParts(in, opts, system, budget)
 	est := envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
-		envelope.EstimateTokens(tail) + envelope.EstimateTokens(note) + envelope.EstimateTokens(calls)
+		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
+		envelope.EstimateTokens(calls)
 	expected := opts.ExpectedOutput
 	if expected <= 0 {
 		expected = ExpectedOutputTokens
@@ -720,7 +718,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		Budget:         budget,
 		FilesShown:     len(in.ShownFiles()),
 		Prompt:         prompt + tail,
-		Tail:           note,
+		Tail:           describe + note,
 		note:           note,
 		System:         system,
 		InputEstimate:  est,

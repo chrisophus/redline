@@ -66,18 +66,18 @@ type callTool struct {
 // cache read depends on, so it is written out rather than built from a map.
 func callTools() []callTool {
 	return []callTool{
-		{CallOverview, "Set the overview of this change: what it does and why. Call once.",
+		{CallOverview, "Set the overview of this change: what it does and why.",
 			flatObject(map[string]any{"overview": overviewSchema()}, "overview")},
-		{CallFile, "Record one line on what one file's change does and why. Call once per file you are asked to describe.",
+		{CallFile, "Record one line on what one file's change does and why.",
 			flatObject(propsOf(fileSchema(), "path", "summary"), "path", "summary")},
-		{CallCohort, "Record one cohort of files best reviewed together. Call once per cohort, and only when the pass asks for cohorts.",
+		{CallCohort, "Record one group of files best reviewed together.",
 			flatObject(propsOf(cohortSchema(), "name", "summary", "files"), "name", "summary", "files")},
-		{CallComment, "Record one review comment on the change. Call once per comment. The answer is \"Recorded.\" unless the call is malformed, so do not wait for it: send every comment in one reply.",
+		{CallComment, "Record one review comment on the change.",
 			commentCallSchema()},
-		{CallRule, "Record the ruling on one finding. Call once per finding you were given.",
+		{CallRule, "Record the ruling on one finding.",
 			flatObject(propsOf(rulingItemSchema(), "finding", "analysis", "verdict", "evidence", "why"),
 				"finding", "analysis", "verdict", "evidence", "why")},
-		{CallDone, "End the pass. Call it in the same reply as your last other calls, not in a reply of its own.",
+		{CallDone, "End this pass.",
 			map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}},
 	}
 }
@@ -125,23 +125,27 @@ func callsFor(stage string) []string {
 	return []string{CallOverview, CallFile, CallComment}
 }
 
-// callsBlock tells a pass which calls answer it. It goes after the cached
-// prompt and ahead of the pass's own instruction, so every pass of a run reads
-// the same cache entry and each is told only what it may call.
+// callsBlock tells a pass how its answer is taken and which calls it takes. It
+// says what the tools do and nothing about when or in what order to call them:
+// a model that is thinking decides that itself, and two instructions that did
+// decide it, one asking for every call in one reply and one asking for one
+// area at a time, each moved the reasoning around less than they moved the
+// calls. It goes after the cached prompt, so every pass reads the same entry.
 func callsBlock(stage string) string {
-	var b strings.Builder
-	b.WriteString("\n\n## How to answer\n\nAnswer with tool calls, not prose. A call is answered \"Recorded.\" unless something is wrong with it, so there is nothing to wait for: make every call in one reply and end that reply with done. A call that is rejected comes back saying why; send it again fixed.\n\n")
+	var takes string
 	switch stage {
 	case StageSynopsis:
-		b.WriteString("- set_overview once\n- describe_file once per file on the list\n- add_cohort once per cohort, only if this pass asks for cohorts\n\nMake no other call.\n")
+		takes = "set_overview once, describe_file once per file, and add_cohort once per group when the pass asks for groups"
 	case StageFindings:
-		b.WriteString("- add_comment once per comment\n\nMake no other call. If there is nothing to say, call done alone.\n")
+		takes = "add_comment, one call per comment"
 	case StageRuling:
-		b.WriteString("- rule once per finding you were given\n\nMake no other call: the overview and the file lines are already written, and this pass only rules.\n")
+		takes = "rule, one call per finding"
 	default:
-		b.WriteString("- set_overview once\n- describe_file once per file you were shown\n- add_comment once per comment\n\nMake no other call. If there is nothing to comment on, make no add_comment call.\n")
+		takes = "set_overview once, describe_file once per file, and add_comment once per comment"
 	}
-	return b.String()
+	return "\n\n## How to answer\n\nAnswer by calling the tools. Every call is answered: \"Recorded.\" when it is " +
+		"taken, or what is wrong with it when it is not. Call done when this pass is finished.\n\n" +
+		"This pass takes " + takes + ".\n"
 }
 
 // passExpect is what makes a pass visibly complete. The describing pass is

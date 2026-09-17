@@ -117,10 +117,12 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 			c.model = r.model
 		}
 		if strings.TrimSpace(r.thinking) != "" {
+			// Labelled by turn, so a reader can see where in the pass the
+			// reasoning happened: all before the first call, or between them.
 			if thinking.Len() > 0 {
 				thinking.WriteString("\n\n")
 			}
-			thinking.WriteString(r.thinking)
+			fmt.Fprintf(&thinking, "[turn %d]\n%s", turn, r.thinking)
 		}
 		c.stopReason = r.stopReason
 		if err != nil {
@@ -143,6 +145,10 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 			break
 		}
 		results, done, rejected := col.take(r.calls)
+		if opts.Debug != nil {
+			opts.Debug(fmt.Sprintf("%s turn %d: %d call(s), %d output token(s) of which %d thinking, %d thinking char(s) shown",
+				stage, turn, len(r.calls), r.usage.OutputTokens, r.usage.ThinkingTokens, len(r.thinking)))
+		}
 		if opts.Debug != nil {
 			// Which calls were sent back and why, with the input as sent: the
 			// rate of rejected calls is the number that says whether unchecked
@@ -202,11 +208,6 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 			}
 			c.stopped = StoppedNoCalls
 			break
-		}
-		if len(r.calls) <= 2 && len(results) > 0 {
-			// A model that sends a call or two and waits for the answer
-			// spends a turn per call. Said on the answer, where it is read.
-			results[len(results)-1].content += " Send every call you have left in your next reply, with done at the end of it."
 		}
 		conv.answer(r, results)
 		gov.answered(results)
