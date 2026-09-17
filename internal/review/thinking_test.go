@@ -188,3 +188,31 @@ func TestACallCutOffWhileThinkingKeepsItsReasoning(t *testing.T) {
 		t.Errorf("thinking = %q, want the reasoning the cut-off call had written", got["thinking"])
 	}
 }
+
+// The reasoning is kept on every run, not only under --debug, labelled by the
+// pass it came from, and a pass that thought across several turns keeps all of
+// them. A pass that sent no thinking adds nothing.
+func TestEveryRunKeepsItsThinking(t *testing.T) {
+	api := serveSSE(t,
+		anthropicSSE("tool_use", 1000, 60,
+			anthropicThinking(0, "the guard was added after a panic in production"),
+			anthropicToolUse(1, "toolu_1", CallOverview, `{"overview":"Removes a nil guard."}`),
+			anthropicToolUse(2, "toolu_1b", CallFile, `{"path":"internal/queue/q.go","summary":"drops the guard"}`)),
+		anthropicSSE("tool_use", 1000, 60,
+			anthropicThinking(0, "nothing else to say, so done"),
+			anthropicToolUse(1, "toolu_2", CallDone, `{}`)),
+	)
+	opts := oneShotOpts(api)
+	opts.Capture = nil
+	res, err := Run(context.Background(), exploreInput(), opts)
+	if err != nil {
+		t.Fatalf("review: %v", err)
+	}
+	if len(res.Thinking) != 1 || res.Thinking[0].Pass != StageReview {
+		t.Fatalf("thinking = %+v, want one entry for the review pass", res.Thinking)
+	}
+	text := res.Thinking[0].Text
+	if !strings.Contains(text, "added after a panic") || !strings.Contains(text, "so done") {
+		t.Errorf("both turns' thinking must be kept, got %q", text)
+	}
+}

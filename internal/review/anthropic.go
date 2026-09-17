@@ -247,12 +247,16 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		// openai.go records that a gateway serving one vendor's model over
 		// another's protocol ignored response_format on one review in four.
 	}
-	if opts.Thinking && !thinkingOff {
+	if !forced && !thinkingOff {
 		// Asked for although Sonnet 5 thinks unasked, because an older model
 		// thinks only when asked, and the summary puts the reasoning on the
-		// stream as it is written. The heartbeat counts it there, and a stream
+		// stream as it is written. The heartbeat counts it there, a stream
 		// that is not silent while the model thinks may also keep a proxy that
-		// closes quiet streams from closing this one.
+		// closes quiet streams from closing this one, and the review keeps
+		// the summary for the postmortem. Set on every call the tools do not
+		// pin, which is --thinking and a model that refuses the pin: Fable 5.1
+		// thinks on every call and sends nothing of it unless asked for the
+		// summary.
 		params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{
 			Display: anthropic.ThinkingConfigAdaptiveDisplaySummarized,
 		}}

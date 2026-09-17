@@ -116,7 +116,12 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 		if r.model != "" {
 			c.model = r.model
 		}
-		thinking.WriteString(r.thinking)
+		if strings.TrimSpace(r.thinking) != "" {
+			if thinking.Len() > 0 {
+				thinking.WriteString("\n\n")
+			}
+			thinking.WriteString(r.thinking)
+		}
 		c.stopReason = r.stopReason
 		if err != nil {
 			if col.any() {
@@ -233,6 +238,7 @@ func (r *Result) foldCalls(other *Result) {
 	r.CallTurns += other.CallTurns
 	r.Rejected += other.Rejected
 	r.Stopped = append(r.Stopped, other.Stopped...)
+	r.Thinking = append(r.Thinking, other.Thinking...)
 }
 
 // governor keeps a pass inside the cost it was priced at.

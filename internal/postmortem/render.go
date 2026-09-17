@@ -34,6 +34,7 @@ func (t *Trace) Render() string {
 	t.unanswered(&b)
 	t.search(&b)
 	t.notes(&b)
+	t.thinking(&b)
 	return b.String()
 }
 
@@ -332,6 +333,15 @@ func (t *Trace) notes(b *strings.Builder) {
 	b.WriteString("\nthe scout's notes\n")
 	for _, n := range t.Lookup.Notes {
 		b.WriteString(wrap(n, "  - ", "    "))
+	}
+}
+
+// thinking prints each pass's reasoning last, since it is the longest part
+// and the part a reader goes to only after the findings raise a question.
+func (t *Trace) thinking(b *strings.Builder) {
+	for _, p := range t.Thinking {
+		fmt.Fprintf(b, "\nthinking, %s pass\n", p.Pass)
+		b.WriteString(wrap(p.Text, "  ", "  "))
 	}
 }
 

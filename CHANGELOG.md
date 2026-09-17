@@ -46,6 +46,12 @@ Releases whose tag carries only a subject line are listed as that subject.
   and a pass with no room left stops on the cost cap with what it has.
 - **The OpenAI wire runs the same loop**, answering each tool call with a tool
   message.
+- **Every review keeps the model's thinking.** Each pass's reasoning summary is
+  saved in `postmortem.json` and printed by `redline postmortem`, labelled by
+  pass, cohort or sample, on every run rather than only under `--debug`. There
+  is a summary only when the call was allowed to think: `--thinking`, or a
+  model that refuses a required tool call, which is now asked for the summary
+  too.
 - **One describing form, and a failed describing call keeps the cache.** The
   split is now a field on the describing form, not a separate form, so the
   unsplit review, a split and `--stepwise` send the same three tools: ruling,

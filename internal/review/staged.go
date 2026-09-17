@@ -309,6 +309,7 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 			one := opts
 			one.Samples = 1
 			one.MaxTokens = cohortMaxTokens(opts, len(cohorts))
+			one.passLabel = cohort.Name
 			if opts.Progress != nil {
 				// The cohorts run at once, so each one's turn lines say whose
 				// they are, and the lines share the lock the landing lines use.

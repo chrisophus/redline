@@ -210,6 +210,10 @@ type Options struct {
 	// endpoint cannot send before it has read the whole prompt. runSamples
 	// hands it to the sample that primes the cache. Nil is fine.
 	onOutput func()
+	// passLabel names which of several parallel passes a call is, a cohort's
+	// name or a sample's number, for the thinking it records. Empty on a pass
+	// that is the only one of its stage.
+	passLabel string
 	// DryRun assembles the prompt and prices it without calling anything.
 	DryRun bool
 	// Answer runs the lookups a finding asked for, between the review and the
@@ -374,6 +378,12 @@ func (o Options) cacheOn() bool {
 	return o.Cache && o.API != APIOpenAI
 }
 
+// PassThinking is one pass's reasoning summary.
+type PassThinking struct {
+	Pass string `json:"pass"`
+	Text string `json:"text"`
+}
+
 // Result is one review and what it cost.
 type Result struct {
 	Review findings.Review `json:"review"`
@@ -535,11 +545,17 @@ type Result struct {
 	// naming the pass and why. A pass that stopped early kept what it had
 	// recorded, so its review can be incomplete without being wrong, and
 	// Stopped is what says so.
-	CallTurns     int      `json:"callTurns,omitempty"`
-	Rejected      int      `json:"rejected,omitempty"`
-	Stopped       []string `json:"stopped,omitempty"`
-	Cohorts       []Cohort `json:"cohorts,omitempty"`
-	CohortsFailed int      `json:"cohortsFailed,omitempty"`
+	CallTurns int      `json:"callTurns,omitempty"`
+	Rejected  int      `json:"rejected,omitempty"`
+	Stopped   []string `json:"stopped,omitempty"`
+	// Thinking is the reasoning each pass streamed, in the order the passes
+	// ran, kept on every run rather than only under --debug: the review worth
+	// reading the reasoning of is the one that already happened. It is the
+	// summary the endpoint sends, and there is one only when the call was
+	// allowed to think, which a call pinned to the tools is not on Sonnet 5.
+	Thinking      []PassThinking `json:"thinking,omitempty"`
+	Cohorts       []Cohort       `json:"cohorts,omitempty"`
+	CohortsFailed int            `json:"cohortsFailed,omitempty"`
 
 	// Candidates is what stage one found, as it wrote it, before any ruling
 	// touched it. Kept because the verifying pass writes its rulings onto the
@@ -939,6 +955,13 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	res.Turns = 1
 	res.CallTurns += c.turns
 	res.Rejected += c.rejected
+	if strings.TrimSpace(c.thinking) != "" {
+		pass := stage
+		if opts.passLabel != "" {
+			pass += " (" + opts.passLabel + ")"
+		}
+		res.Thinking = append(res.Thinking, PassThinking{Pass: pass, Text: c.thinking})
+	}
 	if c.stopped != "" {
 		res.Stopped = append(res.Stopped, fmt.Sprintf("the %s pass stopped before it was done (%s)", stage, c.stopped))
 		if opts.Progress != nil {
