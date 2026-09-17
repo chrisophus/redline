@@ -386,3 +386,17 @@ func TestTheShapeIsReadOffCohorts(t *testing.T) {
 		t.Error("a split describes the change itself, so Synopsis must be cleared under it")
 	}
 }
+
+// --plan sends one call, ever, and no later call reads its cache back: full
+// context would pay the cache-write premium on tokens nothing amortizes.
+// Deferred, it costs a rounding error, and it is the shape a --plan run is
+// usually planning a --defer-context run for anyway - one prompt shape, not
+// two.
+func TestPlanDefersContextEvenWhenNotAsked(t *testing.T) {
+	if d := (Options{Cohorts: 3, PlanOnly: true}).withDefaults(); !d.DeferContext {
+		t.Error("--plan has no later call to read a written-in-full context back from cache, so it must defer")
+	}
+	if d := (Options{Cohorts: 3}).withDefaults(); d.DeferContext {
+		t.Error("a run that was not asked to defer context must not default to it")
+	}
+}
