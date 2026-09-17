@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
@@ -254,7 +255,15 @@ func cmdReview(o opts) error {
 		ropts.Progress = func(msg string) { fmt.Fprintln(os.Stderr, "redline:", msg) }
 		if o.debug || os.Getenv("REDLINE_DEBUG") != "" {
 			ropts.Debug = func(msg string) { fmt.Fprintln(os.Stderr, "redline debug:", msg) }
-			dir := filepath.Join(o.out, "debug")
+			// Its own subdirectory per run, named by when the run started, so
+			// a rerun against the same --out never destroys what the last one
+			// wrote. The old flat layout numbered files from 1 on every
+			// invocation: two runs sharing a stage name overwrote each
+			// other's capture, and two runs with different shapes (a split
+			// review's "synopsis"/"findings" beside a one-shot's "review")
+			// left half the directory stale and half fresh with no way to
+			// tell which was which.
+			dir := filepath.Join(o.out, "debug", time.Now().UTC().Format("20060102T150405Z"))
 			if err := os.MkdirAll(dir, 0o755); err == nil {
 				var mu sync.Mutex
 				var seq int
