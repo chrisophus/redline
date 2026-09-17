@@ -12,9 +12,9 @@ import (
 
 // The describing call runs on every review that can have one, so the shapes
 // that write their own walkthrough have to clear it rather than refuse it.
-// Before the default flipped, --brief was refused
-// beside --synopsis, and a default that still tripped those refusals would
-// have made both shapes unrunnable.
+// Before the default flipped, the shapes that write their own walkthrough were
+// refused beside --synopsis, and a default that still tripped those refusals
+// would have made them unrunnable.
 //
 // Dry runs throughout: they assemble the request and call nothing.
 func TestTheDefaultDescribingCallDoesNotBreakTheShapesThatReplaceIt(t *testing.T) {
@@ -25,7 +25,6 @@ func TestTheDefaultDescribingCallDoesNotBreakTheShapesThatReplaceIt(t *testing.T
 	}{
 		{"the default shape", opts{}},
 		{"one call, by --no-synopsis", opts{noSynopsis: true}},
-		{"the short prompt", opts{brief: true}},
 		{"a fan-out", opts{cohorts: 4}},
 		{"a tool loop", opts{mode: review.ModeExplore}},
 	} {
@@ -51,7 +50,6 @@ func TestAnExplicitSynopsisBesideTheShapesThatReplaceItIsAccepted(t *testing.T) 
 		name string
 		o    opts
 	}{
-		{"the short prompt", opts{brief: true, synopsis: true}},
 		{"a fan-out", opts{cohorts: 4, synopsis: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -92,8 +90,8 @@ func TestThePartitionFlagsNeedTheSplit(t *testing.T) {
 }
 
 // --reuse-synopsis stands in for the describing call, so it is refused
-// beside the flags that already decide what that call is: --no-synopsis
-// asks for none, --brief carries no synopsis contract. Above --cohorts 1 it
+// beside the flag that already decides what that call is: --no-synopsis asks
+// for none. Above --cohorts 1 it
 // is accepted - see TestReuseSynopsisCanStandInForAStagedRunsPartitionToo -
 // but only once review.json actually carries a partition to reuse.
 func TestReuseSynopsisIsRefusedBesideTheFlagsThatReplaceTheDescribingCall(t *testing.T) {
@@ -104,7 +102,6 @@ func TestReuseSynopsisIsRefusedBesideTheFlagsThatReplaceTheDescribingCall(t *tes
 		want string
 	}{
 		{"--no-synopsis", opts{reuseSynopsis: true, noSynopsis: true}, "--no-synopsis"},
-		{"--brief", opts{reuseSynopsis: true, brief: true}, "--brief"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			o := tc.o

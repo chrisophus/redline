@@ -19,7 +19,6 @@ func TestEveryPromptIsLoaded(t *testing.T) {
 		{"system.md", systemPrompt},
 		{"judging.md", judgingTail},
 		{"describing.md", describingTail},
-		{"brief.md", briefPrompt},
 		{"synopsis.md", synopsisPrompt},
 		{"note.md", notePrompt},
 		{"ruling.md", rulePrompt},

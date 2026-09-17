@@ -228,69 +228,23 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	// it if it does not. See loop.go.
 	params.Tools = anthropicTools(res.pulls())
 	params.ToolChoice = anthropic.ToolChoiceUnionParam{OfAuto: &anthropic.ToolChoiceAutoParam{}}
-	thinkingOff := opts.Brief && res.stage() == StageReview
-	if thinkingOff {
-		// Off for a brief review. The reason recorded here once was a cost and
-		// recall measurement taken through a proxy that rewrote the system
-		// prompt, against a free-form reply the tool calls have since
-		// replaced, and it is void. Taken again on 2026-09-14, turning thinking
-		// back on left the short prompt's stub replies where they were, 5 of 42
-		// against 17 of 126 with it off, so the setting was left alone.
-		params.Thinking = anthropic.ThinkingConfigParamUnion{
-			OfDisabled: &anthropic.ThinkingConfigDisabledParam{},
-		}
-		// No output format here. It existed to bound a reply nothing else
-		// bounded, back when this call sent no tools and the model picked a
-		// different wrapper on every sample. The tool calls carry the answer
-		// now, the same calls on both wires, which the format could never be:
-		// openai.go records that a gateway serving one vendor's model over
-		// another's protocol ignored response_format on one review in four.
-	}
-	if !thinkingOff {
-		// Sonnet 5 thinks by default now that the choice is never pinned
-		// (measured straight to the API on 2026-09-15: a pinned call spent 0
-		// thinking tokens, the same request with tool_choice auto spent 485
-		// and 2,576). Asked for explicitly anyway, because the summary puts
-		// the reasoning on the stream as it is written: the heartbeat counts
-		// it there, a stream that is not silent while the model thinks may
-		// also keep a proxy that closes quiet streams from closing this one,
-		// and the review keeps the summary for the postmortem. Without this,
-		// the model still thinks and still bills for it, just invisibly.
-		params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{
-			Display: anthropic.ThinkingConfigAdaptiveDisplaySummarized,
-		}}
-	}
+	// Every call asks for adaptive thinking with a summarized display. Sonnet 5
+	// thinks by default now that the choice is never pinned, and asking for the
+	// summary is what puts the reasoning on the stream as it is written: the
+	// heartbeat counts it there, a stream that is not silent while the model
+	// thinks may also keep a proxy that closes quiet streams from closing this
+	// one, and the review keeps the summary for the postmortem. Without this
+	// the model still thinks and still bills for it, just invisibly.
+	//
+	// Nothing turns it off any more. --brief was the one caller that did, and
+	// it sent {type: "disabled"}, which Fable rejects outright.
+	params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{
+		Display: anthropic.ThinkingConfigAdaptiveDisplaySummarized,
+	}}
 	if opts.Effort != "" {
-		params.OutputConfig.Effort = anthropic.OutputConfigEffort(cappedEffort(opts.Effort, thinkingOff))
+		params.OutputConfig.Effort = anthropic.OutputConfigEffort(opts.Effort)
 	}
 	return params
-}
-
-// cappedEffort is the effort a request may ask for once it has also turned
-// thinking off.
-//
-// The two are set from different places and neither knew about the other:
-// --brief disables thinking on the review call, --effort is whatever the caller
-// passed, and both are documented flag values, so `--brief --effort xhigh` built
-// a request the endpoint refuses. It answers 400 with "output_config.effort
-// 'xhigh' is not supported when thinking is disabled on this model. Use effort
-// 'high' or below, or enable thinking." The same request at 'high' returns 200,
-// so the two top rungs come down one step and the run proceeds.
-//
-// Capping the effort rather than restoring the thinking, because the
-// measurement behind the brief call is that its reasoning tokens were not what
-// found the defects: that shape with thinking off caught 8 of 31 expectations
-// against the product's 7, and thinking on spent the output budget twice over.
-// Turning it back on here would undo the thing --brief is for.
-func cappedEffort(effort string, thinkingOff bool) string {
-	if !thinkingOff {
-		return effort
-	}
-	switch effort {
-	case "xhigh", "max":
-		return "high"
-	}
-	return effort
 }
 
 func textOf(msg anthropic.Message) string {

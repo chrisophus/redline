@@ -171,8 +171,6 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.BoolVar(&o.synopsis, "synopsis", false, "describe the change in its own call before judging it")
 	fs.BoolVar(&o.noSynopsis, "no-synopsis", false, "one call writes the walkthrough and the findings together")
 	fs.BoolVar(&o.reuseSynopsis, "reuse-synopsis", false, "reuse review.json's walkthrough instead of paying for a new describing call; refused if it is missing or stale")
-	fs.BoolVar(&o.brief, "brief", false, "one call under the short prompt")
-	fs.BoolVar(&o.noBrief, "no-brief", false, "the long prompt, which is already the default")
 	fs.IntVar(&o.cohorts, "cohorts", 0, "split the change into at most this many cohorts and judge each in its own call (default 1, no split)")
 	fs.IntVar(&o.minCohortFiles, "min-cohort-files", 0, "below this many shown files a split run is one cohort (default 3)")
 	fs.BoolVar(&o.crossSummaries, "cross-summaries", false, "give each cohort the other cohorts' summaries (on by default)")
@@ -374,18 +372,7 @@ shape:
                     against a different change, or (above --cohorts 1) has
                     no partition to reuse - a stale walkthrough or partition
                     on a new diff is a wrong report, not a saving. Cannot be
-                    combined with --no-synopsis or --brief.
-  --brief           one call under the forty-line short prompt, answered
-                    with the same tool calls every other pass uses. Measured on
-                    2026-09-14 against the long prompt, it returned a
-                    placeholder in place of a review on 22 of 168 calls,
-                    where the long prompt did on none of 42, and left about
-                    twice the unlabelled comments. It cannot be combined with
-                    --cohorts above 1 or --mode explore, each
-                    defined by a tool contract the short prompt does not
-                    describe.
-  --no-brief        the long prompt, which is the default. Kept so scripts
-                    that pass it still run.
+                    combined with --no-synopsis.
   --cohorts N       the split. 1 (default) judges the whole change in one
                     call. Above 1, the describing call also splits the shown
                     files into at most N cohorts, and each cohort is judged

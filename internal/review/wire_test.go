@@ -14,18 +14,18 @@ import "testing"
 //
 // Both wires now send the same request, so the ceiling they fit to is the same
 // number. This test fails if either half of that stops being true.
-func TestBothWiresFitABriefReviewToTheSameCeiling(t *testing.T) {
+func TestBothWiresFitAReviewToTheSameCeiling(t *testing.T) {
 	in := Input{Report: priors()}
-	anth, err := Assemble(in, Options{Brief: true, API: APIAnthropic})
+	anth, err := Assemble(in, Options{API: APIAnthropic})
 	if err != nil {
 		t.Fatal(err)
 	}
-	oai, err := Assemble(in, Options{Brief: true, API: APIOpenAI})
+	oai, err := Assemble(in, Options{API: APIOpenAI})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if oai.Budget.Ceiling != anth.Budget.Ceiling {
-		t.Errorf("brief fitted to %d over openai and %d over anthropic; the two wires send the same request and have to reserve the same way",
+		t.Errorf("the review fitted to %d over openai and %d over anthropic; the two wires send the same request and have to reserve the same way",
 			oai.Budget.Ceiling, anth.Budget.Ceiling)
 	}
 }
@@ -49,14 +49,14 @@ func TestTheWireDoesNotChangeWhatIsReservedFor(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name  string
-		brief bool
+		stage string
 	}{
-		{"brief", true},
-		{"the shipped prompt", false},
+		{"the review stage", StageReview},
+		{"the ruling stage", StageRuling},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			anth := ceiling(t, Options{Brief: tc.brief, API: APIAnthropic})
-			oai := ceiling(t, Options{Brief: tc.brief, API: APIOpenAI})
+			anth := ceiling(t, Options{API: APIAnthropic})
+			oai := ceiling(t, Options{API: APIOpenAI})
 			if anth != oai {
 				t.Errorf("fitted to %d over anthropic and %d over openai; the two wires send the same catalogue",
 					anth, oai)

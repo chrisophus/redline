@@ -515,25 +515,12 @@ func TestSweep(t *testing.T) {
 	if os.Getenv("REDLINE_EVAL_STEPWISE") != "" {
 		t.Fatal("REDLINE_EVAL_STEPWISE is gone with --stepwise; the stepwise arm was removed")
 	}
-	// Brief last, and by the product's own rule (cmd/redline/review.go): off
-	// unless asked for, and refused beside a shape that replaces it. The sweep
-	// and the command have disagreed about this default before, and every sweep
-	// in that window scored a configuration nobody ran. REDLINE_EVAL_BRIEF is
-	// the --brief arm. REDLINE_EVAL_NO_BRIEF named the arm that is the default
-	// now, so a run still setting it is stopped rather than printed under a
-	// label that no longer describes it.
-	if os.Getenv("REDLINE_EVAL_NO_BRIEF") != "" {
-		t.Fatal("REDLINE_EVAL_NO_BRIEF is the default now; unset it, or set REDLINE_EVAL_BRIEF for the short prompt")
-	}
-	opts.Brief = os.Getenv("REDLINE_EVAL_BRIEF") != ""
-	if opts.Brief {
-		if opts.Cohorts > 1 || opts.Mode == review.ModeExplore {
-			t.Fatal("REDLINE_EVAL_BRIEF is a single pass under the short prompt and cannot be combined with a split or explore")
-		}
-		// The short prompt writes the walkthrough and the findings in one call
-		// and carries no synopsis contract, so the default describing call
-		// comes off here, as it does in the command.
-		opts.Synopsis = false
+	// --brief is gone and so are both of its arms. A sweep that still sets
+	// either would otherwise run the shipped shape and print a row labelled as
+	// the arm under test, which is the failure every stop above was written
+	// against.
+	if os.Getenv("REDLINE_EVAL_BRIEF") != "" || os.Getenv("REDLINE_EVAL_NO_BRIEF") != "" {
+		t.Fatal("REDLINE_EVAL_BRIEF and REDLINE_EVAL_NO_BRIEF are gone with --brief; unset them")
 	}
 	// Off by default because it prints a response body per call, and a sweep
 	// that prints thirty-three of them buries its own result table. On when a
@@ -678,7 +665,7 @@ func TestSweep(t *testing.T) {
 	// The describing call is the default, so what distinguishes a row is its
 	// absence. A row labelled the old way would read as the arm under test
 	// when it is now the shipped shape.
-	if !opts.Synopsis && opts.Cohorts <= 1 && !opts.Brief {
+	if !opts.Synopsis && opts.Cohorts <= 1 {
 		label += " no-synopsis"
 	}
 	if opts.Cohorts > 1 {
@@ -686,11 +673,6 @@ func TestSweep(t *testing.T) {
 		if os.Getenv("REDLINE_EVAL_NO_CROSS_SUMMARIES") != "" {
 			label += " no-cross"
 		}
-	}
-	// The long prompt is the default, so the row that has to say so is the one
-	// under the short prompt.
-	if os.Getenv("REDLINE_EVAL_BRIEF") != "" {
-		label += " brief"
 	}
 	if samples > 1 {
 		label += fmt.Sprintf(" ×%d", samples)

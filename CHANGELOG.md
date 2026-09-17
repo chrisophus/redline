@@ -11,6 +11,23 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Removed
+- **`--brief` and `--no-brief` are gone, and with them the short prompt.**
+  Measured on 2026-09-14 it returned a placeholder in place of a review on 22 of
+  168 calls where the long prompt did on none of 42, left about twice the
+  unlabelled comments, and cost no more; recall never separated the two. It was
+  also the last caller that turned thinking off, and it did so by sending
+  `thinking: {type: "disabled"}`, which Fable rejects with a 400 at any effort —
+  so `--brief --model claude-fable-5-1` was a run that could not start. Every
+  call now asks for adaptive thinking with a summarized display, on every model
+  and every stage, which also removes the last place two calls sharing a cached
+  prefix could send different thinking modes. `cappedEffort` goes with it: it
+  existed to bring `xhigh`/`max` down to `high` for Opus 5, which accepts
+  disabled thinking only at `high` or below, and nothing disables thinking now.
+  `REDLINE_EVAL_BRIEF` and `REDLINE_EVAL_NO_BRIEF` stop a sweep rather than being
+  ignored, so a run that still sets one cannot be scored under the shipped shape
+  and labelled as the arm under test.
+
 ### Added
 - **`--defer-context` lets the reviewer pull the context it wants.** The
   context the providers resolved leaves the prompt. Each file's diff is

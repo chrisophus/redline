@@ -60,7 +60,6 @@ type opts struct {
 	noContext                                                         bool
 	stats, verify, noVerify, debug, cache, noCache                    bool
 	synopsis, noSynopsis                                              bool
-	brief, noBrief                                                    bool
 	port, ceiling, maxTokens, maxTurns, callTurns, samples            int
 	cohorts, minCohortFiles                                           int
 	maxCost                                                           float64

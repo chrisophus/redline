@@ -151,38 +151,6 @@ func cmdReview(o opts) error {
 	// file and a judging call whose output cap is not shared with fifty file
 	// summaries. --no-synopsis is the way back to one call.
 	ropts.Synopsis = !o.noSynopsis
-	// One call under the short prompt, when --brief asks for it.
-	//
-	// It was the default until 2026-09-14, on measurements later found to have
-	// gone through a local proxy that appended its own instructions to the
-	// system prompt. Taken again directly on claude-sonnet-5, fourteen fixtures
-	// at three samples: the short prompt returned a stub reply, a placeholder
-	// written in about 200 output tokens, on 22 of 168 calls whether thinking
-	// was on or off, and the long prompt on none of 42. The long prompt also
-	// left 38 unlabelled comments against 76 to 102, held one more clean
-	// fixture, and cost no more per review. Recall did not separate them: one
-	// configuration of the short prompt caught 7, 8 and 14 of 38 on three runs,
-	// so a single run cannot rank the two.
-	//
-	// The richer shapes replace it rather than combine with it: the split, explore
-	// and the describing split are each defined by a tool contract briefPrompt
-	// does not describe, so asking for one of them beside --brief is refused.
-	ropts.Brief = o.brief
-	if o.brief {
-		switch {
-		case o.noBrief:
-			return fmt.Errorf("--brief and --no-brief ask for opposite prompts; pass one or the other")
-		case o.cohorts > 1:
-			return fmt.Errorf("--brief is a single pass under the review contract, so it cannot draw the partition --cohorts %d is judged over; pass one or the other",
-				o.cohorts)
-		case o.mode == review.ModeExplore:
-			return fmt.Errorf("--brief is a single pass and --mode explore is a tool loop; pass one or the other")
-		}
-		// The short prompt describes and judges in one call and carries no
-		// synopsis contract, so the default describing call has to come off
-		// here rather than be sent under a prompt that cannot answer it.
-		ropts.Synopsis = false
-	}
 	// Both work on the partition, and one cohort draws none.
 	if o.planOnly && o.cohorts <= 1 {
 		return fmt.Errorf("--plan stops before the cohort calls a split sends, and without --cohorts above 1 there is no split; pass --cohorts N")
@@ -201,11 +169,8 @@ func cmdReview(o opts) error {
 	ropts.Cohorts = o.cohorts
 	ropts.MinCohortFiles = o.minCohortFiles
 	if o.reuseSynopsis {
-		switch {
-		case o.noSynopsis:
+		if o.noSynopsis {
 			return fmt.Errorf("--reuse-synopsis reuses a walkthrough and --no-synopsis asks for none; pass one or the other")
-		case o.brief:
-			return fmt.Errorf("--brief carries no synopsis contract for --reuse-synopsis to stand in for; pass one or the other")
 		}
 		path := filepath.Join(o.out, "review.json")
 		rev, rerr := findings.LoadReview(path)

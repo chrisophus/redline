@@ -879,21 +879,14 @@ func TestBriefReplyNarrowsToTheObject(t *testing.T) {
 	}
 }
 
-// The short prompt is the review stage's alone. The ruling, the synopsis and
-// the cohort partition are defined by tool contracts it does not describe, so
-// a brief run that swapped their instructions would fail to parse rather than
-// review briefly.
-func TestBriefPromptIsScopedToTheReviewStage(t *testing.T) {
-	brief := Options{Brief: true}
-	if got := systemFor(brief, StageReview); got != briefPrompt {
-		t.Error("a brief review did not get the short prompt")
-	}
-	for _, stage := range []string{StageRuling, StageSynopsis, StageFindings} {
-		if got := systemFor(brief, stage); got != systemPrompt {
-			t.Errorf("stage %s lost its instructions under --brief", stage)
+// Every stage gets the same harness half. The short prompt this used to pick
+// between is gone, and with it the stage test that kept it off the ruling, the
+// synopsis and the cohort partition -- each defined by a tool contract it did
+// not describe.
+func TestEveryStageGetsTheShippedPrompt(t *testing.T) {
+	for _, stage := range []string{StageReview, StageRuling, StageSynopsis, StageFindings} {
+		if got := systemFor(Options{}, stage); got != systemPrompt {
+			t.Errorf("stage %s did not get the shipped prompt", stage)
 		}
-	}
-	if got := systemFor(Options{}, StageReview); got != systemPrompt {
-		t.Error("a default review did not get the long prompt")
 	}
 }
