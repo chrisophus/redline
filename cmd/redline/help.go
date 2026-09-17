@@ -155,10 +155,10 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.model, "model", "", "model to review and check the findings with")
 	fs.StringVar(&o.effort, "effort", "", "low|medium|high|xhigh|max, for the review and the checking")
 	fs.StringVar(&o.scoutModel, "scout-model", "", "model to check the findings with, when it should differ from --model")
-	fs.BoolVar(&o.thinking, "thinking", false, "let the model think: offer the review tool instead of forcing it")
 	fs.StringVar(&o.scoutEffort, "scout-effort", "", "effort for the checking, when it should differ from --effort")
 	fs.StringVar(&o.mode, "mode", "", "oneshot or explore")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "with --mode explore: turn limit")
+	fs.IntVar(&o.callTurns, "call-turns", 0, "turn cap for each describing/findings/ruling pass (default 12)")
 	fs.IntVar(&o.samples, "samples", 0, "independent reviews to union")
 	fs.StringVar(&o.note, "note", "", "what to look at or what worries you, added to every judging call")
 	fs.StringVar(&o.noteFile, "note-file", "", "read the note from a file")
@@ -170,6 +170,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.cacheTTL, "cache-ttl", "", "how long the cached prefix lives, 5m or 1h")
 	fs.BoolVar(&o.synopsis, "synopsis", false, "describe the change in its own call before judging it")
 	fs.BoolVar(&o.noSynopsis, "no-synopsis", false, "one call writes the walkthrough and the findings together")
+	fs.BoolVar(&o.reuseSynopsis, "reuse-synopsis", false, "reuse review.json's walkthrough instead of paying for a new describing call; refused if it is missing or stale")
 	fs.BoolVar(&o.brief, "brief", false, "one call under the short prompt")
 	fs.BoolVar(&o.noBrief, "no-brief", false, "the long prompt, which is already the default")
 	fs.IntVar(&o.cohorts, "cohorts", 0, "split the change into at most this many cohorts and judge each in its own call (default 1, no split)")
@@ -303,14 +304,6 @@ model:
   --scout-effort LEVEL
                     effort for the checking, when it should differ from
                     --effort
-  --thinking        let the model think before it answers. Redline pins the
-                    call to the review tool, and a pinned call does not think
-                    on Sonnet 5 (0 thinking tokens on two probes, against 485
-                    and 2,576 with the tool offered). This offers the tool
-                    and asks for adaptive thinking; the thinking is billed as
-                    output. Not yet measured on the eval. Cannot be combined
-                    with --brief or --mode explore.
-
 what to look at:
   --note TEXT       a note from you to the reviewer: which file worries you,
                     what to look at first, a question to answer. It goes at
@@ -334,6 +327,10 @@ shape:
                     what it wants, costing more by design. In explore mode
                     --max-cost is a governor, not a tripwire.
   --max-turns N     with --mode explore: turn limit (default 5)
+  --call-turns N    turn cap for each describing/findings/ruling pass over
+                    the tool loop every mode runs (default 12). Raise it
+                    when a pass hits the cap without calling done, e.g. with
+                    --defer-context, where get_context calls spend turns.
   --samples N       take N independent reviews and union them (default 1).
                     Samples do not overlap, so recall rises with N and cost
                     rises with it too. With the cache on, the first goes out
@@ -362,6 +359,18 @@ shape:
                     samples, one call in three above 34k tokens wrote no
                     walkthrough at all.
   --no-synopsis     one call writes the walkthrough and the findings together
+  --reuse-synopsis  reuse review.json's walkthrough (its overview and
+                    per-file summaries) instead of paying for a new
+                    describing call: the judging call still gets the
+                    findings-alone contract a fresh walkthrough would give
+                    it, at no describing-call cost. Refused when review.json
+                    is missing, has no walkthrough, or was written against a
+                    different change - a stale walkthrough on a new diff is
+                    a wrong report, not a saving. Cannot be combined with
+                    --no-synopsis, --brief, or --cohorts above 1: the split
+                    shape's describing call also draws the partition, so
+                    reusing its walkthrough without redrawing the partition
+                    is not yet supported.
   --brief           one call under the forty-line short prompt, answered
                     with the same tool calls every other pass uses. Measured on
                     2026-09-14 against the long prompt, it returned a
@@ -438,7 +447,7 @@ output:
                     counts, the body the parser was handed, and each scout
                     tool call to stderr, and write the full requests and
                     responses under --out/debug, with the model's thinking
-                    summary when --thinking is on. REDLINE_DEBUG does the same.
+                    summary. REDLINE_DEBUG does the same.
   --open            open the HTML report when done
   --no-open         never open a browser
   --port N          loopback port for the report server (default 8765)

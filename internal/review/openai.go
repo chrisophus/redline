@@ -131,14 +131,9 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 		// to find out.
 		return completion{}, errors.New("OPENAI_API_KEY is not set")
 	}
-	// Required unless the call is asked to think, for the reason
-	// Options.Thinking records; a proxy serving Sonnet over this protocol
-	// passes it through. The calls block says which calls answer the pass
-	// either way.
-	var choice any = "required"
-	if opts.Thinking {
-		choice = "auto"
-	}
+	// Never required: forcing tool_choice is incompatible with thinking on
+	// the Anthropic API a proxy may be forwarding this to, and the calls
+	// block already says which calls answer the pass either way.
 	conv := &openAIConversation{
 		opts: opts,
 		url:  base + "/chat/completions",
@@ -151,7 +146,7 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 				{Role: "user", Content: res.Prompt + callsBlock(res.stage(), res.pulls()) + res.Tail},
 			},
 			Tools:           openAITools(res.pulls()),
-			ToolChoice:      choice,
+			ToolChoice:      "auto",
 			ReasoningEffort: opts.Effort,
 		},
 	}

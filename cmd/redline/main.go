@@ -61,19 +61,19 @@ type opts struct {
 	stats, verify, noVerify, debug, cache, noCache                    bool
 	synopsis, noSynopsis                                              bool
 	brief, noBrief                                                    bool
-	port, ceiling, maxTokens, maxTurns, samples                       int
+	port, ceiling, maxTokens, maxTurns, callTurns, samples            int
 	cohorts, minCohortFiles                                           int
 	maxCost                                                           float64
 	cacheTTL                                                          string
 	crossSummaries, noCrossSummaries                                  bool
 	planOnly                                                          bool
 	onlyCohorts                                                       string
+	reuseSynopsis                                                     bool
 	note, noteFile                                                    string
 	deferContext                                                      bool
 	// observe is review's --run. session is --session; root is the --out the
 	// caller gave, and sessionKey the session resolveSession chose under it.
 	observe                   bool
-	thinking                  bool
 	session, root, sessionKey string
 }
 

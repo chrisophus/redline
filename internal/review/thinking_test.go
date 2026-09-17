@@ -22,11 +22,11 @@ type thinkingWire struct {
 	} `json:"messages"`
 }
 
-func sentThinkingWire(t *testing.T, thinking bool) thinkingWire {
+func sentThinkingWire(t *testing.T) thinkingWire {
 	t.Helper()
 	api := serveSSE(t, anthropicSSE("tool_use", 10, 5, anthropicText(0, "{}")))
 	if _, err := completeAnthropic(context.Background(), Options{
-		BaseURL: api.srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 2000, Thinking: thinking,
+		BaseURL: api.srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 2000,
 	}, &Result{System: "s", Prompt: "p", Stage: StageReview}); err != nil {
 		t.Fatal(err)
 	}
@@ -37,13 +37,16 @@ func sentThinkingWire(t *testing.T, thinking bool) thinkingWire {
 	return got
 }
 
-// A call pinned to the tools does not think on Sonnet 5, so a call asked to
-// think leaves the choice to the model, says in words which calls answer it,
-// and asks for adaptive thinking with its summary on the stream.
-func TestThinkingOffersTheToolAndAsksForAdaptiveThinking(t *testing.T) {
-	got := sentThinkingWire(t, true)
+// The tool choice is never pinned, on Sonnet 5 or any other model: forcing it
+// is incompatible with thinking on this API. Every call leaves the choice to
+// the model, says in words which calls answer it, and asks for adaptive
+// thinking with its summary on the stream — the model thinks by default once
+// the choice is not pinned, so asking is the only way to see it happen rather
+// than pay for it invisibly.
+func TestEveryCallOffersTheToolAndAsksForAdaptiveThinking(t *testing.T) {
+	got := sentThinkingWire(t)
 	if got.ToolChoice.Type != "auto" {
-		t.Errorf("tool_choice %q, want auto: a pinned call does not think", got.ToolChoice.Type)
+		t.Errorf("tool_choice %q, want auto: the choice is never pinned", got.ToolChoice.Type)
 	}
 	if got.Thinking["type"] != "adaptive" || got.Thinking["display"] != "summarized" {
 		t.Errorf("thinking %v, want adaptive with a summarized display", got.Thinking)
@@ -56,16 +59,6 @@ func TestThinkingOffersTheToolAndAsksForAdaptiveThinking(t *testing.T) {
 	}
 	if !said {
 		t.Error("an unpinned call must be told in words which tool answers it")
-	}
-}
-
-func TestWithoutThinkingTheStageIsPinned(t *testing.T) {
-	got := sentThinkingWire(t, false)
-	if got.ToolChoice.Type != "any" {
-		t.Errorf("tool_choice %+v, want a tool call required", got.ToolChoice)
-	}
-	if got.Thinking != nil {
-		t.Errorf("thinking %v sent on a call that did not ask for it", got.Thinking)
 	}
 }
 
@@ -86,7 +79,7 @@ func TestThinkingTokensAreReadFromTheStream(t *testing.T) {
 	}
 }
 
-func TestThinkingOnTheOpenAIWireOffersTheFunction(t *testing.T) {
+func TestTheOpenAIWireNeverPinsTheChoice(t *testing.T) {
 	var choice any
 	srv, _, _, _ := openAIServer(t, func(w http.ResponseWriter, req openAIRequest) {
 		choice = req.ToolChoice
@@ -94,7 +87,7 @@ func TestThinkingOnTheOpenAIWireOffersTheFunction(t *testing.T) {
 			`{"prompt_tokens":10,"completion_tokens":20,"completion_tokens_details":{"reasoning_tokens":12}}`)))
 	})
 	c, err := completeOpenAI(context.Background(), Options{
-		API: APIOpenAI, BaseURL: srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 100, Thinking: true,
+		API: APIOpenAI, BaseURL: srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 100,
 	}, &Result{System: "s", Prompt: "p", Stage: StageReview})
 	if err != nil {
 		t.Fatal(err)
