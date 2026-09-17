@@ -81,68 +81,10 @@ var judgingTail string
 //go:embed prompts/describing.md
 var describingTail string
 
-// briefPrompt states the same job in a page. It once spelled out its own
-// output contract in prose as well; the tool grammar carries that on both
-// wires now, so the prose went. The numbers below were measured against the
-// longer bytes, which git history has.
-//
-// The prompt and the emission were first measured together, on eleven fixtures
-// at one sample on claude-sonnet-5 with the packet held constant: this prompt
-// with a free-form reply caught 11 of 38 annotated defects, systemPrompt
-// free-form 5 of 35, systemPrompt under the strict tools 6 of 38, and this
-// prompt under the strict tools 2 of 38. Read as four points that cell is a
-// cliff, and --brief shipped as the pair on the strength of it.
-//
-// It did not reproduce. Re-measured at three samples over the same eleven
-// fixtures, free-form caught 17 of 38 and this prompt under the tools caught
-// 15, against a noise floor near 3.6 expectations. The single fixture
-// separating them, staged-empty-partition, then scored 1 of 3 against 0 of 3 at
-// five samples, one catch in fifteen trials. At one sample 2/38 and 6/38 were
-// never distinguishable either.
-//
-// What that leaves is the short prompt accounting for the recall, with the
-// emission accounting for none of it that anything here can measure. So the
-// emission is chosen on other grounds, and there is only one: completeOpenAI
-// sends the catalogue on every call and has no way to be told otherwise, so a
-// free-form review was never available on that wire. --brief is this prompt
-// over the tool grammar, and both wires send the same request.
-//
-// It stopped being the default on 2026-09-14. Every figure above was taken
-// through a local proxy that appended its own instructions to the system
-// prompt, so none of them measured these bytes alone. Taken again directly,
-// at three samples over fourteen fixtures, this prompt returned a stub reply,
-// a placeholder in about 200 output tokens, on 22 of 168 calls and
-// systemPrompt on none of 42. Recall could not rank the two: one
-// configuration of this prompt caught 7, 8 and 14 of 38 on three runs.
-//
-// What it keeps is what earlier sweeps showed to be load-bearing: enumerate
-// every defect rather than choosing one, and zero findings is a valid answer.
-// What it drops is the catalogue of what is not worth reporting. Each clause
-// of that catalogue was written against a real false positive and was
-// defensible alone; together they read as a case for silence, and the model
-// takes the case.
-//
-// What it once cost was output tokens, because nothing bounded a free-form
-// reply the way a grammar does: the one live run of that shape, PR #46 of this
-// repository at a 70,000-token ceiling, spent 32,795 output tokens on four
-// findings and twelve file lines, $0.8382 all in with the lookups and the
-// ruling. The grammar bounds it again, and the two arms came out at $0.1432 and
-// $0.1499 mean per review over the eleven fixtures. --max-tokens still applies,
-// and the cap arrives as a truncated object rather than a short one, so lower
-// it carefully.
-//
-//go:embed prompts/brief.md
-var briefPrompt string
-
-// systemFor picks the harness half. briefPrompt applies to the review stage
-// only: the ruling, the synopsis and the cohort partition each have a tool
-// contract this block does not describe, and a stage that asked for one shape
-// and was told to write another would fail to parse rather than review
-// briefly.
-func systemFor(opts Options, stage string) string {
-	if opts.Brief && stage == StageReview {
-		return briefPrompt
-	}
+// systemFor picks the harness half. There is one: the short prompt it used to
+// choose between is gone, along with the stage test that kept it off the
+// ruling, the synopsis and the cohort partition.
+func systemFor(Options, string) string {
 	return systemPrompt
 }
 

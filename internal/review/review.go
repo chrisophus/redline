@@ -108,21 +108,8 @@ type Input struct {
 
 // Options configures one call.
 type Options struct {
-	Model  string
-	Effort string
-	// Brief runs the review stage under briefPrompt, answered with the same
-	// calls as every other stage.
-	//
-	// It used to drop the tools and parse JSON out of a text reply, which only
-	// the Anthropic wire could do: completeOpenAI sends the catalogue on every
-	// call and has no way to be told otherwise. The two halves were measured
-	// apart on eleven fixtures at three samples and came out 17/38 free-form
-	// against 15/38 over the grammar, inside a noise floor of about 3.6
-	// expectations. The one fixture that separated them, staged-empty-partition,
-	// was rerun at five samples and scored 1/3 against 0/3, one catch in
-	// fifteen trials. Nothing there distinguishes the two emissions, so the
-	// short prompt is what Brief is now, and both wires run it.
-	Brief     bool
+	Model     string
+	Effort    string
 	Ceiling   int
 	MaxTokens int64
 	// MaxCostUSD refuses to send a request whose estimated cost exceeds it.

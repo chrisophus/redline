@@ -571,21 +571,12 @@ func cohortNames(cohorts []Cohort) string {
 	return strings.Join(names, ", ")
 }
 
-// toFindingsCohorts and fromFindingsCohorts cross the one boundary this
-// partition has: review.Cohort inside a run, findings.Cohort in review.json,
-// kept apart because findings is the package Cohort's own package already
-// depends on.
-func toFindingsCohorts(cohorts []Cohort) []findings.Cohort {
-	if len(cohorts) == 0 {
-		return nil
-	}
-	out := make([]findings.Cohort, len(cohorts))
-	for i, c := range cohorts {
-		out[i] = findings.Cohort{Name: c.Name, Summary: c.Summary, Files: c.Files}
-	}
-	return out
-}
-
+// fromFindingsCohorts crosses the one boundary this partition has:
+// review.Cohort inside a run, findings.Cohort in review.json, kept apart
+// because findings is the package Cohort's own package already depends on.
+//
+// Only the read half is left. The write half went unused when the describing
+// call stopped being the only thing that could draw a partition.
 func fromFindingsCohorts(cohorts []findings.Cohort) []Cohort {
 	if len(cohorts) == 0 {
 		return nil
