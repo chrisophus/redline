@@ -11,16 +11,6 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
-### Removed
-- **`--stepwise` is gone.** It ran the review as one conversation in two
-  turns, describing the change from its diff before the rest of the packet
-  arrived. Measured as a hillclimb arm on 2026-09-14 it was noisier and cost
-  twice as much, and it was never made the default. The review's calls are
-  moving to a turn loop of small tool calls, and stepwise's own conversation
-  would have had to be rebuilt on top of that for a shape nobody uses.
-  `REDLINE_EVAL_STEPWISE` stops the eval harness with a message. Ledger rows it
-  wrote are still grouped apart by `--stats`.
-
 ### Added
 - **`--note` tells the reviewer what to look at.** `redline review --note
   "..."`, or `--note-file path`, adds a note from whoever asked for the review
@@ -32,20 +22,44 @@ Releases whose tag carries only a subject line are listed as that subject.
   no note the request is unchanged. Whether a note turns a known miss into a
   catch has not been measured yet.
 
-### Fixed
-- **A profiled post no longer throws away a review when the PR head moves.**
-  With `require_head: true`, the default, a commit landing between the review
-  step and the post step in one CI run ended as `session reviewed <old> but PR
-  head is <new>` and exit 1, and the finished, paid review never posted. It
-  now posts with a notice that it is of an older commit, keeps its finding
-  markers, and withholds only the gate verdict marker, so a stale review still
-  cannot satisfy a gate that wants one covering the current commit.
-- **The stale-commit notice reaches the pull request.** It was prepended to
-  the body after the payload was built, and the step that drops findings
-  already posted renders the body again, so a real post lost the notice. Only
-  `--dry-run` showed it.
-
 ### Changed
+- **Every review call is a turn loop of small tool calls.** A pass used to
+  answer with one strict tool carrying the whole answer as one object. Now
+  every call declares the same six non-strict tools (`set_overview`,
+  `describe_file`, `add_cohort`, `add_comment`, `rule`, `done`), and a pass
+  answers by calling them, as many per reply as it likes. Redline checks each
+  call against its schema: a good one is recorded, a bad one is answered with
+  exactly what is wrong and the model sends it again. The pass ends on `done`,
+  and a `done` is refused while a call in the same reply was rejected or a
+  describing pass has no overview. What a pass recorded is kept however it
+  ends: a turn cap, the output budget, a cost cap or a broken turn stops it
+  early and the report says which passes stopped before they were done.
+  Progress is printed each turn. This removes the strict grammar limit, keeps
+  the same tools on every call so every pass reads the cached prompt, and lets
+  a failed describing call fall back to writing the whole review again rather
+  than findings alone. Measured before the build on fifteen fixture reviews:
+  2 of 202 calls rejected, both fixed on retry, where the same single-object
+  forms without strict were unusable on 8 of 9 findings calls.
+- **A pass ends as soon as its work is visibly complete.** A describing pass
+  with the overview, a line for every file and, when asked, cohorts, and a
+  ruling with a ruling for every finding, end on that reply without waiting
+  for `done`. The model is also told a call is answered "Recorded." unless
+  something is wrong, so it can end its last reply with `done` rather than
+  wait. Each extra turn resends the whole conversation, and with thinking on
+  that includes all the reasoning so far: on a 70k-token fixture two turns
+  that only collected `done` cost about $0.29 of a $0.98 review.
+- **A pass never costs more than it was priced at.** The tripwire still prices
+  each pass as one request up front. As the loop runs, each turn's output cap
+  is cut to what that price can still pay for after what the pass has spent,
+  and a pass with no room left stops on the cost cap with what it has.
+- **The OpenAI wire runs the same loop**, answering each tool call with a tool
+  message.
+- **Every review keeps the model's thinking.** Each pass's reasoning summary is
+  saved in `postmortem.json` and printed by `redline postmortem`, labelled by
+  pass, cohort or sample, on every run rather than only under `--debug`. There
+  is a summary only when the call was allowed to think: `--thinking`, or a
+  model that refuses a required tool call, which is now asked for the summary
+  too.
 - **One describing form, and a failed describing call keeps the cache.** The
   split is now a field on the describing form, not a separate form, so the
   unsplit review, a split and `--stepwise` send the same three tools: ruling,
@@ -79,6 +93,32 @@ Releases whose tag carries only a subject line are listed as that subject.
   open, with the evidence each item rests on and the numbers that still hold.
   What shipped is in this file, the README status table and the doc comments
   beside the code; the arguments are in `git log --follow -- docs/plans`.
+
+### Removed
+- **The Message Batches path.** A batched request is one turn and a review
+  call is now a loop, and only the retired eval sweeps used it.
+  `REDLINE_EVAL_BATCH` stops the eval harness with a message.
+- **`--stepwise` is gone.** It ran the review as one conversation in two
+  turns, describing the change from its diff before the rest of the packet
+  arrived. Measured as a hillclimb arm on 2026-09-14 it was noisier and cost
+  twice as much, and it was never made the default. The review's calls are
+  moving to a turn loop of small tool calls, and stepwise's own conversation
+  would have had to be rebuilt on top of that for a shape nobody uses.
+  `REDLINE_EVAL_STEPWISE` stops the eval harness with a message. Ledger rows it
+  wrote are still grouped apart by `--stats`.
+
+### Fixed
+- **A profiled post no longer throws away a review when the PR head moves.**
+  With `require_head: true`, the default, a commit landing between the review
+  step and the post step in one CI run ended as `session reviewed <old> but PR
+  head is <new>` and exit 1, and the finished, paid review never posted. It
+  now posts with a notice that it is of an older commit, keeps its finding
+  markers, and withholds only the gate verdict marker, so a stale review still
+  cannot satisfy a gate that wants one covering the current commit.
+- **The stale-commit notice reaches the pull request.** It was prepended to
+  the body after the payload was built, and the step that drops findings
+  already posted renders the body again, so a real post lost the notice. Only
+  `--dry-run` showed it.
 
 ## [0.10.1] - 2026-09-16
 

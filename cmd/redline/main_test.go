@@ -847,17 +847,20 @@ func TestAReviewLeavesATraceOfAllThreeStages(t *testing.T) {
 	var scoutTurn int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		switch forcedFunction(t, r) {
+		switch passOf(t, r) {
 		case review.StageReview:
-			writeOACall(w, review.StageReview, `{"overview":"o","files":[],"comments":[
-				{"file":"user.go","line":3,"severity":"info","confidence":"high","category":"review",
-				 "relatedFindings":[],"body":"a getter is not this repository's style",
-				 "question":{"kind":"precedent","ask":"does this repository write getters elsewhere?","subject":"getters"}}],
-				"verdicts":[]}`)
+			writeOACalls(w,
+				[2]string{review.CallOverview, `{"overview":"o"}`},
+				[2]string{review.CallComment, `{"file":"user.go","line":3,"severity":"info","confidence":"high",
+					"body":"a getter is not this repository's style","question_kind":"precedent",
+					"question_ask":"does this repository write getters elsewhere?","question_subject":"getters"}`},
+				[2]string{review.CallDone, `{}`})
 		case review.StageRuling:
-			writeOACall(w, review.StageRuling, `{"rulings":[{"analysis":"the tree has one","finding":"c1",
-				"verdict":"kept","evidence":"func (u *User) Name() string { return u.name }",
-				"why":"the range the lookup filed is a getter"}]}`)
+			writeOACalls(w,
+				[2]string{review.CallRule, `{"analysis":"the tree has one","finding":"c1",
+					"verdict":"kept","evidence":"func (u *User) Name() string { return u.name }",
+					"why":"the range the lookup filed is a getter"}`},
+				[2]string{review.CallDone, `{}`})
 		default:
 			// The scout's own loop: file the range, then finish.
 			scoutTurn++
@@ -920,25 +923,51 @@ func TestAReviewLeavesATraceOfAllThreeStages(t *testing.T) {
 	}
 }
 
-// forcedFunction is which call this is. The review and the ruling each force
-// one function by name; the scout offers its whole toolset and forces nothing.
-func forcedFunction(t *testing.T, r *http.Request) string {
+// passOf says which review pass a request is, from the calls it asks for, or
+// empty for a request that is not a review pass: the scout's own loop.
+func passOf(t *testing.T, r *http.Request) string {
 	t.Helper()
 	var body struct {
-		ToolChoice struct {
-			Function struct {
-				Name string `json:"name"`
-			} `json:"function"`
-		} `json:"tool_choice"`
+		Messages []struct {
+			Content string `json:"content"`
+		} `json:"messages"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	raw, _ := io.ReadAll(r.Body)
+	if err := json.Unmarshal(raw, &body); err != nil {
 		t.Fatalf("the stub endpoint was sent something it could not read: %v", err)
 	}
-	return body.ToolChoice.Function.Name
+	for _, m := range body.Messages {
+		switch {
+		case strings.Contains(m.Content, "- rule once per finding"):
+			return review.StageRuling
+		case strings.Contains(m.Content, "- add_comment once per comment"):
+			return review.StageReview
+		}
+	}
+	return ""
 }
 
-// writeOACall answers one chat completion with a single tool call, which is
-// how all three stages return their structured output on this wire.
+// writeOACalls answers one chat completion with several tool calls, the way
+// a review pass answers.
+func writeOACalls(w http.ResponseWriter, calls ...[2]string) {
+	var tc []map[string]any
+	for i, c := range calls {
+		tc = append(tc, map[string]any{
+			"id": fmt.Sprintf("call_%d", i+1), "type": "function",
+			"function": map[string]any{"name": c[0], "arguments": c[1]},
+		})
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"choices": []map[string]any{{
+			"message":       map[string]any{"role": "assistant", "tool_calls": tc},
+			"finish_reason": "tool_calls",
+		}},
+		"usage": map[string]any{"prompt_tokens": 100, "completion_tokens": 20},
+	})
+}
+
+// writeOACall answers one chat completion with a single tool call, the way the
+// scout's loop answers.
 func writeOACall(w http.ResponseWriter, name, args string) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"choices": []map[string]any{{

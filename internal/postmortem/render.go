@@ -34,6 +34,7 @@ func (t *Trace) Render() string {
 	t.unanswered(&b)
 	t.search(&b)
 	t.notes(&b)
+	t.thinking(&b)
 	return b.String()
 }
 
@@ -76,6 +77,13 @@ func (t *Trace) header(b *strings.Builder) {
 		fmt.Fprintf(b, "  scout      did not run: %s\n", t.Lookup.Error)
 	default:
 		b.WriteString("  scout      not asked anything\n")
+	}
+	if t.CallTurns > 0 {
+		fmt.Fprintf(b, "  turns      %d across the review's passes, %d call(s) sent back for failing their schema\n",
+			t.CallTurns, t.Rejected)
+	}
+	for _, s := range t.Stopped {
+		fmt.Fprintf(b, "  incomplete %s\n", s)
 	}
 	if t.CostUSD > 0 || t.CostKnown {
 		fmt.Fprintf(b, "  cost       %s in total, %s of it the lookups\n",
@@ -325,6 +333,15 @@ func (t *Trace) notes(b *strings.Builder) {
 	b.WriteString("\nthe scout's notes\n")
 	for _, n := range t.Lookup.Notes {
 		b.WriteString(wrap(n, "  - ", "    "))
+	}
+}
+
+// thinking prints each pass's reasoning last, since it is the longest part
+// and the part a reader goes to only after the findings raise a question.
+func (t *Trace) thinking(b *strings.Builder) {
+	for _, p := range t.Thinking {
+		fmt.Fprintf(b, "\nthinking, %s pass\n", p.Pass)
+		b.WriteString(wrap(p.Text, "  ", "  "))
 	}
 }
 

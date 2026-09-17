@@ -7,7 +7,7 @@ import "testing"
 // only be as good as the field it reads: a result that carried the requested
 // model instead would pass every substitution.
 func TestTheServedModelIsTheOneTheResponseNamed(t *testing.T) {
-	c, err := readOpenAIResponse([]byte(`{"model":"gpt-5-2025-08-07",
+	c, _, err := readOpenAIResponse([]byte(`{"model":"gpt-5-2025-08-07",
 		"choices":[{"message":{"content":"{}"},"finish_reason":"stop"}]}`))
 	if err != nil {
 		t.Fatal(err)

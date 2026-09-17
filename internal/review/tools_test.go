@@ -31,18 +31,15 @@ func keysOf(m map[string]json.RawMessage) []string {
 	return out
 }
 
-// The whole point of the change this file tests. The review and the ruling
-// send the same tools, and only the name in tool_choice differs, so everything
-// ahead of the prompt is a byte-identical prefix and a cache breakpoint on it
-// can be read back. A schema that varied per stage sat in front of the system
-// block and cost the shared prefix twice, measured at 171,690 and 170,601
-// tokens written with nothing read.
-func TestEveryStageSendsTheSameToolsAndDiffersOnlyInTheChoice(t *testing.T) {
-	api := serveSSE(t, anthropicSSE("end_turn", 10, 5, anthropicText(0, "{}")))
-	// Verify, because the shared prefix is a property of the run that makes
-	// both calls. A run without the checking pass declares the review contract
-	// alone: there is no second call to read what the first one wrote.
-	opts := Options{BaseURL: api.srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 100, Verify: true}
+// Every call sends the same tools and the same tool_choice, whatever pass it
+// is, so everything ahead of the prompt is a byte-identical prefix and a cache
+// breakpoint on it can be read back by every later pass. A pass says which
+// calls it wants in the prompt, not in the request's tools.
+func TestEveryPassSendsTheSameToolsAndChoice(t *testing.T) {
+	api := serveSSE(t,
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageReview, reviewBody)),
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageRuling, `{"rulings":[]}`)))
+	opts := Options{BaseURL: api.srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 2000}
 	for _, stage := range []string{StageReview, StageRuling} {
 		res := &Result{System: "the system prompt", Prompt: "the whole prompt", Stage: stage}
 		if _, err := completeAnthropic(context.Background(), opts, res); err != nil {
@@ -55,25 +52,15 @@ func TestEveryStageSendsTheSameToolsAndDiffersOnlyInTheChoice(t *testing.T) {
 	}
 	reviewTools, reviewChoice := toolsBlockOf(t, seen[0])
 	rulingTools, rulingChoice := toolsBlockOf(t, seen[1])
-
-	if !bytes.Equal(reviewTools, rulingTools) {
-		t.Errorf("the tools block moved between stages, so nothing after it can be read from cache:\n"+
-			"review: %s\nruling: %s", reviewTools, rulingTools)
+	if !bytes.Equal(reviewTools, rulingTools) || !bytes.Equal(reviewChoice, rulingChoice) {
+		t.Errorf("the tools or tool_choice moved between passes, so nothing after them can be read from cache:\n"+
+			"review: %s %s\nruling: %s %s", reviewTools, reviewChoice, rulingTools, rulingChoice)
 	}
-	if bytes.Equal(reviewChoice, rulingChoice) {
-		t.Errorf("both stages asked for the same tool; the stage has to be the thing that varies, got %s", reviewChoice)
+	var c struct {
+		Type string `json:"type"`
 	}
-	for stage, choice := range map[string][]byte{StageReview: reviewChoice, StageRuling: rulingChoice} {
-		var c struct {
-			Type string `json:"type"`
-			Name string `json:"name"`
-		}
-		if err := json.Unmarshal(choice, &c); err != nil {
-			t.Fatalf("%s: tool_choice is not readable: %v", stage, err)
-		}
-		if c.Type != "tool" || c.Name != stage {
-			t.Errorf("%s: the model must be forced to that stage's tool, got type=%q name=%q", stage, c.Type, c.Name)
-		}
+	if err := json.Unmarshal(reviewChoice, &c); err != nil || c.Type != "any" {
+		t.Errorf("a pinned pass must call some tool, got %s", reviewChoice)
 	}
 }
 
@@ -82,12 +69,12 @@ func TestEveryStageSendsTheSameToolsAndDiffersOnlyInTheChoice(t *testing.T) {
 // unstable order the prefix would differ between two calls of one run and the
 // cache would miss for a reason no diff could show.
 func TestTheToolsBlockSerializesTheSameEveryTime(t *testing.T) {
-	first, err := json.Marshal(anthropicTools(Options{Cohorts: 6}))
+	first, err := json.Marshal(anthropicTools())
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := range 50 {
-		again, err := json.Marshal(anthropicTools(Options{Cohorts: 6}))
+		again, err := json.Marshal(anthropicTools())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -97,11 +84,12 @@ func TestTheToolsBlockSerializesTheSameEveryTime(t *testing.T) {
 	}
 }
 
-// strict is what replaces the guarantee output_config.format used to make: the
-// emitted input validates against the schema. It needs additionalProperties
-// false on every object, so both have to survive the trip onto the wire.
-func TestEveryContractGoesOutStrictAndClosed(t *testing.T) {
-	raw, err := json.Marshal(anthropicTools(Options{Cohorts: 6}))
+// No tool is strict: strict tools compile into one grammar with a size limit,
+// and the calls are checked here instead. Every object still closes
+// additionalProperties, so the model is told extra fields are not wanted, and
+// the check refuses them.
+func TestNoToolIsStrictAndEveryObjectIsClosed(t *testing.T) {
+	raw, err := json.Marshal(anthropicTools())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,12 +101,12 @@ func TestEveryContractGoesOutStrictAndClosed(t *testing.T) {
 	if err := json.Unmarshal(raw, &tools); err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != len(stageTools(Options{Cohorts: 6})) {
-		t.Fatalf("%d tool(s) reached the wire, %d were declared", len(tools), len(stageTools(Options{Cohorts: 6})))
+	if len(tools) != len(callTools()) {
+		t.Fatalf("%d tool(s) reached the wire, %d were declared", len(tools), len(callTools()))
 	}
 	for _, tool := range tools {
-		if tool.Strict == nil || !*tool.Strict {
-			t.Errorf("%s: strict must be set, or the schema is advice", tool.Name)
+		if tool.Strict != nil && *tool.Strict {
+			t.Errorf("%s: strict is set, which brings back the grammar limit", tool.Name)
 		}
 		if tool.InputSchema["additionalProperties"] != false {
 			t.Errorf("%s: additionalProperties must reach the wire as false, got %v",
@@ -130,15 +118,14 @@ func TestEveryContractGoesOutStrictAndClosed(t *testing.T) {
 	}
 }
 
-// The body the parser reads is now the forced call's input rather than the
-// text blocks, so a review that arrives the way the wire really sends it has
-// to come out the other end intact.
-func TestTheReviewIsReadFromTheForcedToolCall(t *testing.T) {
+// A review that arrives as calls, the way the wire really sends them, has to
+// come out the other end intact.
+func TestTheReviewIsReadFromTheCalls(t *testing.T) {
 	api := serveSSE(t, anthropicSSE("tool_use", 10, 5,
-		anthropicToolUse(0, "toolu_1", StageReview, reviewBody)))
+		flatCalls(StageReview, reviewBody)))
 	res := &Result{System: "s", Prompt: "p", Stage: StageReview}
 	c, err := completeAnthropic(context.Background(), Options{
-		BaseURL: api.srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 100,
+		BaseURL: api.srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 2000,
 	}, res)
 	if err != nil {
 		t.Fatal(err)
@@ -151,14 +138,15 @@ func TestTheReviewIsReadFromTheForcedToolCall(t *testing.T) {
 	}
 }
 
-// A model that ignores a forced tool_choice and answers in prose is a broken
-// contract, and the parse says so with the body in front of it. Reporting it
-// as an empty response instead would read as a review that found nothing.
+// A model that answers in prose is asked once for the calls. If it answers in
+// prose again, the parse reads the prose, and says what is wrong with it when
+// it cannot. Reporting it as an empty response would read as a review that
+// found nothing.
 func TestProseInsteadOfTheToolCallIsStillRead(t *testing.T) {
 	api := serveSSE(t, anthropicSSE("end_turn", 10, 5, anthropicText(0, reviewBody)))
 	res := &Result{System: "s", Prompt: "p", Stage: StageReview}
 	c, err := completeAnthropic(context.Background(), Options{
-		BaseURL: api.srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 100,
+		BaseURL: api.srv.URL, APIKey: "k", Model: "claude-sonnet-5", MaxTokens: 2000,
 	}, res)
 	if err != nil {
 		t.Fatal(err)
@@ -171,56 +159,13 @@ func TestProseInsteadOfTheToolCallIsStillRead(t *testing.T) {
 	}
 }
 
-// The batch tier is the eval's cheap arm, and the whole value of it is that it
-// measures what ships. Its params are copied field by field into another type,
-// so the copy is where a contract goes missing: a batched request with no
-// tools carries no contract and comes back as prose.
-func TestTheBatchedRequestCarriesTheSameContractAsTheStreamedOne(t *testing.T) {
-	res := &Result{System: "s", Prompt: "p", Stage: StageRuling}
-	streamed := anthropicParams(Options{Model: "claude-sonnet-5", MaxTokens: 100}, res)
-	batched := batchParams(streamed)
-
-	for _, f := range []struct {
-		name      string
-		want, got any
-	}{
-		{"tools", streamed.Tools, batched.Tools},
-		{"tool_choice", streamed.ToolChoice, batched.ToolChoice},
-		{"system", streamed.System, batched.System},
-		{"messages", streamed.Messages, batched.Messages},
-		{"output_config", streamed.OutputConfig, batched.OutputConfig},
-	} {
-		want, err := json.Marshal(f.want)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, err := json.Marshal(f.got)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(want, got) {
-			t.Errorf("%s did not survive the copy into the batch request:\nstreamed: %s\nbatched:  %s",
-				f.name, want, got)
-		}
-	}
-	if len(batched.Tools) == 0 {
-		t.Error("the batched request went out with no output contract at all")
-	}
-}
-
-// strict mode is enforced by the endpoint, not here, so a schema it rejects is
-// a 400 at the end of a real run and nothing a dry run would catch. These are
-// the rules it applies, walked over every object in every contract, because
-// two more contracts are due to join this array and the failure they would
-// cause is expensive to diagnose from the error alone.
-//
-// The required check is the house rule from schema.go, which until now was
-// only asserted at the root of the review's schema: a model that must emit a
-// field cannot quietly drop the one carrying the correlation.
-func TestEveryContractObeysTheRulesStrictModeEnforces(t *testing.T) {
-	// Keywords that describe a shape. Anything outside this set is either a
-	// validation keyword strict mode does not accept (pattern, format,
-	// minLength and the rest) or a typo, and both want a look.
+// The check in calls.go understands a handful of keywords, so a schema that
+// used another would be advice the check never enforces. And the house rule
+// from schema.go holds: every field is required, so a model cannot quietly
+// drop the one carrying the correlation.
+func TestEveryToolUsesOnlyKeywordsTheCheckEnforces(t *testing.T) {
+	// Anything outside this set is either a keyword validate ignores or a
+	// typo, and both want a look.
 	allowed := map[string]bool{
 		"type": true, "description": true, "enum": true, "items": true,
 		"properties": true, "required": true, "additionalProperties": true,
@@ -229,7 +174,7 @@ func TestEveryContractObeysTheRulesStrictModeEnforces(t *testing.T) {
 	walk = func(path string, node map[string]any) {
 		for k := range node {
 			if !allowed[k] {
-				t.Errorf("%s: %q is not a keyword strict mode takes", path, k)
+				t.Errorf("%s: %q is not a keyword the check enforces", path, k)
 			}
 		}
 		if node["type"] != "object" {
@@ -239,7 +184,7 @@ func TestEveryContractObeysTheRulesStrictModeEnforces(t *testing.T) {
 			return
 		}
 		if node["additionalProperties"] != false {
-			t.Errorf("%s: an object must close additionalProperties under strict mode", path)
+			t.Errorf("%s: an object must close additionalProperties", path)
 		}
 		props, _ := node["properties"].(map[string]any)
 		req, _ := node["required"].([]string)
@@ -259,29 +204,7 @@ func TestEveryContractObeysTheRulesStrictModeEnforces(t *testing.T) {
 			}
 		}
 	}
-	for _, tool := range stageTools(Options{Cohorts: 6}) {
+	for _, tool := range callTools() {
 		walk(tool.Name, tool.Schema)
-	}
-}
-
-// The ruling contract rides on a review call so the ruling can read the prefix
-// that call wrote. With the checking pass off no ruling call happens, so the
-// contract is grammar nothing can be pinned to, and it was costing 443 input
-// tokens on every review a default run makes.
-func TestTheRulingContractRidesOnlyOnAVerifiedRun(t *testing.T) {
-	plain := stageTools(Options{}.withDefaults())
-	if len(plain) != 1 || plain[0].Name != StageReview {
-		names := make([]string, 0, len(plain))
-		for _, tl := range plain {
-			names = append(names, tl.Name)
-		}
-		t.Errorf("a run with no checking pass declared %v, want the review contract alone", names)
-	}
-	verified := stageTools(Options{Verify: true}.withDefaults())
-	if len(verified) != 2 || verified[0].Name != StageReview || verified[1].Name != StageRuling {
-		t.Fatalf("a verified run declared %d tool(s), want review then ruling", len(verified))
-	}
-	if cheaper, dearer := toolsTokens(Options{}.withDefaults()), toolsTokens(Options{Verify: true}.withDefaults()); cheaper >= dearer {
-		t.Errorf("dropping the ruling contract saved nothing: %d tokens against %d", cheaper, dearer)
 	}
 }

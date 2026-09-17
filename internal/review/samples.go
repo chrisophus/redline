@@ -63,6 +63,7 @@ func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Re
 			// below this point knows it is one of many.
 			one := opts
 			one.Samples = 1
+			one.passLabel = fmt.Sprintf("sample %d", i+1)
 			release := func() {}
 			if primed != nil {
 				var once sync.Once
@@ -132,6 +133,7 @@ func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Re
 			continue
 		}
 		merged.Stubs += s.res.Stubs
+		merged.foldCalls(s.res)
 		kept = append(kept, s.res)
 	}
 	merged.CostUSD, merged.CostKnown = merged.Usage.Cost(opts.Model)
@@ -162,6 +164,7 @@ func (r *Result) clone() *Result {
 	c.RulingOutputTokens = 0
 	c.ScoutCostUSD = 0
 	c.Stubs = 0
+	c.CallTurns, c.Rejected, c.Stopped, c.Thinking = 0, 0, nil, nil
 	return &c
 }
 

@@ -72,6 +72,16 @@ type Trace struct {
 	// broke are both unchecked, and only one of them looks like it worked.
 	Verified     bool   `json:"verified,omitempty"`
 	VerifyFailed string `json:"verifyFailed,omitempty"`
+	// CallTurns, Rejected and Stopped are the turn loop's: turns taken, calls
+	// sent back for failing their schema, and passes that ended before the
+	// reviewer said it was done.
+	CallTurns int      `json:"callTurns,omitempty"`
+	Rejected  int      `json:"rejected,omitempty"`
+	Stopped   []string `json:"stopped,omitempty"`
+	// Thinking is each pass's reasoning summary, when the model was allowed
+	// to think. It is the one record of why the reviewer proposed what it did
+	// and why the ruling decided what it decided.
+	Thinking []review.PassThinking `json:"thinking,omitempty"`
 
 	CostUSD   float64 `json:"costUSD,omitempty"`
 	CostKnown bool    `json:"costKnown,omitempty"`
@@ -206,6 +216,10 @@ func Of(res *review.Result, look Lookup) *Trace {
 		Samples:       res.Samples,
 		Verified:      res.Verified,
 		VerifyFailed:  res.VerifyFailed,
+		CallTurns:     res.CallTurns,
+		Rejected:      res.Rejected,
+		Stopped:       res.Stopped,
+		Thinking:      res.Thinking,
 		CostUSD:       res.CostUSD,
 		CostKnown:     res.CostKnown,
 		Lookup:        look,

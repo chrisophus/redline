@@ -165,6 +165,11 @@ func ruleSchema() map[string]any {
 	}
 }
 
+// rulingItemSchema is one ruling, the fields a rule call carries.
+func rulingItemSchema() map[string]any {
+	return ruleSchema()["properties"].(map[string]any)["rulings"].(map[string]any)["items"].(map[string]any)
+}
+
 // rulingItem is one ruling as it comes off the wire. analysis leads so the
 // model reasons before it commits to a verdict rather than justifying one it
 // has already written.
@@ -423,6 +428,7 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 	stageOne.Usage.ThinkingTokens += out.Usage.ThinkingTokens
 	stageOne.RulingOutputTokens += out.Usage.OutputTokens
 	stageOne.Duration += out.Duration
+	stageOne.foldCalls(out)
 	stageOne.recost(opts.Model)
 	// A ruling that asked for the cache and read none of it paid full rate
 	// for a prefix the review had already written, which is worse than not
@@ -477,13 +483,17 @@ func (r *Result) ruleRequest(in Input, opts Options, cands []Candidate, answers 
 	// would never match.
 	out.System = r.System
 	out.Prompt = r.Prompt
+	out.expect = passExpect{}
+	for _, c := range cands {
+		out.expect.findings = append(out.expect.findings, c.ID)
+	}
 	out.Tail = "\n" + candidatesSection(cands) +
 		boundAnswers(answersSection(answers)) + rulePrompt
 	out.Stage = StageRuling
 	// The catalogue rides on this call as it does on the review's, so it is
 	// counted here as Assemble counts it. Left out, the ruling would report an
 	// estimate short by the whole tool array against a request that carries it.
-	out.InputEstimate = toolsTokens(opts) + envelope.EstimateTokens(out.System) +
+	out.InputEstimate = toolsTokens() + envelope.EstimateTokens(out.System) +
 		envelope.EstimateTokens(out.Prompt) + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedRulingTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)

@@ -7,14 +7,13 @@ package review
 // drop the one that carries the correlation, and an empty array is a clearer
 // answer than an absent key.
 
-// The contracts a stage's output may be constrained to. All three mirror
-// findings.Review, which is the file a reviewer writes and Redline already
-// knows how to render, so a producer emits the contract it will be read back
-// through rather than a shape of its own.
+// The fields a review is made of, defined once. calls.go flattens them into
+// the tools every pass calls, and they mirror findings.Review, which is the
+// file a reviewer writes and Redline already knows how to render.
 
 // outputSchema is the whole review in one object: the walkthrough and the
-// findings together. It is what the one-shot producer emits when nothing else
-// wrote the walkthrough for it.
+// findings together. Explore mode asks for it as its response format; every
+// other pass answers with the calls in calls.go.
 func outputSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
@@ -24,35 +23,6 @@ func outputSchema() map[string]any {
 			"overview": overviewSchema(),
 			"files":    map[string]any{"type": "array", "items": fileSchema()},
 			"comments": map[string]any{"type": "array", "items": commentSchema()},
-		},
-	}
-}
-
-// synopsisSchema is the describing stage's half: what the change is, one line
-// per shown file, and the partition a split run is judged over. No comments
-// and no verdicts, because a stage told to describe and not to judge cannot be
-// given somewhere to judge.
-//
-// One contract for every shape that describes separately, so the split is a
-// field and not a second form. The field is required, as strict mode wants
-// every declared property to be, and a run that is not split sends it back
-// empty: a few output tokens, against a second contract that pushed the
-// catalogue past the endpoint's grammar limit and made a failed split rebuild
-// its request under different tools and lose the cache.
-func synopsisSchema() map[string]any {
-	return map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"required":             []string{"overview", "files", "cohorts"},
-		"properties": map[string]any{
-			"overview": overviewSchema(),
-			"files":    map[string]any{"type": "array", "items": fileSchema()},
-			"cohorts": map[string]any{
-				"type":  "array",
-				"items": cohortSchema(),
-				"description": "The partition of the files into cohorts, when this pass asks " +
-					"for one. Empty when it does not.",
-			},
 		},
 	}
 }
@@ -81,21 +51,6 @@ func cohortSchema() map[string]any {
 				"description": "Repository-relative paths, exactly as they appear in the change. " +
 					"Every file you were shown belongs to exactly one cohort, and no cohort is empty.",
 			},
-		},
-	}
-}
-
-// findingsSchema is the judging stage's half, for a run whose walkthrough was
-// already written. Dropping the two description fields is the point rather
-// than tidiness: they and the findings shared one output cap, and on measured
-// runs the file summaries took enough of it to truncate the findings away.
-func findingsSchema() map[string]any {
-	return map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"required":             []string{"comments"},
-		"properties": map[string]any{
-			"comments": map[string]any{"type": "array", "items": commentSchema()},
 		},
 	}
 }

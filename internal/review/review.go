@@ -110,8 +110,8 @@ type Input struct {
 type Options struct {
 	Model  string
 	Effort string
-	// Brief runs the review stage under briefPrompt, carried by the same tool
-	// grammar as every other stage.
+	// Brief runs the review stage under briefPrompt, answered with the same
+	// calls as every other stage.
 	//
 	// It used to drop the tools and parse JSON out of a text reply, which only
 	// the Anthropic wire could do: completeOpenAI sends the catalogue on every
@@ -146,6 +146,9 @@ type Options struct {
 	Mode string
 	// MaxTurns bounds the explore loop regardless of spend.
 	MaxTurns int
+	// CallTurns bounds one pass of the turn loop every other call runs, and
+	// DefaultCallTurns applies when it is zero. See loop.go.
+	CallTurns int
 	// TaskBudget paces the model within a turn. Not a dollar cap.
 	TaskBudget int64
 	// ExpectedOutput prices the estimate. Zero uses the documented default;
@@ -207,6 +210,10 @@ type Options struct {
 	// endpoint cannot send before it has read the whole prompt. runSamples
 	// hands it to the sample that primes the cache. Nil is fine.
 	onOutput func()
+	// passLabel names which of several parallel passes a call is, a cohort's
+	// name or a sample's number, for the thinking it records. Empty on a pass
+	// that is the only one of its stage.
+	passLabel string
 	// DryRun assembles the prompt and prices it without calling anything.
 	DryRun bool
 	// Answer runs the lookups a finding asked for, between the review and the
@@ -371,6 +378,12 @@ func (o Options) cacheOn() bool {
 	return o.Cache && o.API != APIOpenAI
 }
 
+// PassThinking is one pass's reasoning summary.
+type PassThinking struct {
+	Pass string `json:"pass"`
+	Text string `json:"text"`
+}
+
 // Result is one review and what it cost.
 type Result struct {
 	Review findings.Review `json:"review"`
@@ -525,9 +538,24 @@ type Result struct {
 	// cohort call, so Comments is empty because nothing judged the change,
 	// not because the change was clean. Summary reads this rather than
 	// printing a findings count that would say the opposite.
-	PlanOnly      bool     `json:"planOnly,omitempty"`
-	Cohorts       []Cohort `json:"cohorts,omitempty"`
-	CohortsFailed int      `json:"cohortsFailed,omitempty"`
+	PlanOnly bool `json:"planOnly,omitempty"`
+	// CallTurns is how many turns the review's passes took in all, Rejected
+	// how many calls in them failed their schema and were sent back, and
+	// Stopped one line per pass that ended before the model called done,
+	// naming the pass and why. A pass that stopped early kept what it had
+	// recorded, so its review can be incomplete without being wrong, and
+	// Stopped is what says so.
+	CallTurns int      `json:"callTurns,omitempty"`
+	Rejected  int      `json:"rejected,omitempty"`
+	Stopped   []string `json:"stopped,omitempty"`
+	// Thinking is the reasoning each pass streamed, in the order the passes
+	// ran, kept on every run rather than only under --debug: the review worth
+	// reading the reasoning of is the one that already happened. It is the
+	// summary the endpoint sends, and there is one only when the call was
+	// allowed to think, which a call pinned to the tools is not on Sonnet 5.
+	Thinking      []PassThinking `json:"thinking,omitempty"`
+	Cohorts       []Cohort       `json:"cohorts,omitempty"`
+	CohortsFailed int            `json:"cohortsFailed,omitempty"`
 
 	// Candidates is what stage one found, as it wrote it, before any ruling
 	// touched it. Kept because the verifying pass writes its rulings onto the
@@ -542,6 +570,10 @@ type Result struct {
 	Questions []Question         `json:"-"`
 	Answers   *envelope.Envelope `json:"-"`
 
+	// expect is what a pass has to record to be visibly complete, set by the
+	// requests whose completeness can be checked. A pass that has recorded all
+	// of it ends there, without waiting for done.
+	expect passExpect
 	// note is the note from whoever asked for this review, as every judging
 	// call appends it, and empty when there is none. Kept on the result
 	// because the judging requests are built from it after the tails that
@@ -577,6 +609,15 @@ func (r *Result) Summary() string {
 	}
 	if r.Usage.ThinkingTokens > 0 {
 		s += fmt.Sprintf(" thinking=%d", r.Usage.ThinkingTokens)
+	}
+	if r.CallTurns > 0 {
+		s += fmt.Sprintf(" call-turns=%d", r.CallTurns)
+	}
+	if r.Rejected > 0 {
+		s += fmt.Sprintf(" rejected=%d", r.Rejected)
+	}
+	if len(r.Stopped) > 0 {
+		s += fmt.Sprintf(" stopped-early=%d", len(r.Stopped))
 	}
 	if r.Samples > 1 {
 		// The cost is the whole union's, so the sample count has to be beside
@@ -626,13 +667,17 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// above, so the calls that resend the prompt block without judging - the
 	// describing call and the ruling - do not carry it.
 	note := in.noteTail()
+	// The block that says which calls answer the pass goes out with every
+	// request, so it is priced with the fixed parts.
+	calls := callsBlock(StageReview)
 	// Every stage sends the catalogue on both wires, so it is reserved for
 	// unconditionally. This was once zeroed for a brief run, which was right on
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
 	// wire sent them anyway, and the reservation came up short by the whole
 	// catalogue and overfilled the context by that much.
-	fixed := toolsTokens(opts) + envelope.EstimateTokens(system) +
-		envelope.EstimateTokens(tail) + envelope.EstimateTokens(note) + envelope.EstimateTokens(in.fixed())
+	fixed := toolsTokens() + envelope.EstimateTokens(system) +
+		envelope.EstimateTokens(tail) + envelope.EstimateTokens(note) + envelope.EstimateTokens(calls) +
+		envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
 		// The block's own header is written after FitAll has fitted the
 		// expansions, so it has to be reserved here or the assembled prompt
@@ -649,7 +694,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	prompt := in.build(budget)
 	parts := promptParts(in, opts, system, budget)
 	est := envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
-		envelope.EstimateTokens(tail) + envelope.EstimateTokens(note)
+		envelope.EstimateTokens(tail) + envelope.EstimateTokens(note) + envelope.EstimateTokens(calls)
 	expected := opts.ExpectedOutput
 	if expected <= 0 {
 		expected = ExpectedOutputTokens
@@ -845,11 +890,12 @@ func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 	var synUsage Usage
 	var synWritten int64
 	var synFailed string
+	var described *Result
 	if opts.Synopsis {
-		walkthrough, synUsage, synWritten, synFailed = describe(ctx, in, opts, res)
+		walkthrough, synUsage, synWritten, synFailed, described = describe(ctx, in, opts, res)
 		if synFailed != "" && opts.Progress != nil {
 			opts.Progress("the describing call did not produce a walkthrough (" + synFailed +
-				"); this review goes on for findings alone")
+				"); this review writes its own")
 		}
 		res = res.judgingRequest(synFailed == "")
 	}
@@ -859,6 +905,9 @@ func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		out, err = runSamples(ctx, in, opts, res)
 	} else {
 		out, err = runOnce(ctx, in, opts, res)
+	}
+	if out != nil {
+		out.foldCalls(described)
 	}
 	if opts.Synopsis {
 		applySynopsis(out, opts.Model, walkthrough, synUsage, synWritten, synFailed)
@@ -894,7 +943,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			"cache": map[string]any{"breakpoint": res.Cached, "ttl": opts.CacheTTL},
 			// The whole array, because the whole array is what was sent and
 			// its bytes are what a cache read depends on.
-			"tools": stageTools(opts), "toolChoice": stage,
+			"tools": callTools(), "calls": callsFor(stage),
 		}
 		req, _ := json.MarshalIndent(captured, "", "  ")
 		opts.Capture(stage+".request.json", req)
@@ -908,6 +957,21 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	}
 	res.Duration = time.Since(start)
 	res.Turns = 1
+	res.CallTurns += c.turns
+	res.Rejected += c.rejected
+	if strings.TrimSpace(c.thinking) != "" {
+		pass := stage
+		if opts.passLabel != "" {
+			pass += " (" + opts.passLabel + ")"
+		}
+		res.Thinking = append(res.Thinking, PassThinking{Pass: pass, Text: c.thinking})
+	}
+	if c.stopped != "" {
+		res.Stopped = append(res.Stopped, fmt.Sprintf("the %s pass stopped before it was done (%s)", stage, c.stopped))
+		if opts.Progress != nil {
+			opts.Progress(fmt.Sprintf("the %s pass stopped before calling done (%s); keeping what it recorded", stage, c.stopped))
+		}
+	}
 	res.Usage = c.usage
 	if err == nil && c.usage == (Usage{}) {
 		// The call went out and came back, so it was paid for. An endpoint
@@ -990,22 +1054,16 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 		return fmt.Errorf("the model returned no content (stop reason %q)", c.stopReason)
 	}
 	if !c.fromTool {
-		// Every stage forces a tool call, so arriving here means the reply came
-		// back in the content channel instead: a gateway that dropped
-		// tool_choice, or a model that answered a forced call in prose. Either
-		// way nothing constrained the body, so the object can arrive fenced or
-		// behind a sentence about what the model is going to check. Narrowing
-		// to the object is this path's job; a malformed one still reaches
-		// parseReview and fails there with the body in the message.
-		//
-		// This used to ask whether the run was brief, back when a brief review
-		// was the one call that sent no tools. It sends them now, so that
-		// question no longer picks out the unconstrained replies, and the
-		// gateway case it was accidentally covering is the one that remains.
+		// The loop hands prose on only when a pass made no calls even after
+		// being asked for them: a gateway that dropped tool_choice, or a model
+		// that answered in prose twice. Nothing shaped the body, so the object
+		// can arrive fenced or behind a sentence about what the model is going
+		// to check. Narrowing to the object is this path's job; a malformed one
+		// still reaches parseReview and fails there with the body in the
+		// message.
 		body = jsonObjectOf(body)
 	}
-	// Which shape came back is decided by which contract went out, so the
-	// result's own schema says how to read it. One wire, two stages.
+	// Which shape came back is decided by which pass asked for it.
 	if res.rulesRatherThanReviews() {
 		rulings, err := parseRulings([]byte(body))
 		if err != nil {
@@ -1023,9 +1081,9 @@ func (res *Result) absorb(opts Options, stage string, c completion) error {
 	stubs := dropStubs(rev)
 	res.Stubs += stubs
 	// A reply that conformed to the contract without reviewing anything. The
-	// strict tool grammar guarantees the four fields are present and says
-	// nothing about what is in them, so three empty arrays under a one-word
-	// overview validates and arrives here looking like a review.
+	// calls' schemas say which fields are present and nothing about what is in
+	// them, so a one-word overview with no files and no comments is valid and
+	// arrives here looking like a review.
 	//
 	// Measured: on a 48k packet the forced tool_choice arm returned
 	// {"overview": "placeholder"} with empty files, comments and verdicts on

@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/chrisophus/redline/internal/envelope"
@@ -36,6 +37,7 @@ const ExpectedSynopsisTokens int64 = 3000
 func (r *Result) synopsisRequest(opts Options, in Input) *Result {
 	out := r.clone()
 	out.Stage = StageSynopsis
+	out.expect = passExpect{files: sortedKeys(in.ShownFiles())}
 	// The describing half and nothing else. This call is not judging the
 	// change, so the judging tail would be two thousand tokens telling it what
 	// to do with findings it has been told not to write.
@@ -63,14 +65,14 @@ func synopsisCeilingCost(opts Options, in Input, res *Result) float64 {
 // describe runs the stage and returns the walkthrough it wrote.
 //
 // It never fails the review. A describing call that breaks, refuses, or comes
-// back with no overview leaves the judging call to go on for findings alone,
+// back with no overview leaves the judging call to write the whole review,
 // and the reason is recorded rather than printed and forgotten: a review with
 // no walkthrough because the stage failed and one whose model wrote a thin
 // walkthrough are otherwise hard to tell apart.
 //
 // The usage is folded in whichever way it ended, because the call was billed
 // either way.
-func describe(ctx context.Context, in Input, opts Options, res *Result) (findings.Review, Usage, int64, string) {
+func describe(ctx context.Context, in Input, opts Options, res *Result) (findings.Review, Usage, int64, string, *Result) {
 	if opts.Progress != nil {
 		opts.Progress("describing the change before judging it")
 	}
@@ -82,33 +84,32 @@ func describe(ctx context.Context, in Input, opts Options, res *Result) (finding
 	usage.OutputTokens = 0
 	switch {
 	case err != nil:
-		return findings.Review{}, usage, written, err.Error()
+		return findings.Review{}, usage, written, err.Error(), out
 	case out.Review.Overview == "":
 		return findings.Review{}, usage, written,
-			"the describing call returned no overview"
+			"the describing call returned no overview", out
 	}
 	if opts.Progress != nil {
 		opts.Progress(fmt.Sprintf("described %d file(s) in %s",
 			len(out.Review.Files), out.Duration.Round(time.Second)))
 	}
-	return out.Review, usage, written, ""
+	return out.Review, usage, written, "", out
 }
 
-// judgingRequest is the judging call on a shape that described separately:
-// findings alone, under the tail that says whether the walkthrough exists.
-//
-// A failed describing call no longer sends the next call back for the whole
-// review. The contract that carries a walkthrough is not in the array these
-// shapes send, and asking for it would mean a different array, which is a
-// different prefix and a cache the failed call already paid to write left
-// unread. The review goes out without a walkthrough and applySynopsis says so.
+// judgingRequest is the judging call on a shape that described separately.
+// With a walkthrough in hand it asks for findings alone. Without one it is the
+// whole review, the request Assemble built, so the run still gets a
+// walkthrough: every call sends the same tools, so the fallback reads the
+// prompt the failed describing call cached.
 func (r *Result) judgingRequest(described bool) *Result {
 	out := r.clone()
+	if !described {
+		out.Stage = StageReview
+		out.Tail = r.note
+		return out
+	}
 	out.Stage = StageFindings
 	out.Tail = judgingTail + findingsPrompt + r.note
-	if !described {
-		out.Tail = judgingTail + undescribedPrompt + r.note
-	}
 	return out
 }
 
@@ -163,4 +164,13 @@ func (r *Result) recost(model string) {
 	if extra, ok := apart.Cost(model); ok {
 		r.CostUSD += extra
 	}
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

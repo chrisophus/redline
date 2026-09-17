@@ -103,23 +103,31 @@ document:
 
 - Every call in a run carries the whole prompt. What a call is told to work on
   is set by the instruction at the end, not by giving it less to read.
-- The output forms travel as tools and the stage is picked with `tool_choice`.
-  Changing `tool_choice` between calls does not cost the cache on
-  `claude-sonnet-5`, which is the opposite of what the API docs say. Check it
-  again on another model, and any time cache reads come back zero.
-- All the forms compile into one grammar and there is a size limit on the
-  total. Review, ruling, findings and a separate partition form together were
-  refused as "the compiled grammar is too large". Ruling, findings and the
-  describing form with the partition as a field are accepted (2026-09-16,
-  `claude-sonnet-5`), and that is what every shape that describes separately
-  now sends.
+- Every pass answers with small tool calls over a turn loop: `set_overview`,
+  `describe_file`, `add_cohort`, `add_comment`, `rule` and `done`, none of them
+  strict, the same six on every call, so the cache holds across passes. Each
+  call is checked against its schema and a bad one is sent back to be fixed;
+  what a pass recorded is kept however it ends, and a pass that stops before
+  `done` says so on the report. This replaced one strict form per stage,
+  because strict forms compile into one grammar with a size limit ("the
+  compiled grammar is too large") and the same forms without strict came back
+  unusable: 8 of 9 findings calls wrote the comments array as a string.
+  Measured on fifteen fixture reviews, 2 of 202 flat calls were rejected and
+  both were fixed on retry (2026-09-16, `claude-sonnet-5`).
+- A findings pass left to itself makes one call per turn, and on a six-file
+  fixture split three ways one cohort hit the 12-turn cap with 12 comments. A
+  reply of one or two calls is now answered with a request for every
+  remaining call in the next reply, and the same run took 11 turns in all
+  against 19, $0.22 against $0.45 and 48 seconds against 83. Each turn's
+  output is capped at what the pass's price can still pay for.
 - Model and effort have to stay the same across a cached run on Sonnet. The
   ways around that are Opus 5 and Fable 5.1 only.
 - The cache lives five minutes or an hour, measured from the start of the last
   call that used it. The one-hour write costs twice as much and buys nothing
   while calls are seconds apart.
-- Forced `tool_choice` is refused outright on Fable 5.1 and Mythos 5.1, so the
-  split is refused there before anything is sent.
+- A `tool_choice` that requires a call is refused outright on Fable 5.1 and
+  Mythos 5.1, so those models are left to choose and told which calls answer
+  the pass in words.
 - Splitting shrinks the job a call is given, not the tokens it reads.
 - `--plan` is not a cheap preview. It pays the full cache write, $0.72 to
   $0.95 on a 43-file change on Sonnet, and only pays off if a judging call
@@ -137,12 +145,12 @@ document:
 ## Using the API the way it is meant to be used
 
 Almost every awkward thing above exists to keep the prompt cache warm. The
-forms travel as tools because the normal way to ask for structured output sits
-in front of the prompt and changing it between calls throws the cache away.
-All the forms ride on every call for the same reason, which is why they hit a
-size limit. Model and effort are pinned for the whole run. The calls are
-siblings rather than a conversation, each one re-sending the same material
-with a different instruction stuck on the end.
+answer travels as tool calls because the normal way to ask for structured
+output sits in front of the prompt and changing it between calls throws the
+cache away. Model and effort are pinned for the whole run. The passes are
+siblings rather than one conversation, each one re-sending the same material
+with a different instruction stuck on the end, though each pass is now a short
+conversation of its own.
 
 What that buys, measured once: $0.3161 of input against $0.2196 on the same
 pair of calls, so about 30% of the input and 16% of the run. Worth having.

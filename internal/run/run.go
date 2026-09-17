@@ -343,6 +343,9 @@ func Run(opts Options) (*Result, error) {
 		if u, ok := reviewVerifyUnknown(review); ok {
 			res.Report.Unknowns = append(res.Report.Unknowns, u)
 		}
+		if u, ok := reviewIncompleteUnknown(review); ok {
+			res.Report.Unknowns = append(res.Report.Unknowns, u)
+		}
 	}
 	if res.Report.Coverage.ExaminedFiles == 0 && len(changed) > 0 {
 		// No pane looked at any of it. This is not a clean review and must
@@ -1001,6 +1004,9 @@ func ReapplyReview(res *Result, rev *findings.Review) {
 		if u, ok := reviewVerifyUnknown(rev); ok {
 			res.Report.Unknowns = append(res.Report.Unknowns, u)
 		}
+		if u, ok := reviewIncompleteUnknown(rev); ok {
+			res.Report.Unknowns = append(res.Report.Unknowns, u)
+		}
 	}
 	res.Report.Finalize()
 	if rev != nil {
@@ -1027,6 +1033,20 @@ func reviewVerifyUnknown(rev *findings.Review) (findings.Unknown, bool) {
 		Message: "the checking pass did not complete, so the findings below are " +
 			"as the review wrote them and none of them was checked",
 		Reason: rev.VerifyFailed,
+	}, true
+}
+
+// reviewIncompleteUnknown turns a review whose passes stopped early into an
+// unknown on the report: the comments shown may not be all there were.
+func reviewIncompleteUnknown(rev *findings.Review) (findings.Unknown, bool) {
+	if rev == nil || len(rev.Incomplete) == 0 {
+		return findings.Unknown{}, false
+	}
+	return findings.Unknown{
+		Substrate: reviewSubstrate,
+		Message: "part of the review stopped before the reviewer said it was done, so " +
+			"the comments and file lines below may be incomplete",
+		Reason: strings.Join(rev.Incomplete, "; "),
 	}, true
 }
 

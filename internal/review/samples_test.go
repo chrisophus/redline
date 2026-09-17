@@ -14,13 +14,13 @@ import (
 // rather than vote on them.
 func TestSamplesUnionAddsDisjointFindings(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("end_turn", 100, 10, anthropicText(0,
+		anthropicSSE("tool_use", 100, 10, flatCalls(StageReview,
 			`{"overview":"a","files":[],"comments":[{"file":"a.go","line":1,"severity":"warning",`+
 				`"confidence":"high","body":"the retry loop never bounds attempts"}]}`)),
-		anthropicSSE("end_turn", 100, 10, anthropicText(0,
+		anthropicSSE("tool_use", 100, 10, flatCalls(StageReview,
 			`{"overview":"a","files":[],"comments":[{"file":"b.go","line":2,"severity":"warning",`+
 				`"confidence":"high","body":"the mutex is never unlocked on the error path"}]}`)),
-		anthropicSSE("end_turn", 100, 10, anthropicText(0,
+		anthropicSSE("tool_use", 100, 10, flatCalls(StageReview,
 			`{"overview":"a","files":[],"comments":[{"file":"c.go","line":3,"severity":"info",`+
 				`"confidence":"low","body":"this comment contradicts the code below it"}]}`)),
 	)
@@ -49,7 +49,7 @@ func TestSamplesUnionAddsDisjointFindings(t *testing.T) {
 // lands.
 func TestSamplesReportEachOneAsItLands(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("end_turn", 100, 10, anthropicText(0,
+		anthropicSSE("tool_use", 100, 10, flatCalls(StageReview,
 			`{"overview":"a","files":[],"comments":[{"file":"a.go","line":1,"severity":"warning",`+
 				`"confidence":"high","body":"the retry loop never bounds attempts"}]}`)),
 		anthropicSSE("max_tokens", 100, 10, anthropicText(0, `{"overview":"trunc`)),
@@ -62,7 +62,11 @@ func TestSamplesReportEachOneAsItLands(t *testing.T) {
 	opts.Progress = func(msg string) {
 		mu.Lock()
 		defer mu.Unlock()
-		lines = append(lines, msg)
+		// The turn loop reports each turn too; this is about the per-sample
+		// lines.
+		if strings.HasPrefix(msg, "sample ") {
+			lines = append(lines, msg)
+		}
 	}
 	if _, err := Run(context.Background(), exploreInput(), opts); err != nil {
 		t.Fatalf("one bad sample must not fail the review: %v", err)
@@ -98,8 +102,8 @@ func TestSamplesUnionCollapsesTheSameRemark(t *testing.T) {
 			`so a 503 at line %d spins"}]}`, line, line)
 	}
 	api := serveSSE(t,
-		anthropicSSE("end_turn", 100, 10, anthropicText(0, same(12))),
-		anthropicSSE("end_turn", 100, 10, anthropicText(0, same(947))),
+		anthropicSSE("tool_use", 100, 10, flatCalls(StageReview, same(12))),
+		anthropicSSE("tool_use", 100, 10, flatCalls(StageReview, same(947))),
 	)
 	opts := exploreOpts(api)
 	opts.Mode = ModeOneShot
@@ -118,7 +122,7 @@ func TestSamplesUnionCollapsesTheSameRemark(t *testing.T) {
 // report can say the union is thinner than it was paid for.
 func TestSamplesSurviveOneFailure(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("end_turn", 100, 10, anthropicText(0,
+		anthropicSSE("tool_use", 100, 10, flatCalls(StageReview,
 			`{"overview":"a","files":[],"comments":[{"file":"a.go","line":1,"severity":"warning",`+
 				`"confidence":"high","body":"the retry loop never bounds attempts"}]}`)),
 		anthropicSSE("max_tokens", 100, 10, anthropicText(0, `{"overview":"trunc`)),

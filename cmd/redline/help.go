@@ -355,8 +355,8 @@ shape:
                     samples, one call in three above 34k tokens wrote no
                     walkthrough at all.
   --no-synopsis     one call writes the walkthrough and the findings together
-  --brief           one call under the forty-line short prompt, carried by
-                    the same tool grammar every other stage uses. Measured on
+  --brief           one call under the forty-line short prompt, answered
+                    with the same tool calls every other pass uses. Measured on
                     2026-09-14 against the long prompt, it returned a
                     placeholder in place of a review on 22 of 168 calls,
                     where the long prompt did on none of 42, and left about
@@ -407,7 +407,7 @@ cost and caching:
                     prompt cache, so the second call reads it back instead of
                     paying for it again. On by default; --no-cache sends both
                     at full input rate. Ignored where the write could not be
-                    read: --api openai and the batch tier.
+                    read: --api openai.
   --no-cache        send every call at full input rate
   --cache-ttl D     how long the cached prefix lives, 5m (default) or 1h. The
                     hour costs 2x base input to write against the five

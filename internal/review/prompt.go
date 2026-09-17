@@ -216,15 +216,6 @@ func withRoster(prompt string, in Input) string {
 //go:embed prompts/findings.md
 var findingsPrompt string
 
-// undescribedPrompt is the judging turn when the describing call failed. It
-// goes out under the same tools as the call that failed, so the prefix that
-// call wrote is still read back, and it asks for findings alone because the
-// contract that carries a walkthrough is not in that array. The walkthrough
-// is missing from such a review and the result says so.
-//
-//go:embed prompts/findings-undescribed.md
-var undescribedPrompt string
-
 // notePrompt introduces the note from whoever asked for this review, and says
 // what it is and is not.
 //
@@ -256,8 +247,8 @@ func cohortsTail(in Input, bound int) string {
 ### The cohorts
 
 This pass does ask for them. Split the files above into at most %d group(s)
-best reviewed together, and put them in the synopsis tool's cohorts. Every
-file belongs to exactly one group and no group is empty.
+best reviewed together, and call add_cohort once per group. Every file
+belongs to exactly one group and no group is empty.
 
 Group by what a reviewer has to hold in mind at once: a schema change and the
 code that reads it belong together across directories, and two unrelated

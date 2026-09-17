@@ -68,6 +68,7 @@ func (r *Result) cohortsRequest(opts Options, in Input) *Result {
 	// folds anything above it, so a stage one told a larger number spends
 	// output on a partition that is then silently collapsed.
 	out.Tail = cohortsTail(in, cohortBound(opts, in))
+	out.expect.cohorts = true
 	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedSynopsisTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)
@@ -208,7 +209,7 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		// better than no review.
 		if opts.Progress != nil {
 			opts.Progress("the describing call did not produce a walkthrough (" + failed +
-				"); this review is one call for findings alone")
+				"); this review is one call and writes its own")
 		}
 		// One judging call over the whole change, under the same tools the
 		// failed call sent, so it reads the prefix that call wrote.
@@ -220,6 +221,7 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		// row, and without this the number on it is still wrong.
 		applySynopsis(out, opts.Model, findings.Review{}, usage, written, failed)
 		if out != nil {
+			out.foldCalls(one)
 			out.Pipeline = PipelineOneShot
 			out.FellBack = failed
 		}
@@ -254,12 +256,14 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		out.Pipeline = PipelineStaged
 		out.Cohorts = cohorts
 		out.PlanOnly = true
+		out.foldCalls(one)
 		return out, nil
 	}
 
 	merged, err := fanOut(ctx, in, opts, res, cohorts)
 	applySynopsis(merged, opts.Model, walkthrough, usage, written, "")
 	if merged != nil {
+		merged.foldCalls(one)
 		merged.Pipeline = PipelineStaged
 		merged.Cohorts = cohorts
 	}
@@ -306,6 +310,16 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 			one := opts
 			one.Samples = 1
 			one.MaxTokens = cohortMaxTokens(opts, len(cohorts))
+			one.passLabel = cohort.Name
+			if opts.Progress != nil {
+				// The cohorts run at once, so each one's turn lines say whose
+				// they are, and the lines share the lock the landing lines use.
+				one.Progress = func(line string) {
+					mu.Lock()
+					defer mu.Unlock()
+					opts.Progress(cohort.Name + ": " + line)
+				}
+			}
 			got, err := runOnce(ctx, in, one, res.cohortRequest(opts, cohort, cohorts, i, len(cohorts)))
 			out[i] = answer{res: got, err: err}
 			if opts.Progress == nil {
@@ -350,6 +364,7 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 			continue
 		}
 		merged.Stubs += a.res.Stubs
+		merged.foldCalls(a.res)
 		kept = append(kept, a.res)
 	}
 	merged.recost(opts.Model)

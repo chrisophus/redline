@@ -130,22 +130,19 @@ func TestAModelThatRefusesAForcedToolChoiceIsAskedInstead(t *testing.T) {
 	}
 
 	pinned := anthropicParams(Options{Model: "claude-sonnet-5", MaxTokens: 100}, &Result{Stage: StageReview})
-	if pinned.ToolChoice.OfTool == nil {
-		t.Error("a model that accepts the pin was not pinned to its stage")
-	}
-	if strings.Contains(text(pinned), "do not answer in prose") {
-		t.Error("the pinned request carried the fallback instruction, which every run would then pay for")
+	if pinned.ToolChoice.OfAny == nil {
+		t.Error("a model that accepts the pin was not required to call a tool")
 	}
 
 	asked := anthropicParams(Options{Model: "claude-fable-5-1", MaxTokens: 100}, &Result{Stage: StageReview})
-	if asked.ToolChoice.OfTool != nil {
+	if asked.ToolChoice.OfTool != nil || asked.ToolChoice.OfAny != nil {
 		t.Error("pinned the tool choice on a model that answers 400 to it")
 	}
 	if asked.ToolChoice.OfAuto == nil {
 		t.Error("a model that refuses the pin was sent no tool choice at all")
 	}
-	if !strings.Contains(text(asked), StageReview) {
-		t.Error("nothing in the request says which stage it is, and tool_choice no longer says it")
+	if !strings.Contains(text(asked), CallComment) {
+		t.Error("nothing in the request says which calls answer this pass")
 	}
 	if len(asked.Tools) != len(pinned.Tools) {
 		t.Error("the fallback changed the catalogue; only the choice and the instruction change")

@@ -1,14 +1,12 @@
 package review
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"testing"
 
@@ -58,8 +56,8 @@ func cohortFindings(file, body string) string {
 // one's walkthrough and every cohort's findings.
 func TestTheFanOutJudgesEachCohortAndMergesThem(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t0", StageSynopsis, partitionBody)),
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageFindings,
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageSynopsis, partitionBody)),
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageFindings,
 			cohortFindings("internal/queue/q.go", "the retry loses the entry"))),
 	)
 	res, err := Run(context.Background(), stagedInput(), stagedOpts(api))
@@ -95,8 +93,8 @@ func TestTheFanOutJudgesEachCohortAndMergesThem(t *testing.T) {
 // what differs between two cohort calls is the tail and only the tail.
 func TestEachCohortIsScopedByItsTailOverOneSharedPrefix(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t0", StageSynopsis, partitionBody)),
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageFindings,
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageSynopsis, partitionBody)),
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageFindings,
 			cohortFindings("internal/queue/q.go", "x"))),
 	)
 	opts := stagedOpts(api)
@@ -112,14 +110,14 @@ func TestEachCohortIsScopedByItsTailOverOneSharedPrefix(t *testing.T) {
 			t.Fatalf("request %d: %v", i, err)
 		}
 		blocks := req.Messages[0].Content
-		if len(blocks) != 2 {
-			t.Fatalf("request %d sends %d block(s), want the shared prefix and a tail", i, len(blocks))
+		if len(blocks) != 3 {
+			t.Fatalf("request %d sends %d block(s), want the shared prefix, the calls block and a tail", i, len(blocks))
 		}
 		if !hasCacheControl(blocks[0]) {
 			t.Errorf("request %d does not mark the shared block", i)
 		}
 		prefixes = append(prefixes, blocks[0].Text)
-		tails = append(tails, blocks[1].Text)
+		tails = append(tails, blocks[2].Text)
 	}
 	for i := 1; i < len(prefixes); i++ {
 		if prefixes[i] != prefixes[0] {
@@ -160,8 +158,8 @@ func TestEachCohortIsScopedByItsTailOverOneSharedPrefix(t *testing.T) {
 // to be able to tell the two apart.
 func TestAFailedStageOneFallsBackToOneCall(t *testing.T) {
 	api := serveSSE(t,
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t0", StageSynopsis, `{"overview":"","files":[],"cohorts":[]}`)),
-		anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageReview, reviewBody)),
+		anthropicSSE("refusal", 10, 0),
+		anthropicSSE("tool_use", 10, 5, flatCalls(StageReview, reviewBody)),
 	)
 	res, err := Run(context.Background(), stagedInput(), stagedOpts(api))
 	if err != nil {
@@ -251,11 +249,11 @@ func TestAFailedCohortIsCountedAndTheRestAreKept(t *testing.T) {
 		switch {
 		case strings.Contains(string(body), "### The cohorts"):
 			fmt.Fprint(w, anthropicSSE("tool_use", 10, 5,
-				anthropicToolUse(0, "t0", StageSynopsis, partitionBody)))
+				flatCalls(StageSynopsis, partitionBody)))
 		case strings.Contains(string(body), "Your cohort: api"):
 			w.WriteHeader(http.StatusInternalServerError)
 		default:
-			fmt.Fprint(w, anthropicSSE("tool_use", 10, 5, anthropicToolUse(0, "t1", StageFindings,
+			fmt.Fprint(w, anthropicSSE("tool_use", 10, 5, flatCalls(StageFindings,
 				cohortFindings("internal/queue/q.go", "the retry loses the entry"))))
 		}
 	}))
@@ -285,71 +283,6 @@ func TestAFailedCohortIsCountedAndTheRestAreKept(t *testing.T) {
 	}
 	if !told {
 		t.Errorf("a paid call that did not answer must be said out loud: %q", said)
-	}
-}
-
-// The catalogue carries what the run's shape can ask for and nothing else.
-//
-// Not tidiness: five strict tools got a 400 from the endpoint - "the compiled
-// grammar is too large ... reduce the number of strict tools" - on a real
-// staged run. What the cache needs is that the array does not move between
-// two calls of one run, which is what this checks, and a one-shot run has no
-// use for the partition contract.
-func TestTheCatalogueCarriesOnlyTheShapesContracts(t *testing.T) {
-	names := func(opts Options) []string {
-		var out []string
-		for _, tool := range stageTools(opts) {
-			out = append(out, tool.Name)
-		}
-		return out
-	}
-	// Reachable is about the calls this run will make, not only its pipeline.
-	// A one-shot run with the checking pass on makes two calls and carries
-	// both contracts; with it off the ruling is a stage nothing can be pinned
-	// to, and its schema is 443 input tokens on the only call there is.
-	oneshot := names(Options{Verify: true})
-	if !slices.Equal(oneshot, []string{StageReview, StageRuling}) {
-		t.Errorf("a verified one-shot run reaches the review and the ruling, got %v", oneshot)
-	}
-	if plain := names(Options{}); !slices.Equal(plain, []string{StageReview}) {
-		t.Errorf("a run with no checking pass reaches the review alone, got %v", plain)
-	}
-	// One array for every shape that describes separately. review + ruling +
-	// findings + a separate partition contract is the one that got the 400;
-	// the partition is a field on the synopsis contract now, so the split, the
-	// unsplit describing call send the same
-	// bytes, and a fallback after a failed describing call sends them too.
-	want := []string{StageRuling, StageFindings, StageSynopsis}
-	for _, o := range []Options{{Cohorts: 6}, {Synopsis: true}, {Synopsis: true, Verify: true}} {
-		if got := names(o.withDefaults()); !slices.Equal(got, want) {
-			t.Errorf("%+v carries %v, want %v", o, got, want)
-		}
-	}
-	split, err := json.Marshal(stageTools(Options{Cohorts: 6}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	unsplit, err := json.Marshal(stageTools(Options{Synopsis: true}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(split, unsplit) {
-		t.Error("the split and the unsplit describing call must send byte-identical catalogues")
-	}
-	// Every call of one staged run sends the same array, which is the whole
-	// invariant the cache rests on.
-	first, err := json.Marshal(stageTools(Options{Cohorts: 6}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for range 20 {
-		again, err := json.Marshal(stageTools(Options{Cohorts: 6}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(first, again) {
-			t.Fatal("the catalogue serialized differently between two calls of one shape")
-		}
 	}
 }
 
