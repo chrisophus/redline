@@ -670,12 +670,14 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		// investigate with.
 		system += "\n\nUse the tools to investigate before responding.\n"
 	}
-	// The judging instruction rides inside the shared prompt block, the part
-	// every pass reads from the cache. The describing instruction does not:
-	// a findings pass that read "say what the change is" beside "the overview
-	// is already written" wrote the walkthrough anyway and had every call of
-	// it refused. It goes in the tail of the passes that describe, the
-	// one-call review here and the describing pass in synopsis.go.
+	// No pass instruction rides in the shared prompt block: it is material
+	// only, the part every pass reads from the cache. Each pass's own
+	// instruction goes in its tail. Two measurements put it there. A findings
+	// pass that read "say what the change is" beside "the overview is already
+	// written" wrote the walkthrough anyway and had every call of it refused.
+	// And a describing pass that read the judging instruction reviewed the
+	// whole change in 45k tokens of thinking it had nowhere to file. The
+	// one-call review judges and describes, so its tail carries both.
 	tail := judgingTail
 	// Behind the breakpoint in a block of its own, unlike the instruction
 	// above, so the calls that resend the prompt block without judging - the
@@ -741,8 +743,8 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		Budget:         budget,
 		deferred:       deferred,
 		FilesShown:     len(in.ShownFiles()),
-		Prompt:         prompt + tail,
-		Tail:           describe + note,
+		Prompt:         prompt,
+		Tail:           tail + describe + note,
 		note:           note,
 		System:         system,
 		InputEstimate:  est,

@@ -169,17 +169,25 @@ func callsBlock(stage string, deferred bool) string {
 	}
 	return "\n\n## How to answer\n\nAnswer by calling the tools. Every call is answered: \"Recorded.\" when it is " +
 		"taken, or what is wrong with it when it is not. Call done when this pass is finished.\n\n" +
-		"This pass takes " + takes + "." + readsContext(deferred) + "\n"
+		"This pass takes " + takes + "." + readsContext(stage, deferred) + "\n"
 }
 
 // readsContext is the calls block's line about held-back context, when there
 // is any to read.
-func readsContext(deferred bool) string {
+func readsContext(stage string, deferred bool) string {
 	if !deferred {
 		return ""
 	}
-	return " The context listed under each file in the diff (callers of what changed, the types it uses, " +
+	line := " The context listed under each file in the diff (callers of what changed, the types it uses, " +
 		"tests and line history) is one get_context call away, by the ids in those lists."
+	if stage == StageFindings || stage == StageReview {
+		// The one directive here, and a measured one: across six runs at every
+		// effort level a judging pass reasoned through the whole change in its
+		// first reply and never read any of the context, and a light
+		// instruction is the documented lever for a tool a model under-uses.
+		line += " Read the context you need with get_context before writing comments; comments can come in a later reply."
+	}
+	return line
 }
 
 // passExpect is what makes a pass visibly complete. The describing pass is

@@ -2,9 +2,7 @@
 
 ## Finding defects
 
-Work out what the change is trying to do, then look for every way it could be
-wrong: an input it mishandles, a caller it breaks, a state it leaves
-inconsistent, an error it loses.
+Work out what the change is trying to do and how it could be wrong.
 
 Report every defect you find, including ones you are unsure about or judge to
 be low severity. Do not filter for importance or confidence here. Findings are

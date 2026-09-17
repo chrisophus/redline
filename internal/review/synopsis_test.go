@@ -82,10 +82,16 @@ func TestBothStagesSendOneSharedPrefixAndDifferentTails(t *testing.T) {
 		t.Error("the two stages send different system blocks, so nothing before the prompt caches")
 	}
 	first, second := reqs[0].Messages[0].Content, reqs[1].Messages[0].Content
-	// The describing pass has an instruction of its own after its calls
-	// block; the findings pass, with no note, has only its calls block.
-	if len(first) != 3 || len(second) != 2 {
-		t.Fatalf("the describing pass sends prefix, calls block and tail, the findings pass prefix and calls block: %d and %d block(s)", len(first), len(second))
+	if len(first) != 3 || len(second) != 3 {
+		t.Fatalf("each pass sends the shared prefix, its calls block and its own instruction: %d and %d block(s)", len(first), len(second))
+	}
+	// The shared prefix is material only: the describing pass must not read
+	// the judging instruction, nor the findings pass the describing one.
+	if strings.Contains(first[0].Text, "## Finding defects") || strings.Contains(first[2].Text, "## Finding defects") {
+		t.Error("the describing pass reads the judging instruction")
+	}
+	if !strings.Contains(second[2].Text, "## Finding defects") {
+		t.Error("the findings pass does not read the judging instruction")
 	}
 	if first[0].Text != second[0].Text {
 		t.Error("the block the cache entry is keyed on differs between the stages")
