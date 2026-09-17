@@ -1,0 +1,1457 @@
+{
+  "version": 1,
+  "issues": [
+    {
+      "fingerprint": ".gorefactor-lint-baseline.json\u0000orphaned-config-path\u0000baseline entry points at missing file \"internal/review/batch.go\" — the suppression covers nothing; re-lock with `gorefactor lint . --write-baseline`",
+      "file": ".gorefactor-lint-baseline.json",
+      "rule": "orphaned-config-path",
+      "count": 1
+    },
+    {
+      "fingerprint": ".gorefactor-lint-baseline.json\u0000orphaned-config-path\u0000baseline entry points at missing file \"internal/review/stepwise_test.go\" — the suppression covers nothing; re-lock with `gorefactor lint . --write-baseline`",
+      "file": ".gorefactor-lint-baseline.json",
+      "rule": "orphaned-config-path",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline-graphify-context/main.go\u0000duplicate-block\u0000#-stmt block duplicated in # places (impact #): cmd/redline-graphify-context/main.go:#-#, cmd/redline-scout/main.go:#-#",
+      "file": "cmd/redline-graphify-context/main.go",
+      "rule": "duplicate-block",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/help.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "cmd/redline/help.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/main_test.go\u0000extract-candidate\u0000TestAReviewLeavesATraceOfAllThreeStages (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "cmd/redline/main_test.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/main_test.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "cmd/redline/main_test.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/post.go\u0000data-clumps\u0000Parameter group [owner string, repo string, num int] appears in # functions; consider creating a struct",
+      "file": "cmd/redline/post.go",
+      "rule": "data-clumps",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/post.go\u0000duplicate-block\u0000#-stmt block duplicated in # places (impact #): cmd/redline/post.go:#-#, internal/change/change.go:#-#, internal/gitx/git.go:#-#, internal/pane/migrations/migrations.go:#-#, internal/report/markdown.go:#-#, internal/target/target.go:#-#",
+      "file": "cmd/redline/post.go",
+      "rule": "duplicate-block",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/post.go:25\u0000complexity\u0000cmdPost has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "cmd/redline/post.go:25",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/post.go:25\u0000hard-to-maintain\u0000cmdPost is hard to maintain (line #): # logic lines and complexity # (bar #) and # early-return paths (bar #) — consider extracting",
+      "file": "cmd/redline/post.go:25",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/post.go:25\u0000long-function\u0000cmdPost is # lines (threshold #, line #) — consider extracting",
+      "file": "cmd/redline/post.go:25",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/review.go\u0000extract-candidate\u0000cmdReview (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "cmd/redline/review.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/review.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "cmd/redline/review.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/review.go:28\u0000complexity\u0000cmdReview has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "cmd/redline/review.go:28",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/review.go:28\u0000hard-to-maintain\u0000cmdReview is hard to maintain (line #): # logic lines and complexity # (bar #) and # early-return paths (bar #) — consider extracting",
+      "file": "cmd/redline/review.go:28",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/review.go:28\u0000long-function\u0000cmdReview is # lines (threshold #, line #) — consider extracting",
+      "file": "cmd/redline/review.go:28",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "cmd/redline/session.go:100\u0000complexity\u0000resolveSession has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "cmd/redline/session.go:100",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/boundary/boundary_test.go\u0000duplicate-block\u0000#-stmt block duplicated in # places (impact #): internal/boundary/boundary_test.go:#-#, internal/pane/migrations/migrations.go:#-#, internal/review/calls.go:#-#, internal/run/run_test.go:#-#",
+      "file": "internal/boundary/boundary_test.go",
+      "rule": "duplicate-block",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/change/change.go:164\u0000linear-search-in-loop\u0000linear search inside a loop (line #) — repeated O(n) scans; build a map keyed by the compared value before the outer loop",
+      "file": "internal/change/change.go:164",
+      "rule": "linear-search-in-loop",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/cover/cover.go\u0000duplicate-block\u0000#-stmt block duplicated in # places (impact #): internal/cover/cover.go:#-#, internal/mutation/mutation.go:#-#, internal/pane/openapi/openapi.go:#-#",
+      "file": "internal/cover/cover.go",
+      "rule": "duplicate-block",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/envelope/budget.go\u0000duplicate-block\u0000#-stmt block duplicated in # places (impact #): internal/envelope/budget.go:#-#, internal/review/prompt.go:#-#",
+      "file": "internal/envelope/budget.go",
+      "rule": "duplicate-block",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/envelope/budget.go:215\u0000string-concat-in-loop\u0000string concatenation in loop (line #) — quadratic allocation; use strings.Builder",
+      "file": "internal/envelope/budget.go:215",
+      "rule": "string-concat-in-loop",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/envelope/budget.go:24\u0000stranded-comment\u0000doc comment at line # opens with \"Tokens\" but documents const charsPerTokenNum, charsPerTokenDen — the comment appears stranded from the declaration it describes",
+      "file": "internal/envelope/budget.go:24",
+      "rule": "stranded-comment",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/envelope/budget.go:246\u0000test-only-live\u0000exported function budget.go.Fit is referenced only from _test.go files — unexport it, move it into a test file, or delete it (or ignore if it is intentional external API)",
+      "file": "internal/envelope/budget.go:246",
+      "rule": "test-only-live",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/envelope/budget.go:368\u0000test-only-live\u0000exported function budget.go.FitAll is referenced only from _test.go files — unexport it, move it into a test file, or delete it (or ignore if it is intentional external API)",
+      "file": "internal/envelope/budget.go:368",
+      "rule": "test-only-live",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/benchmark.go:72\u0000test-only-live\u0000exported function benchmark.go.RatesOf is referenced only from _test.go files — unexport it, move it into a test file, or delete it (or ignore if it is intentional external API)",
+      "file": "internal/eval/benchmark.go:72",
+      "rule": "test-only-live",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/benchmark.go:88\u0000test-only-live\u0000exported function benchmark.go.Scoreboard is referenced only from _test.go files — unexport it, move it into a test file, or delete it (or ignore if it is intentional external API)",
+      "file": "internal/eval/benchmark.go:88",
+      "rule": "test-only-live",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/contribution.go:53\u0000test-only-live\u0000exported function contribution.go.Contributions is referenced only from _test.go files — unexport it, move it into a test file, or delete it (or ignore if it is intentional external API)",
+      "file": "internal/eval/contribution.go:53",
+      "rule": "test-only-live",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/contribution.go:84\u0000test-only-live\u0000exported function contribution.go.ContributionReport is referenced only from _test.go files — unexport it, move it into a test file, or delete it (or ignore if it is intentional external API)",
+      "file": "internal/eval/contribution.go:84",
+      "rule": "test-only-live",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/delivered.go:119\u0000test-only-live\u0000exported function delivered.go.ScoreDelivered is referenced only from _test.go files — unexport it, move it into a test file, or delete it (or ignore if it is intentional external API)",
+      "file": "internal/eval/delivered.go:119",
+      "rule": "test-only-live",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/delivered.go:140\u0000test-only-live\u0000exported function delivered.go.DeliveryReport is referenced only from _test.go files — unexport it, move it into a test file, or delete it (or ignore if it is intentional external API)",
+      "file": "internal/eval/delivered.go:140",
+      "rule": "test-only-live",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval.go\u0000data-clumps\u0000Parameter group [exp Expectation, c findings.ReviewComment, prior *findings.Report] appears in # functions; consider creating a struct",
+      "file": "internal/eval/eval.go",
+      "rule": "data-clumps",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval.go\u0000extract-candidate\u0000Score (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/eval/eval.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/eval/eval.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval.go:142\u0000error-not-wrapped\u0000Load returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/eval/eval.go:142",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval.go:165\u0000error-not-wrapped\u0000LoadOne returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/eval/eval.go:165",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval.go:172\u0000error-not-wrapped\u0000LoadOne returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/eval/eval.go:172",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval.go:241\u0000complexity\u0000Score has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/eval/eval.go:241",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval.go:352\u0000test-only-live\u0000exported function eval.go.ScoreSamples is referenced only from _test.go files — unexport it, move it into a test file, or delete it (or ignore if it is intentional external API)",
+      "file": "internal/eval/eval.go:352",
+      "rule": "test-only-live",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval_test.go\u0000extract-candidate\u0000TestSweep (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/eval/eval_test.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval_test.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/eval/eval_test.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval_test.go:419\u0000complexity\u0000TestSweep has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/eval/eval_test.go:419",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval_test.go:419\u0000hard-to-maintain\u0000TestSweep is hard to maintain (line #): # logic lines and complexity # (bar #) — consider extracting",
+      "file": "internal/eval/eval_test.go:419",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/eval/eval_test.go:419\u0000long-function\u0000TestSweep is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/eval/eval_test.go:419",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/findings/question.go:122\u0000stranded-comment\u0000doc comment at line # opens with \"Verdict\" but documents const VerifiedKept, VerifiedWithdrawn, VerifiedJustified, ... — the comment appears stranded from the declaration it describes",
+      "file": "internal/findings/question.go:122",
+      "rule": "stranded-comment",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/findings/review.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/findings/review.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/findings/review.go:139\u0000error-not-wrapped\u0000StampReview returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/findings/review.go:139",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/findings/review.go:143\u0000error-not-wrapped\u0000StampReview returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/findings/review.go:143",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/findings/review.go:150\u0000error-not-wrapped\u0000StampReview returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/findings/review.go:150",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/findings/review.go:155\u0000error-not-wrapped\u0000StampReview returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/findings/review.go:155",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/findings/review.go:173\u0000error-not-wrapped\u0000LoadReview returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/findings/review.go:173",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/findings/review.go:177\u0000error-not-wrapped\u0000LoadReview returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/findings/review.go:177",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/gitx/git.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:106\u0000error-not-wrapped\u0000WorktreeBlobs returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:106",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:119\u0000error-not-wrapped\u0000WorktreeBlobs returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:119",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:223\u0000error-not-wrapped\u0000Fetch returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:223",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:237\u0000error-not-wrapped\u0000AddWorktree returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:237",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:241\u0000error-not-wrapped\u0000AddWorktree returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:241",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:251\u0000error-not-wrapped\u0000AddWorktree returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:251",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:307\u0000error-not-wrapped\u0000CachedWorktrees returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:307",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:311\u0000error-not-wrapped\u0000CachedWorktrees returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:311",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:318\u0000error-not-wrapped\u0000CachedWorktrees returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:318",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:366\u0000error-not-wrapped\u0000Branch returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:366",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:387\u0000error-not-wrapped\u0000Clean returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:387",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:396\u0000error-not-wrapped\u0000Parent returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:396",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:409\u0000error-not-wrapped\u0000Log returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:409",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:454\u0000error-not-wrapped\u0000Stat returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:454",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:575\u0000unnecessary-nil-check\u0000func diffNoIndex: `err != nil` (line #) is always true — the guard at line # already returned on nil; drop the redundant check",
+      "file": "internal/gitx/git.go:575",
+      "rule": "unnecessary-nil-check",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:598\u0000error-not-wrapped\u0000File returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:598",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:607\u0000error-not-wrapped\u0000File returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:607",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:656\u0000error-not-wrapped\u0000ChangedPaths returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:656",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:660\u0000error-not-wrapped\u0000ChangedPaths returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:660",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/gitx/git.go:83\u0000error-not-wrapped\u0000Blobs returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/gitx/git.go:83",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/globmatch/glob.go:22\u0000stranded-comment\u0000doc comment at line # opens with \"compiled\" but documents var cacheMu, cache — the comment appears stranded from the declaration it describes",
+      "file": "internal/globmatch/glob.go:22",
+      "rule": "stranded-comment",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/graphify/expand.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/graphify/expand.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/graphify/graph.go\u0000duplicate-block\u0000#-stmt block duplicated in # places (impact #): internal/graphify/graph.go:#-#, internal/houserules/houserules.go:#-#, internal/pane/lint/delta.go:#-#",
+      "file": "internal/graphify/graph.go",
+      "rule": "duplicate-block",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/graphify/graph.go\u0000duplicate-block\u0000#-stmt block duplicated in # places (impact #): internal/graphify/graph.go:#-#, internal/pane/parity/parity.go:#-#, internal/review/synopsis.go:#-#",
+      "file": "internal/graphify/graph.go",
+      "rule": "duplicate-block",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/harness/harness.go:128\u0000pass-through-param\u0000parameter \"configRoot\" of Prepare (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/harness/harness.go:128",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/harness/harness.go:139\u0000pass-through-param\u0000parameter \"configRoot\" of PrepareWorktree (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/harness/harness.go:139",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/harness/harness.go:148\u0000error-not-wrapped\u0000PrepareWorktree returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/harness/harness.go:148",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/harness/harness.go:77\u0000error-not-wrapped\u0000Load returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/harness/harness.go:77",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/houserules/houserules.go:109\u0000pass-through-param\u0000parameter \"changed\" of Resolve (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/houserules/houserules.go:109",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/houserules/houserules.go:109\u0000pass-through-param\u0000parameter \"root\" of Resolve (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/houserules/houserules.go:109",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/houserules/houserules.go:112\u0000error-not-wrapped\u0000Resolve returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/houserules/houserules.go:112",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/instructions/instructions.go:116\u0000error-not-wrapped\u0000Resolve returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/instructions/instructions.go:116",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane\u0000untested-package\u0000package internal/pane has no _test.go files",
+      "file": "internal/pane",
+      "rule": "untested-package",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane/lint/delta.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/pane/lint/delta.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane/lint/delta.go:123\u0000error-not-wrapped\u0000Observe returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/pane/lint/delta.go:123",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane/lint/delta.go:135\u0000error-not-wrapped\u0000Observe returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/pane/lint/delta.go:135",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane/lint/delta.go:212\u0000complexity\u0000Diff has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/pane/lint/delta.go:212",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane/lint/delta.go:212\u0000hard-to-maintain\u0000Delta:Diff is hard to maintain (line #): # logic lines and complexity # (bar #) — consider extracting",
+      "file": "internal/pane/lint/delta.go:212",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane/lint/delta.go:212\u0000long-function\u0000Delta:Diff is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/pane/lint/delta.go:212",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane/lint/tools.go\u0000excessive-returns\u0000Function runTool has # items (threshold exceeded); Create a result struct to group return values",
+      "file": "internal/pane/lint/tools.go",
+      "rule": "excessive-returns",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane/migrations/migrations.go:132\u0000error-not-wrapped\u0000Observe returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/pane/migrations/migrations.go:132",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane/openapi/openapi.go:267\u0000complexity\u0000Diff has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/pane/openapi/openapi.go:267",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane/openapi/openapi.go:436\u0000complexity\u0000compare has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/pane/openapi/openapi.go:436",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane/parity/parity.go:127\u0000error-not-wrapped\u0000Observe returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/pane/parity/parity.go:127",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/pane/testdelta/testdelta.go\u0000data-clumps\u0000Parameter group [baseRev string, res *pane.Result, lines *[]string] appears in # functions; consider creating a struct",
+      "file": "internal/pane/testdelta/testdelta.go",
+      "rule": "data-clumps",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/post/post.go\u0000data-clumps\u0000Parameter group [f findings.Finding, head string, prof *Profile] appears in # functions; consider creating a struct",
+      "file": "internal/post/post.go",
+      "rule": "data-clumps",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/post/post.go\u0000duplicate-block\u0000#-stmt block duplicated in # places (impact #): internal/post/post.go:#-#, internal/post/post.go:#-#",
+      "file": "internal/post/post.go",
+      "rule": "duplicate-block",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/post/post.go\u0000extract-candidate\u0000walkthroughSection (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/post/post.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/post/post.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/post/post.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/post/post.go:1114\u0000linear-search-in-loop\u0000linear search inside a loop (line #) — repeated O(n) scans; build a map keyed by the compared value before the outer loop",
+      "file": "internal/post/post.go:1114",
+      "rule": "linear-search-in-loop",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/post/post.go:474\u0000pass-through-param\u0000parameter \"head\" of buildBody (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/post/post.go:474",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/post/post.go:474\u0000pass-through-param\u0000parameter \"prof\" of buildBody (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/post/post.go:474",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/post/post.go:673\u0000complexity\u0000walkthroughSection has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/post/post.go:673",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/post/post.go:673\u0000hard-to-maintain\u0000walkthroughSection is hard to maintain (line #): # logic lines and complexity # (bar #) — consider extracting",
+      "file": "internal/post/post.go:673",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/post/post.go:673\u0000long-function\u0000walkthroughSection is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/post/post.go:673",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/postmortem/postmortem.go:309\u0000error-not-wrapped\u0000Write returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/postmortem/postmortem.go:309",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/postmortem/postmortem.go:313\u0000error-not-wrapped\u0000Write returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/postmortem/postmortem.go:313",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/postmortem/postmortem.go:326\u0000error-not-wrapped\u0000Load returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/postmortem/postmortem.go:326",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/postmortem/render.go:41\u0000complexity\u0000header has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/postmortem/render.go:41",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/postmortem/render.go:412\u0000string-concat-in-loop\u0000string concatenation in loop (line #) — quadratic allocation; use strings.Builder",
+      "file": "internal/postmortem/render.go:412",
+      "rule": "string-concat-in-loop",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/precedent/precedent.go\u0000data-clumps\u0000Parameter group [dirs *dirCache, rel string, inChange map[string]bool] appears in # functions; consider creating a struct",
+      "file": "internal/precedent/precedent.go",
+      "rule": "data-clumps",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/precedent/precedent.go\u0000excessive-returns\u0000Function read has # items (threshold exceeded); Create a result struct to group return values",
+      "file": "internal/precedent/precedent.go",
+      "rule": "excessive-returns",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/precedent/precedent.go:104\u0000error-not-wrapped\u0000Resolve returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/precedent/precedent.go:104",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/precedent/precedent.go:109\u0000error-not-wrapped\u0000Resolve returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/precedent/precedent.go:109",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/precedent/precedent.go:143\u0000error-not-wrapped\u0000Resolve returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/precedent/precedent.go:143",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/precedent/precedent.go:84\u0000complexity\u0000Resolve has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/precedent/precedent.go:84",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/precedent/precedent.go:84\u0000hard-to-maintain\u0000Resolve is hard to maintain (line #): # logic lines and complexity # (bar #) — consider extracting",
+      "file": "internal/precedent/precedent.go:84",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/precedent/precedent.go:84\u0000long-function\u0000Resolve is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/precedent/precedent.go:84",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/provider/provider.go:112\u0000error-not-wrapped\u0000Detect returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/provider/provider.go:112",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/provider/provider.go:119\u0000linear-search-in-loop\u0000linear search inside a loop (line #) — repeated O(n) scans; build a map keyed by the compared value before the outer loop",
+      "file": "internal/provider/provider.go:119",
+      "rule": "linear-search-in-loop",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/provider/provider.go:275\u0000error-not-wrapped\u0000Parse returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/provider/provider.go:275",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/html.go\u0000extract-candidate\u0000buildView (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/report/html.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/html.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/report/html.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/html.go:193\u0000error-not-wrapped\u0000HTML returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/report/html.go:193",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/html.go:197\u0000error-not-wrapped\u0000HTML returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/report/html.go:197",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/html.go:202\u0000complexity\u0000buildView has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/report/html.go:202",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/html.go:202\u0000hard-to-maintain\u0000buildView is hard to maintain (line #): # logic lines and complexity # (bar #) — consider extracting",
+      "file": "internal/report/html.go:202",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/html.go:202\u0000long-function\u0000buildView is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/report/html.go:202",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/markdown.go:277\u0000complexity\u0000section# has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/report/markdown.go:277",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/markdown.go:390\u0000stranded-comment\u0000doc comment at line # opens with \"emitEvidence\" but documents func emitRelated — the comment appears stranded from the declaration it describes",
+      "file": "internal/report/markdown.go:390",
+      "rule": "stranded-comment",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/serve.go\u0000data-clumps\u0000Parameter group [outDir string, browse bool, port int] appears in # functions; consider creating a struct",
+      "file": "internal/report/serve.go",
+      "rule": "data-clumps",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/serve.go:139\u0000error-not-wrapped\u0000Open returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/report/serve.go:139",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/serve.go:144\u0000error-not-wrapped\u0000Open returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/report/serve.go:144",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/serve.go:158\u0000error-not-wrapped\u0000Stop returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/report/serve.go:158",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/serve.go:249\u0000pass-through-param\u0000parameter \"outDir\" of OpenDir (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/report/serve.go:249",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/serve.go:249\u0000test-only-live\u0000exported function serve.go.OpenDir is referenced only from _test.go files — unexport it, move it into a test file, or delete it (or ignore if it is intentional external API)",
+      "file": "internal/report/serve.go:249",
+      "rule": "test-only-live",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/serve.go:300\u0000pass-through-param\u0000parameter \"abs\" of spawnServer (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/report/serve.go:300",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/serve.go:54\u0000error-not-wrapped\u0000Serve returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/report/serve.go:54",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/serve.go:68\u0000naked-goroutine\u0000Serve: goroutine at line # has no visible lifecycle — no context, done channel, or WaitGroup; callers cannot cancel it or know it finished",
+      "file": "internal/report/serve.go:68",
+      "rule": "naked-goroutine",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/serve.go:75\u0000error-not-wrapped\u0000Serve returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/report/serve.go:75",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/serve_test.go:235\u0000sleep-in-test\u0000time.Sleep in test (line #) — sleep-based synchronization is flaky; poll with a deadline, or use channels or a fake clock",
+      "file": "internal/report/serve_test.go:235",
+      "rule": "sleep-in-test",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/report/serve_test.go:40\u0000sleep-in-test\u0000time.Sleep in test (line #) — sleep-based synchronization is flaky; poll with a deadline, or use channels or a fake clock",
+      "file": "internal/report/serve_test.go:40",
+      "rule": "sleep-in-test",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/calls.go\u0000extract-candidate\u0000validate (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/review/calls.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/calls.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/review/calls.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/calls.go:478\u0000complexity\u0000validate has cyclomatic complexity # (threshold #, line #) — dispatch table: # cases, worst case #; per-branch score # is under threshold",
+      "file": "internal/review/calls.go:478",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/explore.go:128\u0000complexity\u0000runExplore has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/review/explore.go:128",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/explore.go:128\u0000hard-to-maintain\u0000runExplore is hard to maintain (line #): # logic lines and complexity # (bar #) — consider extracting",
+      "file": "internal/review/explore.go:128",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/explore.go:128\u0000long-function\u0000runExplore is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/review/explore.go:128",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/ledger.go:132\u0000error-not-wrapped\u0000Record returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/review/ledger.go:132",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/ledger.go:135\u0000error-not-wrapped\u0000Record returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/review/ledger.go:135",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/ledger.go:141\u0000error-not-wrapped\u0000Record returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/review/ledger.go:141",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/ledger.go:145\u0000error-not-wrapped\u0000Record returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/review/ledger.go:145",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/ledger.go:156\u0000error-not-wrapped\u0000ReadLedger returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/review/ledger.go:156",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/loop.go:160\u0000linear-search-in-loop\u0000linear search inside a loop (line #) — repeated O(n) scans; build a map keyed by the compared value before the outer loop",
+      "file": "internal/review/loop.go:160",
+      "rule": "linear-search-in-loop",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/loop.go:91\u0000complexity\u0000converse has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/review/loop.go:91",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/loop.go:91\u0000hard-to-maintain\u0000converse is hard to maintain (line #): # logic lines and complexity # (bar #) — consider extracting",
+      "file": "internal/review/loop.go:91",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/loop.go:91\u0000long-function\u0000converse is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/review/loop.go:91",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/openai_test.go\u0000excessive-returns\u0000Function openAIServer has # items (threshold exceeded); Create a result struct to group return values",
+      "file": "internal/review/openai_test.go",
+      "rule": "excessive-returns",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/prompt.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/review/prompt.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/prompt.go:554\u0000stranded-comment\u0000doc comment at line # opens with \"build\" but documents func buildDeferred — the comment appears stranded from the declaration it describes",
+      "file": "internal/review/prompt.go:554",
+      "rule": "stranded-comment",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go\u0000data-clumps\u0000Parameter group [ctx context.Context, in Input, opts Options, res *Result] appears in # functions; consider creating a struct",
+      "file": "internal/review/review.go",
+      "rule": "data-clumps",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go\u0000extract-candidate\u0000Assemble (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/review/review.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go\u0000extract-candidate\u0000Run (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/review/review.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go\u0000extract-candidate\u0000runOnce (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/review/review.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/review/review.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go:1038\u0000long-function\u0000Result:absorb is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/review/review.go:1038",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go:1160\u0000test-only-live\u0000exported function review.go.ParseReply is referenced only from _test.go files — unexport it, move it into a test file, or delete it (or ignore if it is intentional external API)",
+      "file": "internal/review/review.go:1160",
+      "rule": "test-only-live",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go:1163\u0000error-not-wrapped\u0000ParseReply returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/review/review.go:1163",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go:1486\u0000error-not-wrapped\u0000Merge returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/review/review.go:1486",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go:791\u0000complexity\u0000Run has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/review/review.go:791",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go:791\u0000hard-to-maintain\u0000Run is hard to maintain (line #): # logic lines and complexity # (bar #) and # early-return paths (bar #) — consider extracting",
+      "file": "internal/review/review.go:791",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go:791\u0000long-function\u0000Run is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/review/review.go:791",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go:791\u0000pass-through-param\u0000parameter \"ctx\" of Run (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/review/review.go:791",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go:791\u0000pass-through-param\u0000parameter \"in\" of Run (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/review/review.go:791",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go:801\u0000error-not-wrapped\u0000Run returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/review/review.go:801",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go:891\u0000error-not-wrapped\u0000Run returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/review/review.go:891",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/review.go:912\u0000pass-through-param\u0000parameter \"ctx\" of runJudged (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/review/review.go:912",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/rule.go\u0000extract-candidate\u0000Verify (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/review/rule.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/rule.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/review/rule.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/rule.go:324\u0000long-function\u0000Verify is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/review/rule.go:324",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/rule.go:78\u0000test-only-live\u0000exported function rule.go.QuestionsFor is referenced only from _test.go files — unexport it, move it into a test file, or delete it (or ignore if it is intentional external API)",
+      "file": "internal/review/rule.go:78",
+      "rule": "test-only-live",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/samples.go\u0000duplicate-block\u0000#-stmt block duplicated in # places (impact #): internal/review/samples.go:#-#, internal/review/staged.go:#-#",
+      "file": "internal/review/samples.go",
+      "rule": "duplicate-block",
+      "count": 2
+    },
+    {
+      "fingerprint": "internal/review/samples.go:46\u0000long-function\u0000runSamples is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/review/samples.go:46",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/samples_prime_test.go:59\u0000sleep-in-test\u0000time.Sleep in test (line #) — sleep-based synchronization is flaky; poll with a deadline, or use channels or a fake clock",
+      "file": "internal/review/samples_prime_test.go:59",
+      "rule": "sleep-in-test",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/staged.go\u0000deep-nesting\u0000selectCohorts has nesting depth # (threshold #, line #) — consider extracting inner blocks",
+      "file": "internal/review/staged.go",
+      "rule": "deep-nesting",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/staged.go\u0000excessive-returns\u0000Function describedBy has # items (threshold exceeded); Create a result struct to group return values",
+      "file": "internal/review/staged.go",
+      "rule": "excessive-returns",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/staged.go\u0000extract-candidate\u0000fanOut (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/review/staged.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/staged.go\u0000extract-candidate\u0000repairPartition (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/review/staged.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/staged.go\u0000extract-candidate\u0000runStaged (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/review/staged.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/staged.go\u0000extract-candidate\u0000selectCohorts (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/review/staged.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/staged.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/review/staged.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/staged.go:197\u0000pass-through-param\u0000parameter \"ctx\" of runStaged (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/review/staged.go:197",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/staged.go:294\u0000long-function\u0000fanOut is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/review/staged.go:294",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/staged.go:294\u0000pass-through-param\u0000parameter \"ctx\" of fanOut (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/review/staged.go:294",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/synopsis.go\u0000excessive-returns\u0000Function describe has # items (threshold exceeded); Create a result struct to group return values",
+      "file": "internal/review/synopsis.go",
+      "rule": "excessive-returns",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/review/synopsis.go:75\u0000pass-through-param\u0000parameter \"ctx\" of describe (line #) is forwarded through # call layers without being used — prop drilling; consider a params struct or restructuring the call chain",
+      "file": "internal/review/synopsis.go:75",
+      "rule": "pass-through-param",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/prepare.go:22\u0000error-not-wrapped\u0000Prepare returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/prepare.go:22",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/prepare.go:26\u0000error-not-wrapped\u0000Prepare returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/prepare.go:26",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/prepare.go:43\u0000error-not-wrapped\u0000Prepare returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/prepare.go:43",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/prepare.go:47\u0000error-not-wrapped\u0000Prepare returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/prepare.go:47",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/prepare.go:51\u0000error-not-wrapped\u0000Prepare returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/prepare.go:51",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go\u0000duplicate-block\u0000#-stmt block duplicated in # places (impact #): internal/run/run.go:#-#, internal/run/run.go:#-#",
+      "file": "internal/run/run.go",
+      "rule": "duplicate-block",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go\u0000extract-candidate\u0000Run (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/run/run.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go\u0000extract-candidate\u0000resolveContext (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/run/run.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/run/run.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:101\u0000complexity\u0000Run has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/run/run.go:101",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:101\u0000hard-to-maintain\u0000Run is hard to maintain (line #): # logic lines and complexity # (bar #) and # early-return paths (bar #) — consider extracting",
+      "file": "internal/run/run.go:101",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:101\u0000long-function\u0000Run is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/run/run.go:101",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:107\u0000error-not-wrapped\u0000Run returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/run.go:107",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:124\u0000error-not-wrapped\u0000Run returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/run.go:124",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:141\u0000error-not-wrapped\u0000Run returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/run.go:141",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:151\u0000error-not-wrapped\u0000Run returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/run.go:151",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:162\u0000error-not-wrapped\u0000Run returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/run.go:162",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:169\u0000error-not-wrapped\u0000Run returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/run.go:169",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:173\u0000error-not-wrapped\u0000Run returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/run.go:173",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:427\u0000complexity\u0000resolveContext has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/run/run.go:427",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:427\u0000hard-to-maintain\u0000resolveContext is hard to maintain (line #): # logic lines and complexity # (bar #) — consider extracting",
+      "file": "internal/run/run.go:427",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:427\u0000long-function\u0000resolveContext is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/run/run.go:427",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run.go:856\u0000stranded-comment\u0000doc comment at line # opens with \"resolveRef\" but documents var defaultRefs — the comment appears stranded from the declaration it describes",
+      "file": "internal/run/run.go:856",
+      "rule": "stranded-comment",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run_test.go\u0000extract-candidate\u0000TestAHandWrittenReviewIsStampedSoALaterChangeRefusesIt (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/run/run_test.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run_test.go\u0000extract-candidate\u0000TestReapplyReviewClearsStaleReviewNotesAndSurfacesABrokenRuling (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/run/run_test.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/run_test.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/run/run_test.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/session.go:46\u0000error-not-wrapped\u0000SaveSession returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/session.go:46",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/run/session.go:54\u0000error-not-wrapped\u0000SaveSession returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/run/session.go:54",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/scout/answer.go\u0000duplicate-block\u0000#-stmt block duplicated in # places (impact #): internal/scout/answer.go:#-#, internal/scout/answer.go:#-#, internal/scout/answer.go:#-#",
+      "file": "internal/scout/answer.go",
+      "rule": "duplicate-block",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/scout/openai.go\u0000duplicate-block\u0000#-stmt block duplicated in # places (impact #): internal/scout/openai.go:#-#, internal/scout/scout.go:#-#",
+      "file": "internal/scout/openai.go",
+      "rule": "duplicate-block",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/scout/openai.go:116\u0000complexity\u0000driveOpenAI has cyclomatic complexity # (threshold #, line #) — consider extracting",
+      "file": "internal/scout/openai.go:116",
+      "rule": "complexity",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/scout/openai.go:116\u0000hard-to-maintain\u0000driveOpenAI is hard to maintain (line #): # logic lines and complexity # (bar #) — consider extracting",
+      "file": "internal/scout/openai.go:116",
+      "rule": "hard-to-maintain",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/scout/openai.go:116\u0000long-function\u0000driveOpenAI is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/scout/openai.go:116",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/scout/scout.go:229\u0000error-not-wrapped\u0000Run returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/scout/scout.go:229",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/scout/scout.go:238\u0000long-function\u0000driveAnthropic is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/scout/scout.go:238",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/scout/tools.go\u0000extract-candidate\u0000grepTree (lines #-#, # lines, complexity #, priority #/#) — consider extracting a method",
+      "file": "internal/scout/tools.go",
+      "rule": "extract-candidate",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/scout/tools.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/scout/tools.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/scout/tools.go:569\u0000long-function\u0000grepTree is # lines (threshold #, line #) — consider extracting",
+      "file": "internal/scout/tools.go:569",
+      "rule": "long-function",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/target/target.go\u0000file-size\u0000# lines (limit #, over by #)",
+      "file": "internal/target/target.go",
+      "rule": "file-size",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/target/target.go:435\u0000error-not-wrapped\u0000Matches returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/target/target.go:435",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/target/target.go:439\u0000error-not-wrapped\u0000Matches returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/target/target.go:439",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/target/target.go:83\u0000error-not-wrapped\u0000Resolve returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/target/target.go:83",
+      "rule": "error-not-wrapped",
+      "count": 1
+    },
+    {
+      "fingerprint": "internal/target/target.go:87\u0000error-not-wrapped\u0000Resolve returns bare err at line # — wrap with fmt.Errorf(\"\u003ccontext\u003e: %w\", err) to preserve trace",
+      "file": "internal/target/target.go:87",
+      "rule": "error-not-wrapped",
+      "count": 1
+    }
+  ]
+}

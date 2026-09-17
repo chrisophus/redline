@@ -14,7 +14,42 @@ walk:
 # high-blast-radius (noise) and untested-function (redundant with Redline's
 # own coverage pane) are turned off. Both are info-tier rules that surface
 # in the report because Redline's gorefactor pane reads `lint --json`.
+#
+# god-object, large-class and high-coupling read Redline's shapes wrong.
+# Result (51 fields), Options (30) and Entry (26) are data carriers, not
+# objects with behavior to break up; cmd/redline's fan-out of 13 is what an
+# entry point is; gitx.Repo's 28 methods are one cohesive wrapper over git.
+#
+# funcorder-function and funcorder-struct-method ask for exported declarations
+# before unexported ones. Go states no such convention, and these files are
+# ordered as an argument -- the entry point, then what it calls, in the order a
+# reader meets them. 86 findings is the whole codebase saying so, and taking
+# the advice would reorder every file against the way it reads.
 lint:
   disable:
     - high-blast-radius
     - untested-function
+    - funcorder-function
+    - funcorder-struct-method
+    - god-object
+    - large-class
+    - high-coupling
+
+# The backlog ratchet. Every finding standing when this was locked is in
+# .gorefactor-lint-baseline.json and does not fail the gate; a new or worsened
+# one does. The fingerprints are line-number independent, so moving code does
+# not read as a new finding.
+#
+# error-not-wrapped (86), file-size (15) and duplicate-block (13) are the bulk
+# of it, and all three are real: nothing in .golangci.yml measures file length,
+# duplication or maintainability, so gorefactor is the only reading Redline
+# gets on them. They are baselined rather than disabled so new code is still
+# held to them, and rather than fixed because 86 mechanical rewrites would
+# touch every package for an error chain that mostly already carries its
+# context -- os.ReadFile returns a *PathError with the path in it.
+#
+# After a cleanup wave, re-lock with `gorefactor lint . --write-baseline` and
+# commit the shrunken file. CI enforces that it may only shrink.
+baseline:
+  enabled: true
+  file: .gorefactor-lint-baseline.json
