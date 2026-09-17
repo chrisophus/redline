@@ -146,6 +146,10 @@ type Options struct {
 	Mode string
 	// MaxTurns bounds the explore loop regardless of spend.
 	MaxTurns int
+	// DeferContext leaves the resolved context out of the prompt, lists it
+	// beside each file's diff, and lets every pass read an entry with
+	// get_context. See deferred.go.
+	DeferContext bool
 	// CallTurns bounds one pass of the turn loop every other call runs, and
 	// DefaultCallTurns applies when it is zero. See loop.go.
 	CallTurns int
@@ -570,6 +574,9 @@ type Result struct {
 	Questions []Question         `json:"-"`
 	Answers   *envelope.Envelope `json:"-"`
 
+	// deferred is the context held back behind get_context, in id order, and
+	// nil when the context went into the prompt.
+	deferred []deferredEntry
 	// expect is what a pass has to record to be visibly complete, set by the
 	// requests whose completeness can be checked. A pass that has recorded all
 	// of it ends there, without waiting for done.
@@ -616,6 +623,9 @@ func (r *Result) Summary() string {
 	if r.Rejected > 0 {
 		s += fmt.Sprintf(" rejected=%d", r.Rejected)
 	}
+	if r.Fetched > 0 && r.CallTurns > 0 {
+		s += fmt.Sprintf(" context-fetched=%d", r.Fetched)
+	}
 	if len(r.Stopped) > 0 {
 		s += fmt.Sprintf(" stopped-early=%d", len(r.Stopped))
 	}
@@ -651,7 +661,9 @@ func (r *Result) Summary() string {
 // actually went out.
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
-	system := systemFor(opts, StageReview) + oneShotAddendum + languageFragments(in.Envelopes)
+	// No line saying the material below is everything there is: a pass can
+	// ask for held-back context, and the scout's answers arrive later still.
+	system := systemFor(opts, StageReview) + languageFragments(in.Envelopes)
 	// The judging instruction rides inside the shared prompt block, the part
 	// every pass reads from the cache. The describing instruction does not:
 	// a findings pass that read "say what the change is" beside "the overview
@@ -666,7 +678,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	describe := describingTail
 	// The block that says which calls answer the pass goes out with every
 	// request, so it is priced with the fixed parts.
-	calls := callsBlock(StageReview)
+	calls := callsBlock(StageReview, opts.DeferContext)
 	// Every stage sends the catalogue on both wires, so it is reserved for
 	// unconditionally. This was once zeroed for a brief run, which was right on
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
@@ -689,6 +701,11 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	}
 	budget := envelope.FitAllFilter(in.Envelopes, room, in.shownLines(), in.contextFilter())
 	prompt := in.build(budget)
+	var deferred []deferredEntry
+	if opts.DeferContext {
+		deferred = deferEntries(in, budget.Kept)
+		prompt = in.buildDeferred(deferred)
+	}
 	parts := promptParts(in, opts, system, budget)
 	est := envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
@@ -716,6 +733,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		// and the other is an empty string groups into two sets by accident.
 		Pipeline:       opts.Shape(),
 		Budget:         budget,
+		deferred:       deferred,
 		FilesShown:     len(in.ShownFiles()),
 		Prompt:         prompt + tail,
 		Tail:           describe + note,
@@ -957,6 +975,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	res.Turns = 1
 	res.CallTurns += c.turns
 	res.Rejected += c.rejected
+	res.Fetched += c.fetched
 	if strings.TrimSpace(c.thinking) != "" {
 		pass := stage
 		if opts.passLabel != "" {

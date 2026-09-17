@@ -38,7 +38,7 @@ func promptParts(in Input, opts Options, system string, budget envelope.Budgeted
 		// is sized apart because it is the part a reader can change: the
 		// describing call and the judging call send the same packet and differ
 		// only here.
-		{"this pass", envelope.EstimateTokens(judgingTail + describingTail + callsBlock(StageReview))},
+		{"this pass", envelope.EstimateTokens(judgingTail + describingTail + callsBlock(StageReview, opts.DeferContext))},
 		{"note", envelope.EstimateTokens(in.noteTail())},
 	}
 }

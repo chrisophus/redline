@@ -90,7 +90,7 @@ const nudgeText = "Answer with the tool calls this pass asks for, not in prose. 
 // completion, the shape the rest of the review reads.
 func converse(ctx context.Context, opts Options, res *Result, conv conversation) (completion, error) {
 	stage := res.stage()
-	col := newCollector(stage, res.expect)
+	col := newCollector(stage, res.expect, res.deferred)
 	var c completion
 	var total Usage
 	var thinking strings.Builder
@@ -157,6 +157,11 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 			for _, call := range r.calls {
 				byID[call.ID] = call
 			}
+			for _, call := range r.calls {
+				if call.Name == CallContext {
+					opts.Debug(fmt.Sprintf("%s turn %d: get_context %s", stage, turn, string(call.Input)))
+				}
+			}
 			for _, res := range results {
 				if res.isError {
 					call := byID[res.id]
@@ -203,7 +208,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 				// parser, which reads a review out of a reply nothing
 				// constrained and says what is wrong when it cannot.
 				c.text = r.text
-				c.usage, c.thinking, c.rejected = total, thinking.String(), col.rejected
+				c.usage, c.thinking, c.rejected, c.fetched = total, thinking.String(), col.rejected, col.fetched
 				return c, nil
 			}
 			c.stopped = StoppedNoCalls
@@ -212,7 +217,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 		conv.answer(r, results)
 		gov.answered(results)
 	}
-	c.usage, c.thinking, c.rejected = total, thinking.String(), col.rejected
+	c.usage, c.thinking, c.rejected, c.fetched = total, thinking.String(), col.rejected, col.fetched
 	if !c.refused && !c.truncated {
 		c.text, c.fromTool = col.body(), true
 	}
@@ -246,6 +251,7 @@ func (r *Result) foldCalls(other *Result) {
 	}
 	r.CallTurns += other.CallTurns
 	r.Rejected += other.Rejected
+	r.Fetched += other.Fetched
 	r.Stopped = append(r.Stopped, other.Stopped...)
 	r.Thinking = append(r.Thinking, other.Thinking...)
 }

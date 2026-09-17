@@ -148,7 +148,7 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 				{Role: "system", Content: res.System},
 				// One string, because this protocol's user turn is one string
 				// and there is no breakpoint here to keep the parts apart for.
-				{Role: "user", Content: res.Prompt + callsBlock(res.stage()) + res.Tail},
+				{Role: "user", Content: res.Prompt + callsBlock(res.stage(), res.deferred != nil) + res.Tail},
 			},
 			Tools:           openAITools(),
 			ToolChoice:      choice,

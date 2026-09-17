@@ -146,18 +146,6 @@ func systemFor(opts Options, stage string) string {
 	return systemPrompt
 }
 
-// oneShotAddendum tells the one-shot pass its material is complete. It sat in
-// systemPrompt until explore mode inherited it there, and was told its context
-// was complete in the same block that handed it a catalogue and a fetch tool.
-//
-// It also said the pass had no tools, which stopped being true when every stage
-// began answering through the tool catalogue. A pinned call never noticed. A
-// call asked to think is not pinned, and was told in one block that it had no
-// tools and in the next to answer by calling one.
-//
-//go:embed prompts/oneshot-addendum.md
-var oneShotAddendum string
-
 // synopsisPrompt is the describing stage's own turn, appended after the shared
 // prefix so the block the cache is keyed on does not move.
 //
@@ -573,6 +561,20 @@ func oneLine(s string) string {
 
 // build assembles the whole user-side prompt. The context block sits before
 // the diff so the model reads what surrounds the change before the change.
+// buildDeferred is build with the context held back: the same sections, no
+// context block, and an index of what was held back beside each file's diff.
+func (in Input) buildDeferred(entries []deferredEntry) string {
+	var b strings.Builder
+	b.WriteString(in.changeSection())
+	b.WriteString(in.priorsSection())
+	b.WriteString(in.heardSection())
+	b.WriteString(in.coverageSection())
+	b.WriteString(in.absentSection())
+	b.WriteString(changeIndex(entries))
+	b.WriteString(in.diffSectionWith(func(file string) string { return fileIndex(entries, file) }))
+	return b.String()
+}
+
 func (in Input) build(budget envelope.Budgeted) string {
 	var b strings.Builder
 	b.WriteString(in.changeSection())
@@ -1024,6 +1026,12 @@ func (in Input) absentSection() string {
 }
 
 func (in Input) diffSection() string {
+	return in.diffSectionWith(nil)
+}
+
+// diffSectionWith is diffSection with something to add after each file, the
+// index of held-back context when there is one.
+func (in Input) diffSectionWith(after func(file string) string) string {
 	if in.Change == nil || len(in.Change.Files) == 0 {
 		return ""
 	}
@@ -1046,6 +1054,9 @@ func (in Input) diffSection() string {
 			if f.Diff != "" {
 				fmt.Fprintf(&b, "```diff\n%s\n```\n\n", strings.TrimRight(f.Diff, "\n"))
 			}
+			if after != nil {
+				b.WriteString(after(f.Path))
+			}
 			continue
 		}
 		// The whole file is below, so every added line is already about to
@@ -1066,6 +1077,9 @@ func (in Input) diffSection() string {
 		}
 		fmt.Fprintf(&b, "\nThe file after the change:\n\n```%s\n%s\n```\n\n",
 			f.Language, strings.TrimRight(f.Head, "\n"))
+		if after != nil {
+			b.WriteString(after(f.Path))
+		}
 	}
 	return b.String()
 }

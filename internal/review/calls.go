@@ -77,6 +77,11 @@ func callTools() []callTool {
 		{CallRule, "Record the ruling on one finding.",
 			flatObject(propsOf(rulingItemSchema(), "finding", "analysis", "verdict", "evidence", "why"),
 				"finding", "analysis", "verdict", "evidence", "why")},
+		{CallContext, "Return the full text of context entries listed beside the diff, by id.",
+			flatObject(map[string]any{"ids": map[string]any{
+				"type": "array", "items": map[string]any{"type": "string"},
+				"description": "Ids from the index, for example [\"ctx3\", \"ctx7\"].",
+			}}, "ids")},
 		{CallDone, "End this pass.",
 			map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}},
 	}
@@ -113,16 +118,19 @@ func flatObject(props map[string]any, required ...string) map[string]any {
 // callsFor is which tools a pass may call, besides done. A describing pass
 // that files a comment has done the next pass's job without its instruction,
 // so the call is refused rather than quietly recorded.
+//
+// get_context is taken by every pass: it records nothing, and any pass may
+// want to read what was held back.
 func callsFor(stage string) []string {
 	switch stage {
 	case StageSynopsis:
-		return []string{CallOverview, CallFile, CallCohort}
+		return []string{CallOverview, CallFile, CallCohort, CallContext}
 	case StageFindings:
-		return []string{CallComment}
+		return []string{CallComment, CallContext}
 	case StageRuling:
-		return []string{CallRule}
+		return []string{CallRule, CallContext}
 	}
-	return []string{CallOverview, CallFile, CallComment}
+	return []string{CallOverview, CallFile, CallComment, CallContext}
 }
 
 // callsBlock tells a pass how its answer is taken and which calls it takes. It
@@ -131,7 +139,7 @@ func callsFor(stage string) []string {
 // decide it, one asking for every call in one reply and one asking for one
 // area at a time, each moved the reasoning around less than they moved the
 // calls. It goes after the cached prompt, so every pass reads the same entry.
-func callsBlock(stage string) string {
+func callsBlock(stage string, deferred bool) string {
 	var takes string
 	switch stage {
 	case StageSynopsis:
@@ -145,7 +153,16 @@ func callsBlock(stage string) string {
 	}
 	return "\n\n## How to answer\n\nAnswer by calling the tools. Every call is answered: \"Recorded.\" when it is " +
 		"taken, or what is wrong with it when it is not. Call done when this pass is finished.\n\n" +
-		"This pass takes " + takes + ".\n"
+		"This pass takes " + takes + "." + readsContext(deferred) + "\n"
+}
+
+// readsContext is the calls block's line about held-back context, when there
+// is any to read.
+func readsContext(deferred bool) string {
+	if !deferred {
+		return ""
+	}
+	return " Any pass can call get_context to read the context listed beside the diff."
 }
 
 // passExpect is what makes a pass visibly complete. The describing pass is
@@ -171,14 +188,18 @@ type collector struct {
 	schemas  map[string]map[string]any
 	rejected int
 	expect   passExpect
+	// deferred is the held-back context get_context reads from, and fetched
+	// how many entries the pass has asked for.
+	deferred []deferredEntry
+	fetched  int
 }
 
-func newCollector(stage string, expect passExpect) *collector {
+func newCollector(stage string, expect passExpect, deferred []deferredEntry) *collector {
 	schemas := map[string]map[string]any{}
 	for _, t := range callTools() {
 		schemas[t.Name] = t.Schema
 	}
-	return &collector{stage: stage, schemas: schemas, expect: expect}
+	return &collector{stage: stage, schemas: schemas, expect: expect, deferred: deferred}
 }
 
 // complete reports whether the pass has recorded everything its expectation
@@ -251,6 +272,17 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 			rejected++
 			results = append(results, callResult{id: call.ID, isError: true,
 				content: "Not recorded: " + strings.Join(problems, "; ") + ". Send this call again with that fixed."})
+			continue
+		}
+		if call.Name == CallContext {
+			// Answered with the context itself. Nothing is recorded, so it
+			// neither completes a pass nor counts toward one.
+			var asked struct {
+				IDs []string `json:"ids"`
+			}
+			_ = json.Unmarshal(call.Input, &asked)
+			c.fetched += len(asked.IDs)
+			results = append(results, callResult{id: call.ID, content: fetchDeferred(c.deferred, call.Input)})
 			continue
 		}
 		if call.Name == CallDone {

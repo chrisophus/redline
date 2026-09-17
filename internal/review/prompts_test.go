@@ -20,7 +20,6 @@ func TestEveryPromptIsLoaded(t *testing.T) {
 		{"judging.md", judgingTail},
 		{"describing.md", describingTail},
 		{"brief.md", briefPrompt},
-		{"oneshot-addendum.md", oneShotAddendum},
 		{"synopsis.md", synopsisPrompt},
 		{"findings.md", findingsPrompt},
 		{"note.md", notePrompt},

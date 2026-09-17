@@ -39,6 +39,8 @@ type completion struct {
 	turns    int
 	rejected int
 	stopped  string
+	// fetched is how many held-back context entries the pass asked for.
+	fetched int
 	// refused is set when the model declined the request. detail says why,
 	// when the API said.
 	refused bool
@@ -209,7 +211,7 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	}
 	// Which calls answer this pass, after the cached prompt so every pass of a
 	// run reads the same entry, and ahead of the pass's own instruction.
-	blocks = append(blocks, prefix, anthropic.NewTextBlock(callsBlock(res.stage())))
+	blocks = append(blocks, prefix, anthropic.NewTextBlock(callsBlock(res.stage(), res.deferred != nil)))
 	if res.Tail != "" {
 		blocks = append(blocks, anthropic.NewTextBlock(res.Tail))
 	}
