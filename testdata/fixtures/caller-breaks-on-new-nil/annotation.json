@@ -1,0 +1,17 @@
+{
+  "name": "caller-breaks-on-new-nil",
+  "origin": "synthetic, built by make-synthetic.sh",
+  "summary": "FindUser used to return an empty user for a missing id and now returns nil, with its doc comment updated to say so. EmailFor, in a file the change does not touch, dereferences the result without a check, so a missing id now panics.",
+  "clean": false,
+  "why_this_fixture_exists": "Every other labelled defect in the set can be found from the diff, or needs a file no context provider offers. This one needs context and the provider offers it: the diff is a correct, documented change, and the crash is only visible from the caller, which the Go provider returns as caller context. It measures whether a reviewer reads beyond the diff when the diff changes a contract, and, with --defer-context, whether it fetches the caller when it is not in the prompt.",
+  "expect": [
+    {
+      "key": "unchanged-caller-dereferences-new-nil",
+      "what": "FindUser now returns nil for a missing id. EmailFor in internal/api/handler.go calls it and reads u.Email with no nil check, so a missing id panics. The caller is not in the diff.",
+      "all_of": ["nil"],
+      "any_of": ["EmailFor", "handler", "caller", "dereference", "panic", "u.Email"]
+    }
+  ],
+  "quiet": [],
+  "reject": []
+}

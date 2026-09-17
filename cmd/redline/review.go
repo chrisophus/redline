@@ -95,6 +95,7 @@ func cmdReview(o opts) error {
 		expected = review.SummarizeByShape(entries)[shape].ExpectedOutput()
 	}
 	ropts := review.Options{
+		DeferContext:   o.deferContext,
 		API:            o.api,
 		BaseURL:        o.baseURL,
 		Model:          o.model,

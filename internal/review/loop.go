@@ -90,7 +90,7 @@ const nudgeText = "Answer with the tool calls this pass asks for, not in prose. 
 // completion, the shape the rest of the review reads.
 func converse(ctx context.Context, opts Options, res *Result, conv conversation) (completion, error) {
 	stage := res.stage()
-	col := newCollector(stage, res.expect)
+	col := newCollector(stage, res.expect, res.deferred)
 	var c completion
 	var total Usage
 	var thinking strings.Builder
@@ -117,10 +117,12 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 			c.model = r.model
 		}
 		if strings.TrimSpace(r.thinking) != "" {
+			// Labelled by turn, so a reader can see where in the pass the
+			// reasoning happened: all before the first call, or between them.
 			if thinking.Len() > 0 {
 				thinking.WriteString("\n\n")
 			}
-			thinking.WriteString(r.thinking)
+			fmt.Fprintf(&thinking, "[turn %d]\n%s", turn, r.thinking)
 		}
 		c.stopReason = r.stopReason
 		if err != nil {
@@ -144,12 +146,21 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 		}
 		results, done, rejected := col.take(r.calls)
 		if opts.Debug != nil {
+			opts.Debug(fmt.Sprintf("%s turn %d: %d call(s), %d output token(s) of which %d thinking, %d thinking char(s) shown",
+				stage, turn, len(r.calls), r.usage.OutputTokens, r.usage.ThinkingTokens, len(r.thinking)))
+		}
+		if opts.Debug != nil {
 			// Which calls were sent back and why, with the input as sent: the
 			// rate of rejected calls is the number that says whether unchecked
 			// tool input holds up, and the reasons are what would change it.
 			byID := map[string]toolCall{}
 			for _, call := range r.calls {
 				byID[call.ID] = call
+			}
+			for _, call := range r.calls {
+				if call.Name == CallContext {
+					opts.Debug(fmt.Sprintf("%s turn %d: get_context %s", stage, turn, string(call.Input)))
+				}
 			}
 			for _, res := range results {
 				if res.isError {
@@ -197,21 +208,16 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 				// parser, which reads a review out of a reply nothing
 				// constrained and says what is wrong when it cannot.
 				c.text = r.text
-				c.usage, c.thinking, c.rejected = total, thinking.String(), col.rejected
+				c.usage, c.thinking, c.rejected, c.fetched = total, thinking.String(), col.rejected, col.fetched
 				return c, nil
 			}
 			c.stopped = StoppedNoCalls
 			break
 		}
-		if len(r.calls) <= 2 && len(results) > 0 {
-			// A model that sends a call or two and waits for the answer
-			// spends a turn per call. Said on the answer, where it is read.
-			results[len(results)-1].content += " Send every call you have left in your next reply, with done at the end of it."
-		}
 		conv.answer(r, results)
 		gov.answered(results)
 	}
-	c.usage, c.thinking, c.rejected = total, thinking.String(), col.rejected
+	c.usage, c.thinking, c.rejected, c.fetched = total, thinking.String(), col.rejected, col.fetched
 	if !c.refused && !c.truncated {
 		c.text, c.fromTool = col.body(), true
 	}
@@ -245,6 +251,7 @@ func (r *Result) foldCalls(other *Result) {
 	}
 	r.CallTurns += other.CallTurns
 	r.Rejected += other.Rejected
+	r.Fetched += other.Fetched
 	r.Stopped = append(r.Stopped, other.Stopped...)
 	r.Thinking = append(r.Thinking, other.Thinking...)
 }

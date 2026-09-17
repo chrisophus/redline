@@ -64,22 +64,58 @@ type callTool struct {
 
 // callTools is every tool, in a fixed order. The order is part of the bytes a
 // cache read depends on, so it is written out rather than built from a map.
-func callTools() []callTool {
-	return []callTool{
-		{CallOverview, "Set the overview of this change: what it does and why. Call once.",
+//
+// get_context is only there when the run has context to read through it. Left
+// in a review with the context inline, a findings pass called it, was told
+// nothing was held back, and ended without a comment. Whether it is there is
+// fixed for the whole run, so every call of a run still sends the same bytes.
+func callTools(pulls bool) []callTool {
+	all := []callTool{
+		{CallOverview, "Set the overview: one or two paragraphs on what this change does and why it exists, " +
+			"written for a reviewer about to read the diff. Say what the change is for, not whether it is correct. " +
+			"Calling it again replaces the earlier overview.",
 			flatObject(map[string]any{"overview": overviewSchema()}, "overview")},
-		{CallFile, "Record one line on what one file's change does and why. Call once per file you are asked to describe.",
+		{CallFile, "Record one line on what one file's change does and why, using the path exactly as it appears in the change. " +
+			"Call it once for each file the pass asks you to describe; a second call for the same path replaces the first. " +
+			"Describe the change, not its quality.",
 			flatObject(propsOf(fileSchema(), "path", "summary"), "path", "summary")},
-		{CallCohort, "Record one cohort of files best reviewed together. Call once per cohort, and only when the pass asks for cohorts.",
+		{CallCohort, "Record one group of changed files that a reviewer should hold in mind together, such as a schema " +
+			"change and the code that reads it. Only for a pass that asks for cohorts. Every file belongs to exactly one " +
+			"group, and the summary is what reviewers of the other groups see of this one, so write it for someone who " +
+			"cannot see these files.",
 			flatObject(propsOf(cohortSchema(), "name", "summary", "files"), "name", "summary", "files")},
-		{CallComment, "Record one review comment on the change. Call once per comment. The answer is \"Recorded.\" unless the call is malformed, so do not wait for it: send every comment in one reply.",
+		{CallComment, "Record one defect in the change as a review comment. Call it once per defect, including defects " +
+			"you are unsure about or consider low severity; the confidence and severity fields carry that. Anchor it to " +
+			"the line where the defect is, in the file as it is after the change, and use the question fields to name the " +
+			"one check that would confirm or refute it.",
 			commentCallSchema()},
-		{CallRule, "Record the ruling on one finding. Call once per finding you were given.",
+		{CallRule, "Record your ruling on one finding you were given, by its id. Call it once for every finding. " +
+			"Write the analysis first, then the verdict it leads to, and quote the line the verdict rests on.",
 			flatObject(propsOf(rulingItemSchema(), "finding", "analysis", "verdict", "evidence", "why"),
 				"finding", "analysis", "verdict", "evidence", "why")},
-		{CallDone, "End the pass. Call it in the same reply as your last other calls, not in a reply of its own.",
+		{CallContext, "Return the full text of context entries by id, from the lists under each file in the diff. " +
+			"A caller entry is code elsewhere that calls something this change touched: when a change alters what a " +
+			"function accepts, returns or does, its callers are where that breaks. A type entry is the definition of a " +
+			"type the change uses, for checking what a value can hold. A history entry is the commit history of lines " +
+			"the change touches or removes, which says why they were there. A sibling entry is another implementation " +
+			"of an interface the change affects, and a test entry is a test covering a changed symbol.",
+			flatObject(map[string]any{"ids": map[string]any{
+				"type": "array", "items": map[string]any{"type": "string"},
+				"description": "Ids from the index, for example [\"ctx3\", \"ctx7\"].",
+			}}, "ids")},
+		{CallDone, "End this pass once every call it needs has been made. Anything recorded before it stays recorded.",
 			map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}},
 	}
+	if pulls {
+		return all
+	}
+	out := all[:0]
+	for _, t := range all {
+		if t.Name != CallContext {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // commentCallSchema is a comment with its question flattened into three
@@ -113,35 +149,66 @@ func flatObject(props map[string]any, required ...string) map[string]any {
 // callsFor is which tools a pass may call, besides done. A describing pass
 // that files a comment has done the next pass's job without its instruction,
 // so the call is refused rather than quietly recorded.
-func callsFor(stage string) []string {
+//
+// get_context is taken by every pass of a run that has context to read: it
+// records nothing, and any pass may want to read what was held back.
+func callsFor(stage string, pulls bool) []string {
+	var calls []string
 	switch stage {
 	case StageSynopsis:
-		return []string{CallOverview, CallFile, CallCohort}
+		calls = []string{CallOverview, CallFile, CallCohort}
 	case StageFindings:
-		return []string{CallComment}
+		calls = []string{CallComment}
 	case StageRuling:
-		return []string{CallRule}
+		calls = []string{CallRule}
+	default:
+		calls = []string{CallOverview, CallFile, CallComment}
 	}
-	return []string{CallOverview, CallFile, CallComment}
+	if pulls {
+		calls = append(calls, CallContext)
+	}
+	return calls
 }
 
-// callsBlock tells a pass which calls answer it. It goes after the cached
-// prompt and ahead of the pass's own instruction, so every pass of a run reads
-// the same cache entry and each is told only what it may call.
-func callsBlock(stage string) string {
-	var b strings.Builder
-	b.WriteString("\n\n## How to answer\n\nAnswer with tool calls, not prose. A call is answered \"Recorded.\" unless something is wrong with it, so there is nothing to wait for: make every call in one reply and end that reply with done. A call that is rejected comes back saying why; send it again fixed.\n\n")
+// callsBlock tells a pass how its answer is taken and which calls it takes. It
+// says what the tools do and nothing about when or in what order to call them:
+// a model that is thinking decides that itself, and two instructions that did
+// decide it, one asking for every call in one reply and one asking for one
+// area at a time, each moved the reasoning around less than they moved the
+// calls. It goes after the cached prompt, so every pass reads the same entry.
+func callsBlock(stage string, deferred bool) string {
+	var takes string
 	switch stage {
 	case StageSynopsis:
-		b.WriteString("- set_overview once\n- describe_file once per file on the list\n- add_cohort once per cohort, only if this pass asks for cohorts\n\nMake no other call.\n")
+		takes = "set_overview once, describe_file once per file, and add_cohort once per group when the pass asks for groups"
 	case StageFindings:
-		b.WriteString("- add_comment once per comment\n\nMake no other call. If there is nothing to say, call done alone.\n")
+		takes = "add_comment, one call per comment"
 	case StageRuling:
-		b.WriteString("- rule once per finding you were given\n\nMake no other call: the overview and the file lines are already written, and this pass only rules.\n")
+		takes = "rule, one call per finding"
 	default:
-		b.WriteString("- set_overview once\n- describe_file once per file you were shown\n- add_comment once per comment\n\nMake no other call. If there is nothing to comment on, make no add_comment call.\n")
+		takes = "set_overview once, describe_file once per file, and add_comment once per comment"
 	}
-	return b.String()
+	return "\n\n## How to answer\n\nAnswer by calling the tools. Every call is answered: \"Recorded.\" when it is " +
+		"taken, or what is wrong with it when it is not. Call done when this pass is finished.\n\n" +
+		"This pass takes " + takes + "." + readsContext(stage, deferred) + "\n"
+}
+
+// readsContext is the calls block's line about held-back context, when there
+// is any to read.
+func readsContext(stage string, deferred bool) string {
+	if !deferred {
+		return ""
+	}
+	line := " The context listed under each file in the diff (callers of what changed, the types it uses, " +
+		"tests and line history) is one get_context call away, by the ids in those lists."
+	if stage == StageFindings || stage == StageReview {
+		// The one directive here, and a measured one: across six runs at every
+		// effort level a judging pass reasoned through the whole change in its
+		// first reply and never read any of the context, and a light
+		// instruction is the documented lever for a tool a model under-uses.
+		line += " Read the context you need with get_context before writing comments; comments can come in a later reply."
+	}
+	return line
 }
 
 // passExpect is what makes a pass visibly complete. The describing pass is
@@ -167,14 +234,18 @@ type collector struct {
 	schemas  map[string]map[string]any
 	rejected int
 	expect   passExpect
+	// deferred is the held-back context get_context reads from, and fetched
+	// how many entries the pass has asked for.
+	deferred []deferredEntry
+	fetched  int
 }
 
-func newCollector(stage string, expect passExpect) *collector {
+func newCollector(stage string, expect passExpect, deferred []deferredEntry) *collector {
 	schemas := map[string]map[string]any{}
-	for _, t := range callTools() {
+	for _, t := range callTools(len(deferred) > 0) {
 		schemas[t.Name] = t.Schema
 	}
-	return &collector{stage: stage, schemas: schemas, expect: expect}
+	return &collector{stage: stage, schemas: schemas, expect: expect, deferred: deferred}
 }
 
 // complete reports whether the pass has recorded everything its expectation
@@ -233,13 +304,13 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 	sawDone := false
 	var doneIDs []string
 	for _, call := range calls {
-		if call.Name != CallDone && !contains(callsFor(c.stage), call.Name) {
+		if call.Name != CallDone && !contains(callsFor(c.stage, len(c.deferred) > 0), call.Name) {
 			// Not a malformed call but one this pass has no use for, so it is
 			// not to be sent again.
 			rejected++
 			results = append(results, callResult{id: call.ID, isError: true,
 				content: fmt.Sprintf("Not recorded: this pass does not take %s; it takes %s. Do not send it again.",
-					call.Name, strings.Join(callsFor(c.stage), ", "))})
+					call.Name, strings.Join(callsFor(c.stage, len(c.deferred) > 0), ", "))})
 			continue
 		}
 		problems := c.check(call)
@@ -247,6 +318,17 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 			rejected++
 			results = append(results, callResult{id: call.ID, isError: true,
 				content: "Not recorded: " + strings.Join(problems, "; ") + ". Send this call again with that fixed."})
+			continue
+		}
+		if call.Name == CallContext {
+			// Answered with the context itself. Nothing is recorded, so it
+			// neither completes a pass nor counts toward one.
+			var asked struct {
+				IDs []string `json:"ids"`
+			}
+			_ = json.Unmarshal(call.Input, &asked)
+			c.fetched += len(asked.IDs)
+			results = append(results, callResult{id: call.ID, content: fetchDeferred(c.deferred, call.Input)})
 			continue
 		}
 		if call.Name == CallDone {

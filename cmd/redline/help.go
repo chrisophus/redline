@@ -162,6 +162,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.IntVar(&o.samples, "samples", 0, "independent reviews to union")
 	fs.StringVar(&o.note, "note", "", "what to look at or what worries you, added to every judging call")
 	fs.StringVar(&o.noteFile, "note-file", "", "read the note from a file")
+	fs.BoolVar(&o.deferContext, "defer-context", false, "list the resolved context beside each file's diff and let the reviewer read it with get_context")
 	fs.BoolVar(&o.verify, "verify", false, "check each finding against the repository before posting it")
 	fs.BoolVar(&o.noVerify, "no-verify", false, "skip the checking pass")
 	fs.BoolVar(&o.cache, "cache", false, "mark the shared prefix for the prompt cache (on by default)")
@@ -320,6 +321,12 @@ what to look at:
                     committed outranks it. Saved in review.json and the
                     postmortem, and shown on the report.
   --note-file PATH  the same, read from a file. Pass one or the other.
+  --defer-context   experiment: leave the context the providers resolved out
+                    of the prompt. Each file's diff is followed by an index
+                    of the context that belongs to it, callers, types, tests
+                    and history matched through the provider's scope, and
+                    any pass reads an entry with get_context. The same
+                    entries are offered as the prompt would carry.
 
 shape:
   --mode MODE       oneshot (default) sends the context Redline chose;

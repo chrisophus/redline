@@ -146,6 +146,10 @@ type Options struct {
 	Mode string
 	// MaxTurns bounds the explore loop regardless of spend.
 	MaxTurns int
+	// DeferContext leaves the resolved context out of the prompt, lists it
+	// beside each file's diff, and lets every pass read an entry with
+	// get_context. See deferred.go.
+	DeferContext bool
 	// CallTurns bounds one pass of the turn loop every other call runs, and
 	// DefaultCallTurns applies when it is zero. See loop.go.
 	CallTurns int
@@ -570,6 +574,9 @@ type Result struct {
 	Questions []Question         `json:"-"`
 	Answers   *envelope.Envelope `json:"-"`
 
+	// deferred is the context held back behind get_context, in id order, and
+	// nil when the context went into the prompt.
+	deferred []deferredEntry
 	// expect is what a pass has to record to be visibly complete, set by the
 	// requests whose completeness can be checked. A pass that has recorded all
 	// of it ends there, without waiting for done.
@@ -616,6 +623,9 @@ func (r *Result) Summary() string {
 	if r.Rejected > 0 {
 		s += fmt.Sprintf(" rejected=%d", r.Rejected)
 	}
+	if r.Fetched > 0 && r.CallTurns > 0 {
+		s += fmt.Sprintf(" context-fetched=%d", r.Fetched)
+	}
 	if len(r.Stopped) > 0 {
 		s += fmt.Sprintf(" stopped-early=%d", len(r.Stopped))
 	}
@@ -651,33 +661,40 @@ func (r *Result) Summary() string {
 // actually went out.
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
-	system := systemFor(opts, StageReview) + oneShotAddendum + languageFragments(in.Envelopes)
-	// The one-shot shape writes the walkthrough and the findings in one call,
-	// so it carries both halves: judging first because it is the bulk of the
-	// job, then the two description fields. Run swaps in the findings tail
-	// alone when the describing call has already written the walkthrough.
-	//
-	// It rides inside the prompt block rather than after it. The breakpoint
-	// sits at the end of that block, and every later call of the run - the
-	// ruling, and the fallback when the describing call fails - resends it to
-	// read it back, so an instruction in a block of its own would fall outside
-	// what they pay for once.
-	tail := judgingTail + describingTail
+	// No line saying the material below is everything there is: a pass can
+	// ask for held-back context, and the scout's answers arrive later still.
+	system := systemFor(opts, StageReview) + languageFragments(in.Envelopes)
+	if opts.DeferContext {
+		// The documented lever for a model that under-uses its tools: a light
+		// instruction in the system prompt. Only where there is something to
+		// investigate with.
+		system += "\n\nUse the tools to investigate before responding.\n"
+	}
+	// No pass instruction rides in the shared prompt block: it is material
+	// only, the part every pass reads from the cache. Each pass's own
+	// instruction goes in its tail. Two measurements put it there. A findings
+	// pass that read "say what the change is" beside "the overview is already
+	// written" wrote the walkthrough anyway and had every call of it refused.
+	// And a describing pass that read the judging instruction reviewed the
+	// whole change in 45k tokens of thinking it had nowhere to file. The
+	// one-call review judges and describes, so its tail carries both.
+	tail := judgingTail
 	// Behind the breakpoint in a block of its own, unlike the instruction
 	// above, so the calls that resend the prompt block without judging - the
 	// describing call and the ruling - do not carry it.
 	note := in.noteTail()
+	describe := describingTail
 	// The block that says which calls answer the pass goes out with every
 	// request, so it is priced with the fixed parts.
-	calls := callsBlock(StageReview)
+	calls := callsBlock(StageReview, opts.DeferContext)
 	// Every stage sends the catalogue on both wires, so it is reserved for
 	// unconditionally. This was once zeroed for a brief run, which was right on
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
 	// wire sent them anyway, and the reservation came up short by the whole
 	// catalogue and overfilled the context by that much.
-	fixed := toolsTokens() + envelope.EstimateTokens(system) +
-		envelope.EstimateTokens(tail) + envelope.EstimateTokens(note) + envelope.EstimateTokens(calls) +
-		envelope.EstimateTokens(in.fixed())
+	fixed := toolsTokens(opts.DeferContext) + envelope.EstimateTokens(system) +
+		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
+		envelope.EstimateTokens(calls) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
 		// The block's own header is written after FitAll has fitted the
 		// expansions, so it has to be reserved here or the assembled prompt
@@ -692,9 +709,15 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	}
 	budget := envelope.FitAllFilter(in.Envelopes, room, in.shownLines(), in.contextFilter())
 	prompt := in.build(budget)
+	var deferred []deferredEntry
+	if opts.DeferContext {
+		deferred = deferEntries(in, budget.Kept)
+		prompt = in.buildDeferred(deferred)
+	}
 	parts := promptParts(in, opts, system, budget)
 	est := envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
-		envelope.EstimateTokens(tail) + envelope.EstimateTokens(note) + envelope.EstimateTokens(calls)
+		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
+		envelope.EstimateTokens(calls)
 	expected := opts.ExpectedOutput
 	if expected <= 0 {
 		expected = ExpectedOutputTokens
@@ -718,9 +741,10 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		// and the other is an empty string groups into two sets by accident.
 		Pipeline:       opts.Shape(),
 		Budget:         budget,
+		deferred:       deferred,
 		FilesShown:     len(in.ShownFiles()),
-		Prompt:         prompt + tail,
-		Tail:           note,
+		Prompt:         prompt,
+		Tail:           tail + describe + note,
 		note:           note,
 		System:         system,
 		InputEstimate:  est,
@@ -943,7 +967,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			"cache": map[string]any{"breakpoint": res.Cached, "ttl": opts.CacheTTL},
 			// The whole array, because the whole array is what was sent and
 			// its bytes are what a cache read depends on.
-			"tools": callTools(), "calls": callsFor(stage),
+			"tools": callTools(res.pulls()), "calls": callsFor(stage, res.pulls()),
 		}
 		req, _ := json.MarshalIndent(captured, "", "  ")
 		opts.Capture(stage+".request.json", req)
@@ -959,6 +983,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	res.Turns = 1
 	res.CallTurns += c.turns
 	res.Rejected += c.rejected
+	res.Fetched += c.fetched
 	if strings.TrimSpace(c.thinking) != "" {
 		pass := stage
 		if opts.passLabel != "" {

@@ -40,7 +40,8 @@ func TestTheFindingsSayWhichLintersRan(t *testing.T) {
 
 // The one-shot system block is sent beside the tool catalogue on every call,
 // and a call asked to think is told to answer by calling a tool, so the block
-// must not say there are none. Nor may it say a linter ran regardless.
+// must not say there are none. Nor may it say a linter ran regardless, or that
+// what it was shown is everything.
 func TestTheSystemBlockClaimsNoFactItCannotKnow(t *testing.T) {
 	res, err := Assemble(exploreInput(), Options{Model: "claude-sonnet-5", API: APIAnthropic})
 	if err != nil {
@@ -51,7 +52,9 @@ func TestTheSystemBlockClaimsNoFactItCannotKnow(t *testing.T) {
 			t.Errorf("the system block still says %q", claim)
 		}
 	}
-	if !strings.Contains(res.System, "Everything you get to see is below.") {
-		t.Error("the one-shot pass is no longer told its material is complete")
+	// Nor that the material below is all there is: a pass can read held-back
+	// context, and the scout's answers arrive later.
+	if strings.Contains(res.System, "Everything you get to see is below.") {
+		t.Error("the system block still tells the pass its material is complete")
 	}
 }

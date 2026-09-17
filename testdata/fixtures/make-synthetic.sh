@@ -1,10 +1,11 @@
 #!/bin/sh
 # Regenerates the synthetic fixtures.
 #
-# Most fixtures are frozen from real commits in this repository. Three cases
+# Most fixtures are frozen from real commits in this repository. Four cases
 # the plan calls for do not exist in its history: a change that correlates a
 # migration against the code that writes to it, a generated file left stale,
-# and a change that undoes an earlier deliberate fix. This script builds a
+# a change that undoes an earlier deliberate fix, and a change whose defect is
+# only visible from a caller the change does not touch. This script builds a
 # small repository shaped like each one and runs Redline over it, so the
 # frozen session is real output rather than a hand-written file.
 #
@@ -363,3 +364,136 @@ commit "$R" "drop the retry path and the guard it needed
 Requeue was the only caller that could produce an empty entry, and it is
 gone. The guard added on 2026-03-11 has nothing left to guard against."
 freeze clean-guard-and-caller-removed "$R"
+
+# 7. A function's contract changes and a caller the change does not touch
+#    relies on the old one. FindUser used to return an empty user for a
+#    missing id and now returns nil, with its doc comment updated to say so.
+#    The diff is a correct, documented change. EmailFor, in a file the change
+#    does not touch, dereferences the result without a check, so a missing id
+#    now panics. Nothing in the diff shows that: the Go provider's caller
+#    context does. This is the case for reading context beyond the diff.
+R="$WORK/caller"
+mkdir -p "$R/internal/store" "$R/internal/api"
+git init -q "$R"
+printf 'module example.com/caller\n\ngo 1.26\n' > "$R/go.mod"
+: > "$R/.gorefactor.yaml"
+cat > "$R/internal/store/user.go" <<'EOF'
+package store
+
+// User is one row of the users table.
+type User struct {
+	ID    string
+	Email string
+}
+
+var users = map[string]User{}
+
+// FindUser returns the user with the given id. A missing id returns an empty
+// user.
+func FindUser(id string) *User {
+	u := users[id]
+	return &u
+}
+EOF
+cat > "$R/internal/api/handler.go" <<'EOF'
+package api
+
+import "example.com/caller/internal/store"
+
+// EmailFor returns the address to notify for a user.
+func EmailFor(id string) string {
+	u := store.FindUser(id)
+	return u.Email
+}
+EOF
+commit "$R" "store and notification handler"
+cat > "$R/internal/store/user.go" <<'EOF'
+package store
+
+// User is one row of the users table.
+type User struct {
+	ID    string
+	Email string
+}
+
+var users = map[string]User{}
+
+// FindUser returns the user with the given id, or nil when no user has that
+// id.
+func FindUser(id string) *User {
+	u, ok := users[id]
+	if !ok {
+		return nil
+	}
+	return &u
+}
+EOF
+commit "$R" "return nil for a missing user instead of an empty one"
+freeze caller-breaks-on-new-nil "$R"
+
+# 8. The clean pair for 7. The same change to FindUser, and the same caller in
+#    the same untouched file, except that the caller already checks for nil.
+#    A reviewer that flags every function which starts returning nil, without
+#    reading what its callers do, is caught here.
+R="$WORK/checked"
+mkdir -p "$R/internal/store" "$R/internal/api"
+git init -q "$R"
+printf 'module example.com/checked\n\ngo 1.26\n' > "$R/go.mod"
+: > "$R/.gorefactor.yaml"
+cat > "$R/internal/store/user.go" <<'EOF'
+package store
+
+// User is one row of the users table.
+type User struct {
+	ID    string
+	Email string
+}
+
+var users = map[string]User{}
+
+// FindUser returns the user with the given id. A missing id returns an empty
+// user.
+func FindUser(id string) *User {
+	u := users[id]
+	return &u
+}
+EOF
+cat > "$R/internal/api/handler.go" <<'EOF'
+package api
+
+import "example.com/checked/internal/store"
+
+// EmailFor returns the address to notify for a user, or the empty string when
+// there is no such user.
+func EmailFor(id string) string {
+	u := store.FindUser(id)
+	if u == nil {
+		return ""
+	}
+	return u.Email
+}
+EOF
+commit "$R" "store and notification handler"
+cat > "$R/internal/store/user.go" <<'EOF'
+package store
+
+// User is one row of the users table.
+type User struct {
+	ID    string
+	Email string
+}
+
+var users = map[string]User{}
+
+// FindUser returns the user with the given id, or nil when no user has that
+// id.
+func FindUser(id string) *User {
+	u, ok := users[id]
+	if !ok {
+		return nil
+	}
+	return &u
+}
+EOF
+commit "$R" "return nil for a missing user instead of an empty one"
+freeze clean-caller-already-checks-nil "$R"

@@ -39,6 +39,8 @@ type completion struct {
 	turns    int
 	rejected int
 	stopped  string
+	// fetched is how many held-back context entries the pass asked for.
+	fetched int
 	// refused is set when the model declined the request. detail says why,
 	// when the API said.
 	refused bool
@@ -209,7 +211,7 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	}
 	// Which calls answer this pass, after the cached prompt so every pass of a
 	// run reads the same entry, and ahead of the pass's own instruction.
-	blocks = append(blocks, prefix, anthropic.NewTextBlock(callsBlock(res.stage())))
+	blocks = append(blocks, prefix, anthropic.NewTextBlock(callsBlock(res.stage(), res.pulls())))
 	if res.Tail != "" {
 		blocks = append(blocks, anthropic.NewTextBlock(res.Tail))
 	}
@@ -223,7 +225,7 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	// Every tool, every time: the same bytes on every call of a run. A pinned
 	// call must call some tool, and the calls block says which; a model that
 	// refuses the pin is left to choose and told the same thing in words.
-	params.Tools = anthropicTools()
+	params.Tools = anthropicTools(res.pulls())
 	if forced {
 		params.ToolChoice = anthropic.ToolChoiceUnionParam{OfAny: &anthropic.ToolChoiceAnyParam{}}
 	} else {

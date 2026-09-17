@@ -938,9 +938,9 @@ func passOf(t *testing.T, r *http.Request) string {
 	}
 	for _, m := range body.Messages {
 		switch {
-		case strings.Contains(m.Content, "- rule once per finding"):
+		case strings.Contains(m.Content, "This pass takes rule"):
 			return review.StageRuling
-		case strings.Contains(m.Content, "- add_comment once per comment"):
+		case strings.Contains(m.Content, "add_comment once per comment"):
 			return review.StageReview
 		}
 	}

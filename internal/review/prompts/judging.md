@@ -1,17 +1,14 @@
 
-## This pass
 
-Read the diff, work out what it is trying to do, and ask what would have to
-be true for it to be wrong. Report what survives that.
+## Finding defects
 
-Each defect is its own comment.
+Work out what the change is trying to do and how it could be wrong.
 
-Do not be afraid to point out issues that are already existing in the code base,
-since we don't want to allow bad code to follow bad code.
+Report every defect you find, including ones you are unsure about or judge to
+be low severity. Do not filter for importance or confidence here. Findings are
+filtered before any reaches the author, so a finding that turns out wrong costs
+little, while a real defect left out is lost. Give each one your honest
+confidence and severity so they can be ranked.
 
-Every comment carries a question: the one check that would confirm or refute
-it, and what to look it up on. A later step runs the lookup and rules on the
-finding with the answer in hand. Pick the kind by what would settle it.
-Score your findings with your confidence level in whether it is a valid
-finding and what the severity is.
-
+Each defect is its own comment. A defect the change carries forward from code
+that was already there counts too.

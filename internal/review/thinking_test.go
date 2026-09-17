@@ -51,7 +51,7 @@ func TestThinkingOffersTheToolAndAsksForAdaptiveThinking(t *testing.T) {
 	var said bool
 	for _, m := range got.Messages {
 		for _, c := range m.Content {
-			said = said || strings.Contains(c.Text, "Answer with tool calls")
+			said = said || strings.Contains(c.Text, "Answer by calling the tools")
 		}
 	}
 	if !said {
