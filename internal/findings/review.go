@@ -49,6 +49,21 @@ type Review struct {
 	// finding the reviewer arrived at from one it was pointed to. Empty when
 	// no note was given.
 	Note string `json:"note,omitempty"`
+	// Cohorts is the partition a split review drew, so --reuse-synopsis can
+	// stand in for a staged run's describing call too: without it, reusing
+	// the walkthrough still leaves nothing to fan the judging calls out over.
+	// Empty on a run that judged the change in one call.
+	Cohorts []Cohort `json:"cohorts,omitempty"`
+}
+
+// Cohort is one group of files a split review's describing call drew, and
+// what they do together. Mirrors review.Cohort - kept here rather than
+// imported, since findings is the package review.Cohort's own package
+// already depends on.
+type Cohort struct {
+	Name    string   `json:"name,omitempty"`
+	Summary string   `json:"summary,omitempty"`
+	Files   []string `json:"files,omitempty"`
 }
 
 // ReviewComment is one remark the agent left on a line, shaped like a GitHub
@@ -96,6 +111,7 @@ type reviewWire struct {
 	VerifyFailed     string             `json:"verifyFailed"`
 	Note             string             `json:"note"`
 	Incomplete       []string           `json:"incomplete"`
+	Cohorts          []Cohort           `json:"cohorts"`
 }
 
 type reviewCommentWire struct {
@@ -186,6 +202,7 @@ func LoadReview(path string) (*Review, error) {
 	r.VerifyFailed = strings.TrimSpace(wire.VerifyFailed)
 	r.Note = strings.TrimSpace(wire.Note)
 	r.Incomplete = wire.Incomplete
+	r.Cohorts = wire.Cohorts
 	r.Overview = strings.TrimSpace(wire.Overview)
 	if r.Overview == "" {
 		r.Overview = strings.TrimSpace(wire.WhatItDoes)

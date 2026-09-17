@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/findings"
 )
 
 func stagedInput() Input {
@@ -85,6 +86,51 @@ func TestTheFanOutJudgesEachCohortAndMergesThem(t *testing.T) {
 	}
 	if len(res.Review.Files) != 5 {
 		t.Errorf("every shown file's line must survive: %v", res.Review.Files)
+	}
+}
+
+// ReuseSynopsis stands in for a staged run's describing call too: no
+// synopsis call goes out, the reused partition drives the fan-out exactly
+// as a freshly drawn one would, and the walkthrough on the result is the
+// one handed in.
+func TestReuseSynopsisStandsInForAStagedRunsPartitionToo(t *testing.T) {
+	api := serveSSE(t, anthropicSSE("tool_use", 10, 5, flatCalls(StageFindings,
+		cohortFindings("internal/queue/q.go", "the retry loses the entry"))))
+	opts := stagedOpts(api)
+	opts.ReuseSynopsis = &findings.Review{
+		Overview: "a reused walkthrough",
+		Files:    map[string]string{"internal/queue/q.go": "a reused file summary"},
+		Cohorts: []findings.Cohort{
+			{Name: "queue", Summary: "The retry path.", Files: []string{"internal/queue/q.go", "internal/queue/retry.go"}},
+			{Name: "storage", Summary: "A column and the migration that adds it.",
+				Files: []string{"internal/store/schema.sql", "internal/store/migrate.go"}},
+			{Name: "api", Summary: "One new route.", Files: []string{"internal/api/handler.go"}},
+		},
+	}
+	res, err := Run(context.Background(), stagedInput(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Pipeline != PipelineStaged || res.FellBack != "" {
+		t.Fatalf("the run did not stay staged: %q %q", res.Pipeline, res.FellBack)
+	}
+	if !res.SynopsisReused {
+		t.Error("synopsisReused must be true when the partition came from ReuseSynopsis")
+	}
+	if len(res.Cohorts) != 3 {
+		t.Fatalf("the reused partition must reach the result: %+v", res.Cohorts)
+	}
+	// Three calls, one per cohort: no describing call, since the partition
+	// did not need to be drawn.
+	if got := len(api.seen()); got != 3 {
+		t.Errorf("a reused partition of three costs three calls, not four, got %d", got)
+	}
+	if res.Review.Overview != "a reused walkthrough" {
+		t.Errorf("overview = %q, want the one handed in", res.Review.Overview)
+	}
+	if len(res.Review.Comments) != 1 {
+		t.Errorf("the cohorts' findings must still be unioned, got %d: %+v",
+			len(res.Review.Comments), res.Review.Comments)
 	}
 }
 

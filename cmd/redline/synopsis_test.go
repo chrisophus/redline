@@ -93,8 +93,9 @@ func TestThePartitionFlagsNeedTheSplit(t *testing.T) {
 
 // --reuse-synopsis stands in for the describing call, so it is refused
 // beside the flags that already decide what that call is: --no-synopsis
-// asks for none, --brief carries no synopsis contract, and --cohorts above
-// 1 needs the partition only a live describing call draws.
+// asks for none, --brief carries no synopsis contract. Above --cohorts 1 it
+// is accepted - see TestReuseSynopsisCanStandInForAStagedRunsPartitionToo -
+// but only once review.json actually carries a partition to reuse.
 func TestReuseSynopsisIsRefusedBesideTheFlagsThatReplaceTheDescribingCall(t *testing.T) {
 	dir := worktreeSession(t)
 	for _, tc := range []struct {
@@ -104,7 +105,6 @@ func TestReuseSynopsisIsRefusedBesideTheFlagsThatReplaceTheDescribingCall(t *tes
 	}{
 		{"--no-synopsis", opts{reuseSynopsis: true, noSynopsis: true}, "--no-synopsis"},
 		{"--brief", opts{reuseSynopsis: true, brief: true}, "--brief"},
-		{"a fan-out", opts{reuseSynopsis: true, cohorts: 4}, "--cohorts"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			o := tc.o
@@ -115,6 +115,47 @@ func TestReuseSynopsisIsRefusedBesideTheFlagsThatReplaceTheDescribingCall(t *tes
 				t.Errorf("err = %v, want a refusal naming %s", err, tc.want)
 			}
 		})
+	}
+}
+
+// A review.json with a walkthrough but no partition has nothing for
+// --reuse-synopsis to fan a split review out over: --cohorts above 1 is
+// refused, naming the flag, until review.json actually carries one.
+func TestReuseSynopsisNeedsAPartitionForCohortsAboveOne(t *testing.T) {
+	dir := worktreeSession(t)
+	want := change.ReviewIdentity("abc123", &change.Set{Target: &target.Target{Kind: target.KindWorktree}})
+	if err := review.Merge(dir+"/review.json", findings.Review{
+		Revision: want, Overview: "an overview with no cohorts",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	captureStdout(t, func() {
+		err = cmdReview(opts{out: dir, dryRun: true, noOpen: true, reuseSynopsis: true, cohorts: 3})
+	})
+	if err == nil || !strings.Contains(err.Error(), "--cohorts") {
+		t.Errorf("err = %v, want a refusal naming --cohorts", err)
+	}
+}
+
+// --reuse-synopsis stands in for a staged run's describing call too, once
+// review.json carries the partition that call drew: the split runs straight
+// to the cohort calls, at no describing-call cost.
+func TestReuseSynopsisCanStandInForAStagedRunsPartitionToo(t *testing.T) {
+	dir := worktreeSession(t)
+	want := change.ReviewIdentity("abc123", &change.Set{Target: &target.Target{Kind: target.KindWorktree}})
+	if err := review.Merge(dir+"/review.json", findings.Review{
+		Revision: want, Overview: "reused overview",
+		Cohorts: []findings.Cohort{{Name: "a", Files: []string{"a.go"}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	captureStdout(t, func() {
+		err = cmdReview(opts{out: dir, dryRun: true, noOpen: true, reuseSynopsis: true, cohorts: 3})
+	})
+	if err != nil {
+		t.Fatalf("a review.json carrying a partition must be accepted for --cohorts above 1: %v", err)
 	}
 }
 

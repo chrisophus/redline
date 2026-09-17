@@ -98,9 +98,15 @@ func stagedCeilingCost(opts Options, in Input, res *Result) float64 {
 	if opts.Shape() != PipelineStaged || res == nil {
 		return 0
 	}
-	one, ok := CeilingCost(opts.Model, res.cohortsRequest(opts, in).InputEstimate, opts.MaxTokens)
-	if !ok {
-		return 0
+	var one float64
+	if opts.ReuseSynopsis == nil {
+		// Reused, stage one makes no call: pricing it here would refuse a run
+		// for a call it will never send.
+		var ok bool
+		one, ok = CeilingCost(opts.Model, res.cohortsRequest(opts, in).InputEstimate, opts.MaxTokens)
+		if !ok {
+			return 0
+		}
 	}
 	if opts.PlanOnly {
 		// No cohort call is sent under --plan, so pricing the fan-out here
@@ -196,40 +202,58 @@ func pricingCohortBound(opts Options, in Input) int {
 // what Verify reads and what the report renders.
 func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Result, error) {
 	bound := cohortBound(opts, in)
-	if opts.Progress != nil {
-		opts.Progress(fmt.Sprintf("describing the change and splitting it into at most %d cohort(s)", bound))
-	}
-	one, err := runOnce(ctx, in, opts, res.cohortsRequest(opts, in))
-	walkthrough, usage, written, failed := describedBy(one, err)
-	if failed != "" {
-		// Stage one is the call the whole shape depends on: it writes the
-		// cache the fan-out reads and the partition the fan-out is drawn
-		// from. Without it this is a one-shot review that has already paid
-		// for a failed call, which is worse than a one-shot review and much
-		// better than no review.
+	var one *Result
+	var walkthrough findings.Review
+	var usage Usage
+	var written int64
+	var cohorts []Cohort
+	if opts.ReuseSynopsis != nil {
+		// Stage one makes no call: the walkthrough and the partition it drew
+		// both come from review.json. cmd/redline has already refused a
+		// reused review.json with no partition to draw from - Cohorts is
+		// trusted non-empty here for the same reason a fresh partition is
+		// trusted after repairPartition below.
+		walkthrough = *opts.ReuseSynopsis
+		cohorts = fromFindingsCohorts(walkthrough.Cohorts)
+	} else {
 		if opts.Progress != nil {
-			opts.Progress("the describing call did not produce a walkthrough (" + failed +
-				"); this review is one call and writes its own")
+			opts.Progress(fmt.Sprintf("describing the change and splitting it into at most %d cohort(s)", bound))
 		}
-		// One judging call over the whole change, under the same tools the
-		// failed call sent, so it reads the prefix that call wrote.
-		out, rerr := runOnce(ctx, in, opts, res.judgingRequest(false))
-		// Stage one was billed whether or not it answered, and the write it
-		// made over the whole prefix is the expensive half. Folding it in
-		// here is what stops a run that paid for two calls from joining the
-		// one-shot distribution at one call's price - FellBack labels the
-		// row, and without this the number on it is still wrong.
-		applySynopsis(out, opts.Model, findings.Review{}, usage, written, failed)
-		if out != nil {
-			out.foldCalls(one)
-			out.Pipeline = PipelineOneShot
-			out.FellBack = failed
+		var err error
+		var failed string
+		one, err = runOnce(ctx, in, opts, res.cohortsRequest(opts, in))
+		walkthrough, usage, written, failed = describedBy(one, err)
+		if failed != "" {
+			// Stage one is the call the whole shape depends on: it writes the
+			// cache the fan-out reads and the partition the fan-out is drawn
+			// from. Without it this is a one-shot review that has already paid
+			// for a failed call, which is worse than a one-shot review and much
+			// better than no review.
+			if opts.Progress != nil {
+				opts.Progress("the describing call did not produce a walkthrough (" + failed +
+					"); this review is one call and writes its own")
+			}
+			// One judging call over the whole change, under the same tools the
+			// failed call sent, so it reads the prefix that call wrote.
+			out, rerr := runOnce(ctx, in, opts, res.judgingRequest(false))
+			// Stage one was billed whether or not it answered, and the write it
+			// made over the whole prefix is the expensive half. Folding it in
+			// here is what stops a run that paid for two calls from joining the
+			// one-shot distribution at one call's price - FellBack labels the
+			// row, and without this the number on it is still wrong.
+			applySynopsis(out, opts.Model, findings.Review{}, usage, written, failed)
+			if out != nil {
+				out.foldCalls(one)
+				out.Pipeline = PipelineOneShot
+				out.FellBack = failed
+			}
+			return out, rerr
 		}
-		return out, rerr
-	}
-	cohorts, note := repairPartition(in.ShownFiles(), one.Cohorts, bound)
-	if note != "" && opts.Progress != nil {
-		opts.Progress("the partition needed repair: " + note)
+		var note string
+		cohorts, note = repairPartition(in.ShownFiles(), one.Cohorts, bound)
+		if note != "" && opts.Progress != nil {
+			opts.Progress("the partition needed repair: " + note)
+		}
 	}
 	if opts.Progress != nil {
 		opts.Progress(fmt.Sprintf("described %d file(s) in %d cohort(s): %s",
@@ -256,6 +280,7 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		out.Pipeline = PipelineStaged
 		out.Cohorts = cohorts
 		out.PlanOnly = true
+		out.SynopsisReused = opts.ReuseSynopsis != nil
 		out.foldCalls(one)
 		return out, nil
 	}
@@ -266,6 +291,7 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		merged.foldCalls(one)
 		merged.Pipeline = PipelineStaged
 		merged.Cohorts = cohorts
+		merged.SynopsisReused = opts.ReuseSynopsis != nil
 	}
 	return merged, err
 }
@@ -543,4 +569,30 @@ func cohortNames(cohorts []Cohort) string {
 		names = append(names, fmt.Sprintf("%s (%d)", c.Name, len(c.Files)))
 	}
 	return strings.Join(names, ", ")
+}
+
+// toFindingsCohorts and fromFindingsCohorts cross the one boundary this
+// partition has: review.Cohort inside a run, findings.Cohort in review.json,
+// kept apart because findings is the package Cohort's own package already
+// depends on.
+func toFindingsCohorts(cohorts []Cohort) []findings.Cohort {
+	if len(cohorts) == 0 {
+		return nil
+	}
+	out := make([]findings.Cohort, len(cohorts))
+	for i, c := range cohorts {
+		out[i] = findings.Cohort{Name: c.Name, Summary: c.Summary, Files: c.Files}
+	}
+	return out
+}
+
+func fromFindingsCohorts(cohorts []findings.Cohort) []Cohort {
+	if len(cohorts) == 0 {
+		return nil
+	}
+	out := make([]Cohort, len(cohorts))
+	for i, c := range cohorts {
+		out[i] = Cohort{Name: c.Name, Summary: c.Summary, Files: c.Files}
+	}
+	return out
 }
