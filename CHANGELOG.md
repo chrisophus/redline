@@ -11,6 +11,8 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-17
+
 ### Removed
 - **`--brief` and `--no-brief` are gone, and with them the short prompt.**
   Measured on 2026-09-14 it returned a placeholder in place of a review on 22 of
@@ -29,6 +31,27 @@ Releases whose tag carries only a subject line are listed as that subject.
   and labelled as the arm under test.
 
 ### Added
+- **`--reuse-synopsis` reuses `review.json`'s walkthrough instead of paying
+  for a new describing call.** The judging call still gets the
+  findings-alone contract a fresh walkthrough would earn it, at no
+  describing-call cost. Above `--cohorts 1`, it also reuses the partition
+  that call drew - `review.json` now carries a split review's cohorts
+  alongside its overview and files - so the whole describing-and-partitioning
+  stage is skipped and the run goes straight to the cohort calls. Combine
+  with `--only-cohorts` to re-run one cohort alone at its full share of
+  `--max-tokens`, not the fraction `--cohorts` divides it into. Refused when
+  `review.json` is missing, has no walkthrough, was written against a
+  different change, or (above `--cohorts 1`) has no partition to reuse.
+  `Result.SynopsisReused` and the matching ledger field say which zero
+  `SynopsisOutputTokens` means: nothing written, or nothing paid for.
+- **`--verbose` is split from `--debug`.** One flag used to mean two things:
+  what a person watching the run sees on stderr, and what the run leaves
+  behind on disk for someone to read afterward. `--verbose`
+  (`REDLINE_VERBOSE`) is now the stderr narration alone; `--debug`
+  (`REDLINE_DEBUG`) is the `--out/debug/<run timestamp>/` capture alone,
+  independent of it. A CI job wants `--debug` on (the artifact is the only
+  record once the runner is gone) and `--verbose` off (its own log already
+  has stdout/stderr).
 - **`--defer-context` lets the reviewer pull the context it wants.** The
   context the providers resolved leaves the prompt. Each file's diff is
   followed by an index of its entries, matched to the file through the
@@ -133,6 +156,28 @@ Releases whose tag carries only a subject line are listed as that subject.
   open, with the evidence each item rests on and the numbers that still hold.
   What shipped is in this file, the README status table and the doc comments
   beside the code; the arguments are in `git log --follow -- docs/plans`.
+- **`tool_choice` is never pinned, on either wire.** It used to be pinned
+  whenever thinking was off, which was the only reason `--thinking` existed:
+  a pinned call spends zero thinking tokens on Sonnet 5. Measured directly,
+  the model thinks by default once the choice is not pinned at all, so the
+  trade was backwards. Every call now asks for adaptive thinking with a
+  summarized display (unless a call has thinking off for its own reason),
+  so the reasoning it already pays for is visible instead of invisible.
+- **`--plan` always defers context, whether or not `--defer-context` was
+  also given.** `--plan` sends one call, ever, in its invocation, and no
+  later call reads a fully-written context back from cache; writing it in
+  full paid the cache-write premium on tokens nothing amortizes - a quarter
+  of the call's own estimated cost on the PR this was measured against.
+  Deferred, the same context costs a rounding error, and it is the same
+  prompt shape a `--defer-context` follow-up run reads, which is usually
+  what a `--plan` run is drawn to plan for.
+- **`--debug`'s capture keeps the exact instructions sent with each call.**
+  `callsBlock`'s prose - including the deferred-context directive ("Read the
+  context you need with `get_context` before writing comments") when a pass
+  has one - goes out as its own content block on the wire, but was never
+  recorded. The captured request JSON now has an `"instructions"` field with
+  the exact text, so a reader asking whether a pass was actually told to
+  defer context can check the artifact instead of trusting source code.
 
 ### Removed
 - **The Message Batches path.** A batched request is one turn and a review
@@ -159,6 +204,27 @@ Releases whose tag carries only a subject line are listed as that subject.
   the body after the payload was built, and the step that drops findings
   already posted renders the body again, so a real post lost the notice. Only
   `--dry-run` showed it.
+- **A stalled stream now fails within two minutes instead of hanging
+  forever.** A run that stalled hung for upwards of twenty minutes with no
+  error and no heartbeat line, because the heartbeat only reports what a
+  stream event told it and a stalled connection delivers none. A first
+  attempt reset a timer on every `stream.Next()`, which a test written to
+  prove a slow-but-alive stream survives it caught as wrong: the SDK's SSE
+  decoder discards `ping` keep-alive frames before a caller ever sees them,
+  so that approach would kill a call that is genuinely alive but saying
+  nothing but ping for minutes. Moved below the decoder instead: streamed
+  response bodies are wrapped in a reader that races each `Read` against the
+  timeout, so ping frames count as activity because they are bytes, whatever
+  the SSE layer does with them. A stalled read now fails with "no data
+  received in 2m0s, not even a ping: the connection stalled, this is not the
+  model reasoning" - reaching `--debug`, the captured response, and the
+  pass's stopped reason like any other call error.
+- **`--out/debug` gets its own subdirectory per run, named by when the run
+  started.** The old flat layout numbered files from 1 on every invocation:
+  two runs sharing a stage name overwrote each other's capture, and two runs
+  of different shapes (a split review's `synopsis`/`findings` stages beside
+  a one-shot's `review` stage) left half the directory stale and half fresh
+  with no filename collision to reveal it.
 
 ## [0.10.1] - 2026-09-16
 
