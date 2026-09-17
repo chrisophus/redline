@@ -83,17 +83,20 @@ func contextID(i int) string {
 // indexLine is one entry of the index: no content, only enough to decide
 // whether to ask for it.
 func indexLine(i int, x envelope.Expansion) string {
-	loc := x.File
-	lines := ""
-	if x.StartLine > 0 {
-		loc = fmt.Sprintf("%s:%d-%d", x.File, x.StartLine, x.EndLine)
-		lines = fmt.Sprintf(", %d lines", x.EndLine-x.StartLine+1)
-	}
-	what := string(x.Role)
+	parts := []string{string(x.Role)}
 	if x.Symbol != "" {
-		what += " " + x.Symbol
+		parts = append(parts, x.Symbol)
 	}
-	return fmt.Sprintf("- %s: %s at %s%s\n", contextID(i), what, loc, lines)
+	loc := x.File
+	switch n := x.EndLine - x.StartLine + 1; {
+	case x.StartLine <= 0:
+	case n == 1:
+		loc = fmt.Sprintf("%s:%d (1 line)", x.File, x.StartLine)
+	default:
+		loc = fmt.Sprintf("%s:%d-%d (%d lines)", x.File, x.StartLine, x.EndLine, n)
+	}
+	parts = append(parts, loc)
+	return fmt.Sprintf("- `%s` %s\n", contextID(i), strings.Join(parts, " · "))
 }
 
 // fileIndex is the index for one changed file, empty when nothing belongs to it.
@@ -107,21 +110,27 @@ func fileIndex(entries []deferredEntry, file string) string {
 	if b.Len() == 0 {
 		return ""
 	}
-	return "Context for this file, not included; read any of it with get_context:\n\n" + b.String() + "\n"
+	return "More context for this file:\n\n" + b.String() + "\n"
 }
 
-// changeIndex is the index of entries that belong to no single changed file.
+// changeIndex introduces the index, once, ahead of the diff, and lists the
+// entries that belong to no single changed file. It says what the model can
+// do with the entries and nothing about why they are not in the prompt.
 func changeIndex(entries []deferredEntry) string {
+	if len(entries) == 0 {
+		return ""
+	}
 	var b strings.Builder
+	b.WriteString("## More context\n\nCallers, types, tests and line history are available for this change. " +
+		"Each file's diff below lists what there is for it, prefixed with its id. " +
+		"Pass the ids to get_context to read those entries in full.\n\n")
 	for i, e := range entries {
 		if e.anchor == "" {
 			b.WriteString(indexLine(i, e.x))
 		}
 	}
-	if b.Len() == 0 {
-		return ""
-	}
-	return "## Context for the whole change\n\nNot included; read any of it with get_context:\n\n" + b.String() + "\n"
+	b.WriteString("\n")
+	return b.String()
 }
 
 // fetchDeferred answers a get_context call: each entry asked for, in full, and

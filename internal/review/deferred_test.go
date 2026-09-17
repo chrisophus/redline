@@ -54,11 +54,11 @@ func TestDeferredContextIsIndexedBesideTheDiff(t *testing.T) {
 	if next := strings.Index(user, "### README.md"); next > 0 {
 		user = user[:next]
 	}
-	if !strings.Contains(user, "caller User at internal/api/handler.go:40-44") {
+	if !strings.Contains(user, "`ctx2` caller · User · internal/api/handler.go:40-44 (5 lines)") {
 		t.Errorf("the caller is not indexed under the file its scope leads to:\n%s", user)
 	}
-	if !strings.Contains(res.Prompt, "## Context for the whole change") ||
-		!strings.Contains(res.Prompt, "type Tenant at internal/tenant/tenant.go:1-3") {
+	if !strings.Contains(res.Prompt, "## More context") ||
+		!strings.Contains(res.Prompt, "`ctx3` type · Tenant · internal/tenant/tenant.go:1-3 (3 lines)") {
 		t.Errorf("an entry whose scope leads to no changed file must be listed for the whole change:\n%s", res.Prompt)
 	}
 	if !strings.Contains(callsBlock(StageFindings, true), "get_context") {

@@ -91,16 +91,15 @@ func commentSchema() map[string]any {
 			"confidence": map[string]any{
 				"type": "string",
 				"enum": []string{"high", "medium", "low"},
-				"description": "How sure you are that the finding is true. Report it " +
-					"either way, but low is not free: a low-confidence finding stays on " +
-					"the report and is not posted to the pull request, so nobody who " +
-					"could fix it is shown it. Use low when you genuinely could not " +
-					"settle it from what you were given, not as a hedge on a claim the " +
-					"lines in front of you support.",
+				"description": "How sure you are that the finding is true. high: the lines " +
+					"you were shown establish it. medium: likely, but it depends on something " +
+					"you could not see. low: plausible and worth checking, but you could not " +
+					"settle it. Low-confidence findings stay on the report but are not posted " +
+					"to the pull request.",
 			},
 			"body": map[string]any{
 				"type":        "string",
-				"description": "The remark itself. One or two sentences, specific, no preamble.",
+				"description": "The defect in one or two sentences: what goes wrong, under what input or condition, and where.",
 			},
 			// Required, and required is the point. A model that has to say how
 			// its claim could be checked writes fewer claims that cannot be,
@@ -147,7 +146,7 @@ func fileSchema() map[string]any {
 		"required":             []string{"path", "summary"},
 		"properties": map[string]any{
 			"path":    map[string]any{"type": "string"},
-			"summary": map[string]any{"type": "string", "description": "One line on what this file's change does."},
+			"summary": map[string]any{"type": "string", "description": "One line on what this file's change does and why."},
 		},
 	}
 }

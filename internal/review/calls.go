@@ -66,23 +66,39 @@ type callTool struct {
 // cache read depends on, so it is written out rather than built from a map.
 func callTools() []callTool {
 	return []callTool{
-		{CallOverview, "Set the overview of this change: what it does and why.",
+		{CallOverview, "Set the overview: one or two paragraphs on what this change does and why it exists, " +
+			"written for a reviewer about to read the diff. Say what the change is for, not whether it is correct. " +
+			"Calling it again replaces the earlier overview.",
 			flatObject(map[string]any{"overview": overviewSchema()}, "overview")},
-		{CallFile, "Record one line on what one file's change does and why.",
+		{CallFile, "Record one line on what one file's change does and why, using the path exactly as it appears in the change. " +
+			"Call it once for each file the pass asks you to describe; a second call for the same path replaces the first. " +
+			"Describe the change, not its quality.",
 			flatObject(propsOf(fileSchema(), "path", "summary"), "path", "summary")},
-		{CallCohort, "Record one group of files best reviewed together.",
+		{CallCohort, "Record one group of changed files that a reviewer should hold in mind together, such as a schema " +
+			"change and the code that reads it. Only for a pass that asks for cohorts. Every file belongs to exactly one " +
+			"group, and the summary is what reviewers of the other groups see of this one, so write it for someone who " +
+			"cannot see these files.",
 			flatObject(propsOf(cohortSchema(), "name", "summary", "files"), "name", "summary", "files")},
-		{CallComment, "Record one review comment on the change.",
+		{CallComment, "Record one defect in the change as a review comment. Call it once per defect, including defects " +
+			"you are unsure about or consider low severity; the confidence and severity fields carry that. Anchor it to " +
+			"the line where the defect is, in the file as it is after the change, and use the question fields to name the " +
+			"one check that would confirm or refute it.",
 			commentCallSchema()},
-		{CallRule, "Record the ruling on one finding.",
+		{CallRule, "Record your ruling on one finding you were given, by its id. Call it once for every finding. " +
+			"Write the analysis first, then the verdict it leads to, and quote the line the verdict rests on.",
 			flatObject(propsOf(rulingItemSchema(), "finding", "analysis", "verdict", "evidence", "why"),
 				"finding", "analysis", "verdict", "evidence", "why")},
-		{CallContext, "Return the full text of context entries listed beside the diff, by id.",
+		{CallContext, "Return the full text of context entries by id, from the lists under each file in the diff. " +
+			"A caller entry is code elsewhere that calls something this change touched: when a change alters what a " +
+			"function accepts, returns or does, its callers are where that breaks. A type entry is the definition of a " +
+			"type the change uses, for checking what a value can hold. A history entry is the commit history of lines " +
+			"the change touches or removes, which says why they were there. A sibling entry is another implementation " +
+			"of an interface the change affects, and a test entry is a test covering a changed symbol.",
 			flatObject(map[string]any{"ids": map[string]any{
 				"type": "array", "items": map[string]any{"type": "string"},
 				"description": "Ids from the index, for example [\"ctx3\", \"ctx7\"].",
 			}}, "ids")},
-		{CallDone, "End this pass.",
+		{CallDone, "End this pass once every call it needs has been made. Anything recorded before it stays recorded.",
 			map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}},
 	}
 }
@@ -162,7 +178,8 @@ func readsContext(deferred bool) string {
 	if !deferred {
 		return ""
 	}
-	return " Any pass can call get_context to read the context listed beside the diff."
+	return " The context listed under each file in the diff (callers of what changed, the types it uses, " +
+		"tests and line history) is one get_context call away, by the ids in those lists."
 }
 
 // passExpect is what makes a pass visibly complete. The describing pass is

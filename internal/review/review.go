@@ -664,6 +664,12 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// No line saying the material below is everything there is: a pass can
 	// ask for held-back context, and the scout's answers arrive later still.
 	system := systemFor(opts, StageReview) + languageFragments(in.Envelopes)
+	if opts.DeferContext {
+		// The documented lever for a model that under-uses its tools: a light
+		// instruction in the system prompt. Only where there is something to
+		// investigate with.
+		system += "\n\nUse the tools to investigate before responding.\n"
+	}
 	// The judging instruction rides inside the shared prompt block, the part
 	// every pass reads from the cache. The describing instruction does not:
 	// a findings pass that read "say what the change is" beside "the overview

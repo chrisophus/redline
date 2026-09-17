@@ -82,8 +82,10 @@ func TestBothStagesSendOneSharedPrefixAndDifferentTails(t *testing.T) {
 		t.Error("the two stages send different system blocks, so nothing before the prompt caches")
 	}
 	first, second := reqs[0].Messages[0].Content, reqs[1].Messages[0].Content
-	if len(first) != 3 || len(second) != 3 {
-		t.Fatalf("each stage sends the shared prefix, its calls block and its own tail: %d and %d block(s)", len(first), len(second))
+	// The describing pass has an instruction of its own after its calls
+	// block; the findings pass, with no note, has only its calls block.
+	if len(first) != 3 || len(second) != 2 {
+		t.Fatalf("the describing pass sends prefix, calls block and tail, the findings pass prefix and calls block: %d and %d block(s)", len(first), len(second))
 	}
 	if first[0].Text != second[0].Text {
 		t.Error("the block the cache entry is keyed on differs between the stages")
@@ -91,7 +93,7 @@ func TestBothStagesSendOneSharedPrefixAndDifferentTails(t *testing.T) {
 	if !hasCacheControl(first[0]) || !hasCacheControl(second[0]) {
 		t.Error("the shared block carries no breakpoint on one of the stages")
 	}
-	if first[2].Text == second[2].Text {
+	if first[1].Text == second[1].Text {
 		t.Fatal("both stages sent the same instruction, so one of them was asked for the wrong thing")
 	}
 }

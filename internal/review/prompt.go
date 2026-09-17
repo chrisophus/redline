@@ -196,14 +196,6 @@ func withRoster(prompt string, in Input) string {
 	return b.String()
 }
 
-// findingsPrompt is the judging stage's turn when a synopsis already ran. The
-// system block still describes the whole review, walkthrough included, because
-// it is shared with the synopsis call byte for byte and a system block that
-// varied per stage would cost the cache.
-//
-//go:embed prompts/findings.md
-var findingsPrompt string
-
 // notePrompt introduces the note from whoever asked for this review, and says
 // what it is and is not.
 //
@@ -256,7 +248,6 @@ reviewers see of it, so write it for someone who cannot see these lines.`, bound
 // was shown rather than in somebody's summary of them.
 func cohortTail(mine Cohort, all []Cohort, mineIdx int, crossSummaries bool) string {
 	var b strings.Builder
-	b.WriteString(findingsPrompt)
 	fmt.Fprintf(&b, "\n\n### Your cohort: %s\n\n%s\n\nReview these files and only these:\n\n",
 		mine.Name, strings.TrimSpace(mine.Summary))
 	for _, path := range mine.Files {

@@ -109,7 +109,7 @@ func (r *Result) judgingRequest(described bool) *Result {
 		return out
 	}
 	out.Stage = StageFindings
-	out.Tail = findingsPrompt + r.note
+	out.Tail = r.note
 	return out
 }
 
