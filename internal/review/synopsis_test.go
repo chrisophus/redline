@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/findings"
 )
 
 const synopsisBody = `{"overview":"Queue drops the nil guard.","files":[` +
@@ -49,6 +50,41 @@ func TestTheWalkthroughComesFromItsOwnCall(t *testing.T) {
 	}
 	if len(res.Review.Comments) != 1 {
 		t.Fatalf("the judging call's comments must survive the merge: %+v", res.Review.Comments)
+	}
+}
+
+// ReuseSynopsis stands in for the describing call entirely: one call goes
+// out, not two, and the walkthrough on the result is the one handed in, not
+// one the run paid to write.
+func TestReuseSynopsisSkipsTheDescribingCall(t *testing.T) {
+	api := serveSSE(t, anthropicSSE("tool_use", 10, 5, flatCalls(StageFindings, findingsBody)))
+	opts := synopsisOpts(api)
+	opts.Synopsis = false
+	opts.ReuseSynopsis = &findings.Review{
+		Overview: "a reused walkthrough",
+		Files:    map[string]string{"internal/queue/q.go": "a reused file summary"},
+	}
+	res, err := Run(context.Background(), exploreInput(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(api.seen()) != 1 {
+		t.Fatalf("a reused walkthrough must not send a describing call, got %d call(s)", len(api.seen()))
+	}
+	if !res.Synopsis || !res.SynopsisReused {
+		t.Fatalf("synopsis=%v synopsisReused=%v, want both true", res.Synopsis, res.SynopsisReused)
+	}
+	if res.Review.Overview != "a reused walkthrough" {
+		t.Errorf("overview = %q, want the one handed in", res.Review.Overview)
+	}
+	if res.Review.Files["internal/queue/q.go"] != "a reused file summary" {
+		t.Errorf("file line = %q, want the one handed in", res.Review.Files["internal/queue/q.go"])
+	}
+	if len(res.Review.Comments) != 1 {
+		t.Fatalf("the judging call's comments must still land: %+v", res.Review.Comments)
+	}
+	if res.SynopsisOutputTokens != 0 {
+		t.Errorf("synopsisOutputTokens = %d, want 0: nothing was written for it", res.SynopsisOutputTokens)
 	}
 }
 

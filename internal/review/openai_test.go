@@ -138,7 +138,8 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 		names = append(names, tool.Function.Name)
 	}
 	// Every call offers every tool, in the order the Anthropic wire sends
-	// them, and requires the model to call one.
+	// them, and leaves the choice to the model: forcing it is incompatible
+	// with thinking on the Anthropic API a proxy may forward this to.
 	var want []string
 	for _, tool := range callTools(false) {
 		want = append(want, tool.Name)
@@ -146,8 +147,8 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 	if !slices.Equal(names, want) {
 		t.Fatalf("every tool goes on every call, in a fixed order, got %v", names)
 	}
-	if got.ToolChoice != "required" {
-		t.Fatalf("the model must be required to call a tool, got %v", got.ToolChoice)
+	if got.ToolChoice != "auto" {
+		t.Fatalf("the choice must never be pinned, got %v", got.ToolChoice)
 	}
 
 	if res.API != APIOpenAI || res.Turns != 1 || res.StopReason != "tool_calls" {

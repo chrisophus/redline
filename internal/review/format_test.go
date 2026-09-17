@@ -113,12 +113,12 @@ func TestTheEffortComesDownWhenThinkingIsOff(t *testing.T) {
 	}
 }
 
-// claude-fable-5-1 answers 400 to a pinned choice, with tool_choice: type
-// "tool" and "any" are not supported for this model. Auto is accepted and it
-// does call the tool, so a model that refuses the pin is asked for the stage in
-// the prompt rather than failing the run. The pinned request must not pick up
-// that instruction, because it is the one every other run sends.
-func TestAModelThatRefusesAForcedToolChoiceIsAskedInstead(t *testing.T) {
+// claude-fable-5-1 used to answer 400 to a pinned tool_choice, with
+// tool_choice: type "tool" and "any" are not supported for this model. The
+// choice is never pinned now, on any model, since forcing it is incompatible
+// with thinking on this API: every model gets the same auto choice and the
+// same catalogue.
+func TestEveryModelGetsTheSameUnpinnedToolChoice(t *testing.T) {
 	text := func(p anthropic.MessageNewParams) string {
 		var b strings.Builder
 		for _, blk := range p.Messages[0].Content {
@@ -129,22 +129,22 @@ func TestAModelThatRefusesAForcedToolChoiceIsAskedInstead(t *testing.T) {
 		return b.String()
 	}
 
-	pinned := anthropicParams(Options{Model: "claude-sonnet-5", MaxTokens: 100}, &Result{Stage: StageReview})
-	if pinned.ToolChoice.OfAny == nil {
-		t.Error("a model that accepts the pin was not required to call a tool")
+	sonnet := anthropicParams(Options{Model: "claude-sonnet-5", MaxTokens: 100}, &Result{Stage: StageReview})
+	if sonnet.ToolChoice.OfAuto == nil {
+		t.Error("the choice must never be pinned, even on a model that accepts the pin")
 	}
 
-	asked := anthropicParams(Options{Model: "claude-fable-5-1", MaxTokens: 100}, &Result{Stage: StageReview})
-	if asked.ToolChoice.OfTool != nil || asked.ToolChoice.OfAny != nil {
+	fable := anthropicParams(Options{Model: "claude-fable-5-1", MaxTokens: 100}, &Result{Stage: StageReview})
+	if fable.ToolChoice.OfTool != nil || fable.ToolChoice.OfAny != nil {
 		t.Error("pinned the tool choice on a model that answers 400 to it")
 	}
-	if asked.ToolChoice.OfAuto == nil {
+	if fable.ToolChoice.OfAuto == nil {
 		t.Error("a model that refuses the pin was sent no tool choice at all")
 	}
-	if !strings.Contains(text(asked), CallComment) {
+	if !strings.Contains(text(fable), CallComment) {
 		t.Error("nothing in the request says which calls answer this pass")
 	}
-	if len(asked.Tools) != len(pinned.Tools) {
-		t.Error("the fallback changed the catalogue; only the choice and the instruction change")
+	if len(fable.Tools) != len(sonnet.Tools) {
+		t.Error("every model gets the same catalogue")
 	}
 }

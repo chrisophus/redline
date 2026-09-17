@@ -215,22 +215,19 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	if res.Tail != "" {
 		blocks = append(blocks, anthropic.NewTextBlock(res.Tail))
 	}
-	forced := forcesStage(opts)
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(opts.Model),
 		MaxTokens: opts.MaxTokens,
 		System:    []anthropic.TextBlockParam{{Text: res.System}},
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(blocks...)},
 	}
-	// Every tool, every time: the same bytes on every call of a run. A pinned
-	// call must call some tool, and the calls block says which; a model that
-	// refuses the pin is left to choose and told the same thing in words.
+	// Every tool, every time: the same bytes on every call of a run. The
+	// choice is never forced: forcing one is incompatible with thinking on
+	// this API, and a call left to choose still calls the tool the calls
+	// block says answers it, with the loop's nudge-then-parse fallback behind
+	// it if it does not. See loop.go.
 	params.Tools = anthropicTools(res.pulls())
-	if forced {
-		params.ToolChoice = anthropic.ToolChoiceUnionParam{OfAny: &anthropic.ToolChoiceAnyParam{}}
-	} else {
-		params.ToolChoice = anthropic.ToolChoiceUnionParam{OfAuto: &anthropic.ToolChoiceAutoParam{}}
-	}
+	params.ToolChoice = anthropic.ToolChoiceUnionParam{OfAuto: &anthropic.ToolChoiceAutoParam{}}
 	thinkingOff := opts.Brief && res.stage() == StageReview
 	if thinkingOff {
 		// Off for a brief review. The reason recorded here once was a cost and
@@ -249,16 +246,16 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		// openai.go records that a gateway serving one vendor's model over
 		// another's protocol ignored response_format on one review in four.
 	}
-	if !forced && !thinkingOff {
-		// Asked for although Sonnet 5 thinks unasked, because an older model
-		// thinks only when asked, and the summary puts the reasoning on the
-		// stream as it is written. The heartbeat counts it there, a stream
-		// that is not silent while the model thinks may also keep a proxy that
-		// closes quiet streams from closing this one, and the review keeps
-		// the summary for the postmortem. Set on every call the tools do not
-		// pin, which is --thinking and a model that refuses the pin: Fable 5.1
-		// thinks on every call and sends nothing of it unless asked for the
-		// summary.
+	if !thinkingOff {
+		// Sonnet 5 thinks by default now that the choice is never pinned
+		// (measured straight to the API on 2026-09-15: a pinned call spent 0
+		// thinking tokens, the same request with tool_choice auto spent 485
+		// and 2,576). Asked for explicitly anyway, because the summary puts
+		// the reasoning on the stream as it is written: the heartbeat counts
+		// it there, a stream that is not silent while the model thinks may
+		// also keep a proxy that closes quiet streams from closing this one,
+		// and the review keeps the summary for the postmortem. Without this,
+		// the model still thinks and still bills for it, just invisibly.
 		params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{
 			Display: anthropic.ThinkingConfigAdaptiveDisplaySummarized,
 		}}
@@ -267,31 +264,6 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 		params.OutputConfig.Effort = anthropic.OutputConfigEffort(cappedEffort(opts.Effort, thinkingOff))
 	}
 	return params
-}
-
-// forcesTools reports whether this model accepts a tool_choice that requires a
-// tool call.
-//
-// Requiring one keeps a pass from answering in prose. Not every model takes
-// it: claude-fable-5-1 answers 400 with `tool_choice: type "tool" and "any"
-// are not supported for this model`, which failed the run outright rather than
-// degrading. The same request with tool_choice auto returns 200 and makes the
-// calls, and the calls block already says which calls answer the pass. If it
-// answers in prose anyway the loop asks once for the calls, and then hands the
-// prose to the parser.
-//
-// The test names what was observed to refuse rather than what is known to
-// accept, so an unrecognised model keeps the pinned choice and the stronger
-// guarantee that comes with it.
-func forcesTools(model string) bool {
-	return !strings.Contains(model, "fable")
-}
-
-// forcesStage reports whether this call requires a tool call: never for a
-// model that refuses it, and never for a call asked to think, since a call
-// pinned to the tools does not think. See Options.Thinking.
-func forcesStage(opts Options) bool {
-	return forcesTools(opts.Model) && !opts.Thinking
 }
 
 // cappedEffort is the effort a request may ask for once it has also turned

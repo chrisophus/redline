@@ -105,6 +105,7 @@ func cmdReview(o opts) error {
 		MaxCostUSD:     o.maxCost,
 		Mode:           o.mode,
 		MaxTurns:       o.maxTurns,
+		CallTurns:      o.callTurns,
 		Samples:        o.samples,
 		ExpectedOutput: expected,
 		DryRun:         o.dryRun,
@@ -166,14 +167,8 @@ func cmdReview(o opts) error {
 	// and the describing split are each defined by a tool contract briefPrompt
 	// does not describe, so asking for one of them beside --brief is refused.
 	ropts.Brief = o.brief
-	ropts.Thinking = o.thinking
-	if o.thinking && o.mode == review.ModeExplore {
-		return fmt.Errorf("--thinking changes how the one-shot and split calls are sent, and --mode explore builds its own; pass one or the other")
-	}
 	if o.brief {
 		switch {
-		case o.thinking:
-			return fmt.Errorf("--brief turns thinking off and --thinking turns it on; pass one or the other")
 		case o.noBrief:
 			return fmt.Errorf("--brief and --no-brief ask for opposite prompts; pass one or the other")
 		case o.cohorts > 1:
@@ -204,6 +199,32 @@ func cmdReview(o opts) error {
 	}
 	ropts.Cohorts = o.cohorts
 	ropts.MinCohortFiles = o.minCohortFiles
+	if o.reuseSynopsis {
+		switch {
+		case o.noSynopsis:
+			return fmt.Errorf("--reuse-synopsis reuses a walkthrough and --no-synopsis asks for none; pass one or the other")
+		case o.brief:
+			return fmt.Errorf("--brief carries no synopsis contract for --reuse-synopsis to stand in for; pass one or the other")
+		case o.cohorts > 1:
+			return fmt.Errorf("--reuse-synopsis cannot stand in for the split shape's describing call, which also draws the partition; pass --cohorts 1 or drop --reuse-synopsis")
+		}
+		path := filepath.Join(o.out, "review.json")
+		rev, rerr := findings.LoadReview(path)
+		if rerr != nil {
+			return fmt.Errorf("--reuse-synopsis: %w", rerr)
+		}
+		if rev == nil {
+			return fmt.Errorf("--reuse-synopsis: %s does not exist; run once without --reuse-synopsis first", path)
+		}
+		if want := change.ReviewIdentity(res.Report.BaseSHA, res.Change); rev.Revision != want {
+			return fmt.Errorf("--reuse-synopsis: %s was written against %s and this change is %s; re-run without --reuse-synopsis",
+				path, rev.Revision, want)
+		}
+		if rev.Overview == "" {
+			return fmt.Errorf("--reuse-synopsis: %s has no walkthrough to reuse (its describing call did not produce one)", path)
+		}
+		ropts.ReuseSynopsis = rev
+	}
 	// On unless the off flag is given, the way the cache is: the summaries
 	// are what a cohort call knows about its neighbours, and a fan-out with
 	// none of them gives up every cross-cohort correlation from the cohort

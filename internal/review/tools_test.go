@@ -59,8 +59,8 @@ func TestEveryPassSendsTheSameToolsAndChoice(t *testing.T) {
 	var c struct {
 		Type string `json:"type"`
 	}
-	if err := json.Unmarshal(reviewChoice, &c); err != nil || c.Type != "any" {
-		t.Errorf("a pinned pass must call some tool, got %s", reviewChoice)
+	if err := json.Unmarshal(reviewChoice, &c); err != nil || c.Type != "auto" {
+		t.Errorf("the choice is never pinned, got %s", reviewChoice)
 	}
 }
 

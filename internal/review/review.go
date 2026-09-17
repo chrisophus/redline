@@ -122,16 +122,7 @@ type Options struct {
 	// was rerun at five samples and scored 1/3 against 0/3, one catch in
 	// fifteen trials. Nothing there distinguishes the two emissions, so the
 	// short prompt is what Brief is now, and both wires run it.
-	Brief bool
-	// Thinking lets the model think before it answers. Sonnet 5 thinks by
-	// default, but not on a call whose tool_choice pins one tool: measured
-	// straight to the API on 2026-09-15, pinned calls spent 0 and 0 thinking
-	// tokens, the same request with tool_choice auto spent 485 and 2,576, and
-	// adaptive thinking set beside the pin still spent 0. So a call asked to
-	// think offers its stage's tool instead of pinning it and says in words
-	// which tool answers, the way a model that refuses the pin is already
-	// asked. Off by default until an eval arm has measured what it buys.
-	Thinking  bool
+	Brief     bool
 	Ceiling   int
 	MaxTokens int64
 	// MaxCostUSD refuses to send a request whose estimated cost exceeds it.
@@ -255,6 +246,13 @@ type Options struct {
 	// that cap with fifty file summaries in front of the findings. The price
 	// is one more call over a prefix the first one has already paid to cache.
 	Synopsis bool
+	// ReuseSynopsis stands in for the describing call: its Overview and Files
+	// are put straight on the result, at no cost, and the judging call is
+	// asked for findings alone, the same contract it gets from a describing
+	// call that succeeded. Nil runs the describing call as usual. The caller
+	// is responsible for deciding it still describes this change - Options
+	// carries no revision to check it against.
+	ReuseSynopsis *findings.Review
 	// Cohorts is the upper bound on judging calls, not a target, and the one
 	// dial for the split: one, the default, judges the change in one call;
 	// above one, the describing call also partitions the shown files and each
@@ -522,6 +520,11 @@ type Result struct {
 	// not read the same.
 	Synopsis       bool   `json:"synopsis,omitempty"`
 	SynopsisFailed string `json:"synopsisFailed,omitempty"`
+	// SynopsisReused records that the walkthrough came from --reuse-synopsis
+	// rather than a describing call this run paid for: SynopsisOutputTokens is
+	// zero either way, and a reader comparing two rows' cost needs to know
+	// which zero it is.
+	SynopsisReused bool `json:"synopsisReused,omitempty"`
 	// SynopsisOutputTokens is what the describing stage wrote, kept out of
 	// Usage for the reason RulingOutputTokens is: the ledger's output median
 	// prices the next review's judging call, and folding a walkthrough into
@@ -915,7 +918,12 @@ func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 	var synWritten int64
 	var synFailed string
 	var described *Result
-	if opts.Synopsis {
+	reused := opts.ReuseSynopsis != nil
+	switch {
+	case reused:
+		walkthrough = *opts.ReuseSynopsis
+		res = res.judgingRequest(true)
+	case opts.Synopsis:
 		walkthrough, synUsage, synWritten, synFailed, described = describe(ctx, in, opts, res)
 		if synFailed != "" && opts.Progress != nil {
 			opts.Progress("the describing call did not produce a walkthrough (" + synFailed +
@@ -933,8 +941,11 @@ func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 	if out != nil {
 		out.foldCalls(described)
 	}
-	if opts.Synopsis {
+	if opts.Synopsis || reused {
 		applySynopsis(out, opts.Model, walkthrough, synUsage, synWritten, synFailed)
+		if out != nil && reused {
+			out.SynopsisReused = true
+		}
 	}
 	return out, err
 }
