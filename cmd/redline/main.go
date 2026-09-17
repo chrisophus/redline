@@ -58,7 +58,7 @@ type opts struct {
 	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
 	noLint                                                            bool
 	noContext                                                         bool
-	stats, verify, noVerify, debug, cache, noCache                    bool
+	stats, verify, noVerify, debug, verbose, cache, noCache           bool
 	synopsis, noSynopsis                                              bool
 	port, ceiling, maxTokens, maxTurns, callTurns, samples            int
 	cohorts, minCohortFiles                                           int

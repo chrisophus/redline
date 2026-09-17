@@ -216,12 +216,20 @@ func cmdReview(o opts) error {
 	// pass reaches the ledger and not only its own log line.
 	tally := scoutTally{known: true}
 	if !o.dryRun {
-		// Progress and debug are wired before the answerer is, because it
-		// captures ropts and threads both into the lookup loop. Without this
-		// the scout would run silent even with --debug on.
+		// Progress, verbose and debug are wired before the answerer is,
+		// because it captures ropts and threads all three into the lookup
+		// loop. Without this the scout would run silent even with --verbose
+		// on.
 		ropts.Progress = func(msg string) { fmt.Fprintln(os.Stderr, "redline:", msg) }
+		// --verbose is what a person watching the run sees; --debug is what
+		// the run leaves behind for someone to read afterward. Independent
+		// on purpose: a CI run wants --debug on (the artifact is the only
+		// record once the job ends) and --verbose off (its own log already
+		// has stdout/stderr, so the same lines twice would just be noise).
+		if o.verbose || os.Getenv("REDLINE_VERBOSE") != "" {
+			ropts.Debug = func(msg string) { fmt.Fprintln(os.Stderr, "redline verbose:", msg) }
+		}
 		if o.debug || os.Getenv("REDLINE_DEBUG") != "" {
-			ropts.Debug = func(msg string) { fmt.Fprintln(os.Stderr, "redline debug:", msg) }
 			// Its own subdirectory per run, named by when the run started, so
 			// a rerun against the same --out never destroys what the last one
 			// wrote. The old flat layout numbered files from 1 on every
@@ -241,10 +249,10 @@ func cmdReview(o opts) error {
 					mu.Unlock()
 					p := filepath.Join(dir, fmt.Sprintf("%02d-%s", n, name))
 					if err := os.WriteFile(p, data, 0o644); err != nil {
-						fmt.Fprintf(os.Stderr, "redline debug: could not write %s: %v\n", p, err)
+						fmt.Fprintf(os.Stderr, "redline: could not write %s: %v\n", p, err)
 					}
 				}
-				fmt.Fprintf(os.Stderr, "redline debug: writing the full LLM requests and responses to %s/\n", dir)
+				fmt.Fprintf(os.Stderr, "redline: writing the full LLM requests and responses to %s/\n", dir)
 			}
 		}
 	}
