@@ -179,7 +179,8 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.BoolVar(&o.noCrossSummaries, "no-cross-summaries", false, "each cohort reviews its files knowing nothing of the others")
 	fs.BoolVar(&o.planOnly, "plan", false, "with --cohorts above 1: describe and partition, then stop before judging any cohort")
 	fs.StringVar(&o.onlyCohorts, "only-cohorts", "", "with --cohorts above 1: comma-separated cohort names or 1-based indices to judge, skipping the rest")
-	fs.BoolVar(&o.debug, "debug", false, "log each model request, response, and scout tool call to stderr")
+	fs.BoolVar(&o.verbose, "verbose", false, "log each model request, response, and scout tool call to stderr")
+	fs.BoolVar(&o.debug, "debug", false, "write the full requests and responses under --out/debug/<run timestamp>/")
 	fs.IntVar(&o.ceiling, "ceiling", 0, "token ceiling for the whole request")
 	fs.IntVar(&o.maxTokens, "max-tokens", 0, "cap on the response")
 	fs.Float64Var(&o.maxCost, "max-cost", 0, "refuse a request estimated above this many dollars")
@@ -447,13 +448,21 @@ output:
   --stats           print the cost distribution of the reviews recorded in
                     --out and exit. The target is an average, so this is the
                     number to read, not any single run.
-  --debug           log every model request, its stop reason and token
+  --verbose         log every model request, its stop reason and token
                     counts, the body the parser was handed, and each scout
-                    tool call to stderr, and write the full requests and
-                    responses under --out/debug/<run timestamp>/, with the
-                    model's thinking summary. Its own subdirectory per run,
-                    so rerunning against the same --out never overwrites
-                    what the last run captured. REDLINE_DEBUG does the same.
+                    tool call to stderr - what a person watching the run
+                    sees. REDLINE_VERBOSE does the same.
+  --debug           write the full requests and responses, with the
+                    model's thinking summary and the exact instructions
+                    sent with each call, under --out/debug/<run
+                    timestamp>/ - what the run leaves behind for someone
+                    to read afterward. Its own subdirectory per run, so
+                    rerunning against the same --out never overwrites what
+                    the last run captured. Independent of --verbose: a CI
+                    run wants this on and --verbose off, since its own log
+                    already has the run's stdout/stderr and only the
+                    captured files survive as an artifact. REDLINE_DEBUG
+                    does the same.
   --open            open the HTML report when done
   --no-open         never open a browser
   --port N          loopback port for the report server (default 8765)
