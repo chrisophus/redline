@@ -12,6 +12,19 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Added
+- **`--defer-context` lets the reviewer pull the context it wants.** The
+  context the providers resolved leaves the prompt. Each file's diff is
+  followed by an index of its entries, matched to the file through the
+  provider's scope, and any pass reads an entry with `get_context`. An
+  experiment, off by default. On a fixture whose defect is only visible from
+  an unchanged caller, the reviewer fetched the caller in its first reply and
+  caught the defect, and reasoned between fetches; on fixtures that do not
+  need the context it fetched nothing and the prompt was a fifth smaller.
+- **A synthetic fixture pair that needs context beyond the diff.**
+  `caller-breaks-on-new-nil` changes `FindUser` to return nil, and an
+  unchanged caller dereferences the result; `clean-caller-already-checks-nil`
+  is the same change with a caller that checks. No earlier fixture had a
+  labelled defect whose evidence is in the offered context.
 - **`--note` tells the reviewer what to look at.** `redline review --note
   "..."`, or `--note-file path`, adds a note from whoever asked for the review
   to the end of every judging call: which file worries them, what to look at
@@ -23,6 +36,16 @@ Releases whose tag carries only a subject line are listed as that subject.
   catch has not been measured yet.
 
 ### Changed
+- **Each pass reads only its own instruction, and the tools say what they are
+  for.** The shared prompt is now material only: the judging instruction goes
+  to the passes that judge and the describing instruction to the passes that
+  describe, after a describing pass that read the judging instruction
+  reviewed the whole change in thinking it could not file. The judging
+  instruction asks for every defect, including uncertain and low-severity
+  ones, rather than setting a bar. Tool descriptions say what each call
+  records and when to use it, and the calls block states facts rather than
+  how to batch calls. The system block no longer says the material below is
+  everything, or points at steps that do not exist.
 - **Every review call is a turn loop of small tool calls.** A pass used to
   answer with one strict tool carrying the whole answer as one object. Now
   every call declares the same six non-strict tools (`set_overview`,

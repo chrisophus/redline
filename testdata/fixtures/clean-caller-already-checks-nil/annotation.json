@@ -1,0 +1,16 @@
+{
+  "name": "clean-caller-already-checks-nil",
+  "origin": "synthetic, built by make-synthetic.sh",
+  "summary": "The same change to FindUser, returning nil for a missing id, and the same caller in the same untouched file, except that EmailFor already checks for nil before reading the email.",
+  "clean": true,
+  "why_this_fixture_exists": "The paired control for caller-breaks-on-new-nil. The diff is identical, byte for byte, so a reviewer that flags any function which starts returning nil without reading what its callers do is caught here and cannot be caught anywhere else in the set.",
+  "expect": [],
+  "quiet": [
+    {
+      "about": "importing the paired fixture's defect into a change whose caller handles it",
+      "note": "EmailFor checks for nil before reading u.Email, so the new nil return is handled. A finding that a caller will panic or dereference nil is the caller-breaks-on-new-nil finding filed against a change where the check is present.",
+      "matches_without_correlation": ["panic", "dereference", "nil pointer", "u.Email", "unchecked"]
+    }
+  ],
+  "reject": []
+}

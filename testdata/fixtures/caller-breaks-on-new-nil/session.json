@@ -1,0 +1,301 @@
+{
+  "report": {
+    "schemaVersion": 1,
+    "baseRef": "0c6533b05713e1e52d5193e8633c0d9ef380890c",
+    "baseSHA": "0c6533b05713e1e52d5193e8633c0d9ef380890c",
+    "scope": [
+      "internal/store/user.go"
+    ],
+    "findings": [
+      {
+        "rule": "source-without-test",
+        "substrate": "redline/test-delta",
+        "category": "tests",
+        "severity": "info",
+        "message": "code in internal/store changed but no test in that package did",
+        "new": true,
+        "fingerprint": "package:internal/store\u0000source-without-test\u0000code in internal/store changed but no test in that package did",
+        "id": "f8c947a2476",
+        "context": "Not necessarily a problem: an existing test may already cover the change. Worth checking the new behavior has one.",
+        "anchor": {
+          "kind": "package",
+          "id": "internal/store"
+        },
+        "source": "deterministic",
+        "question": {
+          "kind": ""
+        }
+      }
+    ],
+    "substrates": [
+      {
+        "name": "redline/sql",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/api",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/lint",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/suppressions",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/lint-config",
+        "state": "skipped",
+        "detail": "this change touches none of the files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/test-delta",
+        "state": "ran",
+        "gating": false
+      },
+      {
+        "name": "redline/parity",
+        "state": "not-applicable",
+        "detail": "the repository has no files this pane reads",
+        "gating": false
+      },
+      {
+        "name": "redline/mutation",
+        "state": "not-applicable",
+        "detail": "no gomutants report configured in .redline.yml",
+        "gating": false
+      }
+    ],
+    "newCount": {
+      "info": 1
+    },
+    "coverage": {
+      "changedFiles": 1,
+      "examinedFiles": 1,
+      "coverableFiles": 1
+    },
+    "confirmations": [
+      {
+        "substrate": "redline/lint",
+        "rule": "lint-clean-delta",
+        "message": "no new linter finding against the base revision (gorefactor)"
+      },
+      {
+        "substrate": "redline/suppressions",
+        "rule": "no-suppressions-added",
+        "message": "this change adds no lint-silencing directive"
+      }
+    ],
+    "unknowns": [
+      {
+        "substrate": "redline/context",
+        "message": "gorefactor resolved 7 expansion(s) (2 history, 2 removal, 1 caller, 1 enclosing, 1 type) and reported 2 gap(s)",
+        "reason": "no sibling expansions: no changed type implements an interface declared in this module; no test expansions: no test outside the change reaches a changed symbol"
+      }
+    ],
+    "tools": [
+      {
+        "name": "gorefactor",
+        "status": "ran"
+      }
+    ]
+  },
+  "change": {
+    "target": {
+      "kind": "commit",
+      "dir": "/private/var/folders/g1/pll5_z394xg4gn8drm46y__m0000gn/T/tmp.lIXweNI0fc/caller",
+      "head": "e60dfe11ccfa1905f9660caf826b219445174dde",
+      "base": "0c6533b05713e1e52d5193e8633c0d9ef380890c",
+      "label": "HEAD"
+    },
+    "baseSHA": "0c6533b05713e1e52d5193e8633c0d9ef380890c",
+    "commits": [
+      {
+        "sha": "e60dfe11ccfa1905f9660caf826b219445174dde",
+        "author": "fixture",
+        "subject": "return nil for a missing user instead of an empty one"
+      }
+    ],
+    "files": [
+      {
+        "path": "internal/store/user.go",
+        "status": "modified",
+        "added": 6,
+        "removed": 3,
+        "diff": "diff --git a/internal/store/user.go b/internal/store/user.go\nindex 8fc599f..8fe2df8 100644\n--- a/internal/store/user.go\n+++ b/internal/store/user.go\n@@ -8,9 +8,12 @@ type User struct {\n \n var users = map[string]User{}\n \n-// FindUser returns the user with the given id. A missing id returns an empty\n-// user.\n+// FindUser returns the user with the given id, or nil when no user has that\n+// id.\n func FindUser(id string) *User {\n-\tu := users[id]\n+\tu, ok := users[id]\n+\tif !ok {\n+\t\treturn nil\n+\t}\n \treturn \u0026u\n }\n",
+        "addedLines": [
+          11,
+          12,
+          14,
+          15,
+          16,
+          17
+        ],
+        "head": "package store\n\n// User is one row of the users table.\ntype User struct {\n\tID    string\n\tEmail string\n}\n\nvar users = map[string]User{}\n\n// FindUser returns the user with the given id, or nil when no user has that\n// id.\nfunc FindUser(id string) *User {\n\tu, ok := users[id]\n\tif !ok {\n\t\treturn nil\n\t}\n\treturn \u0026u\n}\n",
+        "language": "go",
+        "areas": [
+          "code"
+        ]
+      }
+    ],
+    "uiTouched": false
+  },
+  "renders": [
+    {
+      "Title": "Lint delta",
+      "Summary": "0 finding(s) introduced, 0 resolved (gorefactor)",
+      "Lines": []
+    },
+    {
+      "Title": "Suppressions",
+      "Summary": "0 lint-silencing directive(s) added by this change",
+      "Lines": null
+    },
+    {
+      "Title": "Tests",
+      "Summary": "1 test-delta fact(s) from the diff",
+      "Lines": [
+        "~ internal/store (no test changed)"
+      ]
+    }
+  ],
+  "envelopes": [
+    {
+      "schemaVersion": 1,
+      "provider": {
+        "name": "gorefactor",
+        "version": "0.17.0",
+        "language": "go"
+      },
+      "baseSHA": "0c6533b05713e1e52d5193e8633c0d9ef380890c",
+      "files": [
+        {
+          "path": "internal/store/user.go",
+          "class": "source",
+          "symbols": [
+            "FindUser"
+          ]
+        }
+      ],
+      "expansions": [
+        {
+          "role": "enclosing",
+          "priority": 86,
+          "symbol": "FindUser",
+          "scope": "internal/store.FindUser",
+          "file": "internal/store/user.go",
+          "startLine": 11,
+          "endLine": 19,
+          "content": "// FindUser returns the user with the given id, or nil when no user has that\n// id.\nfunc FindUser(id string) *User {\n\tu, ok := users[id]\n\tif !ok {\n\t\treturn nil\n\t}\n\treturn \u0026u\n}\n",
+          "details": {
+            "changedLines": "6",
+            "exported": "true",
+            "kind": "func",
+            "package": "example.com/caller/internal/store"
+          }
+        },
+        {
+          "role": "caller",
+          "priority": 86,
+          "symbol": "FindUser",
+          "scope": "internal/store.FindUser",
+          "file": "internal/api/handler.go",
+          "startLine": 5,
+          "endLine": 9,
+          "content": "// EmailFor returns the address to notify for a user.\nfunc EmailFor(id string) string {\n\tu := store.FindUser(id)\n\treturn u.Email\n}\n",
+          "details": {
+            "callerKind": "func",
+            "callerSymbol": "internal/api.EmailFor",
+            "kind": "call-site",
+            "line": "7"
+          }
+        },
+        {
+          "role": "removal",
+          "priority": 120,
+          "file": "internal/store/user.go",
+          "startLine": 11,
+          "endLine": 12,
+          "content": "commit 0c6533b05713e1e52d5193e8633c0d9ef380890c\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-17T08:19:14+05:30\n\n    store and notification handler\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +11,2 @@\n+// FindUser returns the user with the given id. A missing id returns an empty\n+// user.\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "11-12 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "removal",
+          "priority": 120,
+          "file": "internal/store/user.go",
+          "startLine": 14,
+          "endLine": 14,
+          "content": "commit 0c6533b05713e1e52d5193e8633c0d9ef380890c\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-17T08:19:14+05:30\n\n    store and notification handler\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +14,1 @@\n+\tu := users[id]\n",
+          "details": {
+            "kind": "removed-line-history",
+            "lines": "14-14 at the base revision",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "type",
+          "priority": 86,
+          "symbol": "User",
+          "scope": "internal/store.User",
+          "file": "internal/store/user.go",
+          "startLine": 3,
+          "endLine": 7,
+          "content": "// User is one row of the users table.\ntype User struct {\n\tID    string\n\tEmail string\n}\n",
+          "details": {
+            "kind": "type",
+            "referencedBy": "internal/store.FindUser"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 86,
+          "symbol": "FindUser",
+          "scope": "internal/store.FindUser",
+          "file": "internal/store/user.go",
+          "startLine": 11,
+          "endLine": 12,
+          "content": "commit 0c6533b05713e1e52d5193e8633c0d9ef380890c\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-17T08:19:14+05:30\n\n    store and notification handler\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +11,2 @@\n+// FindUser returns the user with the given id. A missing id returns an empty\n+// user.\n",
+          "details": {
+            "baseLines": "11-12",
+            "kind": "line-history",
+            "lines": "11-12",
+            "revisions": "3"
+          }
+        },
+        {
+          "role": "history",
+          "priority": 86,
+          "symbol": "FindUser",
+          "scope": "internal/store.FindUser",
+          "file": "internal/store/user.go",
+          "startLine": 14,
+          "endLine": 17,
+          "content": "commit 0c6533b05713e1e52d5193e8633c0d9ef380890c\nAuthor: fixture \u003cfixture@example.com\u003e\nDate:   2026-09-17T08:19:14+05:30\n\n    store and notification handler\n\ndiff --git a/internal/store/user.go b/internal/store/user.go\n--- /dev/null\n+++ b/internal/store/user.go\n@@ -0,0 +14,1 @@\n+\tu := users[id]\n",
+          "details": {
+            "baseLines": "14-14",
+            "kind": "line-history",
+            "lines": "14-17",
+            "revisions": "3"
+          }
+        }
+      ],
+      "promptFragment": "Reviewing Go.\n\nErrors are values and the wrapping chain is the contract. A function that adds\ncontext to an error wraps it with %w when a caller may need errors.Is or\nerrors.As to match it, and formats with %v when the chain should stop there.\nAn error is handled once: code that logs it and returns it has handled it\ntwice, and the caller reports it again. A dropped error is a finding unless the\ncode says why.\n\ncontext.Context is the first parameter, named ctx, and travels down every call\nthat can block. Look for a function that takes one and ignores it, for\ncontext.Background() created deep inside a request path, and for a context\nkept in a struct field. Cancellation only works when the value carrying it\nreaches the blocking call.\n\nEvery goroutine needs a defined end. Ask what stops it and what happens when\nthe caller returns first. A goroutine started per request with no cancellation\nis a leak. A WaitGroup whose Add runs inside the goroutine is a race. Anything\na closure captures and two goroutines write needs a mutex or a channel.\n\nNil is legal for slices, maps, channels, function values, pointers, and\ninterfaces, and it behaves differently for each. Reading a nil map works and\nwriting one panics. A nil pointer inside a non-nil interface compares unequal\nto nil, which is how a returned error becomes non-nil by accident.\n\nInterfaces belong to the consumer. A new interface declared beside its only\nimplementation usually belongs in the package that calls it. Satisfaction is\nchecked at compile time, so a method added only to satisfy an interface is\neither used or dead.\n\nTests are table-driven by convention: a slice of named cases with a subtest per\ncase under t.Run. Look for state shared between cases, for t.Parallel over a\ncaptured loop variable, and for assertions on error strings where errors.Is\nsays what was meant.\n\nLoad-bearing idioms: defer for cleanup that must run on every path, a zero\nvalue that is usable without construction, and early returns over nesting.\n",
+      "notes": [
+        "no sibling expansions: no changed type implements an interface declared in this module",
+        "no test expansions: no test outside the change reaches a changed symbol"
+      ]
+    }
+  ]
+}

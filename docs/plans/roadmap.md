@@ -30,7 +30,9 @@ reads the first call's prompt back out of the cache instead of paying for it
 again. `--verify` adds the scout's lookups and a ruling behind them.
 `--cohorts N` above 1 splits the files into groups and sends one judging call
 per group, with `--plan` to stop after the split and `--only-cohorts` to judge
-part of it. The prompts are files under
+part of it. `--defer-context` leaves the resolved context out of the prompt
+and lets any pass read an entry with `get_context`; see Context the reviewer
+pulls below. The prompts are files under
 `internal/review/prompts`. `post` gates on the ruling, holds back low
 confidence and hedged wording, and keeps the reviewer's info findings in the
 review body instead of on the diff.
@@ -81,6 +83,74 @@ So it was not missing context and it was not missing advice.
 | **Prefer a definition to a habit** | A ruling settled a question about what the SDK does by pointing at `internal/scout/tools.go` building the same type the same way, when the answer was a struct tag one file away in the module cache. The scout's brief ranks evidence against a finding above evidence for it, and does not rank a definition above another call site. | S |
 | **The scout cannot look outside the repository** | It now says so honestly: an empty search reports what it searched and what lies outside. The module cache is still out of scope, so a question about a dependency still ends at "nobody can check that here". | M |
 | **Effort quietly thins the checking** | At `--effort high` the reviewer asked one question about three findings; at `low` it asked two about six. The finding that got a lookup is the one that reached the pull request. Worth knowing before any default moves, and a real run's postmortem already records which findings were asked about. | S |
+
+## Context the reviewer pulls
+
+`--defer-context` is an experiment in letting the reviewer read context when
+its reasoning calls for it, rather than being handed all of it up front. The
+context block leaves the prompt. Each file's diff is followed by an index of
+the entries that belong to it, one line each (id, role, name, location),
+matched to the changed file through the provider's `scope`, and any pass reads
+an entry with `get_context`. The same entries are offered as the prompt would
+have carried.
+
+What the runs showed (`claude-sonnet-5`, September 2026, one sample each, so
+read them as directions):
+
+- On `gorefactor-nil-rules` the reviewer never called `get_context` across six
+  runs at low, medium and default effort and three wordings of the index, and
+  its saved thinking never mentioned the index. That was the right call.
+  None of the fixture's 17 labelled defects needs anything the provider
+  offers: 15 are in the diff, and the other two need `.golangci.yml` and
+  call sites in `analyzer/cross_file_helpers.go`, which no provider returns.
+  No other fixture in the set has a labelled defect whose evidence is in the
+  offered context either, so every earlier measurement of context was a
+  measurement of context the review did not need.
+- `caller-breaks-on-new-nil` and its clean pair were built to need it. A
+  change makes `FindUser` return nil and documents it; an unchanged caller in
+  another file dereferences the result. With the context deferred, both
+  passes asked for the caller in their first reply, and the review caught
+  the defect (error/high, $0.03, 7 seconds), as the inline run did. On the
+  clean pair the findings pass fetched the caller, reasoned about it, fetched
+  the type and history, and reasoned again before writing: thinking between
+  tool calls, which never appeared while every tool only recorded an answer.
+- Both clean runs filed a speculative finding about callers that might
+  exist and were not shown. Inline rated it error/medium and would have
+  posted it; deferred rated it warning/low and would not.
+- The deferred prompt on `gorefactor-nil-rules` was 35k tokens against 44k
+  inline, so where context is not needed it is cheaper.
+
+What the research behind it said, and what was changed because of it:
+
+- A tool description is the largest lever on whether a model calls a tool,
+  and should say when to use it, not only what it does. Every tool
+  description was rewritten to say what the call records and when to use it,
+  and `get_context` says what each kind of entry is and when a reviewer
+  reaches for it.
+- Low and medium effort make fewer tool calls on Sonnet 5 by design, so a
+  tool-use experiment has to run at default effort or above.
+- Adaptive thinking reasons between tool calls, after tool results. A loop
+  whose calls are only ever answered "Recorded." gives it nothing to reason
+  about, which is why every pass thought everything through before its
+  first call.
+- Sonnet 5 follows a stated bar in a code-review prompt and reports less, so
+  "Report what survives that" was replaced by coverage language. The first
+  wording also listed ways a change can go wrong, and a findings pass spent
+  its whole 64k output cap reasoning; that list is gone. The judging
+  instruction now reaches only the passes that judge, since a describing pass
+  that read it reviewed the whole change in 45k tokens of thinking it could
+  not file.
+
+| Item | What | Effort |
+|---|---|---|
+| **Whole calling functions for callers** | gorefactor and tsrefactor both send a caller as the use line plus two lines either side (`callerContextLines = 2`), though both already know the enclosing declaration (`details.callerSymbol`). A window cannot show a nil check five lines up, what happens to a returned value, or what a refresh handler clears. With the context deferred an entry costs one index line until it is read, so the reason to keep it thin is gone. Emit the enclosing function's span; the window can stay as the index preview. Upstream in both providers. | S |
+| **A callee role** | Neither provider emits what a changed function calls. That is the other half of most contract defects, and of the cache-key miss above: what the refresh actually invalidates is a callee of its handler. gorefactor's `callgraph --depth N` already walks callees; ts-morph can do the same. Needs a fixture whose defect is in a callee. Upstream. | M |
+| **Callers of callers** | Both providers stop at one hop. gorefactor's `blast-radius` already computes transitive callers. Emit the second hop as its own role ranked below direct callers, so a deferred index can offer it without crowding the first. Upstream. | M |
+| **What else the providers could resolve** | Implementations of a changed interface (gorefactor has `find-implementations`) and the interface declaration itself, which today is only a name in `details.interface`. Types past a signature: field types, types used in a body, types a changed type or var refers to. Tests reached through another package (`test-affected`). For tsrefactor: declarations nested inside a component (inner hooks and callbacks are never symbols), plain `.js` files, and query keys matched to the `invalidateQueries` calls that clear them. The history caps (3 revisions, 3 spans per file) are fixed constants in both. Upstream. | M |
+| **Speculative findings about unseen callers** | On the clean fixture both runs flagged a nil return for callers that might exist. A finding should rest on code the reviewer saw or read. Measure a sentence to that effect on the clean pair. | S |
+| **The describing pass reads context too** | It fetched the caller on both synthetic runs. Cheap here, but it is not the pass that needs it. | S |
+| **Try it on the cache-key PR** | The real miss this is aimed at, with tsrefactor's context and a large change, where the relevant entry is one of many. Worth doing once whole calling functions land, since today's windows do not carry the relationship the defect turns on. | S |
+| **Decide whether context defers by default** | Not before it has run on real changes with the extended providers. | S |
 
 ## Cohorts
 
