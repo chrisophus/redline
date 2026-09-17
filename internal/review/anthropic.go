@@ -2,7 +2,11 @@ package review
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -15,6 +19,80 @@ const (
 	APIAnthropic = "anthropic"
 	APIOpenAI    = "openai"
 )
+
+// idleTimeout bounds the gap between bytes arriving on the wire, not the
+// call: a heavy-reasoning turn legitimately runs many minutes, and the API
+// sends something - a ping if nothing else - every few seconds while it is
+// really there.
+//
+// It has to sit below the SSE decoder, not in the turn loop: the decoder
+// discards ping frames before a caller ever sees them (anthropic-sdk-go's
+// packages/ssestream, `case "ping": continue`), so resetting a timer on
+// every stream.Next() starves on exactly the traffic that proves the
+// connection is alive - caught by a test written against that assumption,
+// which failed until the timeout moved here.
+//
+// A gap this wide with no bytes at all, ping included, is a stalled
+// connection, and the failure this exists to name: a call that hung for
+// upwards of twenty minutes with the heartbeat silent throughout, because
+// the heartbeat only ever reports what a stream event told it and no event
+// ever arrived to tell it anything.
+//
+// A var so a test can drive a stall in milliseconds rather than minutes;
+// nothing in the product writes to it.
+var idleTimeout = 120 * time.Second
+
+// idleTransport wraps the default transport so a streamed response times
+// out on its own silence, independent of what the API is sending: a read
+// that produces nothing for idleTimeout fails with an error naming the
+// stall, rather than blocking forever.
+type idleTransport struct{}
+
+func (idleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := http.DefaultTransport.RoundTrip(req)
+	if err != nil || resp.Body == nil {
+		return resp, err
+	}
+	resp.Body = &idleReader{r: resp.Body}
+	return resp, nil
+}
+
+// idleReader races each Read against idleTimeout, not the whole response: a
+// stream that keeps producing bytes, however slowly overall, never trips it.
+//
+// The underlying Read runs in its own goroutine reading into a private
+// buffer, not the caller's: a Read that times out has already handed the
+// caller's buffer back for other use, and a late-arriving Read into it would
+// race whatever reused it. The buffer, and the goroutine reading into it, are
+// abandoned on a timeout; both are freed once the real Read finally returns,
+// which Close (via the deferred stream.Close in send) forces by closing the
+// underlying connection.
+type idleReader struct {
+	r io.ReadCloser
+}
+
+func (d *idleReader) Read(p []byte) (int, error) {
+	type result struct {
+		n   int
+		err error
+		buf []byte
+	}
+	ch := make(chan result, 1)
+	go func() {
+		buf := make([]byte, len(p))
+		n, err := d.r.Read(buf)
+		ch <- result{n, err, buf}
+	}()
+	select {
+	case res := <-ch:
+		copy(p, res.buf[:res.n])
+		return res.n, res.err
+	case <-time.After(idleTimeout):
+		return 0, fmt.Errorf("no data received in %s, not even a ping: the connection stalled, this is not the model reasoning", idleTimeout)
+	}
+}
+
+func (d *idleReader) Close() error { return d.r.Close() }
 
 // completion is what one pass returned, across all its turns, in terms Run
 // reads without knowing which API produced them.
@@ -64,6 +142,7 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 	if opts.BaseURL != "" {
 		clientOpts = append(clientOpts, option.WithBaseURL(opts.BaseURL))
 	}
+	clientOpts = append(clientOpts, option.WithHTTPClient(&http.Client{Transport: idleTransport{}}))
 	conv := &anthropicConversation{
 		client: anthropic.NewClient(clientOpts...),
 		opts:   opts,
