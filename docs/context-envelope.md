@@ -110,12 +110,14 @@ Context beyond the diff. `role` is the vocabulary Redline ranks by:
 | Role | What it is |
 |---|---|
 | `enclosing` | The full declaration a changed hunk sits inside — the whole function, not the hunk |
-| `caller` | A call site of a changed exported symbol |
+| `caller` | A declaration outside the change that reaches a changed symbol, carried whole. `details.calls` names what it reaches |
+| `callee` | What a changed declaration calls: the other half of a contract defect, and the half no caller shows |
 | `removal` | History of lines the change deletes: the commits that added them |
 | `type` | The definition of a type named in a changed signature |
 | `sibling` | Another implementation of an interface the change touches |
 | `test` | A test covering a changed symbol |
 | `history` | Prior history of the changed lines |
+| `indirect-caller` | A caller of a caller: the second hop out from a changed symbol. Ranks last, below history, because it is whole functions that may have nothing to do with the change |
 
 Roles are ranked in that order, and the order is Redline's decision. A
 provider cannot promote a test above an enclosing declaration; `priority`

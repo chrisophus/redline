@@ -42,6 +42,11 @@ const (
 	RoleEnclosing Role = "enclosing"
 	// RoleCaller is a call site of a changed exported symbol.
 	RoleCaller Role = "caller"
+	// RoleCallee is what a changed function calls: the other half of a
+	// contract defect. A change that starts returning nil is judged by its
+	// callers; a change to what a handler invalidates, refreshes or commits is
+	// judged by what it calls, and no caller shows that.
+	RoleCallee Role = "callee"
 	// RoleRemoval is the history of lines the change deletes: the commits that
 	// added them, and with them the reason the lines were there. A deleted guard
 	// reads like a tidy simplification until that commit says why it was added.
@@ -57,6 +62,12 @@ const (
 	// stops a whole class of bad review comment: the suggestion to undo a
 	// deliberate fix.
 	RoleHistory Role = "history"
+	// RoleIndirectCaller is a caller of a caller: the second hop out from a
+	// changed symbol. It ranks last because it is the most speculative context
+	// here and the most expensive, being whole functions that may have nothing
+	// to do with the change. It is offered so a deferred index can carry the
+	// second hop without crowding the first.
+	RoleIndirectCaller Role = "indirect-caller"
 )
 
 // roleRank is the order expansions are kept in when the budget binds,
@@ -66,16 +77,27 @@ const (
 var roleRank = map[Role]int{
 	RoleEnclosing: 0,
 	RoleCaller:    1,
+	// Callee sits beside caller because it is the same question asked the
+	// other way, and a contract defect usually needs whichever half the change
+	// is not. It ranks below caller because a caller is evidence the change
+	// reaches real code, where a callee is evidence about what the change
+	// itself does, which the enclosing declaration already half carries.
+	RoleCallee: 2,
 	// Removal ranks after callers and ahead of the rest. It shared history's
 	// last place until a 43-file change dropped eight history expansions to fit,
 	// and the deletions' history is the part with a catch to its name. Callers
 	// stay ahead of it because they cost little: across the fixtures a change's
 	// callers ran 4 to 12 thousand characters, and its removals up to 35.
-	RoleRemoval: 2,
-	RoleType:    3,
-	RoleSibling: 4,
-	RoleTest:    5,
-	RoleHistory: 6,
+	RoleRemoval: 3,
+	RoleType:    4,
+	RoleSibling: 5,
+	RoleTest:    6,
+	RoleHistory: 7,
+	// Last of the roles Redline knows, and deliberately below history: history
+	// is cheap and this is not. A second hop is whole functions that reach the
+	// change through something else, so it is the first thing a bound budget
+	// should drop.
+	RoleIndirectCaller: 8,
 }
 
 // unknownRoleRank sorts a role Redline does not know after every role it
