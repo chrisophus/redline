@@ -75,6 +75,12 @@ func deferEntries(in Input, kept []envelope.Expansion) []deferredEntry {
 	return out
 }
 
+// pulls reports whether this run reads context through get_context, which is
+// what decides whether the tool is offered at all.
+func (r *Result) pulls() bool {
+	return len(r.deferred) > 0
+}
+
 // contextID is an entry's id as the index shows it and get_context takes it.
 func contextID(i int) string {
 	return fmt.Sprintf("%s%d", contextIDPrefix, i+1)

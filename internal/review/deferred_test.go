@@ -100,3 +100,27 @@ func TestAPassReadsHeldBackContext(t *testing.T) {
 		t.Error("an id that names nothing must be said so")
 	}
 }
+
+// A run with its context inline has nothing for get_context to return, and
+// offering it anyway sent a findings pass to call it, hear that nothing was
+// held back, and end without a comment. So the tool is not offered, and a pass
+// that calls it regardless is refused.
+func TestGetContextIsOfferedOnlyWhenContextIsDeferred(t *testing.T) {
+	for _, pulls := range []bool{false, true} {
+		var named bool
+		for _, tool := range callTools(pulls) {
+			named = named || tool.Name == CallContext
+		}
+		if named != pulls {
+			t.Errorf("deferred=%v: get_context offered=%v", pulls, named)
+		}
+		if contains(callsFor(StageFindings, pulls), CallContext) != pulls {
+			t.Errorf("deferred=%v: findings pass takes get_context=%v", pulls, !pulls)
+		}
+	}
+	col := newCollector(StageFindings, passExpect{}, nil)
+	_, _, rejected := col.take([]toolCall{{ID: "t1", Name: CallContext, Input: []byte(`{"ids":["ctx1"]}`)}})
+	if rejected != 1 {
+		t.Error("a get_context call in a run with nothing deferred must be refused")
+	}
+}

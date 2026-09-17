@@ -24,7 +24,7 @@ func promptParts(in Input, opts Options, system string, budget envelope.Budgeted
 	}
 	return []PromptPart{
 		{"system", envelope.EstimateTokens(system)},
-		{"tools", toolsTokens()},
+		{"tools", toolsTokens(opts.DeferContext)},
 		{"description", envelope.EstimateTokens(in.changeSection())},
 		// Not the findings: those are not sent. This is which linters ran and
 		// what no check determined.

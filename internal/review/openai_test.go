@@ -140,7 +140,7 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 	// Every call offers every tool, in the order the Anthropic wire sends
 	// them, and requires the model to call one.
 	var want []string
-	for _, tool := range callTools() {
+	for _, tool := range callTools(false) {
 		want = append(want, tool.Name)
 	}
 	if !slices.Equal(names, want) {

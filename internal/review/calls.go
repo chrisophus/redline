@@ -64,8 +64,13 @@ type callTool struct {
 
 // callTools is every tool, in a fixed order. The order is part of the bytes a
 // cache read depends on, so it is written out rather than built from a map.
-func callTools() []callTool {
-	return []callTool{
+//
+// get_context is only there when the run has context to read through it. Left
+// in a review with the context inline, a findings pass called it, was told
+// nothing was held back, and ended without a comment. Whether it is there is
+// fixed for the whole run, so every call of a run still sends the same bytes.
+func callTools(pulls bool) []callTool {
+	all := []callTool{
 		{CallOverview, "Set the overview: one or two paragraphs on what this change does and why it exists, " +
 			"written for a reviewer about to read the diff. Say what the change is for, not whether it is correct. " +
 			"Calling it again replaces the earlier overview.",
@@ -101,6 +106,16 @@ func callTools() []callTool {
 		{CallDone, "End this pass once every call it needs has been made. Anything recorded before it stays recorded.",
 			map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}},
 	}
+	if pulls {
+		return all
+	}
+	out := all[:0]
+	for _, t := range all {
+		if t.Name != CallContext {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // commentCallSchema is a comment with its question flattened into three
@@ -135,18 +150,24 @@ func flatObject(props map[string]any, required ...string) map[string]any {
 // that files a comment has done the next pass's job without its instruction,
 // so the call is refused rather than quietly recorded.
 //
-// get_context is taken by every pass: it records nothing, and any pass may
-// want to read what was held back.
-func callsFor(stage string) []string {
+// get_context is taken by every pass of a run that has context to read: it
+// records nothing, and any pass may want to read what was held back.
+func callsFor(stage string, pulls bool) []string {
+	var calls []string
 	switch stage {
 	case StageSynopsis:
-		return []string{CallOverview, CallFile, CallCohort, CallContext}
+		calls = []string{CallOverview, CallFile, CallCohort}
 	case StageFindings:
-		return []string{CallComment, CallContext}
+		calls = []string{CallComment}
 	case StageRuling:
-		return []string{CallRule, CallContext}
+		calls = []string{CallRule}
+	default:
+		calls = []string{CallOverview, CallFile, CallComment}
 	}
-	return []string{CallOverview, CallFile, CallComment, CallContext}
+	if pulls {
+		calls = append(calls, CallContext)
+	}
+	return calls
 }
 
 // callsBlock tells a pass how its answer is taken and which calls it takes. It
@@ -221,7 +242,7 @@ type collector struct {
 
 func newCollector(stage string, expect passExpect, deferred []deferredEntry) *collector {
 	schemas := map[string]map[string]any{}
-	for _, t := range callTools() {
+	for _, t := range callTools(len(deferred) > 0) {
 		schemas[t.Name] = t.Schema
 	}
 	return &collector{stage: stage, schemas: schemas, expect: expect, deferred: deferred}
@@ -283,13 +304,13 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 	sawDone := false
 	var doneIDs []string
 	for _, call := range calls {
-		if call.Name != CallDone && !contains(callsFor(c.stage), call.Name) {
+		if call.Name != CallDone && !contains(callsFor(c.stage, len(c.deferred) > 0), call.Name) {
 			// Not a malformed call but one this pass has no use for, so it is
 			// not to be sent again.
 			rejected++
 			results = append(results, callResult{id: call.ID, isError: true,
 				content: fmt.Sprintf("Not recorded: this pass does not take %s; it takes %s. Do not send it again.",
-					call.Name, strings.Join(callsFor(c.stage), ", "))})
+					call.Name, strings.Join(callsFor(c.stage, len(c.deferred) > 0), ", "))})
 			continue
 		}
 		problems := c.check(call)

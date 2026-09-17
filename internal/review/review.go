@@ -692,7 +692,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
 	// wire sent them anyway, and the reservation came up short by the whole
 	// catalogue and overfilled the context by that much.
-	fixed := toolsTokens() + envelope.EstimateTokens(system) +
+	fixed := toolsTokens(opts.DeferContext) + envelope.EstimateTokens(system) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
@@ -967,7 +967,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			"cache": map[string]any{"breakpoint": res.Cached, "ttl": opts.CacheTTL},
 			// The whole array, because the whole array is what was sent and
 			// its bytes are what a cache read depends on.
-			"tools": callTools(), "calls": callsFor(stage),
+			"tools": callTools(res.pulls()), "calls": callsFor(stage, res.pulls()),
 		}
 		req, _ := json.MarshalIndent(captured, "", "  ")
 		opts.Capture(stage+".request.json", req)
