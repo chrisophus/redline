@@ -363,14 +363,18 @@ shape:
                     per-file summaries) instead of paying for a new
                     describing call: the judging call still gets the
                     findings-alone contract a fresh walkthrough would give
-                    it, at no describing-call cost. Refused when review.json
-                    is missing, has no walkthrough, or was written against a
-                    different change - a stale walkthrough on a new diff is
-                    a wrong report, not a saving. Cannot be combined with
-                    --no-synopsis, --brief, or --cohorts above 1: the split
-                    shape's describing call also draws the partition, so
-                    reusing its walkthrough without redrawing the partition
-                    is not yet supported.
+                    it, at no describing-call cost. With --cohorts above 1,
+                    also reuses the partition that call drew, so the whole
+                    describing-and-partitioning stage is skipped and the run
+                    goes straight to the cohort calls - combine with
+                    --only-cohorts to re-judge one cohort alone, at that
+                    cohort's full share of --max-tokens rather than the
+                    fraction --cohorts divides it into. Refused when
+                    review.json is missing, has no walkthrough, was written
+                    against a different change, or (above --cohorts 1) has
+                    no partition to reuse - a stale walkthrough or partition
+                    on a new diff is a wrong report, not a saving. Cannot be
+                    combined with --no-synopsis or --brief.
   --brief           one call under the forty-line short prompt, answered
                     with the same tool calls every other pass uses. Measured on
                     2026-09-14 against the long prompt, it returned a
@@ -446,8 +450,10 @@ output:
   --debug           log every model request, its stop reason and token
                     counts, the body the parser was handed, and each scout
                     tool call to stderr, and write the full requests and
-                    responses under --out/debug, with the model's thinking
-                    summary. REDLINE_DEBUG does the same.
+                    responses under --out/debug/<run timestamp>/, with the
+                    model's thinking summary. Its own subdirectory per run,
+                    so rerunning against the same --out never overwrites
+                    what the last run captured. REDLINE_DEBUG does the same.
   --open            open the HTML report when done
   --no-open         never open a browser
   --port N          loopback port for the report server (default 8765)

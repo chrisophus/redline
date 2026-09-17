@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
@@ -205,8 +206,6 @@ func cmdReview(o opts) error {
 			return fmt.Errorf("--reuse-synopsis reuses a walkthrough and --no-synopsis asks for none; pass one or the other")
 		case o.brief:
 			return fmt.Errorf("--brief carries no synopsis contract for --reuse-synopsis to stand in for; pass one or the other")
-		case o.cohorts > 1:
-			return fmt.Errorf("--reuse-synopsis cannot stand in for the split shape's describing call, which also draws the partition; pass --cohorts 1 or drop --reuse-synopsis")
 		}
 		path := filepath.Join(o.out, "review.json")
 		rev, rerr := findings.LoadReview(path)
@@ -222,6 +221,10 @@ func cmdReview(o opts) error {
 		}
 		if rev.Overview == "" {
 			return fmt.Errorf("--reuse-synopsis: %s has no walkthrough to reuse (its describing call did not produce one)", path)
+		}
+		if o.cohorts > 1 && len(rev.Cohorts) == 0 {
+			return fmt.Errorf("--reuse-synopsis: %s has no partition to reuse for --cohorts %d (it was written by a one-shot review); pass --cohorts 1 or drop --reuse-synopsis",
+				path, o.cohorts)
 		}
 		ropts.ReuseSynopsis = rev
 	}
@@ -254,7 +257,15 @@ func cmdReview(o opts) error {
 		ropts.Progress = func(msg string) { fmt.Fprintln(os.Stderr, "redline:", msg) }
 		if o.debug || os.Getenv("REDLINE_DEBUG") != "" {
 			ropts.Debug = func(msg string) { fmt.Fprintln(os.Stderr, "redline debug:", msg) }
-			dir := filepath.Join(o.out, "debug")
+			// Its own subdirectory per run, named by when the run started, so
+			// a rerun against the same --out never destroys what the last one
+			// wrote. The old flat layout numbered files from 1 on every
+			// invocation: two runs sharing a stage name overwrote each
+			// other's capture, and two runs with different shapes (a split
+			// review's "synopsis"/"findings" beside a one-shot's "review")
+			// left half the directory stale and half fresh with no way to
+			// tell which was which.
+			dir := filepath.Join(o.out, "debug", time.Now().UTC().Format("20060102T150405Z"))
 			if err := os.MkdirAll(dir, 0o755); err == nil {
 				var mu sync.Mutex
 				var seq int
@@ -430,6 +441,12 @@ func cmdReview(o opts) error {
 	// rather than merging the unchecked findings as if the pass had run.
 	reviewed.VerifyFailed = out.VerifyFailed
 	reviewed.Incomplete = out.Stopped
+	// The partition a split review drew, so --reuse-synopsis can stand in
+	// for a staged run's describing call too. Empty on a run that judged
+	// the change in one call.
+	for _, c := range out.Cohorts {
+		reviewed.Cohorts = append(reviewed.Cohorts, findings.Cohort{Name: c.Name, Summary: c.Summary, Files: c.Files})
+	}
 	path := filepath.Join(o.out, "review.json")
 	if err := review.Merge(path, reviewed); err != nil {
 		return err
