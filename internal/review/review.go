@@ -221,12 +221,15 @@ type Options struct {
 	// Look lets the judging pass search and read the tree while it is writing
 	// findings, rather than naming a question for a later pass to answer.
 	//
-	// Injected for the reason Answer is, and it is the same reason twice. This
-	// package reads .redline/session.json and observes nothing itself, which is
-	// what makes a review reproducible and a frozen session an eval fixture the
-	// harness can replay. A reviewer that reads the tree is not that, so the
-	// tree arrives through the caller: nil leaves both tools off the catalogue
-	// and the pass behaves exactly as it did.
+	// Injected for the reason Answer is: internal/scout holds the tools and
+	// imports this package, so it cannot be imported back. nil leaves both
+	// tools off the catalogue and the pass behaves exactly as it did, which is
+	// also what a session whose tree is gone gets.
+	//
+	// Off by default in the command because nothing has measured what searching
+	// buys, not because a review that reads the tree is worse. It spends turns,
+	// and the one published run of this shape spent past $20 a review on a
+	// 43-file change for two confident false positives and one real bug.
 	Look Looker
 	// Verify turns the whole checking pass on. Off leaves the producer exactly
 	// as it was, which is what a caller with no budget for a second call, or

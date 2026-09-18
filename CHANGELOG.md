@@ -15,9 +15,10 @@ Releases whose tag carries only a subject line are listed as that subject.
 - **`--look` gives the judging pass `grep` and `read_lines`.** A claim about code
   outside the diff was something the reviewer could only *name*, as a question
   for a later pass to answer and a third to rule on. With this it can check the
-  claim while it is writing the finding. Off by default, and an experiment: it
-  spends turns, and a review that reads the tree is no longer a pure function of
-  its session, so a frozen session replays as an eval fixture only without it.
+  claim while it is writing the finding. Off by default, and an experiment:
+  nothing has measured what searching buys, and it spends turns — the one
+  published run of this shape went past $20 a review on a 43-file change, for
+  two confident false positives against one real bug nothing else found.
   The lookups are the scout's own, so a path climbing out of the tree under
   review is refused, an escaping symlink is skipped and a search is capped — one
   implementation rather than a second copy of the hardened one. Measured on this

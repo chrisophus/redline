@@ -317,9 +317,9 @@ what to look at:
   --look            experiment: give the judging pass grep and read_lines, so a
                     claim about code outside the diff is one it can check
                     rather than only name as a question for the lookup pass.
-                    Off by default: it spends turns, and a review that reads
-                    the tree is no longer a pure function of its session, so a
-                    frozen session replays as a fixture only without it. The
+                    Off by default because nothing has measured what searching
+                    buys, and it spends turns: the one published run of this
+                    shape went past $20 a review on a 43-file change. The
                     lookups are the scout's own, so a path climbing out of the
                     tree is refused and a search is capped.
   --defer-context   experiment: leave the context the providers resolved out
