@@ -74,22 +74,31 @@ type Question struct {
 type Answerer func(ctx context.Context, qs []Question) (*envelope.Envelope, error)
 
 // QuestionsFor is the answerable half of a review's questions. A finding the
-// diff already settles needs no lookup, and one nothing can settle gets none.
-func QuestionsFor(rev findings.Review) []Question {
-	return questionsFor(Candidates(rev))
+// material in front of the reviewer really does settle needs no lookup, and one
+// nothing can settle gets none.
+func QuestionsFor(rev findings.Review, in Input) []Question {
+	return questionsFor(Candidates(rev), in)
 }
 
 // questionsFor is QuestionsFor over an explicit candidate set, so the verifying
 // pass can look up only the findings it has not already settled.
-func questionsFor(cands []Candidate) []Question {
+func questionsFor(cands []Candidate, in Input) []Question {
+	shownFiles, shownLines := in.ShownFiles(), in.shownLines()
 	var out []Question
 	for _, c := range cands {
 		q := c.Comment.Question
-		if !q.Answerable() {
+		if !needsLookup(q, c, shownFiles, shownLines) {
 			continue
 		}
+		subject := q.Subject
+		if subject == "" {
+			// A diff question is allowed an empty subject, and one promoted to
+			// a lookup still has to name something to look up. The file it was
+			// filed against is the only thing it is certain to have.
+			subject = c.Comment.File
+		}
 		out = append(out, Question{
-			ID: c.ID, Kind: string(q.Kind), Ask: q.Ask, Subject: q.Subject,
+			ID: c.ID, Kind: string(q.Kind), Ask: q.Ask, Subject: subject,
 			Claim: c.Comment.Body, File: c.Comment.File, Line: c.Comment.Line,
 		})
 	}
@@ -321,6 +330,53 @@ func Kept(rev findings.Review) (kept, ruled int) {
 // back unparseable: each of those leaves the review exactly as stage one wrote
 // it, and says so. A verifying pass that could take the whole review down with
 // it would be a worse trade than the noise it removes.
+// needsLookup decides whether a finding is worth a scout turn.
+//
+// The answerable kinds are decided by the question alone. A diff question is
+// not: it claims the material already in front of the reviewer settles the
+// finding, and nothing used to check that claim. On this repository's PR #46,
+// six of the nine findings the ruling could not settle were of this kind, and
+// the review delivered five of fifteen findings, so the claim taken on trust
+// cost about two thirds of a checked review.
+//
+// So the claim is checked against what the prompt actually carried. When the
+// material does cover the finding's location the question is honest and needs
+// nothing; when it does not, the finding rests on material the reviewer was
+// never shown, and that is exactly a finding worth looking up. It keeps its
+// kind: "diff" is where the reviewer said the answer was, and the scout reads
+// a file for it either way.
+func needsLookup(q findings.Question, c Candidate, files map[string]bool, shown envelope.Seen) bool {
+	if q.Answerable() {
+		return true
+	}
+	if q.Kind != findings.QuestionDiff {
+		return false
+	}
+	return !materialCovers(c, files, shown)
+}
+
+// materialCovers reports whether the prompt carried the lines a finding points
+// at.
+//
+// It reads Input's own predicates rather than deciding again what was shown.
+// ShownFiles says so in as many words: a second copy of "which files were
+// shown" would eventually measure a rule the prompt does not have, and this is
+// the second caller that rule was written for.
+//
+// A finding with no file is not covered by anything. One with a file and no
+// line is taken at its word, since the whole diff of that file was carried and
+// there is no line to disprove.
+func materialCovers(c Candidate, files map[string]bool, shown envelope.Seen) bool {
+	file := c.Comment.File
+	if file == "" || !files[file] {
+		return false
+	}
+	if c.Comment.Line <= 0 {
+		return true
+	}
+	return shown[file][c.Comment.Line]
+}
+
 func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Result, error) {
 	opts = opts.withDefaults()
 	cands := Candidates(stageOne.Review)
@@ -357,7 +413,7 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 	var answers *envelope.Envelope
 	var qs []Question
 	if opts.Answer != nil {
-		qs = questionsFor(pending)
+		qs = questionsFor(pending, in)
 		stageOne.Questions = qs
 		if len(qs) > 0 {
 			env, err := opts.Answer(ctx, qs)

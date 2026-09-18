@@ -507,23 +507,30 @@ func (ts *toolset) finish() tool {
 	}
 }
 
-// questionKindRoles maps the two question kinds that name no record role onto
-// the role that carries the same evidence.
+// questionKindRoles maps the question kinds that name no record role onto the
+// role that carries the same evidence.
 //
 // The brief teaches five kinds of question - precedent, caller, rule, history,
 // type - and record accepts a different seven roles. Three of the words are in
 // both lists, so tagging a record with the kind it answers works for those and
-// is refused for precedent and rule. On PR #38 the scout answered a precedent
-// question, said so out loud, filed two records under role "precedent", was
-// refused twice, and ran out of turns: the finding came back unverifiable on
-// evidence that had already been found. A vocabulary a model is invited to
-// confuse should be accepted rather than corrected on the last turn.
+// is refused for the rest. On PR #38 the scout answered a precedent question,
+// said so out loud, filed two records under role "precedent", was refused
+// twice, and ran out of turns: the finding came back unverifiable on evidence
+// that had already been found. A vocabulary a model is invited to confuse
+// should be accepted rather than corrected on the last turn.
 var questionKindRoles = map[envelope.Role]envelope.Role{
 	// A precedent is somewhere else in the tree doing the same thing, which
 	// is what neighbor already means.
 	"precedent": RoleNeighbor,
 	// A rule the team wrote down is a guideline.
 	"rule": RoleGuideline,
+	// A diff question used to reach no lookup at all, so its word never had to
+	// mean a role. It reaches one now, when the material the reviewer claimed
+	// settles the finding turns out not to carry the line it points at, and
+	// what the scout brings back is the code at that location -- which is what
+	// enclosing already means. Without this entry it is the PR #38 failure
+	// again, on a kind that only just started arriving.
+	"diff": envelope.RoleEnclosing,
 }
 
 func envelopeRole(s string) envelope.Role {

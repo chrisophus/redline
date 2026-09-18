@@ -30,8 +30,11 @@ type Question struct {
 	// so the ruling can tell which answer settles which claim.
 	ID string
 	// Kind is one of the closed set the review's schema enforces: precedent,
-	// caller, rule, history, type. The kinds that need no lookup never reach
-	// here.
+	// caller, rule, history, type, and diff. The first five say what to look
+	// up. A diff question says the material already in front of the reviewer
+	// settles the finding, and reaches here only when that claim was checked
+	// against what the prompt carried and found false -- so what it asks for is
+	// the code at the line the finding points at.
 	Kind string
 	// Ask is the question in words, and Subject is the one thing to look up.
 	Ask     string

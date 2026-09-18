@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/feedback"
 	"github.com/chrisophus/redline/internal/findings"
@@ -85,8 +86,16 @@ func TestAnUnknownVerdictFailsClosed(t *testing.T) {
 	}
 }
 
-// Only the findings that need a lookup are sent to one. A finding the diff
-// settles, and one nothing can settle, both cost nothing here.
+// shownInput is an Input whose prompt carried a.go line 1 and nothing else, so
+// a question's claim about the material can be checked against it.
+func shownInput() Input {
+	return Input{Change: &change.Set{Files: []change.File{
+		{Path: "a.go", Diff: "@@ -1,1 +1,1 @@\n-old\n+new\n"},
+	}}}
+}
+
+// Only the findings that need a lookup are sent to one. A finding the material
+// really does settle, and one nothing can settle, both cost nothing here.
 func TestOnlyAnswerableQuestionsAreSentToTheLookups(t *testing.T) {
 	rev := findings.Review{Comments: []findings.ReviewComment{
 		comment("a.go", "the diff shows it", findings.Question{Kind: findings.QuestionDiff}),
@@ -96,7 +105,7 @@ func TestOnlyAnswerableQuestionsAreSentToTheLookups(t *testing.T) {
 			Ask: "does anything else hard-code a column list?",
 		}),
 	}}
-	qs := QuestionsFor(rev)
+	qs := QuestionsFor(rev, shownInput())
 	if len(qs) != 1 {
 		t.Fatalf("want one lookup, got %+v", qs)
 	}
@@ -105,6 +114,50 @@ func TestOnlyAnswerableQuestionsAreSentToTheLookups(t *testing.T) {
 	}
 	if qs[0].Claim == "" {
 		t.Fatal("the lookup has to know what claim it is checking, or it searches blind")
+	}
+}
+
+// A diff question claims the material settles the finding. When the material
+// does not carry the line it points at, the claim is false and the finding
+// becomes a lookup instead of being taken on trust.
+//
+// On this repository's PR #46 six of the nine findings the ruling could not
+// settle were of this kind, against a review that delivered five of fifteen
+// findings.
+func TestADiffQuestionAboutUnshownMaterialBecomesALookup(t *testing.T) {
+	rev := findings.Review{Comments: []findings.ReviewComment{
+		comment("a.go", "the diff shows it", findings.Question{Kind: findings.QuestionDiff}),
+		comment("elsewhere.go", "claims the diff shows it, and the diff does not",
+			findings.Question{Kind: findings.QuestionDiff}),
+	}}
+	qs := QuestionsFor(rev, shownInput())
+	if len(qs) != 1 {
+		t.Fatalf("want the one question about unshown material, got %+v", qs)
+	}
+	if qs[0].File != "elsewhere.go" {
+		t.Fatalf("looked up %s; a.go was shown and needs nothing", qs[0].File)
+	}
+	// The kind is where the reviewer said the answer was, and it is kept: the
+	// scout reads a file for it either way, and rewriting it would put a claim
+	// the reviewer never made into the record.
+	if qs[0].Kind != string(findings.QuestionDiff) {
+		t.Errorf("kind = %q, want it left as the reviewer filed it", qs[0].Kind)
+	}
+	// A diff question is allowed no subject, and a lookup needs one.
+	if qs[0].Subject != "elsewhere.go" {
+		t.Errorf("subject = %q, want the file it was filed against", qs[0].Subject)
+	}
+}
+
+// A line the prompt never carried is the case this is for, inside a file it
+// did: the reviewer was shown a.go's one changed line and filed against line
+// 400.
+func TestADiffQuestionAboutAnUnshownLineBecomesALookup(t *testing.T) {
+	c := comment("a.go", "about a line nothing showed", findings.Question{Kind: findings.QuestionDiff})
+	c.Line = 400
+	qs := QuestionsFor(findings.Review{Comments: []findings.ReviewComment{c}}, shownInput())
+	if len(qs) != 1 {
+		t.Fatalf("want one lookup, got %+v", qs)
 	}
 }
 
@@ -748,7 +801,7 @@ func TestRulingReasonsBeforeItDecides(t *testing.T) {
 // an empty list, and the ruling still has to be sent, because the diff those
 // findings point at is what it rules on.
 func TestAReviewThatAsksNothingRunsNoLookupsAndIsStillRuled(t *testing.T) {
-	in := Input{Report: priors()}
+	in := Input{Report: priors(), Change: shownInput().Change}
 	one, err := Assemble(in, Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -835,7 +888,7 @@ func TestAFindingKeptOnQuotedEvidencePostsWhateverStageOneGuessed(t *testing.T) 
 // reviewer originally proposed. That is the first thing anyone asking why a
 // review came back with two of nine findings wants to read.
 func TestTheVerifyingPassKeepsWhatStageOneProposed(t *testing.T) {
-	in := Input{Report: priors()}
+	in := Input{Report: priors(), Change: shownInput().Change}
 	one, err := Assemble(in, Options{})
 	if err != nil {
 		t.Fatal(err)
