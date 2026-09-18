@@ -190,12 +190,19 @@ redline run
 redline review
 ```
 
-It reads `.redline/session.json` and observes nothing itself, which is what
-makes it reproducible: the same session reviewed twice sees the same
-material, and a frozen session is a fixture the eval replays. The result is
-written to `.redline/review.json`, the same file a human or another agent
-writes by hand, and the report is re-rendered from the session with no
-second observation. Verdicts already in that file are kept.
+It reads `.redline/session.json`, so the same session reviewed twice is shown
+the same material. That is not the same as a reproducible review and was once
+written here as though it were: two runs over one change turn up different real
+problems, which is why `--samples` unions them. What it buys is that the
+material is fixed and the judging is not. The result is written to
+`.redline/review.json`, the same file a human or another agent writes by hand,
+and the report is re-rendered from the session with no second observation.
+Verdicts already in that file are kept.
+
+`--verify` and `--look` are the two flags that read anything beyond the
+session: the first sends the scout to answer a finding's question between the
+review and the ruling, the second lets the judging pass search the tree while
+it writes.
 
 On a pull request, the review is shown what that pull request already heard
 from Redline and what people said back: the comments it posted before, the
@@ -299,11 +306,19 @@ prefers that, so the measurement is worth taking again.
 
 ### Checking the findings before posting them
 
-A review has no tools, so it cannot check a claim about the rest
-of the repository. That is where the false positives came from in real use:
-findings that were accurate observations about code the team had deliberately
-written that way, dismissed in seconds by a reader who had the repository
-open. Two stages give the review the same view.
+A review could not check a claim about the rest of the repository. That is
+where the false positives came from in real use: findings that were accurate
+observations about code the team had deliberately written that way, dismissed
+in seconds by a reader who had the repository open. Two stages give the review
+the same view.
+
+`--look` is the other answer to the same problem, and the newer one: it gives
+the judging pass `grep` and `read_lines` so a claim about code outside the diff
+is one it can check while it writes, rather than name as a question for these
+stages to settle afterwards. It is off by default because nothing has measured
+what searching buys, and it spends turns. The two are not exclusive, and which
+one should survive is an open question — a reviewer that checks its own claims
+is a reviewer the stages below exist to serve.
 
 The lookups run first. Each finding's question goes to the scout in its
 answering mode, which greps, reads, asks gorefactor for callers, or asks git
