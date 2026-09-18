@@ -52,8 +52,19 @@ const (
 	CallCohort   = "add_cohort"
 	CallComment  = "add_comment"
 	CallRule     = "rule"
+	CallGrep     = "grep"
+	CallRead     = "read_lines"
 	CallDone     = "done"
 )
+
+// MaxReadLines is the cap on one read_lines call, so a pass that asks for a
+// file gets a declaration instead of the whole thing.
+//
+// Exported because the number is in the tool's description, which is a promise
+// to the model, and the Looker that enforces it lives in another package. A
+// test there pins the two together: a cap that moved without the description
+// would leave the model told one thing and given another.
+const MaxReadLines = 200
 
 // callTool is one tool's definition as it goes on the wire.
 type callTool struct {
@@ -69,7 +80,7 @@ type callTool struct {
 // in a review with the context inline, a findings pass called it, was told
 // nothing was held back, and ended without a comment. Whether it is there is
 // fixed for the whole run, so every call of a run still sends the same bytes.
-func callTools(pulls bool) []callTool {
+func callTools(pulls, looks bool) []callTool {
 	all := []callTool{
 		{CallOverview, "Set the overview: one or two paragraphs on what this change does and why it exists, " +
 			"written for a reviewer about to read the diff. Say what the change is for, not whether it is correct. " +
@@ -103,15 +114,37 @@ func callTools(pulls bool) []callTool {
 				"type": "array", "items": map[string]any{"type": "string"},
 				"description": "Ids from the index, for example [\"ctx3\", \"ctx7\"].",
 			}}, "ids")},
+		{CallGrep, "Search the repository for a regular expression, to check a claim before you file it. " +
+			"Returns matching lines with their file and line number. It searches this repository and nothing else, " +
+			"so a dependency's own source will not be found. It matches text rather than types, so a hit may be a " +
+			"different thing with the same name. Use it to find whether the repository already does something " +
+			"elsewhere, which is the check a reader performs in seconds and a reviewer that cannot search has to " +
+			"guess at.",
+			flatObject(map[string]any{
+				"pattern": map[string]any{"type": "string", "description": "Go regular expression, matched against one line at a time"},
+				"glob":    map[string]any{"type": "string", "description": "optional filter: only paths containing this text are searched, for example .go or internal/store/"},
+			}, "pattern")},
+		{CallRead, fmt.Sprintf("Read a range of lines from a file in the repository, with line numbers. Use it to look at "+
+			"code the diff does not show. At most %d lines come back per call, so ask for the declaration you want "+
+			"rather than the file.", MaxReadLines),
+			flatObject(map[string]any{
+				"path":       map[string]any{"type": "string", "description": "repository-relative path"},
+				"start_line": map[string]any{"type": "integer", "description": "first line, 1-based"},
+				"end_line":   map[string]any{"type": "integer", "description": "last line, inclusive"},
+			}, "path", "start_line", "end_line")},
 		{CallDone, "End this pass once every call it needs has been made. Anything recorded before it stays recorded.",
 			map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}},
 	}
-	if pulls {
-		return all
+	drop := map[string]bool{}
+	if !pulls {
+		drop[CallContext] = true
+	}
+	if !looks {
+		drop[CallGrep], drop[CallRead] = true, true
 	}
 	out := all[:0]
 	for _, t := range all {
-		if t.Name != CallContext {
+		if !drop[t.Name] {
 			out = append(out, t)
 		}
 	}
@@ -152,7 +185,14 @@ func flatObject(props map[string]any, required ...string) map[string]any {
 //
 // get_context is taken by every pass of a run that has context to read: it
 // records nothing, and any pass may want to read what was held back.
-func callsFor(stage string, pulls bool) []string {
+//
+// grep and read_lines are narrower. They go to the passes that judge, because
+// checking a claim is what they are for: a describing pass has nothing to
+// check, and the ruling already has a lookup pass of its own whose answers it
+// was assembled around. The catalogue still carries them on every call of the
+// run, since a tool list that changed between calls would throw away the
+// prefix they share; this is what a pass is permitted to call.
+func callsFor(stage string, pulls, looks bool) []string {
 	var calls []string
 	switch stage {
 	case StageSynopsis:
@@ -167,6 +207,9 @@ func callsFor(stage string, pulls bool) []string {
 	if pulls {
 		calls = append(calls, CallContext)
 	}
+	if looks && (stage == StageFindings || stage == StageReview) {
+		calls = append(calls, CallGrep, CallRead)
+	}
 	return calls
 }
 
@@ -176,7 +219,7 @@ func callsFor(stage string, pulls bool) []string {
 // decide it, one asking for every call in one reply and one asking for one
 // area at a time, each moved the reasoning around less than they moved the
 // calls. It goes after the cached prompt, so every pass reads the same entry.
-func callsBlock(stage string, deferred bool) string {
+func callsBlock(stage string, deferred, looks bool) string {
 	var takes string
 	switch stage {
 	case StageSynopsis:
@@ -190,7 +233,22 @@ func callsBlock(stage string, deferred bool) string {
 	}
 	return "\n\n## How to answer\n\nAnswer by calling the tools. Every call is answered: \"Recorded.\" when it is " +
 		"taken, or what is wrong with it when it is not. Call done when this pass is finished.\n\n" +
-		"This pass takes " + takes + "." + readsContext(stage, deferred) + "\n"
+		"This pass takes " + takes + "." + readsContext(stage, deferred) + checksTree(stage, looks) + "\n"
+}
+
+// checksTree is the calls block's line about searching, on the passes that may.
+//
+// It says what the tools are for rather than when to reach for them, the same
+// rule the rest of this block follows. What it does say is the one thing the
+// pass cannot work out for itself: a claim about the rest of the repository is
+// checkable now, where before it could only be named as a question for a later
+// pass.
+func checksTree(stage string, looks bool) string {
+	if !looks || (stage != StageFindings && stage != StageReview) {
+		return ""
+	}
+	return " grep searches this repository and read_lines reads a span of one file; both answer with what the tree " +
+		"says and record nothing. A claim about code outside the diff is one you can check here rather than only name."
 }
 
 // readsContext is the calls block's line about held-back context, when there
@@ -238,14 +296,20 @@ type collector struct {
 	// how many entries the pass has asked for.
 	deferred []deferredEntry
 	fetched  int
+	// look answers grep and read_lines, and is nil on a run that has neither.
+	look Looker
+	// looked counts the searches and reads a pass made, for the progress line
+	// and the trace: a judging pass that checked nothing is worth telling
+	// apart from one that had nothing to check.
+	looked int
 }
 
-func newCollector(stage string, expect passExpect, deferred []deferredEntry) *collector {
+func newCollector(stage string, expect passExpect, deferred []deferredEntry, look Looker) *collector {
 	schemas := map[string]map[string]any{}
-	for _, t := range callTools(len(deferred) > 0) {
+	for _, t := range callTools(len(deferred) > 0, look != nil) {
 		schemas[t.Name] = t.Schema
 	}
-	return &collector{stage: stage, schemas: schemas, expect: expect, deferred: deferred}
+	return &collector{stage: stage, schemas: schemas, expect: expect, deferred: deferred, look: look}
 }
 
 // complete reports whether the pass has recorded everything its expectation
@@ -304,13 +368,13 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 	sawDone := false
 	var doneIDs []string
 	for _, call := range calls {
-		if call.Name != CallDone && !contains(callsFor(c.stage, len(c.deferred) > 0), call.Name) {
+		if call.Name != CallDone && !contains(callsFor(c.stage, len(c.deferred) > 0, c.look != nil), call.Name) {
 			// Not a malformed call but one this pass has no use for, so it is
 			// not to be sent again.
 			rejected++
 			results = append(results, callResult{id: call.ID, isError: true,
 				content: fmt.Sprintf("Not recorded: this pass does not take %s; it takes %s. Do not send it again.",
-					call.Name, strings.Join(callsFor(c.stage, len(c.deferred) > 0), ", "))})
+					call.Name, strings.Join(callsFor(c.stage, len(c.deferred) > 0, c.look != nil), ", "))})
 			continue
 		}
 		problems := c.check(call)
@@ -329,6 +393,14 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 			_ = json.Unmarshal(call.Input, &asked)
 			c.fetched += len(asked.IDs)
 			results = append(results, callResult{id: call.ID, content: fetchDeferred(c.deferred, call.Input)})
+			continue
+		}
+		if call.Name == CallGrep || call.Name == CallRead {
+			// Answered with what the tree says. Nothing is recorded, so it
+			// neither completes a pass nor counts toward one, the same as
+			// get_context.
+			c.looked++
+			results = append(results, callResult{id: call.ID, content: c.lookup(call)})
 			continue
 		}
 		if call.Name == CallDone {
@@ -557,4 +629,50 @@ func truncateForError(s string) string {
 		return s[:40] + "…"
 	}
 	return s
+}
+
+// lookup answers a grep or a read_lines call.
+//
+// An error comes back as the answer rather than as a rejection: a bad pattern
+// or a path that does not exist is something the pass can act on, and sending
+// it back as "not recorded" would read as a call this pass may not make.
+func (c *collector) lookup(call toolCall) string {
+	if c.look == nil {
+		return "no lookup is available on this run"
+	}
+	switch call.Name {
+	case CallGrep:
+		var in struct {
+			Pattern string `json:"pattern"`
+			Glob    string `json:"glob"`
+		}
+		if err := json.Unmarshal(call.Input, &in); err != nil {
+			return "bad arguments: " + err.Error()
+		}
+		out, err := c.look.Grep(in.Pattern, in.Glob)
+		if err != nil {
+			return err.Error()
+		}
+		if strings.TrimSpace(out) == "" {
+			// Said, so a pass can tell "nothing matches" from "the search
+			// failed". The first is an answer and the second is not.
+			return "no match in this repository"
+		}
+		return out
+	case CallRead:
+		var in struct {
+			Path      string `json:"path"`
+			StartLine int    `json:"start_line"`
+			EndLine   int    `json:"end_line"`
+		}
+		if err := json.Unmarshal(call.Input, &in); err != nil {
+			return "bad arguments: " + err.Error()
+		}
+		out, err := c.look.ReadLines(in.Path, in.StartLine, in.EndLine)
+		if err != nil {
+			return err.Error()
+		}
+		return out
+	}
+	return "no tool named " + call.Name
 }

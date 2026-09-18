@@ -259,6 +259,9 @@ func cmdReview(o opts) error {
 	if ropts.Verify {
 		ropts.Answer = scoutAnswerer(res, ropts, o.scoutSettings(), &tally)
 	}
+	if o.look {
+		ropts.Look = lookerFor(res)
+	}
 	if !o.dryRun {
 		// Said before the call, not after it. A review is one blocking
 		// request of two to five minutes and the command printed nothing
@@ -662,4 +665,23 @@ func reviewNote(o opts) (string, error) {
 		return strings.TrimSpace(string(raw)), nil
 	}
 	return strings.TrimSpace(o.note), nil
+}
+
+// lookerFor is the tree the judging pass searches, or nil when there is none to
+// search.
+//
+// The guard is scoutAnswerer's, for scoutAnswerer's reason: a session outlives
+// the tree it was written from, and a fixture copied elsewhere or a worktree
+// since reclaimed has no repository to look anything up in. Looking it up in
+// the wrong one would be worse than not looking, and nil is how a pass is told
+// the tools are not there rather than being handed a wrong answer.
+func lookerFor(res *run.Result) review.Looker {
+	root := ""
+	if res.Target != nil {
+		root = res.Target.Dir
+	}
+	if root == "" || !isDir(root) {
+		return nil
+	}
+	return scout.NewLooker(root)
 }

@@ -81,6 +81,12 @@ func (r *Result) pulls() bool {
 	return len(r.deferred) > 0
 }
 
+// looks reports whether this run can search and read the tree, which is what
+// decides whether grep and read_lines are offered at all.
+func (r *Result) looks() bool {
+	return r.canLook
+}
+
 // contextID is an entry's id as the index shows it and get_context takes it.
 func contextID(i int) string {
 	return fmt.Sprintf("%s%d", contextIDPrefix, i+1)

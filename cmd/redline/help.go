@@ -163,6 +163,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.note, "note", "", "what to look at or what worries you, added to every judging call")
 	fs.StringVar(&o.noteFile, "note-file", "", "read the note from a file")
 	fs.BoolVar(&o.deferContext, "defer-context", false, "list the resolved context beside each file's diff and let the reviewer read it with get_context")
+	fs.BoolVar(&o.look, "look", false, "let the judging pass search and read the tree with grep and read_lines")
 	fs.BoolVar(&o.verify, "verify", false, "check each finding against the repository before posting it")
 	fs.BoolVar(&o.noVerify, "no-verify", false, "skip the checking pass")
 	fs.BoolVar(&o.cache, "cache", false, "mark the shared prefix for the prompt cache (on by default)")
@@ -313,6 +314,14 @@ what to look at:
                     committed outranks it. Saved in review.json and the
                     postmortem, and shown on the report.
   --note-file PATH  the same, read from a file. Pass one or the other.
+  --look            experiment: give the judging pass grep and read_lines, so a
+                    claim about code outside the diff is one it can check
+                    rather than only name as a question for the lookup pass.
+                    Off by default: it spends turns, and a review that reads
+                    the tree is no longer a pure function of its session, so a
+                    frozen session replays as a fixture only without it. The
+                    lookups are the scout's own, so a path climbing out of the
+                    tree is refused and a search is capped.
   --defer-context   experiment: leave the context the providers resolved out
                     of the prompt. Each file's diff is followed by an index
                     of the context that belongs to it, callers, types, tests

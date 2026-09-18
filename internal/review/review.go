@@ -106,6 +106,22 @@ type Input struct {
 	Note string
 }
 
+// Looker answers a search or a read for a pass that has the tools.
+//
+// It is two of the six things internal/scout can already do, and the scout
+// implements it rather than this package growing a second copy: those tools
+// resolve a path inside the tree under review, refuse one that climbs out of
+// it, follow no symlink that escapes, and cap what comes back. A reviewer that
+// searched through a reimplementation of that would be one audit behind the
+// one that already exists.
+type Looker interface {
+	// Grep returns matching lines with their file and line number. glob is an
+	// optional substring filter on the path.
+	Grep(pattern, glob string) (string, error)
+	// ReadLines returns a span of one file, with line numbers.
+	ReadLines(path string, start, end int) (string, error)
+}
+
 // Options configures one call.
 type Options struct {
 	Model     string
@@ -202,6 +218,16 @@ type Options struct {
 	// ruling. Nil skips stage two: the ruling still runs, over no answers, and
 	// anything that needed one comes back unverifiable rather than confirmed.
 	Answer Answerer
+	// Look lets the judging pass search and read the tree while it is writing
+	// findings, rather than naming a question for a later pass to answer.
+	//
+	// Injected for the reason Answer is, and it is the same reason twice. This
+	// package reads .redline/session.json and observes nothing itself, which is
+	// what makes a review reproducible and a frozen session an eval fixture the
+	// harness can replay. A reviewer that reads the tree is not that, so the
+	// tree arrives through the caller: nil leaves both tools off the catalogue
+	// and the pass behaves exactly as it did.
+	Look Looker
 	// Verify turns the whole checking pass on. Off leaves the producer exactly
 	// as it was, which is what a caller with no budget for a second call, or
 	// one comparing against the old behaviour, needs.
@@ -580,6 +606,10 @@ type Result struct {
 	// deferred is the context held back behind get_context, in id order, and
 	// nil when the context went into the prompt.
 	deferred []deferredEntry
+	// canLook is whether this run was given a Looker, which decides whether
+	// grep and read_lines are on the catalogue. Fixed for the whole run, like
+	// deferred, so every call of a run sends the same bytes.
+	canLook bool
 	// expect is what a pass has to record to be visibly complete, set by the
 	// requests whose completeness can be checked. A pass that has recorded all
 	// of it ends there, without waiting for done.
@@ -695,13 +725,13 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	describe := describingTail
 	// The block that says which calls answer the pass goes out with every
 	// request, so it is priced with the fixed parts.
-	calls := callsBlock(StageReview, opts.DeferContext)
+	calls := callsBlock(StageReview, opts.DeferContext, opts.Look != nil)
 	// Every stage sends the catalogue on both wires, so it is reserved for
 	// unconditionally. This was once zeroed for a brief run, which was right on
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
 	// wire sent them anyway, and the reservation came up short by the whole
 	// catalogue and overfilled the context by that much.
-	fixed := toolsTokens(opts.DeferContext) + envelope.EstimateTokens(system) +
+	fixed := toolsTokens(opts.DeferContext, opts.Look != nil) + envelope.EstimateTokens(system) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 {
@@ -751,6 +781,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		Pipeline:       opts.Shape(),
 		Budget:         budget,
 		deferred:       deferred,
+		canLook:        opts.Look != nil,
 		FilesShown:     len(in.ShownFiles()),
 		Prompt:         prompt,
 		Tail:           tail + describe + note,
@@ -984,7 +1015,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			"cache": map[string]any{"breakpoint": res.Cached, "ttl": opts.CacheTTL},
 			// The whole array, because the whole array is what was sent and
 			// its bytes are what a cache read depends on.
-			"tools": callTools(res.pulls()), "calls": callsFor(stage, res.pulls()),
+			"tools": callTools(res.pulls(), res.looks()), "calls": callsFor(stage, res.pulls(), res.looks()),
 			// instructions is the prose callsBlock sends as its own content
 			// block, on the wire but not otherwise in this file: "calls"
 			// above names which tools answer the pass, not the words that
@@ -992,7 +1023,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			// you need with get_context before writing comments" among them
 			// - a reader asking whether a pass was actually told to defer
 			// context needs to see, not reconstruct from source.
-			"instructions": callsBlock(stage, res.pulls()),
+			"instructions": callsBlock(stage, res.pulls(), res.looks()),
 		}
 		req, _ := json.MarshalIndent(captured, "", "  ")
 		opts.Capture(stage+".request.json", req)
