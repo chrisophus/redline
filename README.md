@@ -18,8 +18,9 @@ the reviewer is whoever is reading: a person in the browser, an agent
 reading `findings.json`, or `redline review`, the one command that calls a
 model. All three see the same facts and write their decisions onto the same
 report, and every finding and every ruling says which of them produced it.
-See `redline-design.md` for the design and the plan, and `CHANGELOG.md` for
-what each release changed.
+See `redline-design.md` for the design, `docs/plans/roadmap.md` for what is
+left and the evidence behind each item, and `CHANGELOG.md` for what each
+release changed.
 
 Reviewing is read-only; posting is not, and never happens on its own.
 `redline post` is the one command that writes to GitHub: it submits the
@@ -59,6 +60,11 @@ uncommitted work, and on an open pull request. `--pr` fetches via `gh`
 | Deterministic UI capture | not started |
 | Context envelope and provider registry | shipped |
 | `redline review`: a describing call and a judging call over the run's own output | shipped |
+| The split: `--cohorts N` judges each group of files in its own call | shipped |
+| `--note`, so whoever asks for the review can say what worries them | shipped |
+| `--defer-context`, the reviewer reading resolved context with `get_context` | experiment |
+| `--look`, the judging pass searching the tree with `grep` and `read_lines` | experiment |
+| A `diff` question's claim checked against what the prompt carried | shipped |
 | `redline postmortem`: what the review proposed, what the lookups found, what was ruled | shipped |
 | Migration adds a NOT NULL column with no default | shipped |
 | Provider parity: a capability added to one of a set of parallel implementations | shipped |
@@ -199,10 +205,34 @@ material is fixed and the judging is not. The result is written to
 and the report is re-rendered from the session with no second observation.
 Verdicts already in that file are kept.
 
-`--verify` and `--look` are the two flags that read anything beyond the
-session: the first sends the scout to answer a finding's question between the
-review and the ruling, the second lets the judging pass search the tree while
-it writes.
+### The shape a review takes
+
+A plain `redline review` is two calls. The first describes the change: the
+overview and one line per file. The second is asked for findings alone, over
+the same prefix, which prompt caching serves at a fraction of the input rate.
+`--no-synopsis` collapses the two into one call.
+
+Everything else is a flag on that shape, and every one of them is off unless
+asked for:
+
+| Flag | What it changes |
+|---|---|
+| `--cohorts N` | above 1, the describing call also splits the shown files into at most N groups and each group is judged in its own call over the same cached prefix. Aimed at a measured failure: a reviewer with fifty files in front of it spends its finding count on the first few |
+| `--plan` | stop after the split and print the partition, without judging it |
+| `--only-cohorts A,B` | judge part of a split, at its full share of the budget |
+| `--reuse-synopsis` | reuse `review.json`'s walkthrough, and above `--cohorts 1` its partition too, instead of paying for a describing call |
+| `--samples N` | take N independent reviews and union them. They do not overlap, so recall rises with N and so does the bill |
+| `--note` / `--note-file` | what whoever asked for the review wants looked at. It reaches the judging calls only, and the prompt says it is not evidence |
+| `--verify` | the scout answers each finding's question, then a ruling rules on every finding with the answers in hand. Only findings it keeps are posted |
+| `--look` | the judging pass gets `grep` and `read_lines`, so a claim about code outside the diff is one it can check rather than name. An experiment |
+| `--defer-context` | the resolved context leaves the prompt and any pass reads an entry with `get_context`. An experiment |
+| `--model`, `--effort` | what the calls are made with. `--scout-model` and `--scout-effort` set the checking pass apart |
+| `--cohorts`, `--samples`, `--verify` | each multiplies calls, so each multiplies the bill; `--max-cost` refuses a request estimated above it |
+
+`--verify` and `--look` are the only two that read anything beyond the session:
+the first sends the scout out between the review and the ruling, the second
+lets the judging pass search while it writes. Everything else works from what
+`run` already wrote.
 
 On a pull request, the review is shown what that pull request already heard
 from Redline and what people said back: the comments it posted before, the
@@ -226,8 +256,8 @@ the one place the next review can be shown it. That reply is carried as the
 author's position rather than as a ruling, because an author dismissing a
 finding about their own code has a stake in the answer, and the review is told
 it may still disagree where it has material the author did not. The threads
-are read by `run` and saved into the session, so `review` stays a pure
-function of what it was given.
+are read by `run` and saved into the session, so the material `review` judges
+is settled before it starts.
 
 No tool-use loop. Context is cheap and turns are expensive: ten tool-use turns
 over a growing context cost several dollars, because every turn re-sends the
@@ -443,10 +473,19 @@ disables the `--max-cost` tripwire, and the command says that too.
 
 ### Context providers
 
-A review is better when it can see past the diff: the whole enclosing
-function, the callers of a changed signature, the type behind it, and the
-history of the changed lines. Resolving that needs a language toolchain, so
-it happens in a separate program.
+A review is better when it can see past the diff. Nine roles carry that: the
+enclosing declaration a hunk sits in, the callers of a changed symbol and what
+the change itself calls, the second hop out, the types behind a signature,
+other implementations of an interface it touches, the tests that reach it, and
+the history of the changed and deleted lines. Resolving that needs a language
+toolchain, so it happens in a separate program.
+
+Two of those are newer and answer questions the others cannot. A `caller`
+carries its whole enclosing function rather than a window, because a window
+cannot show a nil check five lines up or what a handler renders below the call.
+A `callee` says what the change calls, which is the half no caller shows: a
+change that starts returning nil is judged by its callers, and a change to what
+a handler invalidates is judged by what it calls.
 
 Redline links none. A provider is found the way a linter is, by the config
 file that says the repository opted in, and it is run as a subprocess that
