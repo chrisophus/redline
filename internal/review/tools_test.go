@@ -69,12 +69,12 @@ func TestEveryPassSendsTheSameToolsAndChoice(t *testing.T) {
 // unstable order the prefix would differ between two calls of one run and the
 // cache would miss for a reason no diff could show.
 func TestTheToolsBlockSerializesTheSameEveryTime(t *testing.T) {
-	first, err := json.Marshal(anthropicTools(true))
+	first, err := json.Marshal(anthropicTools(true, false))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := range 50 {
-		again, err := json.Marshal(anthropicTools(true))
+		again, err := json.Marshal(anthropicTools(true, false))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,7 +89,7 @@ func TestTheToolsBlockSerializesTheSameEveryTime(t *testing.T) {
 // additionalProperties, so the model is told extra fields are not wanted, and
 // the check refuses them.
 func TestNoToolIsStrictAndEveryObjectIsClosed(t *testing.T) {
-	raw, err := json.Marshal(anthropicTools(true))
+	raw, err := json.Marshal(anthropicTools(true, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,8 +101,8 @@ func TestNoToolIsStrictAndEveryObjectIsClosed(t *testing.T) {
 	if err := json.Unmarshal(raw, &tools); err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != len(callTools(true)) {
-		t.Fatalf("%d tool(s) reached the wire, %d were declared", len(tools), len(callTools(true)))
+	if len(tools) != len(callTools(true, false)) {
+		t.Fatalf("%d tool(s) reached the wire, %d were declared", len(tools), len(callTools(true, false)))
 	}
 	for _, tool := range tools {
 		if tool.Strict != nil && *tool.Strict {
@@ -204,7 +204,7 @@ func TestEveryToolUsesOnlyKeywordsTheCheckEnforces(t *testing.T) {
 			}
 		}
 	}
-	for _, tool := range callTools(true) {
+	for _, tool := range callTools(true, false) {
 		walk(tool.Name, tool.Schema)
 	}
 }

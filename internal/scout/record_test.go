@@ -319,3 +319,18 @@ func TestQuestionKindsAreAcceptedAsRoles(t *testing.T) {
 		}
 	}
 }
+
+// A diff question reaches the lookups now, when the material the reviewer
+// claimed settles the finding turns out not to carry the line it points at.
+// Its word has to name a role record accepts, or the scout answers the
+// question, files what it found, and is refused -- the PR #38 failure, on a
+// kind that only just started arriving.
+func TestADiffQuestionsKindNamesAnAcceptedRole(t *testing.T) {
+	role := envelopeRole("diff")
+	if !allowedRoles[role] {
+		t.Fatalf("a record answering a diff question would be filed under %q and refused", role)
+	}
+	if role != envelope.RoleEnclosing {
+		t.Errorf("role = %q, want enclosing: what it brings back is the code at the finding's line", role)
+	}
+}

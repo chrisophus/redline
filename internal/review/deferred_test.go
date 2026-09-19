@@ -61,7 +61,7 @@ func TestDeferredContextIsIndexedBesideTheDiff(t *testing.T) {
 		!strings.Contains(res.Prompt, "`ctx3` type · Tenant · internal/tenant/tenant.go:1-3 (3 lines)") {
 		t.Errorf("an entry whose scope leads to no changed file must be listed for the whole change:\n%s", res.Prompt)
 	}
-	if !strings.Contains(callsBlock(StageFindings, true), "get_context") {
+	if !strings.Contains(callsBlock(StageFindings, true, false), "get_context") {
 		t.Error("the calls block must say context can be read")
 	}
 	plain, err := Assemble(deferredInput(), Options{Model: "claude-sonnet-5"})
@@ -108,17 +108,17 @@ func TestAPassReadsHeldBackContext(t *testing.T) {
 func TestGetContextIsOfferedOnlyWhenContextIsDeferred(t *testing.T) {
 	for _, pulls := range []bool{false, true} {
 		var named bool
-		for _, tool := range callTools(pulls) {
+		for _, tool := range callTools(pulls, false) {
 			named = named || tool.Name == CallContext
 		}
 		if named != pulls {
 			t.Errorf("deferred=%v: get_context offered=%v", pulls, named)
 		}
-		if contains(callsFor(StageFindings, pulls), CallContext) != pulls {
+		if contains(callsFor(StageFindings, pulls, false), CallContext) != pulls {
 			t.Errorf("deferred=%v: findings pass takes get_context=%v", pulls, !pulls)
 		}
 	}
-	col := newCollector(StageFindings, passExpect{}, nil)
+	col := newCollector(StageFindings, passExpect{}, nil, nil)
 	_, _, rejected := col.take([]toolCall{{ID: "t1", Name: CallContext, Input: []byte(`{"ids":["ctx1"]}`)}})
 	if rejected != 1 {
 		t.Error("a get_context call in a run with nothing deferred must be refused")

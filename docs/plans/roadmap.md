@@ -32,8 +32,9 @@ again. `--verify` adds the scout's lookups and a ruling behind them.
 per group, with `--plan` to stop after the split and `--only-cohorts` to judge
 part of it. `--defer-context` leaves the resolved context out of the prompt
 and lets any pass read an entry with `get_context`; see Context the reviewer
-pulls below. The prompts are files under
-`internal/review/prompts`. `post` gates on the ruling, holds back low
+pulls below. `--look` gives the judging passes `grep` and `read_lines`, so a
+claim about code outside the diff is one they can check rather than only name.
+The prompts are files under `internal/review/prompts`. `post` gates on the ruling, holds back low
 confidence and hedged wording, and keeps the reviewer's info findings in the
 review body instead of on the diff.
 
@@ -72,9 +73,8 @@ So it was not missing context and it was not missing advice.
 
 | Item | What | Effort |
 |---|---|---|
-| **Let the review look things up itself** | The one shape nobody has tried. Explore mode's `fetch_context` only indexes what the packet already resolved and cannot search the tree, so that loop buys a shorter prompt rather than more thought. Give the judging call a real search tool, let the answers arrive in the conversation, and there is nothing left for a separate ruling to reconcile. It would replace `internal/scout` and the ruling stage. It becomes the default when it finds things on real pull requests that the current shape does not, at a price somebody is willing to pay. Hold the cost estimate loosely: Alibaba's `ocr` is this shape, and on a 43-file change it ran past $20 a review, blew through its own token cap by 150% to 235%, and posted two confident false positives while finding one real bug nothing else found. | L |
+| **Let the review look things up itself** | Started, and the part that shipped is the cheap part. `--look` gives the judging passes `grep` and `read_lines`: they answer in the conversation, record nothing, and cost about 600 input tokens on the catalogue because it rides the cached prefix. That is two of the six tools the scout has. What is left is the rest of the shape - the reviewer asking gorefactor for callers resolved through a type checker, and the graph for a cross-language path - and the decision that follows: a reviewer that checks its own claims is a reviewer `internal/scout` and the ruling exist to serve, and there is then nothing left for a separate ruling to reconcile. Explore mode is not this: its `fetch_context` only indexes what the packet already resolved and cannot search the tree, so that loop buys a shorter prompt rather than more thought. Nothing has measured what searching buys, and that measurement is what the rest waits on; it becomes the default when it finds things on real pull requests the current shape does not, at a price somebody will pay. Hold the cost estimate loosely: Alibaba's `ocr` is this shape run all the way out, and on a 43-file change it went past $20 a review, blew through its own token cap by 150% to 235%, and posted two confident false positives while finding one real bug nothing else found. | L |
 | **A targeted check for the cross-file question** | The cache-key miss above is one question asked of every changed query or mutation: name what clears it, and show that what clears it covers this. Whether that belongs in the prompt as its own pass or in a pane as a structural check is untested, and what we know so far is that more advice in the prompt will not do it. Try it on the change that exposed the gap, where the answer is already known. | S |
-| **A `diff` question is taken on trust** | `rule.go:266` reads a question of kind `diff` as "what you already showed me settles this" and skips the lookup. Nothing checks that claim against what was actually shown. On the PR #46 run, six of the nine findings the ruling could not settle were of this kind, and the review delivered five of fifteen findings, so this cost two thirds of it. If the thing a `diff` question is about does not appear in the material, it should become a lookup. | S |
 | **Nothing here can run the code** | Three of four questions on one run were settled in minutes by building a request and printing it, and by sending one probe. Reading and grepping cannot get at that. The worktrees under `~/.redline/worktrees` are already checkouts of the revision under review, so building, running one test, or printing one request is within reach, and that is where the real risks were. | M |
 | **Findings are "if X then Y", not claims** | Six findings over two runs were all of the form "if the SDK does X then this breaks". A reviewer that only produces those has handed the whole job to a lookup pass that costs a sixth as much. Worth counting on real runs: how many findings depend on a fact the reviewer could not get at. | S |
 | **A crash that can be found without a model belongs in a pane** | An index into a list a branch can leave empty is decidable by reading the code. Four runs were shown that exact line and said nothing, so this is not prompt work. | M |
@@ -143,13 +143,10 @@ What the research behind it said, and what was changed because of it:
 
 | Item | What | Effort |
 |---|---|---|
-| **Whole calling functions for callers** | gorefactor and tsrefactor both send a caller as the use line plus two lines either side (`callerContextLines = 2`), though both already know the enclosing declaration (`details.callerSymbol`). A window cannot show a nil check five lines up, what happens to a returned value, or what a refresh handler clears. With the context deferred an entry costs one index line until it is read, so the reason to keep it thin is gone. Emit the enclosing function's span; the window can stay as the index preview. Upstream in both providers. | S |
-| **A callee role** | Neither provider emits what a changed function calls. That is the other half of most contract defects, and of the cache-key miss above: what the refresh actually invalidates is a callee of its handler. gorefactor's `callgraph --depth N` already walks callees; ts-morph can do the same. Needs a fixture whose defect is in a callee. Upstream. | M |
-| **Callers of callers** | Both providers stop at one hop. gorefactor's `blast-radius` already computes transitive callers. Emit the second hop as its own role ranked below direct callers, so a deferred index can offer it without crowding the first. Upstream. | M |
-| **What else the providers could resolve** | Implementations of a changed interface (gorefactor has `find-implementations`) and the interface declaration itself, which today is only a name in `details.interface`. Types past a signature: field types, types used in a body, types a changed type or var refers to. Tests reached through another package (`test-affected`). For tsrefactor: declarations nested inside a component (inner hooks and callbacks are never symbols), plain `.js` files, and query keys matched to the `invalidateQueries` calls that clear them. The history caps (3 revisions, 3 spans per file) are fixed constants in both. Upstream. | M |
+| **The providers reach further out** | Shipped in both, gorefactor 0.18.0 and tsrefactor 0.1.0. A caller carries its whole enclosing function instead of the use line plus two, keyed on the declaration so two uses in one function ship it once. A `callee` role says what the change calls, which is the other half of most contract defects and of the cache-key miss above. An `indirect-caller` role carries the second hop. The `type` role reaches past a signature to field types, body types and what a changed type refers to; the interface a changed type implements is sent rather than only named; a changed interface brings its implementations, matched on a shared member rather than on still satisfying it, because an interface that gains a method is exactly when its implementations stop satisfying it; tests that reach the change through a caller are emitted, which is the cross-package test the role never reported. History caps are flags. tsrefactor also resolves `.js`, makes the functions inside a function declarations, and reports the cache-key coverage question as an unknown rather than as a resolved role, since matching two key literals is a guess. | done |
 | **Speculative findings about unseen callers** | On the clean fixture both runs flagged a nil return for callers that might exist. A finding should rest on code the reviewer saw or read. Measure a sentence to that effect on the clean pair. | S |
 | **The describing pass reads context too** | It fetched the caller on both synthetic runs. Cheap here, but it is not the pass that needs it. | S |
-| **Try it on the cache-key PR** | The real miss this is aimed at, with tsrefactor's context and a large change, where the relevant entry is one of many. Worth doing once whole calling functions land, since today's windows do not carry the relationship the defect turns on. | S |
+| **Try it on the cache-key PR** | The real miss this is aimed at, with tsrefactor's context and a large change, where the relevant entry is one of many. Unblocked: whole calling functions have landed, so the page's caller now carries the panel render four lines below the hook call, and the callee role carries both the hook and the panel when the page is what changed. Nothing has run it on the real change yet, and that is the next thing worth a model call. | S |
 | **Decide whether context defers by default** | Not before it has run on real changes with the extended providers. | S |
 
 ## Cohorts
@@ -233,7 +230,7 @@ Worth trying, and nobody has:
 | **Make it a conversation** | Describing call, then the judging turn as the next message in the same conversation. History that only grows is what the cache is designed for, so the saving mostly comes for free instead of being engineered for. It also means the judging call can see what the describing call actually said rather than being handed a rendering of it. What it gives up is running the groups at the same time, since a conversation is a chain. | M |
 | **Use structured outputs like everyone else** | Ask for JSON the documented way, per call, with the form that fits that call. Costs a cache write per shape change. Price it: one review both ways, same change, compare the bill and the findings. | S |
 | **Let each call pick its own model and effort** | The describing call does not need the model that finds bugs. Cheaper there, stronger where it counts, is the obvious arrangement and the cache is the only reason it is off the table. Same test: run it both ways and read the bill. | S |
-| **Use tools for looking things up** | Tools are for doing things. Here they carry output shapes while the reviewer has no way to look anything up, which is backwards and is the same point as the first row of the gap section. | L |
+| **Use tools for looking things up** | Half true now. `--look` gives the judging passes `grep` and `read_lines`, so the tools are no longer only output shapes; the recording tools still are, and the rest of the scout's surface is still on the far side of a lookup pass. Same point as the first row of the gap section. | L |
 
 The decision this section is heading for: keep engineering around the cache,
 or take the simpler shape and pay more. Two reviews of one real change, run
@@ -480,18 +477,21 @@ consumers need placeholder directories, which the setup skill should say.
 
 ## If picking a small set next
 
-1. The `diff` question taken on trust, which costs two thirds of a checked
-   review.
-2. `ui/node_modules` in the worktree, confirmed failing live.
-3. Diff coverage against the baseline as a real finding.
-4. Order the report and the pull request body by kind of finding before
+1. `ui/node_modules` in the worktree, confirmed failing live.
+2. Diff coverage against the baseline as a real finding.
+3. Order the report and the pull request body by kind of finding before
    severity.
-5. A note from whoever asked for the review, the cheapest way to put a
-   specific worry in front of the reviewer.
-6. The profiled post that loses a paid review to a race, which throws away a
+4. The profiled post that loses a paid review to a race, which throws away a
    whole review's spend and reads in CI as a tooling bug.
-7. Catching model-written junk before it posts.
-8. A ledger row per finding, the denominator for the read-back section.
-9. Generated-drift pane, Go only to start.
-10. The merge stage, so the split's findings get deduplicated and ruled in one
-    place.
+5. Catching model-written junk before it posts.
+6. A ledger row per finding, the denominator for the read-back section.
+7. Generated-drift pane, Go only to start.
+8. The merge stage, so the split's findings get deduplicated and ruled in one
+   place.
+9. Run `--look` on the cache-key change and on PR #46, which is the only thing
+   that can say whether a reviewer that searches is worth its turns. Every row
+   above is work; this one is the measurement the first row of the gap section
+   is waiting on.
+
+Two came off this list. `--note` shipped, and a `diff` question's claim is now
+checked against what the prompt carried rather than taken on trust.

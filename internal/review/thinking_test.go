@@ -181,7 +181,7 @@ func TestTheCaptureKeepsTheInstructionsSentWithTheCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	instructions, _ := got["instructions"].(string)
-	if want := callsBlock(StageReview, true); instructions != want {
+	if want := callsBlock(StageReview, true, false); instructions != want {
 		t.Errorf("instructions = %q, want %q", instructions, want)
 	}
 	if !strings.Contains(instructions, "Read the context you need with get_context") {

@@ -65,7 +65,7 @@ func TestTheWireDoesNotChangeWhatIsReservedFor(t *testing.T) {
 	}
 	// And the reservation is not zero, or the test above would pass on two runs
 	// that both reserved nothing.
-	if n := toolsTokens(true); n == 0 {
+	if n := toolsTokens(true, false); n == 0 {
 		t.Error("toolsTokens priced the catalogue at zero, so nothing above can tell reserved from not")
 	}
 }

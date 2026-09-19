@@ -90,7 +90,7 @@ const nudgeText = "Answer with the tool calls this pass asks for, not in prose. 
 // completion, the shape the rest of the review reads.
 func converse(ctx context.Context, opts Options, res *Result, conv conversation) (completion, error) {
 	stage := res.stage()
-	col := newCollector(stage, res.expect, res.deferred)
+	col := newCollector(stage, res.expect, res.deferred, opts.Look)
 	var c completion
 	var total Usage
 	var thinking strings.Builder

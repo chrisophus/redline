@@ -11,6 +11,33 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Added
+- **`--look` gives the judging pass `grep` and `read_lines`.** A claim about code
+  outside the diff was something the reviewer could only *name*, as a question
+  for a later pass to answer and a third to rule on. With this it can check the
+  claim while it is writing the finding. Off by default, and an experiment:
+  nothing has measured what searching buys, and it spends turns — the one
+  published run of this shape went past $20 a review on a 43-file change, for
+  two confident false positives against one real bug nothing else found.
+  The lookups are the scout's own, so a path climbing out of the tree under
+  review is refused, an escaping symlink is skipped and a search is capped — one
+  implementation rather than a second copy of the hardened one. Measured on this
+  repository: the two tools cost about 600 input tokens on the catalogue, 91 on
+  the whole request, since the catalogue rides the cached prefix.
+
+### Changed
+- **A `diff` question's claim is checked instead of taken on trust.** A question
+  of kind `diff` says the material already in front of the reviewer settles the
+  finding, so it needs no lookup, and nothing checked that. On PR #46 six of the
+  nine findings the ruling could not settle were of this kind, against a review
+  that delivered five of fifteen, so the claim taken on trust cost about two
+  thirds of a checked review. The claim is now checked against what the prompt
+  carried — through `Input.ShownFiles` and `Input.shownLines`, not a second copy
+  of what "shown" means — and a finding resting on material the reviewer was
+  never shown becomes a lookup. It keeps its kind, and `diff` now maps to the
+  `enclosing` record role so the scout is not refused when it files what it
+  found.
+
 ## [0.11.0] - 2026-09-17
 
 ### Removed
