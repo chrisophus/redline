@@ -11,6 +11,8 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-19
+
 ### Added
 - **`--look` gives the judging pass `grep` and `read_lines`.** A claim about code
   outside the diff was something the reviewer could only *name*, as a question
