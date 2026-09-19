@@ -1,26 +1,41 @@
 # Redline
 
-Gates say pass or fail. Redline shows what they saw.
+A code review by a model, for cents, that does not post what it cannot support.
 
-A repository's harness answers each question with one bit: the tests pass,
-coverage clears the threshold, the linter is quiet. That bit is the right
-shape for a merge queue and the wrong shape for a reviewer, because it drops
-the detail a decision needs. Which added lines does nothing execute? Which
-lint findings did this change introduce, and which did it inherit? Where did
-the author tell the linter to be quiet? Did the number move, and which way?
-Redline measures the change and keeps that detail, in one browser view,
-beside the facts no gate computes at all: the migrations, the `openapi.yaml`
-diff, and a plain account of what was examined and what was not. It hides
-what reviewers skip: generated code, test bodies, findings CI already gates.
+Two things make an agentic review expensive: tokens spent working out facts a
+program could have computed, and a reviewer guessing at code it was never
+shown. Redline removes both before the model is called. `redline run` invokes
+no model at all — it measures the change and writes the facts down: which added
+lines nothing executes, which lint findings this change introduced and which it
+inherited, where the author told the linter to be quiet, what the migrations
+and the `openapi.yaml` diff do. A context provider then resolves what the diff
+cannot show, through a real type checker rather than a name match: the callers
+of a changed symbol, what the change itself calls, the types behind a
+signature, the history of the lines it deletes.
 
-`redline run` runs no model. Judging the facts is the reviewer's job, and
-the reviewer is whoever is reading: a person in the browser, an agent
-reading `findings.json`, or `redline review`, the one command that calls a
-model. All three see the same facts and write their decisions onto the same
-report, and every finding and every ruling says which of them produced it.
-See `redline-design.md` for the design, `docs/plans/roadmap.md` for what is
-left and the evidence behind each item, and `CHANGELOG.md` for what each
-release changed.
+What reaches the model is that material, once, behind a prompt-cache
+breakpoint every later call reads back instead of paying for. A review of this
+repository's own change is two calls and about fifteen cents.
+
+The other half is not posting nonsense, because a reviewer that cries wolf gets
+turned off. Every finding has to name the one check that would refute it —
+naming it is a filter, since a model asked how its claim could be falsified
+writes fewer claims that cannot be. `--verify` then runs those checks and a
+second call rules on each finding with the answers in front of it. Only
+findings the ruling keeps reach a pull request; the rest stay on the report,
+folded, with the reason. An uncertain finding costs the reader nothing and a
+withheld one costs them the finding.
+
+What it does not claim is that it reads code as well as you do. On this
+repository's PR #46 an agent found eight real bugs and `redline review` found
+none of them; the gap, and what is being tried against it, is
+`docs/plans/roadmap.md`.
+
+Judging is not Redline's monopoly either. The facts are written for whoever is
+reading: a person in the browser, an agent reading `findings.json`, or
+`redline review`. All three write their decisions onto the same report, and
+every finding and every ruling says which of them produced it. It hides what
+reviewers skip: generated code, test bodies, findings CI already gates.
 
 Reviewing is read-only; posting is not, and never happens on its own.
 `redline post` is the one command that writes to GitHub: it submits the
@@ -30,6 +45,10 @@ one-line-per-pane account of what was checked. `run` never posts.
 It is pre-push and non-gating, and it works at both moments: on your own
 uncommitted work, and on an open pull request. `--pr` fetches via `gh`
 (read-only).
+
+See `redline-design.md` for the design, `docs/plans/roadmap.md` for what is
+left and the evidence behind each item, and `CHANGELOG.md` for what each
+release changed.
 
 ## The page
 
