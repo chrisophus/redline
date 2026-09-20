@@ -119,8 +119,11 @@ type completion struct {
 	stopped  string
 	// fetched is how many held-back context entries the pass asked for.
 	fetched int
-	// looked is how many lookups the pass made against the tree.
-	looked int
+	// looked is how many lookups the pass made against the tree, and lookups
+	// and refusals are what those calls and the refused ones actually were.
+	looked   int
+	lookups  []Lookup
+	refusals []Refusal
 	// refused is set when the model declined the request. detail says why,
 	// when the API said.
 	refused bool

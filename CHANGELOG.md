@@ -11,6 +11,19 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Added
+- **The postmortem records what the lookups asked and what the refused calls
+  were.** `Looked` and `Rejected` were counts: a saved artifact said a pass
+  checked sixteen things and had thirteen calls refused, and nothing about
+  which. On PR #1462 that left the mistake readable only off a terminal that
+  was no longer there. `Result` now carries `Lookups` (tool, arguments, bytes
+  back, and whether the answer was "nothing found" - which is an answer) and
+  `Refusals` (tool, reason, arguments, and how many times the same reason
+  recurred, so one mistake repeated every turn is one entry). Both render in
+  `redline postmortem`. Arguments are cut at 200 characters and distinct
+  refusal reasons at 20, because the trace wants the shape of a mistake rather
+  than a second copy of the conversation.
+
 ### Changed
 - **`list_docs` takes a `path` filter, and a cut listing says where the rest
   are.** Every lookup that cuts gives advice the caller can act on, and this

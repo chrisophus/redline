@@ -82,6 +82,13 @@ type Trace struct {
 	// model's own reasoning summary may narrate what it searched or read;
 	// this is the count that says so independent of whether it did.
 	Looked int `json:"looked,omitempty"`
+	// Lookups is what those calls asked and whether they landed, and Refusals
+	// is every call that was not taken with the reason. The counts above say
+	// how many; these say which. Without them the saved artifact records that
+	// something went wrong a given number of times and nothing about what,
+	// which is only readable off a terminal that is no longer there.
+	Lookups  []review.Lookup  `json:"lookups,omitempty"`
+	Refusals []review.Refusal `json:"refusals,omitempty"`
 	// Thinking is each pass's reasoning summary, when the model was allowed
 	// to think. It is the one record of why the reviewer proposed what it did
 	// and why the ruling decided what it decided.
@@ -224,6 +231,8 @@ func Of(res *review.Result, look Lookup) *Trace {
 		Rejected:      res.Rejected,
 		Stopped:       res.Stopped,
 		Looked:        res.Looked,
+		Lookups:       res.Lookups,
+		Refusals:      res.Refusals,
 		Thinking:      res.Thinking,
 		CostUSD:       res.CostUSD,
 		CostKnown:     res.CostKnown,

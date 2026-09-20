@@ -343,3 +343,51 @@ func TestTheLedgerRecordsTheResolvedEffort(t *testing.T) {
 		t.Errorf("effort = %q, want high", asked.Effort)
 	}
 }
+
+// The trace says what the lookups asked and what the refused calls were, not
+// only how many there were of each. A count records that something happened
+// sixteen times and nothing about what, which is the shape the saved artifact
+// was in when a pass on PR #1462 had thirteen calls refused.
+func TestThePassRecordsWhatItLookedUpAndWhatWasRefused(t *testing.T) {
+	look := &fakeLooker{answer: "store.go:3: func Insert() error {"}
+	c := newCollector(StageFindings, passExpect{}, nil, look)
+
+	grep, err := json.Marshal(map[string]any{"pattern": "func Insert", "glob": ".go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.take([]toolCall{{ID: "t1", Name: CallGrep, Input: grep}})
+
+	if len(c.lookups) != 1 {
+		t.Fatalf("lookups = %+v, want the one call recorded", c.lookups)
+	}
+	got := c.lookups[0]
+	if got.Tool != CallGrep || !strings.Contains(got.Input, "func Insert") {
+		t.Errorf("lookup = %+v, want the tool and what it asked", got)
+	}
+	if got.Bytes == 0 || got.Empty {
+		t.Errorf("lookup = %+v, want the yield of an answer that carried something", got)
+	}
+
+	// A search that found nothing is an answer, and is worth telling apart.
+	c2 := newCollector(StageFindings, passExpect{}, nil, &fakeLooker{answer: ""})
+	c2.take([]toolCall{{ID: "t1", Name: CallGrep, Input: grep}})
+	if len(c2.lookups) != 1 || !c2.lookups[0].Empty {
+		t.Errorf("lookups = %+v, want the empty answer marked", c2.lookups)
+	}
+
+	// A call this pass may not make is recorded with the reason, and the same
+	// mistake twice is one entry counted twice rather than two entries.
+	over, err := json.Marshal(map[string]any{"overview": "the change does a thing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.take([]toolCall{{ID: "t2", Name: CallOverview, Input: over}})
+	c.take([]toolCall{{ID: "t3", Name: CallOverview, Input: over}})
+	if len(c.refusals) != 1 {
+		t.Fatalf("refusals = %+v, want one reason", c.refusals)
+	}
+	if r := c.refusals[0]; r.Count != 2 || r.Tool != CallOverview || !strings.Contains(r.Why, "does not take") {
+		t.Errorf("refusal = %+v, want the reason counted twice", r)
+	}
+}

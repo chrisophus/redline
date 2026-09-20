@@ -165,6 +165,7 @@ func (r *Result) clone() *Result {
 	c.ScoutCostUSD = 0
 	c.Stubs = 0
 	c.CallTurns, c.Rejected, c.Stopped, c.Thinking, c.Fetched, c.Looked = 0, 0, nil, nil, 0, 0
+	c.Lookups, c.Refusals = nil, nil
 	return &c
 }
 

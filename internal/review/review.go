@@ -472,6 +472,33 @@ type PassThinking struct {
 	Text string `json:"text"`
 }
 
+// Lookup is one call a pass made against the tree, and what it got back.
+//
+// Bytes rather than the answer itself. The answers are large by design -
+// sixty matches, two hundred lines, sixteen kilobytes of symbol context - and
+// a trace that carried them would be a second copy of the conversation. What
+// a reader needs is what was asked and whether it landed.
+type Lookup struct {
+	Tool  string `json:"tool"`
+	Input string `json:"input,omitempty"`
+	Bytes int    `json:"bytes"`
+	// Empty is a lookup that came back with nothing found, which is an answer
+	// and is not the same as one that came back with something.
+	Empty bool `json:"empty,omitempty"`
+}
+
+// Refusal is one call a pass made that was not taken.
+//
+// Count, because a pass that sends the same wrong call on every turn is one
+// mistake repeated and reads in a trace as many. The distinct reasons are what
+// say what went wrong.
+type Refusal struct {
+	Tool  string `json:"tool"`
+	Why   string `json:"why"`
+	Input string `json:"input,omitempty"`
+	Count int    `json:"count"`
+}
+
 // Result is one review and what it cost.
 type Result struct {
 	Review findings.Review `json:"review"`
@@ -564,6 +591,18 @@ type Result struct {
 	// record of what the pass looked up is the model's own narration, and a
 	// lookup records nothing on its own.
 	Looked int `json:"looked,omitempty"`
+	// Lookups is what those calls asked and what came back, in the order they
+	// were made. The count says a pass checked sixteen things; this says which
+	// sixteen, so a reader can tell a pass that searched the right ground and
+	// found nothing from one that searched the wrong ground, and so a later
+	// pass could be told what has already been covered.
+	Lookups []Lookup `json:"lookups,omitempty"`
+	// Refusals is every call that was not taken, with the reason and how many
+	// times it was made. Rejected counts them; this says what they were. On
+	// PR #1462 a pass had thirteen calls refused and the saved artifact
+	// carried the number alone, so the mistake could only be read off a
+	// terminal that was no longer there.
+	Refusals []Refusal `json:"refusals,omitempty"`
 	// CapHit records that the loop was stopped by the dollar cap rather than
 	// by the reviewer deciding it had enough.
 	CapHit bool `json:"capHit,omitempty"`
@@ -1133,6 +1172,8 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	res.Rejected += c.rejected
 	res.Fetched += c.fetched
 	res.Looked += c.looked
+	res.Lookups = append(res.Lookups, c.lookups...)
+	res.Refusals = append(res.Refusals, c.refusals...)
 	if strings.TrimSpace(c.thinking) != "" {
 		pass := stage
 		if opts.passLabel != "" {
