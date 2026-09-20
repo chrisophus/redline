@@ -11,6 +11,28 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Fixed
+- **A commit's message is carried once for the whole change, not once per line
+  range.** `git log -L` is asked per range, so a commit that touched many
+  ranges shipped its entire message once for each. On this repository's own
+  PR #83 that was 98 history and removal expansions carrying 186 commit blocks
+  between **18 distinct commits**, one of them emitted 58 times: 429,000
+  tokens, 73% of everything resolved, against a context ceiling of 184,000.
+  Twenty-eight history expansions were dropped for want of room while the room
+  was full of the same essay. `Seen` could not catch it, because it removes
+  lines the diff already shows and `carriesHistory` exempts these two roles
+  from it on purpose - their content is commit messages rather than source at
+  the lines they name. That exemption is right, and it left the one role with
+  tenfold internal duplication with no deduplication at all. What each
+  expansion keeps is the part that differs, the commit header and the hunk git
+  printed for that range; only the message body is replaced, by a line saying
+  where to read it, and the full copy lands in the highest-ranked expansion so
+  it is the one that survives a binding budget. On PR #83: history and removal
+  429,314 to 64,593 tokens, the whole envelope 587,072 to 222,351, and nothing
+  exceeds the ceiling any more - the 52 expansions it used to drop all fit,
+  the context block goes from 174.7k of 174.9k room to 119.1k of 172.2k, and
+  the request falls from 245,922 tokens to 192,672.
+
 ### Added
 - **The postmortem records what the lookups asked and what the refused calls
   were.** `Looked` and `Rejected` were counts: a saved artifact said a pass
