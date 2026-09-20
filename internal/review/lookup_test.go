@@ -32,7 +32,7 @@ func (f *fakeLooker) Calls() []string {
 	return f.calls
 }
 
-func (f *fakeLooker) ListDocs() (string, error) {
+func (f *fakeLooker) ListDocs(filter string) (string, error) {
 	f.docs++
 	return f.answer, f.err
 }

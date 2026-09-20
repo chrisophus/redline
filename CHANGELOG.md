@@ -11,6 +11,17 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Changed
+- **`list_docs` takes a `path` filter, and a cut listing says where the rest
+  are.** Every lookup that cuts gives advice the caller can act on, and this
+  one said "grep for a word a document would use" - which cannot be taken,
+  because the reason to list documents is not yet knowing which one to ask
+  for. On a repository with more documents than the bound, the answer now
+  names the directories holding the remainder with a count each, biggest
+  first, and `path` lists one of them. A repository with 167 documents gets a
+  map and one follow-up call instead of the first 80 paths alphabetically and
+  a dead end. Both the `--look` tool and the scout's own take the filter.
+
 ### Added
 - **`--look` gets three more lookups: `list_docs`, `symbol_context` and
   `line_history`.** The judging pass could search and read; now it can also

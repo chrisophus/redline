@@ -140,7 +140,8 @@ type Looker interface {
 	// ReadLines returns a span of one file, with line numbers.
 	ReadLines(path string, start, end int) (string, error)
 	// ListDocs returns the repository's documents with their first heading.
-	ListDocs() (string, error)
+	// filter narrows to the paths containing it, and is empty for all of them.
+	ListDocs(filter string) (string, error)
 	// SymbolContext returns one Go symbol's definition, its callers resolved
 	// through the type checker, its signature types and its tests.
 	SymbolContext(symbol string) (string, error)

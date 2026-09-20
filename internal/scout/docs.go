@@ -3,6 +3,7 @@ package scout
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -106,6 +107,102 @@ var docExtensions = map[string]bool{
 // listDocs is every document in the repository, so the scout can find the
 // design note or decision record that explains what a change is for. Bounded,
 // and sorted so the same repository lists the same way twice.
+//
+// filter, when set, keeps only the paths containing it. It is what makes a
+// repository with more documents than the bound navigable: the first listing
+// says which directories hold the rest, and a second call asks for one of
+// them. Without it the bound is a dead end, because the reason to list
+// documents at all is not yet knowing which one to ask for.
+func listDocsIn(root, filter string) []docFile {
+	all := listDocs(root, 0)
+	if filter = strings.TrimSpace(filter); filter == "" {
+		return all
+	}
+	kept := all[:0]
+	for _, d := range all {
+		if strings.Contains(d.Path, filter) {
+			kept = append(kept, d)
+		}
+	}
+	return kept
+}
+
+// renderDocs writes the listing, and when it is cut says where the rest are.
+//
+// Directories with counts rather than "there are more". A model told only that
+// it did not see everything has no next move but to page or to guess a word;
+// told that 54 of the missing 87 are under docs/adr, it asks for docs/adr.
+func renderDocs(all []docFile, max int, filter string) string {
+	if len(all) == 0 {
+		if filter != "" {
+			return "no documents under " + filter
+		}
+		return "no documents in this repository"
+	}
+	shown := all
+	if max > 0 && len(shown) > max {
+		shown = shown[:max]
+	}
+	var b strings.Builder
+	for _, d := range shown {
+		fmt.Fprintf(&b, "%s (%d lines)", d.Path, d.Lines)
+		if d.Heading != "" {
+			fmt.Fprintf(&b, ": %s", d.Heading)
+		}
+		b.WriteString("\n")
+	}
+	if len(shown) == len(all) {
+		return b.String()
+	}
+	fmt.Fprintf(&b, "\n(%d of %d shown, sorted by path.", len(shown), len(all))
+	if dirs := dirCounts(all[len(shown):]); dirs != "" {
+		fmt.Fprintf(&b, " The rest are under %s.", dirs)
+	}
+	b.WriteString(" Pass path to list one of those.)\n")
+	return b.String()
+}
+
+// dirCounts names the directories holding a set of documents, biggest first,
+// as "docs/adr (54), internal/notes (33)". Bounded, because a remainder spread
+// across forty directories is a list nobody reads; what is left over is
+// counted into "other".
+func dirCounts(docs []docFile) string {
+	const maxDirs = 6
+	counts := map[string]int{}
+	for _, d := range docs {
+		dir := path.Dir(d.Path)
+		if dir == "." {
+			dir = "the repository root"
+		}
+		counts[dir]++
+	}
+	dirs := make([]string, 0, len(counts))
+	for dir := range counts {
+		dirs = append(dirs, dir)
+	}
+	// Count descending, then path, so the same remainder reads the same twice.
+	sort.Slice(dirs, func(i, j int) bool {
+		if counts[dirs[i]] != counts[dirs[j]] {
+			return counts[dirs[i]] > counts[dirs[j]]
+		}
+		return dirs[i] < dirs[j]
+	})
+	var parts []string
+	other := 0
+	for i, dir := range dirs {
+		if i >= maxDirs {
+			other += counts[dir]
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s (%d)", dir, counts[dir]))
+	}
+	if other > 0 {
+		parts = append(parts, fmt.Sprintf("%d elsewhere", other))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// listDocs walks the tree. max of 0 means every document.
 func listDocs(root string, max int) []docFile {
 	var out []docFile
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -131,7 +228,7 @@ func listDocs(root string, max int) []docFile {
 		return nil
 	})
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
-	if len(out) > max {
+	if max > 0 && len(out) > max {
 		out = out[:max]
 	}
 	return out

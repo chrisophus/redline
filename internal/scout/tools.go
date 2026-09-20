@@ -306,32 +306,21 @@ func (ts *toolset) listDocs() tool {
 	return tool{
 		name: "list_docs",
 		description: "List the repository's documents with their first heading: design notes, decision records, plans, READMEs. " +
-			"Use it when a change looks like it is implementing something that was written down, or when its intent is not obvious from the diff. Read what looks relevant with read_lines.",
-		schema: schema(map[string]any{}),
-		run: func(json.RawMessage) (string, error) {
-			const max = maxLookDocs
-			docs := listDocs(ts.root, max+1)
-			if len(docs) == 0 {
-				return "no documents in this repository", nil
+			"Use it when a change looks like it is implementing something that was written down, or when its intent is not obvious from the diff. " +
+			"Pass path to list one directory when the first listing says there are more. Read what looks relevant with read_lines.",
+		schema: schema(map[string]any{
+			"path": str("optional: only documents whose path contains this text, for example docs/adr/"),
+		}),
+		run: func(input json.RawMessage) (string, error) {
+			var in struct {
+				Path string `json:"path"`
 			}
-			cut := len(docs) > max
-			if cut {
-				docs = docs[:max]
-			}
-			var b strings.Builder
-			for _, d := range docs {
-				fmt.Fprintf(&b, "%s (%d lines)", d.Path, d.Lines)
-				if d.Heading != "" {
-					fmt.Fprintf(&b, ": %s", d.Heading)
+			if len(input) > 0 {
+				if err := json.Unmarshal(input, &in); err != nil {
+					return "", fmt.Errorf("bad arguments: %w", err)
 				}
-				b.WriteString("\n")
 			}
-			if cut {
-				// Said, so a design note that sorts after the cut is a gap
-				// the scout knows about rather than one it cannot.
-				fmt.Fprintf(&b, "(stopped at %d documents, sorted by path; there are more, so grep for a word a document would use)\n", max)
-			}
-			return b.String(), nil
+			return renderDocs(listDocsIn(ts.root, in.Path), maxLookDocs, in.Path), nil
 		},
 	}
 }

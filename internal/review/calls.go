@@ -151,8 +151,12 @@ func callTools(pulls bool, looks []string) []callTool {
 		{CallDocs, "List the repository's own documents with their first heading: design notes, decision records, plans, READMEs. " +
 			"Use it when a change looks like it is implementing something that was written down, or when what looks like a defect " +
 			"may be a decision the team recorded. Read what looks relevant with read_lines. A rule the repository committed to " +
-			"outranks your reading of the diff, so this is the check that keeps a finding off a deliberate choice.",
-			map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}},
+			"outranks your reading of the diff, so this is the check that keeps a finding off a deliberate choice. " +
+			"On a repository with more documents than one listing holds, the answer says which directories hold the rest and how " +
+			"many are in each; pass path to list one of those.",
+			flatObject(map[string]any{
+				"path": map[string]any{"type": "string", "description": "optional: only documents whose path contains this text, for example docs/adr/"},
+			})},
 		{CallSymbol, "Ask gorefactor for the exact Go context of one symbol: its definition, its callers resolved through the " +
 			"type checker, the types in its signature, and its tests. Takes a symbol like Store.Insert or Insert. This resolves " +
 			"by type identity rather than by name, so the callers it returns are facts and not leads. It is the call to make when " +
@@ -764,7 +768,15 @@ func (c *collector) lookup(call toolCall) string {
 		}
 		return out
 	case CallDocs:
-		out, err := c.look.ListDocs()
+		var in struct {
+			Path string `json:"path"`
+		}
+		if len(call.Input) > 0 {
+			if err := json.Unmarshal(call.Input, &in); err != nil {
+				return "bad arguments: " + err.Error()
+			}
+		}
+		out, err := c.look.ListDocs(in.Path)
 		if err != nil {
 			return err.Error()
 		}

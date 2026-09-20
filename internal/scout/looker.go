@@ -61,37 +61,26 @@ func (l *Looker) Calls() []string {
 // ListDocs names the repository's own documents with their first heading, so a
 // pass can find the note that says a construction is deliberate.
 //
-// The cap is listDocs's own. A repository with more documents than that is one
-// where the list is not the way in, and the line saying so tells the pass to
-// grep for a word a document would use instead.
-func (l *Looker) ListDocs() (string, error) {
+// filter narrows to the paths containing it. A repository with more documents
+// than the bound gets a listing that says which directories hold the rest and
+// with how many, so the next call asks for one of those instead of paging or
+// guessing a word to grep for.
+func (l *Looker) ListDocs(filter string) (string, error) {
 	if l == nil {
 		return "", fmt.Errorf("no tree to list")
 	}
-	docs := listDocs(l.root, maxLookDocs+1)
-	if len(docs) == 0 {
-		return "no documents in this repository", nil
-	}
-	cut := len(docs) > maxLookDocs
-	if cut {
-		docs = docs[:maxLookDocs]
-	}
-	var b strings.Builder
-	for _, d := range docs {
-		if ignoredPath(l.ignore, normPath(d.Path)) {
-			continue
+	all := listDocsIn(l.root, filter)
+	kept := all[:0]
+	for _, d := range all {
+		if !ignoredPath(l.ignore, normPath(d.Path)) {
+			kept = append(kept, d)
 		}
-		fmt.Fprintf(&b, "%s (%d lines)", d.Path, d.Lines)
-		if d.Heading != "" {
-			fmt.Fprintf(&b, ": %s", d.Heading)
-		}
-		b.WriteString("\n")
 	}
-	if cut {
-		fmt.Fprintf(&b, "(stopped at %d documents, sorted by path; there are more, so grep for a word a document would use)\n", maxLookDocs)
-	}
-	return b.String(), nil
+	return renderDocs(kept, maxLookDocs, filter), nil
 }
+
+// maxLookDocs is the cap on one list_docs call, the scout's own.
+const maxLookDocs = 80
 
 // SymbolContext asks gorefactor for one Go symbol's definition, its callers
 // resolved through the type checker, its signature types and its tests.
@@ -173,9 +162,6 @@ func (l *Looker) LineHistory(path string, start, end int) (string, error) {
 	return capLookOutput(out, maxLineHistoryBytes,
 		"ask for a narrower line range"), nil
 }
-
-// maxLookDocs is the cap on one list_docs call, the scout's own.
-const maxLookDocs = 80
 
 // Grep searches the tree for a regular expression.
 //
