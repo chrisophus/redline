@@ -11,6 +11,39 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Added
+- **`ruling` on a finding in `findings.json`.** The verifying pass's verdict
+  rides on the finding itself, for `source: llm` only and empty when no pass
+  ran. It reached `post` as a confidence demotion before, which made "the
+  repository said no" and "the reviewer was unsure" the same field, so the two
+  gates below could not be told apart.
+
+### Changed
+- **A reviewer finding that says it is unsure posts, at warning and error.** A
+  defect held back is lost and a wrong one costs the author a minute reading
+  it, and at those two severities the second price is the smaller one. So a
+  reviewer that suspects the change corrupts data or breaks a caller says so
+  and the comment carries the doubt. An unsure `info` remark still folds: a
+  hedge about nothing much is the comment that teaches a team to stop reading
+  the review.
+- **The ruling gate and the `none`-question gate apply at every severity.**
+  Both used to run through the confidence field, so widening what doubt lets
+  through would have let them through too. They are their own predicates now.
+  A finding the verifying pass did not keep, and one whose author said nothing
+  would settle it, stay off the pull request whatever their severity, and stay
+  on the report with the reason.
+- **The report folds exactly what `post` holds back.** An unsure warning is in
+  the findings list with its confidence on it rather than behind the chevron,
+  so a reader with the report and the pull request in front of them sees one
+  review.
+- **The judging prompt asks for what the reviewer is unsure of, and names
+  warning and error as where that matters most.** The reason it gives no
+  longer rests on a filter running behind it, since `--verify` is off by
+  default.
+- **The system prompt no longer says linters have run over the change.** That
+  is `priorsSection`'s sentence, which names the tools that actually ran and
+  says nothing when none did.
+
 ## [0.13.0] - 2026-09-20
 
 ### Added

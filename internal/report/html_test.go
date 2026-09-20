@@ -869,11 +869,12 @@ func TestReportRendersMutationVerdict(t *testing.T) {
 	}
 }
 
-// The review prompt, the output schema, and the skill all promise the report
-// folds a low-confidence finding away — the inducement offered for reporting
-// an uncertain one at all. Nothing implemented it, so every hedge landed on
-// the briefing at full weight. Folded away is not discarded: the card has to
-// stay reachable, and the reader has to be told it exists.
+// The report folds away exactly what the pull request holds back, so a reader
+// who has both in front of them sees one review and not two. An unsure info
+// remark is folded; an unsure warning is not, because the reviewer is told to
+// report a defect it suspects and a fold would take back the invitation.
+// Folded away is not discarded: the card has to stay reachable, and the reader
+// has to be told it exists.
 func TestLowConfidenceFindingsAreFoldedAwayButStayReachable(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{
@@ -883,6 +884,9 @@ func TestLowConfidenceFindingsAreFoldedAwayButStayReachable(t *testing.T) {
 					Message: "this breaks", Source: findings.SourceLLM, Confidence: findings.ConfidenceHigh},
 				{File: "a.go", Line: 9, Rule: "hunch", Severity: findings.SeverityInfo,
 					Message: "this might leak a goroutine", Source: findings.SourceLLM,
+					Confidence: findings.ConfidenceLow},
+				{File: "a.go", Line: 5, Rule: "unsure-warning", Severity: findings.SeverityWarning,
+					Message: "this might drop the second write", Source: findings.SourceLLM,
 					Confidence: findings.ConfidenceLow},
 			},
 		},
@@ -895,7 +899,7 @@ func TestLowConfidenceFindingsAreFoldedAwayButStayReachable(t *testing.T) {
 	if fold < 0 {
 		t.Fatal("a low-confidence finding must render inside a fold, not as a card in the list")
 	}
-	if !strings.Contains(html, "1 low-confidence agent finding folded away") {
+	if !strings.Contains(html, "1 agent finding folded away") {
 		t.Error("the summary must say how many are folded, so the reader knows they exist")
 	}
 	// Reachable means inside the fold and nowhere else: before it, it was
@@ -907,6 +911,9 @@ func TestLowConfidenceFindingsAreFoldedAwayButStayReachable(t *testing.T) {
 	}
 	if high := strings.Index(html, `data-rule="sure-thing"`); high < 0 || high > fold {
 		t.Error("a confident finding must stay in the list, above the fold")
+	}
+	if warn := strings.Index(html, `data-rule="unsure-warning"`); warn < 0 || warn > fold {
+		t.Error("an unsure warning must stay in the list, above the fold")
 	}
 	// Confidence has to be legible on the cards that do render, or a reader
 	// cannot tell a hedge from a measurement.

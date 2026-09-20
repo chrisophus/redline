@@ -315,15 +315,15 @@ what to look at:
                     committed outranks it. Saved in review.json and the
                     postmortem, and shown on the report.
   --note-file PATH  the same, read from a file. Pass one or the other.
-  --look            experiment: give the judging pass grep and read_lines,
-                    so a claim about code outside the diff is one it can
-                    check rather than only name as a question for the
-                    lookup pass. Off by default: three runs on one pull
-                    request under this flag's own instrumentation put the
-                    inline shape at 4.7x a plain review's cost, and that is
-                    one PR's worth of data rather than a measurement -
-                    watch Result.Looked (printed as looked=N) before
-                    turning it on for real work. A path climbing out of the
+  --look            give the judging pass grep and read_lines, so a claim
+                    about code outside the diff is one it can check while it
+                    writes rather than only name as a question for the lookup
+                    pass. This is the direction: a reviewer that pulls the
+                    context it needs beats one handed a guess about what it
+                    would want. It costs turns, and three runs on one pull
+                    request put the inline shape at 4.7x a plain review's
+                    cost, so watch Result.Looked (printed as looked=N) to see
+                    what the searching bought. A path climbing out of the
                     tree is refused and a search is capped, the same
                     hardening the scout's own lookups have. A path
                     .cursorindexingignore names at the repository root is
@@ -332,8 +332,8 @@ what to look at:
                     automated reader. .gitignore is not read for this -
                     generated code and vendored deps are routinely both
                     gitignored and something a claim needs to check against.
-  --defer-context   experiment: leave the context the providers resolved out
-                    of the prompt. Each file's diff is followed by an index
+  --defer-context   leave the context the providers resolved out of the
+                    prompt. Each file's diff is followed by an index
                     of the context that belongs to it, callers, types, tests
                     and history matched through the provider's scope, and
                     any pass reads an entry with get_context. The same

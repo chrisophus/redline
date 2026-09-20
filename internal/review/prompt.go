@@ -15,22 +15,16 @@ import (
 	"github.com/chrisophus/redline/internal/findings"
 )
 
-// systemPrompt is the harness half: the output contract, the silence rules,
-// and what makes a finding worth writing. It says nothing about any
+// systemPrompt is the harness half: who the reviewer is, what it is looking
+// for, and where a mistake is most expensive. It says nothing about any
 // language. The language half arrives in the envelope's promptFragment,
 // authored by whoever wrote the provider, and is concatenated below.
 //
-// What stays here is what the model cannot know from having read a great many
-// reviews: that deterministic tools already ran and own the nits, that their
-// findings are established, that connecting two of them is the finding no
-// single producer can make, and that it must not assert what it was not shown.
-// Everything about how to judge moved to judgingTail, which the stages that
-// judge carry and the stages that describe do not.
-//
-// Not restating priors is what moves the model's attention off what the tools
-// already caught and onto what static analysis structurally cannot see.
-// Connecting two priors is named as valuable because a model will not
-// volunteer it unless told the connection is the finding.
+// It is short on purpose. Everything about how to judge is in judgingTail,
+// which the stages that judge carry and the stages that describe do not, and
+// everything about what the static checks did is in priorsSection, which says
+// it only where it is true. Pane findings do not reach the packet at all, so
+// there is nothing here about how to treat them.
 //
 //go:embed prompts/system.md
 var systemPrompt string

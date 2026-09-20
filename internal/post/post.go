@@ -110,15 +110,16 @@ type Payload struct {
 	rep          *findings.Report
 	reportURL    string
 	bodyFindings []findings.Finding
-	// lowConf are the reviewer's low-confidence findings when a profile asked
-	// to see them folded rather than withheld. They render in a collapsed
-	// block, never as line comments.
+	// lowConf are the reviewer's low-confidence info findings when a profile
+	// asked to see them folded rather than withheld. They render in a
+	// collapsed block, never as line comments. A low-confidence warning or
+	// error is not here: it posts like any other finding.
 	lowConf []findings.Finding
 	profile *Profile
-	// withheld counts the reviewer's own findings this payload did not post
-	// because they said they were unsure, and hedged those it withheld for
-	// hedging. Kept apart because they are different failures and a reader
-	// tuning the thing wants to know which one they have.
+	// withheld counts the reviewer's own info findings this payload did not
+	// post because they said they were unsure, and hedged those it withheld
+	// for hedging. Kept apart because they are different failures and a
+	// reader tuning the thing wants to know which one they have.
 	withheld int
 	hedged   int
 	// lint counts the lint pane's findings, which this payload records and
@@ -235,7 +236,7 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 			p.lint++
 			continue
 		}
-		if lowConfidence(f) {
+		if refused(f) || unfalsifiable(f) || withheldForConfidence(f) {
 			if prof.includes("low-confidence") {
 				// Shown behind a chevron instead of withheld: a guess the
 				// reader can open, never a line comment and never a gate.
@@ -289,7 +290,7 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 // inbox, and a scoring function with its own copy of these rules would report
 // whichever of the two it happened to implement.
 func Reaches(f findings.Finding) bool {
-	return !lowConfidence(f) && !hedged(f)
+	return !refused(f) && !unfalsifiable(f) && !withheldForConfidence(f) && !hedged(f)
 }
 
 // Interrupts reports whether a finding would open a thread on the diff. A
@@ -302,15 +303,44 @@ func Interrupts(f findings.Finding) bool {
 // lowConfidence reports whether a finding is one the reviewer itself said it
 // was unsure of.
 //
-// The report folds these away and the pull request did not, so a guess the
-// page hid arrived on the change with the weight of a measurement. The two
-// readers now agree: what the report will not show without being asked is not
-// worth a reviewer's inbox.
-//
 // Only the reviewer's own findings. A pane's finding carries no confidence at
-// all, by Finalize, so this can never withhold a measurement.
+// all, by Finalize, so nothing built on this can withhold a measurement.
 func lowConfidence(f findings.Finding) bool {
 	return f.Source == findings.SourceLLM && f.Confidence == findings.ConfidenceLow
+}
+
+// withheldForConfidence reports whether the reviewer's own doubt keeps a
+// finding off the pull request. Only an info finding.
+//
+// A defect held back is lost and a wrong one costs the author a minute, and at
+// warning and error the second price is the smaller one. So a reviewer that
+// suspects the change corrupts data or breaks a caller says so even when it is
+// unsure, and the finding reaches the author with the doubt attached.
+//
+// Info is where doubt is worth acting on. An unsure remark about nothing much
+// is the comment that teaches a team to stop reading the review.
+//
+// Doubt only. The two gates that are not about doubt are separate and apply at
+// every severity: refused, for a finding the verifying pass did not keep, and
+// unfalsifiable, for one whose author said nothing would settle it.
+func withheldForConfidence(f findings.Finding) bool {
+	return lowConfidence(f) && f.Severity == findings.SeverityInfo
+}
+
+// refused reports whether the verifying pass ruled this finding out. Withdrawn,
+// justified, unverifiable and already-raised all stay off the pull request and
+// on the report with their reason; running the pass and then posting what it
+// refused is paying for a check and ignoring it.
+func refused(f findings.Finding) bool {
+	return f.Source == findings.SourceLLM && f.Ruling != "" &&
+		f.Ruling != findings.VerifiedKept
+}
+
+// unfalsifiable reports whether the reviewer said nothing would settle its own
+// claim. That is its account of the comment as speculation, and it is the one
+// thing a reviewer told to report what it is unsure of still may not post.
+func unfalsifiable(f findings.Finding) bool {
+	return f.Source == findings.SourceLLM && f.Question.Kind == findings.QuestionNone
 }
 
 // lineOnDiff reports whether a finding has earned a line comment.
@@ -501,11 +531,12 @@ func buildBody(rep *findings.Report, head, reportURL string, inBody, lowConf []f
 	return head0.String() + middle + low + tail
 }
 
-// lowConfidenceSection folds the findings the reviewer was unsure of into a
-// collapsed block, for a profile that would rather see a guess behind a
+// lowConfidenceSection folds the info findings the reviewer was unsure of into
+// a collapsed block, for a profile that would rather see a guess behind a
 // chevron than not at all. They never become line comments and never gate:
 // shown as guesses, in one place a reader opens on purpose. Enabled by
-// body_include: low-confidence; without it these are withheld as before.
+// body_include: low-confidence; without it they are withheld. Warnings and
+// errors do not reach here, whatever their confidence.
 func lowConfidenceSection(lowConf []findings.Finding, head string, prof *Profile, budget int) string {
 	if len(lowConf) == 0 {
 		return ""

@@ -1,6 +1,7 @@
 # Redline
 
-A code review by a model, for cents, that does not post what it cannot support.
+A code review by a model, for cents, that says what it found and shows what it
+measured.
 
 Two things make an agentic review expensive: tokens spent working out facts a
 program could have computed, and a reviewer guessing at code it was never
@@ -17,14 +18,14 @@ What reaches the model is that material, once, behind a prompt-cache
 breakpoint every later call reads back instead of paying for. A review of this
 repository's own change is two calls and about fifteen cents.
 
-The other half is not posting nonsense, because a reviewer that cries wolf gets
-turned off. Every finding has to name the one check that would refute it —
-naming it is a filter, since a model asked how its claim could be falsified
-writes fewer claims that cannot be. `--verify` then runs those checks and a
-second call rules on each finding with the answers in front of it. Only
-findings the ruling keeps reach a pull request; the rest stay on the report,
-folded, with the reason. An uncertain finding costs the reader nothing and a
-withheld one costs them the finding.
+The other half is coverage of the change rather than a short list of certainties.
+A defect left out is lost; one that turns out wrong costs the author a minute,
+so the reviewer is told to report what it is unsure of, and to do that most
+readily at warning and error. Every finding still has to name the one check that
+would refute it, which shapes the claim: a model asked how it could be falsified
+writes a sharper finding. `--verify` runs those checks in a second pass and rules
+on each finding with the answers in front of it, and it is off by default,
+because a pass whose main output is withholding is the wrong trade here.
 
 What it does not claim is that it reads code as well as you do. On this
 repository's PR #46 an agent found eight real bugs and `redline review` found
@@ -81,8 +82,8 @@ release changed.
 | `redline review`: a describing call and a judging call over the run's own output | shipped |
 | The split: `--cohorts N` judges each group of files in its own call | shipped |
 | `--note`, so whoever asks for the review can say what worries them | shipped |
-| `--defer-context`, the reviewer reading resolved context with `get_context` | experiment |
-| `--look`, the judging pass searching the tree with `grep` and `read_lines` | experiment |
+| `--defer-context`, the reviewer reading resolved context with `get_context` | shipped, off by default |
+| `--look`, the judging pass searching the tree with `grep` and `read_lines` | shipped, off by default |
 | A `diff` question's claim checked against what the prompt carried | shipped |
 | `redline postmortem`: what the review proposed, what the lookups found, what was ruled | shipped |
 | Migration adds a NOT NULL column with no default | shipped |
@@ -242,9 +243,9 @@ asked for:
 | `--reuse-synopsis` | reuse `review.json`'s walkthrough, and above `--cohorts 1` its partition too, instead of paying for a describing call |
 | `--samples N` | take N independent reviews and union them. They do not overlap, so recall rises with N and so does the bill |
 | `--note` / `--note-file` | what whoever asked for the review wants looked at. It reaches the judging calls only, and the prompt says it is not evidence |
-| `--verify` | the scout answers each finding's question, then a ruling rules on every finding with the answers in hand. Only findings it keeps are posted |
-| `--look` | the judging pass gets `grep` and `read_lines`, so a claim about code outside the diff is one it can check rather than name. An experiment |
-| `--defer-context` | the resolved context leaves the prompt and any pass reads an entry with `get_context`. An experiment |
+| `--verify` | the scout answers each finding's question, then a ruling rules on every finding with the answers in hand. Only findings it keeps are posted. Off by default |
+| `--look` | the judging pass gets `grep` and `read_lines`, so a claim about code outside the diff is one it can check rather than name |
+| `--defer-context` | the resolved context leaves the prompt and any pass reads an entry with `get_context` |
 | `--model`, `--effort` | what the calls are made with. `--scout-model` and `--scout-effort` set the checking pass apart |
 | `--cohorts`, `--samples`, `--verify` | each multiplies calls, so each multiplies the bill; `--max-cost` refuses a request estimated above it |
 
@@ -353,21 +354,25 @@ but that measurement compared prose, and two samples describing one defect
 never word it the same way. They ask the same question about it. The union now
 prefers that, so the measurement is worth taking again.
 
-### Checking the findings before posting them
+### Checking a claim about the rest of the repository
 
-A review could not check a claim about the rest of the repository. That is
-where the false positives came from in real use: findings that were accurate
-observations about code the team had deliberately written that way, dismissed
-in seconds by a reader who had the repository open. Two stages give the review
-the same view.
+A reviewer working from context guessed in advance can only assert a claim
+about code it has never seen, and the finding that comes back dismissed in
+seconds is the accurate observation about code the team wrote that way on
+purpose.
 
-`--look` is the other answer to the same problem, and the newer one: it gives
-the judging pass `grep` and `read_lines` so a claim about code outside the diff
-is one it can check while it writes, rather than name as a question for these
-stages to settle afterwards. It is off by default because nothing has measured
-what searching buys, and it spends turns. The two are not exclusive, and which
-one should survive is an open question — a reviewer that checks its own claims
-is a reviewer the stages below exist to serve.
+`--look` is the answer being built on: it gives the judging pass `grep` and
+`read_lines`, so the reviewer settles the question while it writes instead of
+handing it to a pass afterwards. `--defer-context` and `--mode explore` are the
+same idea applied to the material itself, the reviewer asking for the context
+it wants rather than being handed a guess. `--look` is still off by default,
+on price and not on principle: three runs on one pull request put the inline
+shape at 4.7x a plain review, which is a trace rather than a measurement, and
+`looked=N` on each run is what will settle it.
+
+The checking pass below is the older answer, and it is off by default now. It
+withholds rather than checks in place, which is the wrong direction for a
+reviewer meant to say more. `--verify` turns it on.
 
 The lookups run first. Each finding's question goes to the scout in its
 answering mode, which greps, reads, asks gorefactor for callers, or asks git
@@ -394,13 +399,16 @@ became of it, which is also what makes the pass measurable.
 The instruction names both ways to fail. A pass that withdraws everything has
 perfect precision and no value, so withdrawing takes a line you can quote and
 "I am no longer sure" is unverifiable rather than withdrawn. Keeping everything
-is the failure that put the pass here.
+is the failure that put the pass here. On this repository's PR #46 it came down
+on the first side: nine of the ten findings that never reached the reader were
+unverifiable, six of them on questions the review had certified itself. That is
+why it no longer runs unless asked.
 
 It degrades at every point. No key, no repository to look in, a lookup that
 errors, a ruling that comes back unparseable: each leaves the findings as the
 review wrote them and says the check did not happen. A review that posts
 unchecked is the behaviour this tool always had; an empty one would be worse.
-`--no-verify` turns it off, and a clean review never pays for the second call.
+`--no-verify` is kept for scripts that pass it, and names what already happens.
 
 Findings from `review` are advisory and marked `source: llm`. They never
 reach the merge gate, whatever severity they carry. A gate that blocks on
@@ -427,10 +435,10 @@ Without one, every other command still works.
 
 ### Reading back what a review did
 
-`redline review` runs three things: a reviewer that proposes findings, the
-lookups that answer their questions, and a ruling that decides which reach the
-author. Only the last leaves a file behind, and the outcome is what a reader
-already has. `redline postmortem` prints the rest of it.
+`redline review` runs a reviewer that proposes findings and, under `--verify`,
+the lookups that answer their questions and a ruling that decides which reach
+the author. Only the last stage to run leaves a file behind, and the outcome is
+what a reader already has. `redline postmortem` prints the rest of it.
 
 ```
 ./redline postmortem              # the last review, stage by stage
