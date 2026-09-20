@@ -263,10 +263,13 @@ func cmdReview(o opts) error {
 	if ropts.Verify {
 		ropts.Answer = scoutAnswerer(res, ropts, o.scoutSettings(), &tally)
 	}
-	// On unless --no-look says otherwise. --look stays as a flag so a script
-	// that already passes it still runs; it sets nothing this default did
-	// not already set.
-	if !o.noLook {
+	// Off by default. Three runs on one pull request under the new
+	// instrumentation (see Result.Looked) put the inline shape at 4.7x a
+	// plain review's cost for one PR's worth of data - real evidence
+	// against a default this is not, but the counters exist now precisely
+	// so that decision can be made from a ledger rather than three traces
+	// read as prose. --look turns it on.
+	if o.look {
 		ropts.Look = lookerFor(res)
 	}
 	if !o.dryRun {

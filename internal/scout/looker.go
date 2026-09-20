@@ -23,10 +23,9 @@ import (
 type Looker struct {
 	root string
 	res  *resolver
-	// ignore is .gitignore's and .cursorindexingignore's patterns, read once
-	// at construction. Both search and read refuse a path either one names:
-	// .cursorindexingignore says in as many words that a path is not for an
-	// automated reader, and --look is one.
+	// ignore is .cursorindexingignore's patterns, read once at construction.
+	// Both search and read refuse a path it names: it says in as many words
+	// that a path is not for an automated reader, and --look is one.
 	ignore []string
 }
 
@@ -67,7 +66,7 @@ func (l *Looker) ReadLines(path string, start, end int) (string, error) {
 		return "", fmt.Errorf("no tree to read")
 	}
 	if ignoredPath(l.ignore, normPath(path)) {
-		return "", fmt.Errorf("%s is excluded by .gitignore or .cursorindexingignore", normPath(path))
+		return "", fmt.Errorf("%s is excluded by .cursorindexingignore", normPath(path))
 	}
 	lines, err := l.res.read(path)
 	if err != nil {

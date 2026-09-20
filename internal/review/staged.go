@@ -80,19 +80,38 @@ func (r *Result) cohortsRequest(opts Options, in Input) *Result {
 //
 // Under CohortContext the prefix carries no context at all - Assemble left
 // it out - so this is also where a cohort's own slice of it is written, into
-// the tail, scoped to its own files. See Input.cohortContextTail.
+// the tail, scoped away from every other cohort's files. See
+// Input.cohortContextTail and cohortContextFilter for why it is scoped that
+// way round rather than to this cohort's own files.
 func (r *Result) cohortRequest(opts Options, in Input, mine Cohort, others []Cohort, mineIdx, bound int) *Result {
 	out := r.clone()
 	out.Stage = StageFindings
 	out.Tail = cohortTail(mine, others, mineIdx, opts.CrossSummaries) + r.note
 	if opts.CohortContext {
-		room := opts.Ceiling - r.InputEstimate - envelope.EstimateTokens(out.Tail)
-		out.Tail += in.cohortContextTail(room, mine.Files)
+		// fanOut runs every cohort's call at once, so a room computed against
+		// the whole remaining ceiling is a room every one of them tries to
+		// spend at the same time. Dividing it by the fan-out's own bound
+		// keeps what they could spend in aggregate inside what one call was
+		// priced for, the same way cohortMaxTokens divides the response cap.
+		room := (opts.Ceiling - r.InputEstimate - envelope.EstimateTokens(out.Tail)) / bound
+		out.Tail += in.cohortContextTail(room, otherCohortFiles(others, mineIdx))
 	}
 	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedOutputTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, cohortMaxTokens(opts, bound))
 	return out
+}
+
+// otherCohortFiles is every file named by a cohort other than mineIdx's,
+// flattened into one list for cohortContextFilter to exclude.
+func otherCohortFiles(all []Cohort, mineIdx int) []string {
+	var files []string
+	for i, c := range all {
+		if i != mineIdx {
+			files = append(files, c.Files...)
+		}
+	}
+	return files
 }
 
 // stagedCeilingCost is what the fan-out could cost at worst, for the tripwire

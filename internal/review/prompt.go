@@ -225,21 +225,33 @@ func cohortTail(mine Cohort, all []Cohort, mineIdx int, crossSummaries bool) str
 	return b.String()
 }
 
-// cohortContextFilter drops every expansion outside a cohort's own files, on
-// top of whatever the run already drops for every call (test code). A
-// cohort's own context is what its own files' providers resolved; a caller
-// two cohorts over is the correlation the cross-summary line carries, not
-// context this call would otherwise compete for room with.
-func cohortContextFilter(in Input, files []string) envelope.Filter {
-	want := make(map[string]bool, len(files))
-	for _, f := range files {
-		want[f] = true
+// cohortContextFilter drops context belonging to another cohort's files, on
+// top of whatever the run already drops for every call (test code).
+//
+// It excludes rather than includes. Expansion.File is where the resolved
+// code lives, not necessarily the changed file the expansion is about: a
+// caller's File is the calling function's own path, and for a change to
+// money.go its callers live in use.go. Keeping only expansions whose File is
+// in this cohort's own file list would drop most caller and type context
+// outright - a cohort holding money.go would lose the callers of money.go,
+// because they live in use.go - and an unchanged caller file, in no
+// cohort's list at all, would be dropped by every cohort.
+//
+// Excluding what is definitely another cohort's leaves context whose
+// subject cannot be attributed to any one cohort - that unchanged caller
+// included - reaching every cohort rather than none. Some duplication
+// across cohorts is the result, which is the direction to err in until the
+// envelope carries the subject file itself rather than only the location.
+func cohortContextFilter(in Input, othersFiles []string) envelope.Filter {
+	exclude := make(map[string]bool, len(othersFiles))
+	for _, f := range othersFiles {
+		exclude[f] = true
 	}
 	base := in.contextFilter()
 	return envelope.Filter{
-		What: "context outside this cohort's files",
+		What: "context belonging to another cohort's files",
 		Drop: func(x envelope.Expansion) bool {
-			return (base.Drop != nil && base.Drop(x)) || !want[x.File]
+			return (base.Drop != nil && base.Drop(x)) || exclude[x.File]
 		},
 	}
 }
@@ -249,12 +261,13 @@ func cohortContextFilter(in Input, files []string) envelope.Filter {
 // instead of the cached prefix: scoping it there would make every cohort's
 // prefix a different block, and nothing would ever be read back from the
 // write another cohort paid for. Empty when there is no context to send or
-// no room left for it.
-func (in Input) cohortContextTail(room int, files []string) string {
+// no room left for it. othersFiles is every file named by another cohort,
+// not this one's own - see cohortContextFilter for why.
+func (in Input) cohortContextTail(room int, othersFiles []string) string {
 	if len(in.Envelopes) == 0 || room <= 0 {
 		return ""
 	}
-	budget := envelope.FitAllFilter(in.Envelopes, room, in.shownLines(), cohortContextFilter(in, files))
+	budget := envelope.FitAllFilter(in.Envelopes, room, in.shownLines(), cohortContextFilter(in, othersFiles))
 	rendered := budget.Render()
 	if rendered == "" {
 		return ""

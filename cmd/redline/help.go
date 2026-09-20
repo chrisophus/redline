@@ -163,8 +163,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.note, "note", "", "what to look at or what worries you, added to every judging call")
 	fs.StringVar(&o.noteFile, "note-file", "", "read the note from a file")
 	fs.BoolVar(&o.deferContext, "defer-context", false, "list the resolved context beside each file's diff and let the reviewer read it with get_context")
-	fs.BoolVar(&o.look, "look", false, "let the judging pass search and read the tree with grep and read_lines (on by default)")
-	fs.BoolVar(&o.noLook, "no-look", false, "the judging pass gets no grep or read_lines, only what the prompt already carries")
+	fs.BoolVar(&o.look, "look", false, "let the judging pass search and read the tree with grep and read_lines")
 	fs.BoolVar(&o.verify, "verify", false, "check each finding against the repository before posting it")
 	fs.BoolVar(&o.noVerify, "no-verify", false, "skip the checking pass")
 	fs.BoolVar(&o.cache, "cache", false, "mark the shared prefix for the prompt cache (on by default)")
@@ -316,23 +315,23 @@ what to look at:
                     committed outranks it. Saved in review.json and the
                     postmortem, and shown on the report.
   --note-file PATH  the same, read from a file. Pass one or the other.
-  --look            give the judging pass grep and read_lines, so a claim
-                    about code outside the diff is one it can check rather
-                    than only name as a question for the lookup pass. On by
-                    default; kept so scripts that pass it still run. It
-                    spends turns - the one published run of this shape went
-                    past $20 a review on a 43-file change - so watch
-                    Result.Looked (printed as looked=N) rather than assume
-                    it is free. A path climbing out of the tree is refused
-                    and a search is capped, the same hardening the scout's
-                    own lookups have. A path .gitignore or
+  --look            experiment: give the judging pass grep and read_lines,
+                    so a claim about code outside the diff is one it can
+                    check rather than only name as a question for the
+                    lookup pass. Off by default: three runs on one pull
+                    request under this flag's own instrumentation put the
+                    inline shape at 4.7x a plain review's cost, and that is
+                    one PR's worth of data rather than a measurement -
+                    watch Result.Looked (printed as looked=N) before
+                    turning it on for real work. A path climbing out of the
+                    tree is refused and a search is capped, the same
+                    hardening the scout's own lookups have. A path
                     .cursorindexingignore names at the repository root is
-                    excluded from both the search and a direct read: the
-                    second file says in as many words that a path is not
-                    for an automated reader.
-  --no-look         the judging pass gets no grep or read_lines, only what
-                    the prompt already carries. The way back to the
-                    behaviour before --look existed.
+                    excluded from both the search and a direct read: it
+                    says in as many words that a path is not for an
+                    automated reader. .gitignore is not read for this -
+                    generated code and vendored deps are routinely both
+                    gitignored and something a claim needs to check against.
   --defer-context   experiment: leave the context the providers resolved out
                     of the prompt. Each file's diff is followed by an index
                     of the context that belongs to it, callers, types, tests
@@ -349,9 +348,8 @@ shape:
   --call-turns N    turn cap for each describing/findings/ruling pass over
                     the tool loop every mode runs (default 12). Raise it
                     when a pass hits the cap without calling done, e.g. with
-                    --defer-context, where get_context calls spend turns, or
-                    with --look, on by default, where grep and read_lines
-                    calls do too.
+                    --defer-context or --look, where get_context or
+                    grep/read_lines calls spend turns.
   --samples N       take N independent reviews and union them (default 1).
                     Samples do not overlap, so recall rises with N and cost
                     rises with it too. With the cache on, the first goes out

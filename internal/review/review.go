@@ -226,14 +226,14 @@ type Options struct {
 	// tools off the catalogue and the pass behaves exactly as it did, which is
 	// also what a session whose tree is gone gets.
 	//
-	// On by default in the command as of this field's own instrumentation:
+	// Off by default in the command because nothing has measured what searching
+	// buys, not because a review that reads the tree is worse. It spends turns,
+	// and the one published run of this shape spent past $20 a review on a
+	// 43-file change for two confident false positives and one real bug.
 	// Result.Looked and the per-call debug line in loop.go now say what a
-	// --look pass actually searched or read, rather than leaving the model's
-	// own narration as the only evidence of it. --no-look is the way back to
-	// off. It spends turns - the one published run measured before that
-	// instrumentation existed spent past $20 a review on a 43-file change for
-	// two confident false positives and one real bug - so a caller pricing a
-	// large change should watch Result.Looked rather than assume it is free.
+	// pass actually searched or read, rather than leaving the model's own
+	// narration as the only evidence of it - the instrumentation this default
+	// should eventually be revisited from.
 	Look Looker
 	// Verify turns the whole checking pass on. Off leaves the producer exactly
 	// as it was, which is what a caller with no budget for a second call, or

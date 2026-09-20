@@ -105,6 +105,69 @@ func TestWithoutCohortContextEveryCohortSeesTheWholeChange(t *testing.T) {
 	}
 }
 
+// A caller's expansion is filed under the calling file's own path, not the
+// file whose change it calls into. Context whose File belongs to no cohort
+// at all - an unchanged caller, most of the caller role - must reach every
+// cohort rather than none: excluding only what is definitely another
+// cohort's is what buys that, where keeping only what is definitely this
+// cohort's own would have dropped it everywhere.
+func TestCohortContextKeepsContextWithNoCohortOfItsOwn(t *testing.T) {
+	const callerContent = "caller-marker: an unchanged file that calls into internal/alpha/a.go"
+	in := cohortContextInput()
+	in.Envelopes[0].Expansions = append(in.Envelopes[0].Expansions, envelope.Expansion{
+		Role: envelope.RoleCaller, File: "internal/gamma/caller.go", Content: callerContent,
+	})
+	opts := Options{Cohorts: 2, CohortContext: true}.withDefaults()
+	res, err := Assemble(in, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alphaCohort := Cohort{Name: "alpha", Summary: "s", Files: []string{"internal/alpha/a.go"}}
+	betaCohort := Cohort{Name: "beta", Summary: "s", Files: []string{"internal/beta/b.go"}}
+	all := []Cohort{alphaCohort, betaCohort}
+
+	a := res.cohortRequest(opts, in, alphaCohort, all, 0, 2)
+	if !strings.Contains(a.Tail, callerContent) {
+		t.Error("context with no cohort of its own must still reach the alpha cohort")
+	}
+	b := res.cohortRequest(opts, in, betaCohort, all, 1, 2)
+	if !strings.Contains(b.Tail, callerContent) {
+		t.Error("context with no cohort of its own must still reach the beta cohort")
+	}
+}
+
+// fanOut runs every cohort's call at once, so a room computed against the
+// whole remaining ceiling is a room every one of them tries to spend at the
+// same time. Dividing it by the fan-out's own bound keeps their combined
+// spend inside what the ceiling actually allows.
+func TestCohortContextDividesRoomAcrossTheFanOut(t *testing.T) {
+	bigContent := "big-marker: " + strings.Repeat("x", 3000)
+	in := cohortContextInput()
+	in.Envelopes[0].Expansions[0].Content = bigContent
+	opts := Options{Cohorts: 2, CohortContext: true}.withDefaults()
+	res, err := Assemble(in, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Context is excluded from the shared prefix under CohortContext, so
+	// res.InputEstimate holds still whatever the ceiling used to assemble
+	// it was; overriding it here changes only the room cohortRequest sees.
+	opts.Ceiling = res.InputEstimate + 5000
+
+	alphaCohort := Cohort{Name: "alpha", Summary: "s", Files: []string{"internal/alpha/a.go"}}
+	betaCohort := Cohort{Name: "beta", Summary: "s", Files: []string{"internal/beta/b.go"}}
+	all := []Cohort{alphaCohort, betaCohort}
+
+	solo := res.cohortRequest(opts, in, alphaCohort, all, 0, 1)
+	if !strings.Contains(solo.Tail, bigContent) {
+		t.Fatal("the content should fit when this cohort is the only one in the fan-out")
+	}
+	crowded := res.cohortRequest(opts, in, alphaCohort, all, 0, 8)
+	if strings.Contains(crowded.Tail, bigContent) {
+		t.Error("a wide fan-out must divide the room, not let each cohort spend the whole remaining ceiling")
+	}
+}
+
 // --cohort-context needs a partition to scope by, and answers a question
 // --defer-context already answers a different way.
 func TestCohortContextIsRefusedWithoutAPartitionOrAlongsideDeferContext(t *testing.T) {
