@@ -11,93 +11,7 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
-### Removed
-- **The `--x` / `--no-x` flag pairs. Every boolean setting has one flag, which
-  flips its default.** Gone: `--look`, `--cache`, `--cross-summaries`,
-  `--synopsis`, `--no-verify`, `--no-open`. Kept: `--no-look`, `--no-cache`,
-  `--no-cross-summaries`, `--no-synopsis`, `--verify`, `--open`.
-
-  The pairs did not work. Each was resolved with an expression like
-  `!o.noLook || o.look`, so `--look=false` left both booleans false, the
-  `!noX` arm turned the setting on anyway, and the flag silently did nothing -
-  the same for `--cache=false` and `--cross-summaries=false`. Three of the
-  twelve names were already documented as no-ops kept for scripts, and
-  `--no-open` could never fire at all, since the expression was
-  `o.open && !o.noOpen` and nothing opens without `--open`.
-
-  Cobra was considered for this and rejected: pflag gives bool flags a
-  `NoOptDefVal` of `"true"`, so `--look false` leaves `false` as a positional
-  there exactly as it does under stdlib `flag`, which was the motivating
-  problem. It would also have displaced 386 lines of hand-written help prose
-  in favour of generated usage lines. The parser was never the problem; the
-  wiring was.
-
-  With one flag per setting the flag's own value is what is read, so
-  `--no-look=false` turns the lookups back on and a dropped name is a
-  parse error rather than a silent no-op. That is breaking for anything
-  passing the old names, and loudly so.
-
-### Fixed
-- **Every lookup answers within one byte bound, and a matched line is
-  clipped.** A cap counted in matches, lines or documents does not bound
-  bytes. Searching this repository for `BaseSHA` returned 76 matches, well
-  under the cap of 200, in **220,095 bytes — 94,000 tokens** from a lookup
-  priced at six thousand, because one matched line was 19,391 characters: a
-  tree holds generated JSON and embedded templates beside its source. All five
-  lookups now answer within 32 KiB, a matched line is clipped at 400
-  characters and says so, and the same search comes back at 21,580 bytes.
-  Found by the lookup trace on its first real run.
-- **`emptyAnswer` counts `line_history`'s "no history before this change".**
-  That message is the lookup saying it found nothing, and it was recorded as a
-  full answer, overstating what the lookups turned up. Found by `redline
-  review` on PR #84.
-- **A deduplicated commit block keeps its subject line.** The budget walk drops
-  an expansion that does not fit and carries on, and deduplication makes the
-  expansion holding the full message the largest while every other is tiny, so
-  under a tight ceiling the walk can drop the message and keep the pointers -
-  leaving a reference to something the model was never shown. Ranked order
-  means the full copy is tried first, not that it fits. Each block now carries
-  its subject, so a dropped bearer costs the body rather than the commit.
-  Found by `redline review` on PR #84.
-- **`line_history` walks 20 commits, not 8.** Every commit walked that belongs
-  to the change is one that does not reach the answer, so a branch with many
-  commits over one span exhausted a shallow walk and reported no prior history
-  when there was some - the one wrong answer this lookup can give, since the
-  reader takes it as "nothing was here before" and that is the argument for
-  deleting the line. Found by `redline review` on PR #84.
-- **`line_history` no longer answers with the change under review.**
-  `resolver.history` passed no revision, so `git log -L` walked from HEAD, and
-  in a pull request worktree HEAD is the change being reviewed: asking why a
-  span exists returned the diff the reviewer was already reading. It is the
-  mistake gorefactor's own history walk made and corrected, measured there at
-  fifteen of twenty-one expansions carrying exactly one commit, the commit
-  being reviewed; `--look` reintroduced it by reusing the scout's helper. The
-  walk still starts at HEAD, because `git log -L` tracks a range backwards and
-  adjusts the coordinates as it goes, so head-tree line numbers are the one
-  pairing that is self-consistent - handing base the head coordinates is the
-  *second* error gorefactor then had to fix. The commits between the base and
-  HEAD are dropped from the answer instead, and a span the change itself
-  introduced says so rather than coming back empty.
-- **A commit's message is carried once for the whole change, not once per line
-  range.** `git log -L` is asked per range, so a commit that touched many
-  ranges shipped its entire message once for each. On this repository's own
-  PR #83 that was 98 history and removal expansions carrying 186 commit blocks
-  between **18 distinct commits**, one of them emitted 58 times: 429,000
-  tokens, 73% of everything resolved, against a context ceiling of 184,000.
-  Twenty-eight history expansions were dropped for want of room while the room
-  was full of the same essay. `Seen` could not catch it, because it removes
-  lines the diff already shows and `carriesHistory` exempts these two roles
-  from it on purpose - their content is commit messages rather than source at
-  the lines they name. That exemption is right, and it left the one role with
-  tenfold internal duplication with no deduplication at all. What each
-  expansion keeps is the part that differs, the commit header and the hunk git
-  printed for that range; only the message body is replaced, by a line saying
-  where to read it, and the full copy lands in the highest-ranked expansion so
-  it is the one that survives a binding budget. On PR #83: history and removal
-  429,314 to 64,593 tokens, the whole envelope 587,072 to 222,351, and nothing
-  exceeds the ceiling any more - the 52 expansions it used to drop all fit,
-  the context block goes from 174.7k of 174.9k room to 119.1k of 172.2k, and
-  the request falls from 245,922 tokens to 192,672.
+## [0.14.0] - 2026-09-20
 
 ### Added
 - **The postmortem records what the lookups asked and what the refused calls
@@ -111,6 +25,25 @@ Releases whose tag carries only a subject line are listed as that subject.
   `redline postmortem`. Arguments are cut at 200 characters and distinct
   refusal reasons at 20, because the trace wants the shape of a mistake rather
   than a second copy of the conversation.
+- **`--look` gets three more lookups: `list_docs`, `symbol_context` and
+  `line_history`.** The judging pass could search and read; now it can also
+  ask what the team wrote down, ask gorefactor for a Go symbol's callers
+  resolved through the type checker, and ask git why a span of lines is
+  there. Each answers the question behind a whole class of dismissed finding:
+  the construction is a decision somebody recorded, the caller the change
+  breaks is a fact rather than a name match, and the guard that was removed
+  was there for a reason the commit message states. A run offers the lookups
+  its checkout can answer, so `symbol_context` is left off the catalogue
+  where `gorefactor` is not on PATH: a tool the reviewer can see and cannot
+  use costs it a turn to find that out. The catalogue is 2454 input tokens
+  with no lookups, 3073 with `grep` and `read_lines` alone and 3888 with all
+  five, and it sits in the cached prefix, so only a run's first call pays
+  full rate for the difference.
+- **`ruling` on a finding in `findings.json`.** The verifying pass's verdict
+  rides on the finding itself, for `source: llm` only and empty when no pass
+  ran. It reached `post` as a confidence demotion before, which made "the
+  repository said no" and "the reviewer was unsure" the same field, so the two
+  gates below could not be told apart.
 
 ### Changed
 - **Every lookup cap is raised: `read_lines` 200 to 600 lines, `grep` 60 to 200
@@ -142,29 +75,6 @@ Releases whose tag carries only a subject line are listed as that subject.
   first, and `path` lists one of them. A repository with 167 documents gets a
   map and one follow-up call instead of the first 80 paths alphabetically and
   a dead end. Both the `--look` tool and the scout's own take the filter.
-
-### Added
-- **`--look` gets three more lookups: `list_docs`, `symbol_context` and
-  `line_history`.** The judging pass could search and read; now it can also
-  ask what the team wrote down, ask gorefactor for a Go symbol's callers
-  resolved through the type checker, and ask git why a span of lines is
-  there. Each answers the question behind a whole class of dismissed finding:
-  the construction is a decision somebody recorded, the caller the change
-  breaks is a fact rather than a name match, and the guard that was removed
-  was there for a reason the commit message states. A run offers the lookups
-  its checkout can answer, so `symbol_context` is left off the catalogue
-  where `gorefactor` is not on PATH: a tool the reviewer can see and cannot
-  use costs it a turn to find that out. The catalogue is 2454 input tokens
-  with no lookups, 3073 with `grep` and `read_lines` alone and 3888 with all
-  five, and it sits in the cached prefix, so only a run's first call pays
-  full rate for the difference.
-- **`ruling` on a finding in `findings.json`.** The verifying pass's verdict
-  rides on the finding itself, for `source: llm` only and empty when no pass
-  ran. It reached `post` as a confidence demotion before, which made "the
-  repository said no" and "the reviewer was unsure" the same field, so the two
-  gates below could not be told apart.
-
-### Changed
 - **`symbol_context` and `line_history` bound what they put into the
   conversation.** Every other lookup counts its own unit: 60 matches, 200
   lines, 80 documents, 3 commits. These two hand back whatever a subprocess
@@ -271,6 +181,94 @@ Releases whose tag carries only a subject line are listed as that subject.
   check against those. `build`, `out` and `coverage` are deliberately not on
   the list: each names a real source directory often enough that skipping it
   would hide code from a search that then reported no match.
+
+### Removed
+- **The `--x` / `--no-x` flag pairs. Every boolean setting has one flag, which
+  flips its default.** Gone: `--look`, `--cache`, `--cross-summaries`,
+  `--synopsis`, `--no-verify`, `--no-open`. Kept: `--no-look`, `--no-cache`,
+  `--no-cross-summaries`, `--no-synopsis`, `--verify`, `--open`.
+
+  The pairs did not work. Each was resolved with an expression like
+  `!o.noLook || o.look`, so `--look=false` left both booleans false, the
+  `!noX` arm turned the setting on anyway, and the flag silently did nothing -
+  the same for `--cache=false` and `--cross-summaries=false`. Three of the
+  twelve names were already documented as no-ops kept for scripts, and
+  `--no-open` could never fire at all, since the expression was
+  `o.open && !o.noOpen` and nothing opens without `--open`.
+
+  Cobra was considered for this and rejected: pflag gives bool flags a
+  `NoOptDefVal` of `"true"`, so `--look false` leaves `false` as a positional
+  there exactly as it does under stdlib `flag`, which was the motivating
+  problem. It would also have displaced 386 lines of hand-written help prose
+  in favour of generated usage lines. The parser was never the problem; the
+  wiring was.
+
+  With one flag per setting the flag's own value is what is read, so
+  `--no-look=false` turns the lookups back on and a dropped name is a
+  parse error rather than a silent no-op. That is breaking for anything
+  passing the old names, and loudly so.
+
+### Fixed
+- **Every lookup answers within one byte bound, and a matched line is
+  clipped.** A cap counted in matches, lines or documents does not bound
+  bytes. Searching this repository for `BaseSHA` returned 76 matches, well
+  under the cap of 200, in **220,095 bytes — 94,000 tokens** from a lookup
+  priced at six thousand, because one matched line was 19,391 characters: a
+  tree holds generated JSON and embedded templates beside its source. All five
+  lookups now answer within 32 KiB, a matched line is clipped at 400
+  characters and says so, and the same search comes back at 21,580 bytes.
+  Found by the lookup trace on its first real run.
+- **`emptyAnswer` counts `line_history`'s "no history before this change".**
+  That message is the lookup saying it found nothing, and it was recorded as a
+  full answer, overstating what the lookups turned up. Found by `redline
+  review` on PR #84.
+- **A deduplicated commit block keeps its subject line.** The budget walk drops
+  an expansion that does not fit and carries on, and deduplication makes the
+  expansion holding the full message the largest while every other is tiny, so
+  under a tight ceiling the walk can drop the message and keep the pointers -
+  leaving a reference to something the model was never shown. Ranked order
+  means the full copy is tried first, not that it fits. Each block now carries
+  its subject, so a dropped bearer costs the body rather than the commit.
+  Found by `redline review` on PR #84.
+- **`line_history` walks 20 commits, not 8.** Every commit walked that belongs
+  to the change is one that does not reach the answer, so a branch with many
+  commits over one span exhausted a shallow walk and reported no prior history
+  when there was some - the one wrong answer this lookup can give, since the
+  reader takes it as "nothing was here before" and that is the argument for
+  deleting the line. Found by `redline review` on PR #84.
+- **`line_history` no longer answers with the change under review.**
+  `resolver.history` passed no revision, so `git log -L` walked from HEAD, and
+  in a pull request worktree HEAD is the change being reviewed: asking why a
+  span exists returned the diff the reviewer was already reading. It is the
+  mistake gorefactor's own history walk made and corrected, measured there at
+  fifteen of twenty-one expansions carrying exactly one commit, the commit
+  being reviewed; `--look` reintroduced it by reusing the scout's helper. The
+  walk still starts at HEAD, because `git log -L` tracks a range backwards and
+  adjusts the coordinates as it goes, so head-tree line numbers are the one
+  pairing that is self-consistent - handing base the head coordinates is the
+  *second* error gorefactor then had to fix. The commits between the base and
+  HEAD are dropped from the answer instead, and a span the change itself
+  introduced says so rather than coming back empty.
+- **A commit's message is carried once for the whole change, not once per line
+  range.** `git log -L` is asked per range, so a commit that touched many
+  ranges shipped its entire message once for each. On this repository's own
+  PR #83 that was 98 history and removal expansions carrying 186 commit blocks
+  between **18 distinct commits**, one of them emitted 58 times: 429,000
+  tokens, 73% of everything resolved, against a context ceiling of 184,000.
+  Twenty-eight history expansions were dropped for want of room while the room
+  was full of the same essay. `Seen` could not catch it, because it removes
+  lines the diff already shows and `carriesHistory` exempts these two roles
+  from it on purpose - their content is commit messages rather than source at
+  the lines they name. That exemption is right, and it left the one role with
+  tenfold internal duplication with no deduplication at all. What each
+  expansion keeps is the part that differs, the commit header and the hunk git
+  printed for that range; only the message body is replaced, by a line saying
+  where to read it, and the full copy lands in the highest-ranked expansion so
+  it is the one that survives a binding budget. On PR #83: history and removal
+  429,314 to 64,593 tokens, the whole envelope 587,072 to 222,351, and nothing
+  exceeds the ceiling any more - the 52 expansions it used to drop all fit,
+  the context block goes from 174.7k of 174.9k room to 119.1k of 172.2k, and
+  the request falls from 245,922 tokens to 192,672.
 
 ## [0.13.0] - 2026-09-20
 
