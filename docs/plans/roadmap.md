@@ -76,6 +76,7 @@ So it was not missing context and it was not missing advice.
 | **Let the review look things up itself** | Started, and the part that shipped is the cheap part. `--look` gives the judging passes `grep` and `read_lines`: they answer in the conversation, record nothing, and cost about 600 input tokens on the catalogue because it rides the cached prefix. That is two of the six tools the scout has. What is left is the rest of the shape - the reviewer asking gorefactor for callers resolved through a type checker, and the graph for a cross-language path - and the decision that follows: a reviewer that checks its own claims is a reviewer `internal/scout` and the ruling exist to serve, and there is then nothing left for a separate ruling to reconcile. Explore mode is not this: its `fetch_context` only indexes what the packet already resolved and cannot search the tree, so that loop buys a shorter prompt rather than more thought. Nothing has measured what searching buys, and that measurement is what the rest waits on; it becomes the default when it finds things on real pull requests the current shape does not, at a price somebody will pay. Hold the cost estimate loosely: Alibaba's `ocr` is this shape run all the way out, and on a 43-file change it went past $20 a review, blew through its own token cap by 150% to 235%, and posted two confident false positives while finding one real bug nothing else found. | L |
 | **A targeted check for the cross-file question** | The cache-key miss above is one question asked of every changed query or mutation: name what clears it, and show that what clears it covers this. Whether that belongs in the prompt as its own pass or in a pane as a structural check is untested, and what we know so far is that more advice in the prompt will not do it. Try it on the change that exposed the gap, where the answer is already known. | S |
 | **Nothing here can run the code** | Three of four questions on one run were settled in minutes by building a request and printing it, and by sending one probe. Reading and grepping cannot get at that. The worktrees under `~/.redline/worktrees` are already checkouts of the revision under review, so building, running one test, or printing one request is within reach, and that is where the real risks were. | M |
+| **One finding a review, and it is the gates, not the prompt** | Observed on real runs and traced through the code, below under What holds a finding back. The judging prompt asks for every defect including uncertain ones, and six independent gates then hold most of them off the pull request; the two compound, since the prompt solicits doubt and the post gate discards it. Read `redline postmortem` or `.redline/reviews.jsonl` on a run that posted one thing to see which gate took the rest; loosen that one, not all of them. | S |
 | **Findings are "if X then Y", not claims** | Six findings over two runs were all of the form "if the SDK does X then this breaks". A reviewer that only produces those has handed the whole job to a lookup pass that costs a sixth as much. Worth counting on real runs: how many findings depend on a fact the reviewer could not get at. | S |
 | **A crash that can be found without a model belongs in a pane** | An index into a list a branch can leave empty is decidable by reading the code. Four runs were shown that exact line and said nothing, so this is not prompt work. | M |
 | **The ruling reads everything to judge a handful of findings** | One ruling call carried 274,471 characters to weigh six findings with two answers attached. The cache hides the cost but not the effect: a judge working under 120k tokens of unrelated material. Send it the findings, the hunks they point at, and the answers. | M |
@@ -83,6 +84,59 @@ So it was not missing context and it was not missing advice.
 | **Prefer a definition to a habit** | A ruling settled a question about what the SDK does by pointing at `internal/scout/tools.go` building the same type the same way, when the answer was a struct tag one file away in the module cache. The scout's brief ranks evidence against a finding above evidence for it, and does not rank a definition above another call site. | S |
 | **The scout cannot look outside the repository** | It now says so honestly: an empty search reports what it searched and what lies outside. The module cache is still out of scope, so a question about a dependency still ends at "nobody can check that here". | M |
 | **Effort quietly thins the checking** | At `--effort high` the reviewer asked one question about three findings; at `low` it asked two about six. The finding that got a lookup is the one that reached the pull request. Worth knowing before any default moves, and a real run's postmortem already records which findings were asked about. | S |
+
+## What holds a finding back
+
+A review of a real change tends to post one comment, and the reason is in the
+code rather than in the model. The judging instruction is deliberately wide:
+*report every defect you find, including ones you are unsure about or judge to
+be low severity; do not filter for importance or confidence here.* What comes
+back then has to clear six independent gates to reach a line on the pull
+request, and a finding held by any one of them stays on the report and off the
+change:
+
+| Gate | Rule | Where |
+|---|---|---|
+| The question kind is `none` | folded to low confidence, withheld | `findings/review.go` `effectiveConfidence` |
+| The reviewer rated it low | withheld | `post.go` `lowConfidence` |
+| Hedged wording, twelve phrases including `nit:` and `worth noting` | withheld | `post.go` `hedges` |
+| Severity `info` | never a line comment; rides in the review body | `post.go` `lineOnDiff` |
+| With `--verify`, any ruling but `kept` | withdrawn, justified, unverifiable and already-raised all fold to low | `rule.go` `Apply` |
+| Already answered on an earlier thread | suppressed before the ruling runs | `alreadyRaised` |
+
+Two of these compound. The prompt asks the model to include what it is unsure
+of, and the post gate discards whatever it marked unsure. So every honest
+"this looks wrong but I cannot be certain" the instruction solicits is thrown
+away downstream, and what posts is the intersection of rated-high, unhedged
+and, under `--verify`, kept. One a review is about what that intersection
+should produce. The number that matches: on PR #46 the review delivered five of
+fifteen findings, nine of the ten held back were `unverifiable`, and six of
+those nine were the `diff`-kind claim 0.12.0 now checks, so a `--verify` run
+should already be looser than it was.
+
+Two things about the gates are worth deciding rather than assuming:
+
+- **Low confidence is doing double duty.** It is the rule for "the reviewer
+  doubted it" and also the mechanism every other gate folds into: a ruling that
+  did not keep, and a `none` question, both become low confidence. The
+  postmortem therefore cannot tell a finding the model doubted from one the
+  ruling could not settle, and those say opposite things about whether the
+  gate is too tight. Keeping the reason with the fold would let the funnel be
+  read.
+- **Unverifiable is treated as wrong.** A ruling that could not settle a finding
+  folds it exactly as one that refuted it. An unsettled finding is not a false
+  one, and this is the most defensible gate to loosen. The shape that loosens
+  it without posting a claim is a question: what the reviewer could not settle
+  goes to the author as an ask rather than as silence, which is the same
+  mechanism the cache-key miss was missing (it "never asked the one question
+  that catches this"). The measured failure behind the ruling was true findings
+  the reader had already rejected, and a question asserts nothing the author
+  has rejected, so that evidence does not argue against it.
+
+What to do first is read, not loosen. `redline postmortem` prints proposed,
+asked and ruled per finding, and `.redline/reviews.jsonl` keeps a row per run.
+On a review that posted one thing, either says which gate took the rest, and
+that is the gate to move.
 
 ## Context the reviewer pulls
 
@@ -492,6 +546,11 @@ consumers need placeholder directories, which the setup skill should say.
    that can say whether a reviewer that searches is worth its turns. Every row
    above is work; this one is the measurement the first row of the gap section
    is waiting on.
+10. Read the funnel on a review that posted one comment, then loosen the gate
+    that took the rest. Two candidates before any reading: keep the reason a
+    finding was folded to low confidence, so the postmortem can tell doubt from
+    an unsettled ruling; and let an unverifiable finding reach the author as a
+    question rather than as nothing.
 
 Two came off this list. `--note` shipped, and a `diff` question's claim is now
 checked against what the prompt carried rather than taken on trust.
