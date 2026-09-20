@@ -225,6 +225,47 @@ func cohortTail(mine Cohort, all []Cohort, mineIdx int, crossSummaries bool) str
 	return b.String()
 }
 
+// cohortContextFilter drops every expansion outside a cohort's own files, on
+// top of whatever the run already drops for every call (test code). A
+// cohort's own context is what its own files' providers resolved; a caller
+// two cohorts over is the correlation the cross-summary line carries, not
+// context this call would otherwise compete for room with.
+func cohortContextFilter(in Input, files []string) envelope.Filter {
+	want := make(map[string]bool, len(files))
+	for _, f := range files {
+		want[f] = true
+	}
+	base := in.contextFilter()
+	return envelope.Filter{
+		What: "context outside this cohort's files",
+		Drop: func(x envelope.Expansion) bool {
+			return (base.Drop != nil && base.Drop(x)) || !want[x.File]
+		},
+	}
+}
+
+// cohortContextTail is one cohort's own slice of the resolved context,
+// fitted to what room is left in this call and rendered into its tail
+// instead of the cached prefix: scoping it there would make every cohort's
+// prefix a different block, and nothing would ever be read back from the
+// write another cohort paid for. Empty when there is no context to send or
+// no room left for it.
+func (in Input) cohortContextTail(room int, files []string) string {
+	if len(in.Envelopes) == 0 || room <= 0 {
+		return ""
+	}
+	budget := envelope.FitAllFilter(in.Envelopes, room, in.shownLines(), cohortContextFilter(in, files))
+	rendered := budget.Render()
+	if rendered == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\n")
+	b.WriteString(in.contextHeader(keptRoles(budget)))
+	b.WriteString(rendered)
+	return b.String()
+}
+
 // hidesTests reports whether the request holds the change's test files back.
 //
 // Test code is the biggest thing a review can be sent that it was not asked

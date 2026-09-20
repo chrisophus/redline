@@ -69,7 +69,8 @@ type opts struct {
 	onlyCohorts                                                       string
 	reuseSynopsis                                                     bool
 	note, noteFile                                                    string
-	deferContext, look                                                bool
+	deferContext, look, noLook                                        bool
+	cohortContext                                                     bool
 	// observe is review's --run. session is --session; root is the --out the
 	// caller gave, and sessionKey the session resolveSession chose under it.
 	observe                   bool

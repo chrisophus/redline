@@ -69,7 +69,7 @@ func TestOnlyTheJudgingCallsCarryTheNote(t *testing.T) {
 	for name, r := range map[string]*Result{
 		"the judging call after a walkthrough": res.judgingRequest(true),
 		"the judging call without one":         res.judgingRequest(false),
-		"a cohort call":                        res.cohortRequest(opts, one, []Cohort{one}, 0, 1),
+		"a cohort call":                        res.cohortRequest(opts, in, one, []Cohort{one}, 0, 1),
 	} {
 		if !carries(r) {
 			t.Errorf("%s does not carry the note", name)

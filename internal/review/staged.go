@@ -77,10 +77,18 @@ func (r *Result) cohortsRequest(opts Options, in Input) *Result {
 
 // cohortRequest is one stage-two call: the same prefix as every other, scoped
 // by its instruction to one cohort.
-func (r *Result) cohortRequest(opts Options, mine Cohort, others []Cohort, mineIdx, bound int) *Result {
+//
+// Under CohortContext the prefix carries no context at all - Assemble left
+// it out - so this is also where a cohort's own slice of it is written, into
+// the tail, scoped to its own files. See Input.cohortContextTail.
+func (r *Result) cohortRequest(opts Options, in Input, mine Cohort, others []Cohort, mineIdx, bound int) *Result {
 	out := r.clone()
 	out.Stage = StageFindings
 	out.Tail = cohortTail(mine, others, mineIdx, opts.CrossSummaries) + r.note
+	if opts.CohortContext {
+		room := opts.Ceiling - r.InputEstimate - envelope.EstimateTokens(out.Tail)
+		out.Tail += in.cohortContextTail(room, mine.Files)
+	}
 	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedOutputTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, cohortMaxTokens(opts, bound))
@@ -131,7 +139,7 @@ func stagedCeilingCost(opts Options, in Input, res *Result) float64 {
 		peers[i] = sample
 	}
 	each, _ := CeilingCost(opts.Model,
-		res.cohortRequest(opts, sample, peers, 0, bound).InputEstimate,
+		res.cohortRequest(opts, in, sample, peers, 0, bound).InputEstimate,
 		cohortMaxTokens(opts, bound))
 	// Stage one is counted here, so the synopsis ceiling is not added on top
 	// of it: this is the same call under a wider contract.
@@ -346,7 +354,7 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 					opts.Progress(cohort.Name + ": " + line)
 				}
 			}
-			got, err := runOnce(ctx, in, one, res.cohortRequest(opts, cohort, cohorts, i, len(cohorts)))
+			got, err := runOnce(ctx, in, one, res.cohortRequest(opts, in, cohort, cohorts, i, len(cohorts)))
 			out[i] = answer{res: got, err: err}
 			if opts.Progress == nil {
 				return

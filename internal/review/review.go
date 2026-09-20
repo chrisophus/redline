@@ -226,10 +226,14 @@ type Options struct {
 	// tools off the catalogue and the pass behaves exactly as it did, which is
 	// also what a session whose tree is gone gets.
 	//
-	// Off by default in the command because nothing has measured what searching
-	// buys, not because a review that reads the tree is worse. It spends turns,
-	// and the one published run of this shape spent past $20 a review on a
-	// 43-file change for two confident false positives and one real bug.
+	// On by default in the command as of this field's own instrumentation:
+	// Result.Looked and the per-call debug line in loop.go now say what a
+	// --look pass actually searched or read, rather than leaving the model's
+	// own narration as the only evidence of it. --no-look is the way back to
+	// off. It spends turns - the one published run measured before that
+	// instrumentation existed spent past $20 a review on a 43-file change for
+	// two confident false positives and one real bug - so a caller pricing a
+	// large change should watch Result.Looked rather than assume it is free.
 	Look Looker
 	// Verify turns the whole checking pass on. Off leaves the producer exactly
 	// as it was, which is what a caller with no budget for a second call, or
@@ -302,6 +306,23 @@ type Options struct {
 	// judgment rather than every one's. Empty runs every cohort the bound
 	// allows, which is the same as not passing it.
 	OnlyCohorts []string
+	// CohortContext moves the resolved context out of the shared prefix and
+	// into each cohort's own tail, filtered to that cohort's own files.
+	//
+	// Off, a split run still sends every provider's context on every call:
+	// it rides the shared prefix because that is what the cache is keyed on,
+	// and the describing call carries it too, though it never judges
+	// anything and reads none of it. On, the describing call - the only call
+	// that ever sees the shared prefix unscoped - gets no context at all,
+	// and a cohort call gets only the callers, types, tests and history that
+	// belong to the files it was actually asked to judge, at the cost of the
+	// cache read a shared block would have given the second cohort onward:
+	// this is written fresh into each cohort's tail because a block scoped
+	// to one cohort's files is not a block any other cohort's call could
+	// read back.
+	//
+	// Ignored below --cohorts 2, which draws no partition to scope by.
+	CohortContext bool
 }
 
 // Shape is the name the ledger groups a run under, read off the options that
@@ -496,6 +517,11 @@ type Result struct {
 	Batched bool `json:"batched,omitempty"`
 	// Fetched is how many context entries the reviewer asked for.
 	Fetched int `json:"fetched,omitempty"`
+	// Looked is how many grep and read_lines calls a --look pass made, the
+	// same shape of count Fetched is for get_context: without it the only
+	// record of what the pass searched or read is the model's own narration,
+	// and grep and read_lines record nothing on their own.
+	Looked int `json:"looked,omitempty"`
 	// CapHit records that the loop was stopped by the dollar cap rather than
 	// by the reviewer deciding it had enough.
 	CapHit bool `json:"capHit,omitempty"`
@@ -668,6 +694,9 @@ func (r *Result) Summary() string {
 	if r.Fetched > 0 && r.CallTurns > 0 {
 		s += fmt.Sprintf(" context-fetched=%d", r.Fetched)
 	}
+	if r.Looked > 0 && r.CallTurns > 0 {
+		s += fmt.Sprintf(" looked=%d", r.Looked)
+	}
 	if len(r.Stopped) > 0 {
 		s += fmt.Sprintf(" stopped-early=%d", len(r.Stopped))
 	}
@@ -734,10 +763,16 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
 	// wire sent them anyway, and the reservation came up short by the whole
 	// catalogue and overfilled the context by that much.
+	// The shared prefix carries none of the resolved context under
+	// CohortContext: every cohort writes its own slice, scoped to its own
+	// files, into its own tail, and the describing call - the one call that
+	// would otherwise read this block unscoped - gets none of it either. See
+	// Options.CohortContext.
+	scoped := opts.CohortContext && opts.Shape() == PipelineStaged
 	fixed := toolsTokens(opts.DeferContext, opts.Look != nil) + envelope.EstimateTokens(system) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls) + envelope.EstimateTokens(in.fixed())
-	if len(in.Envelopes) > 0 {
+	if len(in.Envelopes) > 0 && !scoped {
 		// The block's own header is written after FitAll has fitted the
 		// expansions, so it has to be reserved here or the assembled prompt
 		// exceeds the ceiling by the header's cost. Reserving it when every
@@ -747,6 +782,9 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	}
 	room := opts.Ceiling - fixed
 	if room < 0 {
+		room = 0
+	}
+	if scoped {
 		room = 0
 	}
 	budget := envelope.FitAllFilter(in.Envelopes, room, in.shownLines(), in.contextFilter())
@@ -838,6 +876,14 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	default:
 		return nil, fmt.Errorf("unknown api %q; use %s or %s",
 			opts.API, APIAnthropic, APIOpenAI)
+	}
+	if opts.CohortContext && opts.Shape() != PipelineStaged {
+		return nil, fmt.Errorf("--cohort-context scopes the resolved context to each cohort's own " +
+			"files, and there is no partition to scope by below --cohorts 2")
+	}
+	if opts.CohortContext && opts.DeferContext && !opts.PlanOnly {
+		return nil, fmt.Errorf("--cohort-context and --defer-context both decide where the " +
+			"resolved context goes; pick one")
 	}
 	res, err := Assemble(in, opts)
 	if err != nil {
@@ -1043,6 +1089,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	res.CallTurns += c.turns
 	res.Rejected += c.rejected
 	res.Fetched += c.fetched
+	res.Looked += c.looked
 	if strings.TrimSpace(c.thinking) != "" {
 		pass := stage
 		if opts.passLabel != "" {

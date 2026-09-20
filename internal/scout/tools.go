@@ -294,7 +294,10 @@ func (ts *toolset) grep() tool {
 			if err != nil {
 				return "", fmt.Errorf("bad pattern: %w", err)
 			}
-			return grepTree(ts.root, re, in.Glob, maxGrepMatches)
+			// The scout's own grep, not --look's: unaffected by
+			// .gitignore/.cursorindexingignore, which is a --look-specific
+			// exclusion. See Looker.Grep.
+			return grepTree(ts.root, re, in.Glob, maxGrepMatches, nil)
 		},
 	}
 }
@@ -573,7 +576,13 @@ func runCmd(dir, name string, args ...string) (string, error) {
 // shelled out to ripgrep so the tool exists on every machine, and bounded on
 // both file size and match count so one broad pattern cannot fill the
 // scout's context with its own search results.
-func grepTree(root string, re *regexp.Regexp, glob string, max int) (string, error) {
+//
+// ignore is .gitignore's and .cursorindexingignore's patterns, checked
+// beside the hardcoded directory names below: those are Redline's own
+// housekeeping (its own output, the module caches a repository already
+// keeps out of git), and ignore is the tree's own account of what a person,
+// or an automated reader, should leave alone.
+func grepTree(root string, re *regexp.Regexp, glob string, max int, ignore []string) (string, error) {
 	// The walk collects paths and reads nothing. Reading inside the callback
 	// means acting on a path the walk resolved earlier, which is a symlink
 	// race the moment the tree is not yours alone; it is also what gosec's
@@ -587,18 +596,24 @@ func grepTree(root string, re *regexp.Regexp, glob string, max int) (string, err
 		if err != nil {
 			return nil
 		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
 			switch d.Name() {
 			case ".git", "node_modules", "vendor", "graphify-out", ".redline":
 				return filepath.SkipDir
 			}
+			if rel != "." && ignoredPath(ignore, rel) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
+		if ignoredPath(ignore, rel) {
 			return nil
 		}
-		rel = filepath.ToSlash(rel)
 		if glob != "" && !strings.Contains(rel, glob) {
 			return nil
 		}

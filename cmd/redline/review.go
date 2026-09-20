@@ -168,6 +168,10 @@ func cmdReview(o opts) error {
 	}
 	ropts.Cohorts = o.cohorts
 	ropts.MinCohortFiles = o.minCohortFiles
+	if o.cohortContext && o.cohorts <= 1 {
+		return fmt.Errorf("--cohort-context scopes context to a cohort's own files, and without --cohorts above 1 there is no split to scope by; pass --cohorts N")
+	}
+	ropts.CohortContext = o.cohortContext
 	if o.reuseSynopsis {
 		if o.noSynopsis {
 			return fmt.Errorf("--reuse-synopsis reuses a walkthrough and --no-synopsis asks for none; pass one or the other")
@@ -259,7 +263,10 @@ func cmdReview(o opts) error {
 	if ropts.Verify {
 		ropts.Answer = scoutAnswerer(res, ropts, o.scoutSettings(), &tally)
 	}
-	if o.look {
+	// On unless --no-look says otherwise. --look stays as a flag so a script
+	// that already passes it still runs; it sets nothing this default did
+	// not already set.
+	if !o.noLook {
 		ropts.Look = lookerFor(res)
 	}
 	if !o.dryRun {
