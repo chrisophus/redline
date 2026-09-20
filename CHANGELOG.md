@@ -12,6 +12,19 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Fixed
+- **`line_history` no longer answers with the change under review.**
+  `resolver.history` passed no revision, so `git log -L` walked from HEAD, and
+  in a pull request worktree HEAD is the change being reviewed: asking why a
+  span exists returned the diff the reviewer was already reading. It is the
+  mistake gorefactor's own history walk made and corrected, measured there at
+  fifteen of twenty-one expansions carrying exactly one commit, the commit
+  being reviewed; `--look` reintroduced it by reusing the scout's helper. The
+  walk still starts at HEAD, because `git log -L` tracks a range backwards and
+  adjusts the coordinates as it goes, so head-tree line numbers are the one
+  pairing that is self-consistent - handing base the head coordinates is the
+  *second* error gorefactor then had to fix. The commits between the base and
+  HEAD are dropped from the answer instead, and a span the change itself
+  introduced says so rather than coming back empty.
 - **A commit's message is carried once for the whole change, not once per line
   range.** `git log -L` is asked per range, so a commit that touched many
   ranges shipped its entire message once for each. On this repository's own

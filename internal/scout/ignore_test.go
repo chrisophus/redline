@@ -38,7 +38,7 @@ func ignoreTree(t *testing.T) string {
 // automated reader should skip, and generated code or vendored deps are
 // routinely both gitignored and something --look legitimately needs to read.
 func TestLookExcludesOnlyCursorIndexingIgnore(t *testing.T) {
-	l := NewLooker(ignoreTree(t))
+	l := NewLooker(ignoreTree(t), "")
 
 	out, err := l.Grep("Insert", "")
 	if err != nil {
@@ -71,7 +71,7 @@ func TestLookGrepNamesWhatItExcludedOnAnEmptyResult(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".cursorindexingignore"), []byte("other/\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	l := NewLooker(dir)
+	l := NewLooker(dir, "")
 	out, err := l.Grep("func Use", "")
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +84,7 @@ func TestLookGrepNamesWhatItExcludedOnAnEmptyResult(t *testing.T) {
 // No .cursorindexingignore at the root is not an error: a tree without one
 // excludes nothing beyond the hardcoded housekeeping directories.
 func TestLookWithNoIgnoreFileExcludesNothingExtra(t *testing.T) {
-	l := NewLooker(lookerTree(t))
+	l := NewLooker(lookerTree(t), "")
 	out, err := l.Grep("Insert", "")
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestANegatedIgnorePatternExcludesNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".cursorindexingignore"), []byte("!store.go\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	l := NewLooker(dir)
+	l := NewLooker(dir, "")
 	if _, err := l.ReadLines("store.go", 1, 1); err != nil {
 		t.Errorf("a negated pattern must not exclude the path it means to keep: %v", err)
 	}

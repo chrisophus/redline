@@ -47,7 +47,7 @@ func lookerTree(t *testing.T) string {
 }
 
 func TestLookerGrepFindsAndReports(t *testing.T) {
-	l := NewLooker(lookerTree(t))
+	l := NewLooker(lookerTree(t), "")
 	out, err := l.Grep("func Insert", "")
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +72,7 @@ func TestLookerGrepFindsAndReports(t *testing.T) {
 }
 
 func TestLookerReadsASpanAndRefusesEscapes(t *testing.T) {
-	l := NewLooker(lookerTree(t))
+	l := NewLooker(lookerTree(t), "")
 	out, err := l.ReadLines("store.go", 3, 5)
 	if err != nil {
 		t.Fatal(err)
@@ -124,5 +124,34 @@ func TestTheLookupCapsReturnComparableAmounts(t *testing.T) {
 	if got := float64(sizes[hi]) / float64(sizes[lo]); got > maxSpread {
 		t.Errorf("%s returns %d tokens and %s returns %d, a spread of %.1fx (max %.1f). Sizes: %v",
 			hi, sizes[hi], lo, sizes[lo], got, maxSpread, sizes)
+	}
+}
+
+// In a pull request worktree HEAD is the change under review, so a history
+// walk that keeps its commits answers "why is this line here" with the diff
+// the reviewer is already reading. gorefactor's own walk made this mistake and
+// measured it: fifteen of twenty-one history expansions came back carrying
+// exactly one commit, the commit being reviewed.
+func TestLineHistorySkipsTheChangeUnderReview(t *testing.T) {
+	const older = "commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n" +
+		"Author: A <a@example.com>\nDate:   2026-01-01\n\n    add the guard\n\n@@ -1 +1 @@\n+guard\n"
+	const mine = "commit bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n" +
+		"Author: B <b@example.com>\nDate:   2026-09-20\n\n    the change under review\n\n@@ -1 +1 @@\n-guard\n"
+
+	got, dropped := withoutChangeCommits(mine+older, map[string]bool{
+		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": true,
+	})
+	if dropped != 1 {
+		t.Errorf("dropped = %d, want the one commit of the change", dropped)
+	}
+	if strings.Contains(got, "the change under review") {
+		t.Errorf("the change's own commit must not be its own explanation:\n%s", got)
+	}
+	if !strings.Contains(got, "add the guard") || !strings.Contains(got, "+guard") {
+		t.Errorf("the prior history must survive whole:\n%s", got)
+	}
+	// No base known means nothing is filtered, rather than guessing.
+	if out, n := withoutChangeCommits(mine+older, nil); out != mine+older || n != 0 {
+		t.Error("without a base the history is left as git printed it")
 	}
 }

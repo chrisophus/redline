@@ -25,6 +25,12 @@ import (
 type Looker struct {
 	root string
 	res  *resolver
+	// base is the revision the change is measured against, and empty when the
+	// caller does not know it. LineHistory drops the commits between it and
+	// HEAD: in a pull request worktree HEAD is the change under review, so a
+	// history walk that keeps them answers "why is this line here" with the
+	// diff the reviewer is already reading.
+	base string
 	// ignore is .cursorindexingignore's patterns, read once at construction.
 	// Both search and read refuse a path it names: it says in as many words
 	// that a path is not for an automated reader, and --look is one.
@@ -35,8 +41,8 @@ type Looker struct {
 // which is the caller's checkout when it is clean at the reviewed revision and
 // a detached worktree otherwise -- the same root the scout is given, because it
 // is the same question being asked earlier.
-func NewLooker(root string) *Looker {
-	return &Looker{root: root, res: newResolver(root, Limits{}), ignore: loadIgnorePatterns(root)}
+func NewLooker(root, base string) *Looker {
+	return &Looker{root: root, base: base, res: newResolver(root, Limits{}), ignore: loadIgnorePatterns(root)}
 }
 
 // Calls names the lookups this tree can answer.
@@ -168,12 +174,99 @@ func (l *Looker) LineHistory(path string, start, end int) (string, error) {
 	if end < start {
 		end = start
 	}
-	out, err := l.res.history(path, start, end)
+	// Asked for more than are wanted, because the ones this change made are
+	// dropped below and the walk has to reach past them to say anything.
+	out, err := l.res.historyDepth(path, start, end, historyWalk)
 	if err != nil {
 		return "", err
 	}
+	out, dropped := withoutChangeCommits(out, l.changeCommits())
+	if strings.TrimSpace(out) == "" {
+		if dropped > 0 {
+			// Said, rather than returned as nothing found. A span the change
+			// itself introduced has no prior history, and that is an answer
+			// about the span: there is nothing older to have been undone.
+			return "", fmt.Errorf("these lines have no history before this change; %d commit(s) touching them are the change itself", dropped)
+		}
+		return "", fmt.Errorf("no recorded history for those lines")
+	}
 	return capLookOutput(out, maxLineHistoryBytes,
 		"ask for a narrower line range"), nil
+}
+
+// historyWalk is how many commits deep LineHistory asks. Larger than what
+// comes back, because the change's own commits are dropped from the answer and
+// a pull request can carry several touching one span.
+const historyWalk = 8
+
+// changeCommits is every commit between the base and HEAD: the change under
+// review. Empty when no base is known, which leaves the history unfiltered
+// rather than guessing at what to remove.
+func (l *Looker) changeCommits() map[string]bool {
+	if l == nil || strings.TrimSpace(l.base) == "" {
+		return nil
+	}
+	out, err := runCmd(l.root, "git", "rev-list", l.base+"..HEAD")
+	if err != nil {
+		return nil
+	}
+	set := map[string]bool{}
+	for _, line := range strings.Fields(out) {
+		set[line] = true
+	}
+	return set
+}
+
+// withoutChangeCommits removes the commit blocks the change itself produced,
+// and reports how many it removed.
+//
+// Filtered here rather than by walking the base revision. git log -L tracks a
+// line range backwards through history and adjusts the coordinates as it goes,
+// so walking HEAD with the head-tree line numbers the reviewer is reading is
+// the one pairing that is self-consistent. Handing base the head coordinates
+// is the error gorefactor's own history walk made and corrected: on any file
+// whose earlier hunks shifted line numbers it silently returns the history of
+// whatever now sits at that offset in the older file, and git reports no error
+// for it.
+func withoutChangeCommits(content string, skip map[string]bool) (string, int) {
+	if len(skip) == 0 {
+		return content, 0
+	}
+	var b strings.Builder
+	var dropped int
+	lines := strings.Split(content, "\n")
+	keeping := true
+	for _, line := range lines {
+		if sha, ok := commitLineSHA(line); ok {
+			keeping = !skip[sha]
+			if !keeping {
+				dropped++
+				continue
+			}
+		}
+		if keeping {
+			b.WriteString(line + "\n")
+		}
+	}
+	return b.String(), dropped
+}
+
+// commitLineSHA reads the sha off a "commit <hex>" line.
+func commitLineSHA(line string) (string, bool) {
+	const prefix = "commit "
+	if !strings.HasPrefix(line, prefix) {
+		return "", false
+	}
+	sha := strings.TrimSpace(line[len(prefix):])
+	if len(sha) < 7 {
+		return "", false
+	}
+	for _, r := range sha {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			return "", false
+		}
+	}
+	return sha, true
 }
 
 // Grep searches the tree for a regular expression.
