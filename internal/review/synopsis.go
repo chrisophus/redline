@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/chrisophus/redline/internal/envelope"
@@ -101,7 +102,17 @@ func describe(ctx context.Context, in Input, opts Options, res *Result) (finding
 // whole review, the request Assemble built, so the run still gets a
 // walkthrough: every call sends the same tools, so the fallback reads the
 // prompt the failed describing call cached.
-func (r *Result) judgingRequest(described bool) *Result {
+//
+// The walkthrough itself rides in the tail. Telling this pass that one exists
+// has been tried and does not hold: the prompt block carried "the overview is
+// already written" and the pass wrote it anyway, and on PR #1462 a pass told
+// only that it takes add_comment spent a turn on an overview and twelve file
+// lines, all refused. Both times the pass was asked to believe in something it
+// could not see, while the catalogue in front of it still offered the tools to
+// make one. Showing it the walkthrough answers that: the work is visibly done.
+// It goes behind the cache breakpoint because it is this run's own output and
+// cannot be in the block every call reads back.
+func (r *Result) judgingRequest(walkthrough findings.Review, described bool) *Result {
 	out := r.clone()
 	if !described {
 		out.Stage = StageReview
@@ -109,8 +120,42 @@ func (r *Result) judgingRequest(described bool) *Result {
 		return out
 	}
 	out.Stage = StageFindings
-	out.Tail = judgingTail + r.note
+	out.Tail = walkthroughTail(walkthrough) + judgingTail + r.note
 	return out
+}
+
+// walkthroughTail is the describing call's own output, handed to the pass that
+// judges. Material, so it comes before the instruction the pass acts on.
+//
+// The file lines are the reason this is worth its tokens beyond stopping the
+// rewrite: they are a reading of every shown file, including the ones a
+// judging pass would skim, written by a call over the same material that was
+// told to describe and not to judge.
+func walkthroughTail(w findings.Review) string {
+	if strings.TrimSpace(w.Overview) == "" && len(w.Files) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\n## The walkthrough, already written\n\n")
+	b.WriteString("An earlier call over this same material wrote what follows. " +
+		"It is here so that you do not write it again, and so that you can see what that call " +
+		"made of each file before you judge it.\n\n")
+	if s := strings.TrimSpace(w.Overview); s != "" {
+		b.WriteString(s + "\n\n")
+	}
+	// Sorted, because Files is a map and a tail that reordered between two
+	// runs of one change would be a different request for no reason.
+	paths := make([]string, 0, len(w.Files))
+	for path := range w.Files {
+		if strings.TrimSpace(path) != "" {
+			paths = append(paths, path)
+		}
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		fmt.Fprintf(&b, "- %s: %s\n", path, strings.TrimSpace(w.Files[path]))
+	}
+	return b.String()
 }
 
 // missingWalkthrough is the overview a review carries when its describing call

@@ -84,7 +84,7 @@ func TestAPassReadsHeldBackContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res = res.judgingRequest(true)
+	res = res.judgingRequest(findings.Review{}, true)
 	out, err := runOnce(context.Background(), deferredInput(), loopOpts(api), res)
 	if err != nil {
 		t.Fatal(err)

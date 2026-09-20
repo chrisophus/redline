@@ -1043,14 +1043,14 @@ func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 	switch {
 	case reused:
 		walkthrough = *opts.ReuseSynopsis
-		res = res.judgingRequest(true)
+		res = res.judgingRequest(walkthrough, true)
 	case opts.Synopsis:
 		walkthrough, synUsage, synWritten, synFailed, described = describe(ctx, in, opts, res)
 		if synFailed != "" && opts.Progress != nil {
 			opts.Progress("the describing call did not produce a walkthrough (" + synFailed +
 				"); this review writes its own")
 		}
-		res = res.judgingRequest(synFailed == "")
+		res = res.judgingRequest(walkthrough, synFailed == "")
 	}
 	var out *Result
 	var err error

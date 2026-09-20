@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/chrisophus/redline/internal/findings"
 )
 
 // fakeLooker answers with what it was asked, so a test can tell a call that
@@ -242,5 +244,66 @@ func TestAnEmptySearchSaysSo(t *testing.T) {
 	results, _, _ := c.take([]toolCall{{ID: "t1", Name: CallGrep, Input: input}})
 	if len(results) != 1 || !strings.Contains(results[0].content, "no match") {
 		t.Fatalf("results = %+v, want an explicit no-match", results)
+	}
+}
+
+// The findings pass can see set_overview and describe_file on the catalogue,
+// because the tool list is frozen for the run so every call reads one cached
+// prefix. Told only that it takes add_comment, a pass has reached for them and
+// rewritten a walkthrough that already existed. The instruction has to say the
+// work is done, since the catalogue cannot say it.
+func TestTheFindingsPassIsToldTheWalkthroughIsWritten(t *testing.T) {
+	block := callsBlock(StageFindings, false, nil)
+	if !strings.Contains(block, "already written") {
+		t.Errorf("the findings pass is not told the walkthrough exists:\n%s", block)
+	}
+	for _, name := range []string{CallOverview, CallFile} {
+		if !strings.Contains(block, name) {
+			t.Errorf("the findings pass is not told %s is not its to make:\n%s", name, block)
+		}
+	}
+	// The describing pass must not be told its own work is already done.
+	if syn := callsBlock(StageSynopsis, false, nil); strings.Contains(syn, "already written") {
+		t.Errorf("the describing pass is told its work is done:\n%s", syn)
+	}
+}
+
+// The judging call is handed the walkthrough the describing call wrote.
+// Telling it one exists has been tried twice and did not hold: the pass was
+// asked to believe in something it could not see while the catalogue still
+// offered the tools to make one. Showing it is what settles that.
+func TestTheJudgingCallCarriesTheWalkthrough(t *testing.T) {
+	w := findings.Review{
+		Overview: "This change batches the recompute.",
+		Files: map[string]string{
+			"b.go": "second file",
+			"a.go": "first file",
+		},
+	}
+	res := &Result{Prompt: "material", Tail: "old tail"}
+
+	got := res.judgingRequest(w, true).Tail
+	for _, want := range []string{"batches the recompute", "a.go: first file", "b.go: second file"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the judging tail is missing %q:\n%s", want, got)
+		}
+	}
+	// Sorted, because Files is a map and an unordered tail would make two
+	// runs of one change two different requests.
+	if strings.Index(got, "a.go") > strings.Index(got, "b.go") {
+		t.Errorf("the file lines are not sorted:\n%s", got)
+	}
+	// It is material, so it precedes the instruction the pass acts on.
+	if i, j := strings.Index(got, "already written"), strings.Index(got, "Finding defects"); i < 0 || j < 0 || i > j {
+		t.Errorf("the walkthrough must come before the judging instruction:\n%s", got)
+	}
+
+	// The fallback writes its own walkthrough, so it is not handed one.
+	if fb := res.judgingRequest(findings.Review{}, false).Tail; strings.Contains(fb, "already written") {
+		t.Errorf("the fallback pass must not be told a walkthrough exists:\n%s", fb)
+	}
+	// Nothing to show means nothing is added.
+	if empty := res.judgingRequest(findings.Review{}, true).Tail; strings.Contains(empty, "already written") {
+		t.Errorf("an empty walkthrough must add nothing:\n%s", empty)
 	}
 }

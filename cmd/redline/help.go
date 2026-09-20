@@ -158,7 +158,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.scoutEffort, "scout-effort", "", "effort for the checking, when it should differ from --effort")
 	fs.StringVar(&o.mode, "mode", "", "oneshot or explore")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "with --mode explore: turn limit")
-	fs.IntVar(&o.callTurns, "call-turns", 0, "turn cap for each describing/findings/ruling pass (default 12)")
+	fs.IntVar(&o.callTurns, "call-turns", 0, "turn cap for each describing/findings/ruling pass (default 30)")
 	fs.IntVar(&o.samples, "samples", 0, "independent reviews to union")
 	fs.StringVar(&o.note, "note", "", "what to look at or what worries you, added to every judging call")
 	fs.StringVar(&o.noteFile, "note-file", "", "read the note from a file")
@@ -375,10 +375,12 @@ shape:
                     --max-cost is a governor, not a tripwire.
   --max-turns N     with --mode explore: turn limit (default 5)
   --call-turns N    turn cap for each describing/findings/ruling pass over
-                    the tool loop every mode runs (default 12). Raise it
-                    when a pass hits the cap without calling done, e.g. with
-                    --defer-context or --look, where get_context or
-                    grep/read_lines calls spend turns.
+                    the tool loop every mode runs (default 30). A pass that
+                    looks things up spends turns before it writes anything,
+                    and it spends them at the front, so the cap has to leave
+                    room to look and then still write. The output budget is
+                    what governs the money: a turn with no allowance left
+                    ends the pass whatever this says.
   --samples N       take N independent reviews and union them (default 1).
                     Samples do not overlap, so recall rises with N and cost
                     rises with it too. With the cache on, the first goes out

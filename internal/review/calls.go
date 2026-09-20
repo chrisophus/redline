@@ -267,7 +267,19 @@ func callsBlock(stage string, deferred bool, looks []string) string {
 	case StageSynopsis:
 		takes = "set_overview once, describe_file once per file, and add_cohort once per group when the pass asks for groups"
 	case StageFindings:
-		takes = "add_comment, one call per comment"
+		// Why the walkthrough is named here. The catalogue carries every
+		// stage's tools on every call so the passes share one cached prefix,
+		// which means this pass can see set_overview and describe_file and is
+		// told only that it takes add_comment. On PR #1462 a findings pass
+		// read that, reached for them anyway, and spent one turn writing an
+		// overview and twelve file summaries that were already written: 13
+		// rejected calls and their output tokens, on a run that had four
+		// turns. Saying the work is done is the only lever there is, since
+		// the catalogue cannot change between calls without moving the
+		// prefix.
+		takes = "add_comment, one call per comment. The walkthrough is already written: " +
+			"an earlier call over this same material wrote the overview and the line for every file, " +
+			"so set_overview and describe_file are not this pass's to make"
 	case StageRuling:
 		takes = "rule, one call per finding"
 	default:

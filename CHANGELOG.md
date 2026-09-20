@@ -33,6 +33,27 @@ Releases whose tag carries only a subject line are listed as that subject.
   gates below could not be told apart.
 
 ### Changed
+- **The judging call is handed the walkthrough the describing call wrote.** The
+  two calls share one cached prompt and differed only in their tail, so the
+  overview and the file lines the first call produced never reached the second
+  one: it saw the same diff, a catalogue that still offers `set_overview` and
+  `describe_file`, and one line saying it takes `add_comment`. On PR #1462 a
+  findings pass spent a turn writing an overview and twelve file summaries that
+  already existed, all thirteen calls refused, on a run that had four turns.
+  Telling the pass a walkthrough exists has been tried twice and did not hold,
+  both times asking it to believe in something it could not see. The
+  walkthrough now rides in the tail, behind the cache breakpoint, sorted by
+  path so two runs of one change build the same request. The file lines earn
+  their tokens twice over: they are a reading of every shown file, including
+  the ones a judging pass would skim, from a call told to describe and not to
+  judge.
+- **`--call-turns` defaults to 30, from 12.** 12 was the number for a pass that
+  could only record. A pass that can look things up spends turns before it
+  writes anything and spends them at the front: on this repository's PR #83, a
+  judging pass with the lookups on used all twelve on `grep` and `read_lines`,
+  was cut off mid-search, and filed no comments at all. The output budget still
+  governs the money, so a turn with no allowance left ends the pass whatever
+  this says.
 - **`--effort` defaults to `medium` rather than to whatever the endpoint
   picks.** An unset effort meant the API's own default, which is `high` and is
   free to move under us: the same review on the same model could then cost and
