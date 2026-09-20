@@ -44,10 +44,19 @@ context:
 # The coverage profile. Declared so `--prepare` regenerates it: without a
 # profile here there are no produce steps, `--prepare` does nothing at all,
 # and the diff-coverage number is read from whatever `coverage.out` was last
-# left in the tree. A profile older than the change mentions none of the
-# lines the change adds, which reads as "nothing here is testable" when what
-# happened is that nobody measured. `go test` is available to anyone with a
-# Go toolchain, so unlike the graph below this one is safe to leave on.
+# left in the tree. `go test` is available to anyone with a Go toolchain, so
+# unlike the graph below this one is safe to leave on.
+#
+# `when: missing` rather than `stale`. Stale failed the whole run whenever the
+# profile was older than the change, which on a branch under active work is
+# most of the time, and the answer was always the same two flags. A review
+# refused outright is worse than a review whose coverage section is behind:
+# what the section feeds is the line-level "added lines no test executes",
+# which sharpens a finding rather than producing one, and the report says how
+# old the profile is either way. A profile that is not there at all is still a
+# failure, because then nothing measured and silence would read as a pass.
+#
+# Run `--prepare` when the coverage lines matter for the change in hand.
 harness:
   profiles:
     - id: go
@@ -55,7 +64,7 @@ harness:
       produce:
         command: make
         args: [coverage]
-      when: stale
+      when: missing
       scope: ["**/*.go"]
 
 # The graph is a build artifact and an adapter reading a stale one describes

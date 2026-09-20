@@ -47,6 +47,17 @@ Releases whose tag carries only a subject line are listed as that subject.
   their tokens twice over: they are a reading of every shown file, including
   the ones a judging pass would skim, from a call told to describe and not to
   judge.
+- **This repository's own coverage profile is `when: missing`, not
+  `when: stale`.** Stale failed the whole run whenever `coverage.out` was older
+  than the change, which on a branch under active work is most of the time, and
+  the answer was always the same two flags. A review refused outright is worse
+  than one whose coverage section is behind: that section feeds the line-level
+  "added lines no test executes", which sharpens a finding rather than
+  producing one, and the staleness still reaches the HTML report, the markdown
+  report and the pull request body. A profile that is not there at all is still
+  a failure, because then nothing measured and silence would read as a pass.
+  This is one repository's configuration; the `when` field is unchanged and
+  still takes `missing`, `stale` or `always`.
 - **`--call-turns` defaults to 30, from 12.** 12 was the number for a pass that
   could only record. A pass that can look things up spends turns before it
   writes anything and spends them at the front: on this repository's PR #83, a
