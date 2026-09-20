@@ -32,7 +32,18 @@ import (
 
 // DefaultCallTurns bounds one pass's turns. The output budget is the real
 // limit; this stops a model that keeps making calls without calling done.
-const DefaultCallTurns = 12
+//
+// 12 was the number for a pass that could only record. A pass that can look
+// things up spends turns before it writes anything, and it spends them at the
+// front: on this repository's own pull request #83, a judging pass with the
+// lookups on used all twelve on grep and read_lines, was cut off mid-search,
+// and filed no comments at all. The cap has to leave room to look and then
+// still write, so it is set past what that pass reached rather than at it.
+//
+// The output budget still governs the money. A turn that has no allowance
+// left stops the pass whatever this says, so raising it buys turns for a pass
+// that has room and changes nothing for one that does not.
+const DefaultCallTurns = 30
 
 // minTurnTokens is the smallest output allowance a turn is sent with. Below
 // it a turn cannot make one useful call, so the loop stops on the budget
@@ -159,14 +170,15 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 			}
 			for _, call := range r.calls {
 				// Without this, the only record of what a --look pass
-				// actually searched or read is the model's own narration of
-				// it: grep and read_lines record nothing on their own. See
-				// collector.looked.
+				// actually looked up is the model's own narration of it: a
+				// lookup records nothing on its own. See collector.looked.
 				switch call.Name {
 				case CallContext:
 					opts.Debug(fmt.Sprintf("%s turn %d: get_context %s", stage, turn, string(call.Input)))
-				case CallGrep, CallRead:
-					opts.Debug(fmt.Sprintf("%s turn %d: %s %s", stage, turn, call.Name, string(call.Input)))
+				default:
+					if isLookCall(call.Name) {
+						opts.Debug(fmt.Sprintf("%s turn %d: %s %s", stage, turn, call.Name, string(call.Input)))
+					}
 				}
 			}
 			for _, res := range results {

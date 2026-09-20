@@ -114,12 +114,15 @@ type Entry struct {
 // fatal: a review that produced findings has done its job, and losing a cost
 // line is not worth failing the command over. The error is returned so the
 // caller can say so.
-func Record(dir string, r *Result, effort string) error {
+// The effort is read off the result rather than taken as an argument, so it is
+// the value the calls were made at and not the flag the caller typed. Those
+// differ on every run that takes the default, which is most of them.
+func Record(dir string, r *Result) error {
 	if r == nil {
 		return nil
 	}
 	e := Entry{
-		At: time.Now().UTC(), API: r.API, Model: r.Model, Effort: effort,
+		At: time.Now().UTC(), API: r.API, Model: r.Model, Effort: r.Effort,
 		Usage: r.Usage, CostUSD: r.CostUSD, Known: r.CostKnown,
 		Seconds: r.Duration.Seconds(), Findings: len(r.Review.Comments),
 		StopReason: r.StopReason, Truncated: r.Truncated,

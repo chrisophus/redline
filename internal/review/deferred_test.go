@@ -61,7 +61,7 @@ func TestDeferredContextIsIndexedBesideTheDiff(t *testing.T) {
 		!strings.Contains(res.Prompt, "`ctx3` type · Tenant · internal/tenant/tenant.go:1-3 (3 lines)") {
 		t.Errorf("an entry whose scope leads to no changed file must be listed for the whole change:\n%s", res.Prompt)
 	}
-	if !strings.Contains(callsBlock(StageFindings, true, false), "get_context") {
+	if !strings.Contains(callsBlock(StageFindings, true, nil), "get_context") {
 		t.Error("the calls block must say context can be read")
 	}
 	plain, err := Assemble(deferredInput(), Options{Model: "claude-sonnet-5"})
@@ -84,7 +84,7 @@ func TestAPassReadsHeldBackContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res = res.judgingRequest(true)
+	res = res.judgingRequest(findings.Review{}, true)
 	out, err := runOnce(context.Background(), deferredInput(), loopOpts(api), res)
 	if err != nil {
 		t.Fatal(err)
@@ -108,13 +108,13 @@ func TestAPassReadsHeldBackContext(t *testing.T) {
 func TestGetContextIsOfferedOnlyWhenContextIsDeferred(t *testing.T) {
 	for _, pulls := range []bool{false, true} {
 		var named bool
-		for _, tool := range callTools(pulls, false) {
+		for _, tool := range callTools(pulls, nil) {
 			named = named || tool.Name == CallContext
 		}
 		if named != pulls {
 			t.Errorf("deferred=%v: get_context offered=%v", pulls, named)
 		}
-		if contains(callsFor(StageFindings, pulls, false), CallContext) != pulls {
+		if contains(callsFor(StageFindings, pulls, nil), CallContext) != pulls {
 			t.Errorf("deferred=%v: findings pass takes get_context=%v", pulls, !pulls)
 		}
 	}

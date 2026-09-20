@@ -78,7 +78,7 @@ type Trace struct {
 	CallTurns int      `json:"callTurns,omitempty"`
 	Rejected  int      `json:"rejected,omitempty"`
 	Stopped   []string `json:"stopped,omitempty"`
-	// Looked is how many grep and read_lines calls a --look pass made. The
+	// Looked is how many lookups a --look pass made against the tree. The
 	// model's own reasoning summary may narrate what it searched or read;
 	// this is the count that says so independent of whether it did.
 	Looked int `json:"looked,omitempty"`

@@ -153,17 +153,18 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.baseURL, "base-url", "", "endpoint to send the call to, for a proxy")
 	fs.StringVar(&o.apiUser, "api-user", "", "with --api openai: caller name for a proxy that wants one beside the key")
 	fs.StringVar(&o.model, "model", "", "model to review and check the findings with")
-	fs.StringVar(&o.effort, "effort", "", "low|medium|high|xhigh|max, for the review and the checking")
+	fs.StringVar(&o.effort, "effort", "", "low|medium|high|xhigh|max, for the review and the checking (default medium)")
 	fs.StringVar(&o.scoutModel, "scout-model", "", "model to check the findings with, when it should differ from --model")
 	fs.StringVar(&o.scoutEffort, "scout-effort", "", "effort for the checking, when it should differ from --effort")
 	fs.StringVar(&o.mode, "mode", "", "oneshot or explore")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "with --mode explore: turn limit")
-	fs.IntVar(&o.callTurns, "call-turns", 0, "turn cap for each describing/findings/ruling pass (default 12)")
+	fs.IntVar(&o.callTurns, "call-turns", 0, "turn cap for each describing/findings/ruling pass (default 30)")
 	fs.IntVar(&o.samples, "samples", 0, "independent reviews to union")
 	fs.StringVar(&o.note, "note", "", "what to look at or what worries you, added to every judging call")
 	fs.StringVar(&o.noteFile, "note-file", "", "read the note from a file")
 	fs.BoolVar(&o.deferContext, "defer-context", false, "list the resolved context beside each file's diff and let the reviewer read it with get_context")
-	fs.BoolVar(&o.look, "look", false, "let the judging pass search and read the tree with grep and read_lines")
+	fs.BoolVar(&o.look, "look", false, "let the judging pass look things up in the tree while it writes (on by default)")
+	fs.BoolVar(&o.noLook, "no-look", false, "the judging pass writes from the material it was sent, looking nothing up")
 	fs.BoolVar(&o.verify, "verify", false, "check each finding against the repository before posting it")
 	fs.BoolVar(&o.noVerify, "no-verify", false, "skip the checking pass")
 	fs.BoolVar(&o.cache, "cache", false, "mark the shared prefix for the prompt cache (on by default)")
@@ -297,8 +298,14 @@ model:
   --model NAME      model to review with, and to check the findings with
                     (default claude-sonnet-5, or gpt-5 with --api openai)
   --effort LEVEL    low|medium|high|xhigh|max, for the review and the checking
-                    alike (default: the model's for the review, low for the
-                    checking)
+                    alike (default: medium for the review, low for the
+                    checking). Named rather than left to the endpoint, whose
+                    own default is high and is free to move, so the same
+                    review on the same model costs and finds the same across
+                    two SDK versions. Medium on measurement: reviews on this
+                    model come back good at it, and the levels above cost more
+                    without having shown they find more. Raise it with
+                    --effort on a change that warrants it.
   --scout-model NAME
                     model to check the findings with, when it should differ
                     from --model
@@ -315,23 +322,45 @@ what to look at:
                     committed outranks it. Saved in review.json and the
                     postmortem, and shown on the report.
   --note-file PATH  the same, read from a file. Pass one or the other.
-  --look            give the judging pass grep and read_lines, so a claim
-                    about code outside the diff is one it can check while it
-                    writes rather than only name as a question for the lookup
-                    pass. This is the direction: a reviewer that pulls the
-                    context it needs beats one handed a guess about what it
-                    would want. It costs turns, and three runs on one pull
-                    request put the inline shape at 4.7x a plain review's
-                    cost, so watch Result.Looked (printed as looked=N) to see
-                    what the searching bought. A path climbing out of the
-                    tree is refused and a search is capped, the same
-                    hardening the scout's own lookups have. A path
-                    .cursorindexingignore names at the repository root is
-                    excluded from both the search and a direct read: it
-                    says in as many words that a path is not for an
+  --look            let the judging pass look things up in the tree while it
+                    writes, so a claim about code outside the diff is one it
+                    can check rather than only name as a question for the
+                    lookup pass. Already the default; kept so scripts that
+                    pass it still run. A reviewer that pulls the context it
+                    needs beats one handed a guess about what it would want,
+                    and that is worth its turns. Five lookups, and a run
+                    offers the ones this checkout can answer:
+                      grep            search the repository
+                      read_lines      read a span of one file
+                      list_docs       what the team wrote down, so a
+                                      deliberate construction is a decision
+                                      you can find rather than a defect you
+                                      file
+                      symbol_context  one Go symbol's definition, its callers
+                                      resolved through the type checker, its
+                                      signature types and its tests. Needs
+                                      gorefactor on PATH, and is left off the
+                                      catalogue where it is missing
+                      line_history    why a span of lines is there, from git,
+                                      for a change that removes or rewrites
+                                      code
+                    It costs turns: three runs on one pull request put the
+                    inline shape at 4.7x a plain review's cost, and --max-cost
+                    is what holds that down. Result.Looked (printed as
+                    looked=N) is what each run bought for it. A path climbing
+                    out of the tree is
+                    refused and a search is capped, the same hardening the
+                    scout's own lookups have. A path .cursorindexingignore
+                    names at the repository root is excluded from the search,
+                    a direct read, the document list and the history lookup:
+                    it says in as many words that a path is not for an
                     automated reader. .gitignore is not read for this -
                     generated code and vendored deps are routinely both
                     gitignored and something a claim needs to check against.
+  --no-look         the judging pass writes from the material it was sent,
+                    looking nothing up. For a review that has to cost what a
+                    plain one costs, and for measuring against the shape
+                    without the lookups.
   --defer-context   leave the context the providers resolved out of the
                     prompt. Each file's diff is followed by an index
                     of the context that belongs to it, callers, types, tests
@@ -346,10 +375,12 @@ shape:
                     --max-cost is a governor, not a tripwire.
   --max-turns N     with --mode explore: turn limit (default 5)
   --call-turns N    turn cap for each describing/findings/ruling pass over
-                    the tool loop every mode runs (default 12). Raise it
-                    when a pass hits the cap without calling done, e.g. with
-                    --defer-context or --look, where get_context or
-                    grep/read_lines calls spend turns.
+                    the tool loop every mode runs (default 30). A pass that
+                    looks things up spends turns before it writes anything,
+                    and it spends them at the front, so the cap has to leave
+                    room to look and then still write. The output budget is
+                    what governs the money: a turn with no allowance left
+                    ends the pass whatever this says.
   --samples N       take N independent reviews and union them (default 1).
                     Samples do not overlap, so recall rises with N and cost
                     rises with it too. With the cache on, the first goes out
@@ -462,7 +493,10 @@ cost and caching:
                     with the context dropped.
   --max-tokens N    cap on the response (default 64000)
   --max-cost USD    refuse to send a request estimated above this (default
-                    2.00). A tripwire, not a governor.
+                    3.00). A tripwire, not a governor: it sits above what an
+                    ordinary change costs rather than near it, because a
+                    tripwire that fires on ordinary work teaches whoever hits
+                    it to pass --max-cost without reading the number.
 
 output:
   --dry-run         print the assembled prompt and its estimated cost, and

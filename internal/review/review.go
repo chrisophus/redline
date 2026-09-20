@@ -38,6 +38,21 @@ import (
 // per-run cost is logged either way so the trade is measurable.
 const DefaultModel = "claude-sonnet-5"
 
+// DefaultEffort is how hard the review thinks when nothing says otherwise.
+//
+// Named here rather than left to the endpoint. An unset effort means the API's
+// own default, which is high: not ours to choose, and free to move under us,
+// so the same review on the same model could cost and find different things
+// across two SDK versions and the ledger would record the change as noise.
+//
+// Medium rather than the endpoint's high, on measurement rather than on the
+// general guidance: reviews of real changes on this model have come back good
+// at medium, and the levels above it cost more per review without having shown
+// they find more. The levels are low, medium, high, xhigh and max, so there is
+// room to raise it with --effort on a change that warrants it. The scout's
+// lookups stay at low.
+const DefaultEffort = "medium"
+
 // DefaultMaxTokens bounds the response. Generous rather than tight, because
 // hitting the cap truncates a review mid-finding and the truncated response
 // is discarded: the whole call is paid for and yields nothing.
@@ -57,7 +72,12 @@ const DefaultMaxTokens int64 = 64000
 // DefaultMaxCostUSD is a tripwire, not a governor. It stops a request whose
 // estimated cost is absurd, which in practice means a change far larger than
 // this tool is meant for.
-const DefaultMaxCostUSD = 2.00
+//
+// It sits above what a review of an ordinary change costs rather than near
+// it. A tripwire that fires on work the tool is meant to do teaches whoever
+// hits it to pass --max-cost without reading the number, which is the one
+// habit that makes the tripwire useless on the day it matters.
+const DefaultMaxCostUSD = 3.00
 
 // Modes. One shot sends the context it decided on; explore sends a catalogue
 // and lets the reviewer ask.
@@ -106,20 +126,32 @@ type Input struct {
 	Note string
 }
 
-// Looker answers a search or a read for a pass that has the tools.
+// Looker answers the lookups a pass makes for itself while it writes.
 //
-// It is two of the six things internal/scout can already do, and the scout
-// implements it rather than this package growing a second copy: those tools
-// resolve a path inside the tree under review, refuse one that climbs out of
-// it, follow no symlink that escapes, and cap what comes back. A reviewer that
-// searched through a reimplementation of that would be one audit behind the
-// one that already exists.
+// internal/scout implements it rather than this package growing a second copy:
+// those tools resolve a path inside the tree under review, refuse one that
+// climbs out of it, follow no symlink that escapes, and cap what comes back. A
+// reviewer that searched through a reimplementation of that would be one audit
+// behind the one that already exists.
 type Looker interface {
 	// Grep returns matching lines with their file and line number. glob is an
 	// optional substring filter on the path.
 	Grep(pattern, glob string) (string, error)
 	// ReadLines returns a span of one file, with line numbers.
 	ReadLines(path string, start, end int) (string, error)
+	// ListDocs returns the repository's documents with their first heading.
+	ListDocs() (string, error)
+	// SymbolContext returns one Go symbol's definition, its callers resolved
+	// through the type checker, its signature types and its tests.
+	SymbolContext(symbol string) (string, error)
+	// LineHistory returns git's account of a span of lines: the commits that
+	// touched them, with messages and diffs.
+	LineHistory(path string, start, end int) (string, error)
+	// Calls names which of LookCalls this tree can answer, in catalogue
+	// order. It is asked once per run, because a catalogue that changed
+	// between calls would throw away the prefix they share, and because only
+	// the Looker knows whether the binary behind a tool is installed.
+	Calls() []string
 }
 
 // Options configures one call.
@@ -345,6 +377,9 @@ func (o Options) withDefaults() Options {
 			o.Model = DefaultOpenAIModel
 		}
 	}
+	if o.Effort == "" {
+		o.Effort = DefaultEffort
+	}
 	if o.Ceiling <= 0 {
 		o.Ceiling = envelope.DefaultCeiling
 	}
@@ -441,7 +476,13 @@ type Result struct {
 	Review findings.Review `json:"review"`
 	API    string          `json:"api"`
 	Model  string          `json:"model"`
-	Usage  Usage           `json:"usage"`
+	// Effort is what the calls were made at, resolved. It sits beside Model
+	// because the two are read together and for the same reason: a ledger row
+	// has to say what produced it. Reading the flag instead recorded an empty
+	// string on every run that took the default, which is the whole population
+	// a default exists to describe.
+	Effort string `json:"effort,omitempty"`
+	Usage  Usage  `json:"usage"`
 	// UsageEstimated is set when the endpoint reported no token counts and
 	// Usage was filled from the pre-call estimate instead, so the ledger
 	// still gets a line for a call that was paid for. Some proxies strip
@@ -517,10 +558,10 @@ type Result struct {
 	Batched bool `json:"batched,omitempty"`
 	// Fetched is how many context entries the reviewer asked for.
 	Fetched int `json:"fetched,omitempty"`
-	// Looked is how many grep and read_lines calls a --look pass made, the
+	// Looked is how many lookups a --look pass made against the tree, the
 	// same shape of count Fetched is for get_context: without it the only
-	// record of what the pass searched or read is the model's own narration,
-	// and grep and read_lines record nothing on their own.
+	// record of what the pass looked up is the model's own narration, and a
+	// lookup records nothing on its own.
 	Looked int `json:"looked,omitempty"`
 	// CapHit records that the loop was stopped by the dollar cap rather than
 	// by the reviewer deciding it had enough.
@@ -635,10 +676,10 @@ type Result struct {
 	// deferred is the context held back behind get_context, in id order, and
 	// nil when the context went into the prompt.
 	deferred []deferredEntry
-	// canLook is whether this run was given a Looker, which decides whether
-	// grep and read_lines are on the catalogue. Fixed for the whole run, like
+	// lookCalls is which lookups this run's Looker can answer, which decides
+	// which of them are on the catalogue. Fixed for the whole run, like
 	// deferred, so every call of a run sends the same bytes.
-	canLook bool
+	lookCalls []string
 	// expect is what a pass has to record to be visibly complete, set by the
 	// requests whose completeness can be checked. A pass that has recorded all
 	// of it ends there, without waiting for done.
@@ -757,7 +798,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	describe := describingTail
 	// The block that says which calls answer the pass goes out with every
 	// request, so it is priced with the fixed parts.
-	calls := callsBlock(StageReview, opts.DeferContext, opts.Look != nil)
+	calls := callsBlock(StageReview, opts.DeferContext, lookCallsFor(opts.Look))
 	// Every stage sends the catalogue on both wires, so it is reserved for
 	// unconditionally. This was once zeroed for a brief run, which was right on
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
@@ -769,7 +810,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// would otherwise read this block unscoped - gets none of it either. See
 	// Options.CohortContext.
 	scoped := opts.CohortContext && opts.Shape() == PipelineStaged
-	fixed := toolsTokens(opts.DeferContext, opts.Look != nil) + envelope.EstimateTokens(system) +
+	fixed := toolsTokens(opts.DeferContext, lookCallsFor(opts.Look)) + envelope.EstimateTokens(system) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 && !scoped {
@@ -813,16 +854,17 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	cost, known := EstimateCost(opts.Model, est, expected)
 	ceiling, _ := CeilingCost(opts.Model, est, opts.MaxTokens)
 	return &Result{
-		API:   opts.API,
-		Model: opts.Model,
-		Stage: StageReview,
+		API:    opts.API,
+		Model:  opts.Model,
+		Effort: opts.Effort,
+		Stage:  StageReview,
 		// Stamped at assembly so every row has a shape, including the rows
 		// nothing staged ever touches: a ledger where one shape is a value
 		// and the other is an empty string groups into two sets by accident.
 		Pipeline:       opts.Shape(),
 		Budget:         budget,
 		deferred:       deferred,
-		canLook:        opts.Look != nil,
+		lookCalls:      lookCallsFor(opts.Look),
 		FilesShown:     len(in.ShownFiles()),
 		Prompt:         prompt,
 		Tail:           tail + describe + note,
@@ -1008,14 +1050,14 @@ func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 	switch {
 	case reused:
 		walkthrough = *opts.ReuseSynopsis
-		res = res.judgingRequest(true)
+		res = res.judgingRequest(walkthrough, true)
 	case opts.Synopsis:
 		walkthrough, synUsage, synWritten, synFailed, described = describe(ctx, in, opts, res)
 		if synFailed != "" && opts.Progress != nil {
 			opts.Progress("the describing call did not produce a walkthrough (" + synFailed +
 				"); this review writes its own")
 		}
-		res = res.judgingRequest(synFailed == "")
+		res = res.judgingRequest(walkthrough, synFailed == "")
 	}
 	var out *Result
 	var err error

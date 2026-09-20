@@ -262,7 +262,7 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 			}
 			// One judging call over the whole change, under the same tools the
 			// failed call sent, so it reads the prefix that call wrote.
-			out, rerr := runOnce(ctx, in, opts, res.judgingRequest(false))
+			out, rerr := runOnce(ctx, in, opts, res.judgingRequest(findings.Review{}, false))
 			// Stage one was billed whether or not it answered, and the write it
 			// made over the whole prefix is the expensive half. Folding it in
 			// here is what stops a run that paid for two calls from joining the

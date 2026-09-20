@@ -59,3 +59,41 @@ func loadIgnorePatterns(root string) []string {
 func ignoredPath(patterns []string, path string) bool {
 	return change.ExcludeReason(path, patterns) != ""
 }
+
+// skipDir reports whether a walk should not descend into a directory.
+//
+// One list for the search and the document listing, because a directory worth
+// skipping in one is worth skipping in the other and two lists drift. It is
+// named directories rather than every dot directory: .github holds the CI
+// config, .claude holds the house rules, and both are things a claim about
+// this repository needs to check against.
+//
+// What is here is build output, dependency trees and tool caches. A hit in one
+// of them is a copy of code that lives somewhere else, so it points the reader
+// at the wrong file, and walking them is the bulk of the time a search spends
+// on a large checkout.
+//
+// What is deliberately not here is build, out and coverage. Each names a
+// build directory often enough to be tempting and a real source directory
+// often enough that skipping it would hide code from a search that reported no
+// match. A slow search is a worse search; a search that quietly cannot see a
+// file is a wrong answer.
+func skipDir(name string) bool {
+	switch name {
+	case ".git", ".hg", ".svn":
+		return true
+	case "node_modules", "vendor", "bower_components", "Pods":
+		return true
+	case ".venv", "venv", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache":
+		return true
+	case "target", "dist", ".gradle", ".m2":
+		return true
+	case ".next", ".nuxt", ".svelte-kit", ".turbo", ".parcel-cache", ".cache":
+		return true
+	case ".terraform", ".serverless":
+		return true
+	case ".redline", "graphify-out", ".idea", ".vscode-test":
+		return true
+	}
+	return false
+}

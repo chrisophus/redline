@@ -12,6 +12,20 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Added
+- **`--look` gets three more lookups: `list_docs`, `symbol_context` and
+  `line_history`.** The judging pass could search and read; now it can also
+  ask what the team wrote down, ask gorefactor for a Go symbol's callers
+  resolved through the type checker, and ask git why a span of lines is
+  there. Each answers the question behind a whole class of dismissed finding:
+  the construction is a decision somebody recorded, the caller the change
+  breaks is a fact rather than a name match, and the guard that was removed
+  was there for a reason the commit message states. A run offers the lookups
+  its checkout can answer, so `symbol_context` is left off the catalogue
+  where `gorefactor` is not on PATH: a tool the reviewer can see and cannot
+  use costs it a turn to find that out. The catalogue is 2454 input tokens
+  with no lookups, 3073 with `grep` and `read_lines` alone and 3888 with all
+  five, and it sits in the cached prefix, so only a run's first call pays
+  full rate for the difference.
 - **`ruling` on a finding in `findings.json`.** The verifying pass's verdict
   rides on the finding itself, for `source: llm` only and empty when no pass
   ran. It reached `post` as a confidence demotion before, which made "the
@@ -19,6 +33,77 @@ Releases whose tag carries only a subject line are listed as that subject.
   gates below could not be told apart.
 
 ### Changed
+- **`symbol_context` and `line_history` bound what they put into the
+  conversation.** Every other lookup counts its own unit: 60 matches, 200
+  lines, 80 documents, 3 commits. These two hand back whatever a subprocess
+  printed, and gorefactor's context for a widely-used symbol is every caller in
+  the repository. Nothing recorded or truncated it on the way past, so it went
+  into the next turn's input as it stood, priced against a budget that still
+  had to pay for the turns after it. Cut at a line boundary at 16 KiB, saying
+  it was cut and what to narrow. Found by `redline review` on its own PR #83.
+- **The ledger and the postmortem record the effort the calls were made at.**
+  Both read the `--effort` flag, which is empty on every run that takes the
+  default, so the rows a default exists to describe were the rows that did not
+  say what they ran at. `Result` now carries the resolved effort beside the
+  resolved model, and both readers take it from there.
+- **The judging call is handed the walkthrough the describing call wrote.** The
+  two calls share one cached prompt and differed only in their tail, so the
+  overview and the file lines the first call produced never reached the second
+  one: it saw the same diff, a catalogue that still offers `set_overview` and
+  `describe_file`, and one line saying it takes `add_comment`. On PR #1462 a
+  findings pass spent a turn writing an overview and twelve file summaries that
+  already existed, all thirteen calls refused, on a run that had four turns.
+  Telling the pass a walkthrough exists has been tried twice and did not hold,
+  both times asking it to believe in something it could not see. The
+  walkthrough now rides in the tail, behind the cache breakpoint, sorted by
+  path so two runs of one change build the same request. The file lines earn
+  their tokens twice over: they are a reading of every shown file, including
+  the ones a judging pass would skim, from a call told to describe and not to
+  judge.
+- **This repository's own coverage profile is `when: missing`, not
+  `when: stale`.** Stale failed the whole run whenever `coverage.out` was older
+  than the change, which on a branch under active work is most of the time, and
+  the answer was always the same two flags. A review refused outright is worse
+  than one whose coverage section is behind: that section feeds the line-level
+  "added lines no test executes", which sharpens a finding rather than
+  producing one, and the staleness still reaches the HTML report, the markdown
+  report and the pull request body. A profile that is not there at all is still
+  a failure, because then nothing measured and silence would read as a pass.
+  This is one repository's configuration; the `when` field is unchanged and
+  still takes `missing`, `stale` or `always`.
+- **`--call-turns` defaults to 30, from 12.** 12 was the number for a pass that
+  could only record. A pass that can look things up spends turns before it
+  writes anything and spends them at the front: on this repository's PR #83, a
+  judging pass with the lookups on used all twelve on `grep` and `read_lines`,
+  was cut off mid-search, and filed no comments at all. The output budget still
+  governs the money, so a turn with no allowance left ends the pass whatever
+  this says.
+- **`--effort` defaults to `medium` rather than to whatever the endpoint
+  picks.** An unset effort meant the API's own default, which is `high` and is
+  free to move under us: the same review on the same model could then cost and
+  find different things across two SDK versions, and the ledger would record
+  the change as noise. `medium` on measurement rather than on the general
+  guidance: reviews of real changes on `claude-sonnet-5` come back good at it,
+  and the levels above cost more per review without having shown they find
+  more. `--effort` raises it for a change that warrants it, and the checking
+  pass stays at `low`.
+- **The `--max-cost` tripwire defaults to $3.00, from $2.00.** It is a
+  tripwire and not a governor, so it belongs above what a review of an
+  ordinary change costs rather than near it. At $2.00 an ordinary pull request
+  on this repository tripped it, and a tripwire that fires on work the tool is
+  meant to do teaches whoever hits it to pass `--max-cost` without reading the
+  number, which is the one habit that makes it useless on the day it matters.
+- **`--look` is on by default, and `--no-look` turns it off.** A reviewer that
+  pulls the context it needs beats one working from a guess made in advance
+  about what it would want, and a claim it can check while it writes is one
+  that does not have to survive a pass whose main output is withholding. It
+  costs turns: three runs on one pull request put the inline shape at 4.7x a
+  plain review, which is price rather than doubt about the shape, and
+  `--max-cost` is the control for price. `looked=N` on each run says what the
+  lookups bought. `--no-look` writes the review from the material alone, for a
+  run that has to cost what a plain one costs and for measuring against the
+  shape without them. `--look` still parses and wins over `--no-look`, the
+  precedence `--cache` uses.
 - **A reviewer finding that says it is unsure posts, at warning and error.** A
   defect held back is lost and a wrong one costs the author a minute reading
   it, and at those two severities the second price is the smaller one. So a
@@ -43,6 +128,17 @@ Releases whose tag carries only a subject line are listed as that subject.
 - **The system prompt no longer says linters have run over the change.** That
   is `priorsSection`'s sentence, which names the tools that actually ran and
   says nothing when none did.
+- **One skip list serves the scout's search and its document listing, and it
+  covers the build directories of more than two languages.** `vendor` and
+  `node_modules` were skipped while `.venv`, `__pycache__`, `target`, `.next`
+  and `.terraform` were walked and searched, so the same class of directory
+  was treated differently by language and a hit could point at a vendored copy
+  of code that lives somewhere else. It is named directories rather than every
+  dot directory, because `.github` holds the CI config and `.claude` holds the
+  house rules and a claim about the repository is exactly the kind that has to
+  check against those. `build`, `out` and `coverage` are deliberately not on
+  the list: each names a real source directory often enough that skipping it
+  would hide code from a search that then reported no match.
 
 ## [0.13.0] - 2026-09-20
 

@@ -122,7 +122,7 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 	// breakpoint, so there is nothing to keep apart and the model reads one
 	// turn.
 	if len(got.Messages) < 2 || got.Messages[0].Role != "system" || got.Messages[0].Content != res.System ||
-		got.Messages[1].Role != "user" || got.Messages[1].Content != res.Prompt+callsBlock(StageReview, false, false)+res.Tail {
+		got.Messages[1].Role != "user" || got.Messages[1].Content != res.Prompt+callsBlock(StageReview, false, nil)+res.Tail {
 		t.Fatal("the system block and the prompt must be sent exactly as assembled and priced")
 	}
 	// The schemas go as functions, not as response_format, which this gateway
@@ -141,7 +141,7 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 	// them, and leaves the choice to the model: forcing it is incompatible
 	// with thinking on the Anthropic API a proxy may forward this to.
 	var want []string
-	for _, tool := range callTools(false, false) {
+	for _, tool := range callTools(false, nil) {
 		want = append(want, tool.Name)
 	}
 	if !slices.Equal(names, want) {

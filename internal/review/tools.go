@@ -17,7 +17,7 @@ import (
 // shape can reach and not only its own, and that is the trade the caching
 // buys. Estimated off the marshalled bytes, which is what the endpoint is
 // actually sent.
-func toolsTokens(pulls, looks bool) int {
+func toolsTokens(pulls bool, looks []string) int {
 	raw, err := json.Marshal(callTools(pulls, looks))
 	if err != nil {
 		// Nothing here can fail to marshal. If it somehow does, price it high
@@ -30,7 +30,7 @@ func toolsTokens(pulls, looks bool) int {
 
 // anthropicTools renders the tools for the Messages API. None is strict: see
 // calls.go for why the calls are checked here instead.
-func anthropicTools(pulls, looks bool) []anthropic.ToolUnionParam {
+func anthropicTools(pulls bool, looks []string) []anthropic.ToolUnionParam {
 	all := callTools(pulls, looks)
 	out := make([]anthropic.ToolUnionParam, 0, len(all))
 	for _, t := range all {
@@ -73,7 +73,7 @@ func toolInputSchema(s map[string]any) anthropic.ToolInputSchemaParam {
 
 // openAITools renders the tools as chat-completions functions, in the same
 // order and with the same schemas.
-func openAITools(pulls, looks bool) []openAITool {
+func openAITools(pulls bool, looks []string) []openAITool {
 	all := callTools(pulls, looks)
 	out := make([]openAITool, 0, len(all))
 	for _, t := range all {
