@@ -83,7 +83,7 @@ release changed.
 | The split: `--cohorts N` judges each group of files in its own call | shipped |
 | `--note`, so whoever asks for the review can say what worries them | shipped |
 | `--defer-context`, the reviewer reading resolved context with `get_context` | shipped, off by default |
-| `--look`, the judging pass looking things up in the tree while it writes | shipped, on by default |
+| the judging pass looking things up in the tree while it writes | shipped, on by default; `--no-look` turns it off |
 | A `diff` question's claim checked against what the prompt carried | shipped |
 | `redline postmortem`: what the review proposed, what the lookups found, what was ruled | shipped |
 | Migration adds a NOT NULL column with no default | shipped |
@@ -160,7 +160,7 @@ Target (`run`, `review`, and `--pr` on `post`; pass only one): the working tree 
 
 Flags: `--base REF` (default: commit parent, range start, PR base, else
 origin/main), `--upstream REF` (default: same as base), `--migrations DIR`,
-`--out DIR`, `--open`, `--no-open`, `--port N` (report server, default 8765).
+`--out DIR`, `--open`, `--port N` (report server, default 8765).
 
 Each command accepts only the flags it reads. `redline help` lists the
 commands and the global flags, and `redline help <command>` lists that
@@ -232,8 +232,8 @@ overview and one line per file. The second is asked for findings alone, over
 the same prefix, which prompt caching serves at a fraction of the input rate.
 `--no-synopsis` collapses the two into one call.
 
-Everything else is a flag on that shape. `--look` is on and the rest are off
-unless asked for:
+Everything else is a flag on that shape. Each one flips a default, so a
+setting that is on has a flag to turn it off and nothing else:
 
 | Flag | What it changes |
 |---|---|
@@ -244,12 +244,12 @@ unless asked for:
 | `--samples N` | take N independent reviews and union them. They do not overlap, so recall rises with N and so does the bill |
 | `--note` / `--note-file` | what whoever asked for the review wants looked at. It reaches the judging calls only, and the prompt says it is not evidence |
 | `--verify` | the scout answers each finding's question, then a ruling rules on every finding with the answers in hand. Only findings it keeps are posted. Off by default |
-| `--look` | the judging pass gets `grep`, `read_lines`, `list_docs`, `symbol_context` and `line_history`, so a claim about code outside the diff is one it can check rather than name. On by default; `--no-look` writes from the material alone |
+| `--no-look` | the judging pass writes from the material it was sent. By default it gets `grep`, `read_lines`, `list_docs`, `symbol_context` and `line_history`, so a claim about code outside the diff is one it can check rather than name |
 | `--defer-context` | the resolved context leaves the prompt and any pass reads an entry with `get_context` |
 | `--model`, `--effort` | what the calls are made with. `--scout-model` and `--scout-effort` set the checking pass apart |
 | `--cohorts`, `--samples`, `--verify` | each multiplies calls, so each multiplies the bill; `--max-cost` refuses a request estimated above it |
 
-`--verify` and `--look` are the only two that read anything beyond the session:
+The lookups and `--verify` are the only two things that read beyond the session:
 the first sends the scout out between the review and the ruling, the second
 lets the judging pass look things up while it writes. Everything else works
 from what `run` already wrote.
@@ -361,8 +361,8 @@ about code it has never seen, and the finding that comes back dismissed in
 seconds is the accurate observation about code the team wrote that way on
 purpose.
 
-`--look` is the answer, and it is on by default: the judging pass looks things
-up in the tree, so the reviewer settles the question while it writes instead of
+Looking things up is the answer, and it is the default: the judging pass looks
+things up in the tree, so the reviewer settles the question while it writes instead of
 handing it to a pass afterwards. Five lookups, and a run offers the ones the
 checkout can answer:
 
@@ -425,7 +425,7 @@ It degrades at every point. No key, no repository to look in, a lookup that
 errors, a ruling that comes back unparseable: each leaves the findings as the
 review wrote them and says the check did not happen. A review that posts
 unchecked is the behaviour this tool always had; an empty one would be worse.
-`--no-verify` is kept for scripts that pass it, and names what already happens.
+There is no `--no-verify`: the checking pass is already off, and `--verify` is the flag that turns it on.
 
 Findings from `review` are advisory and marked `source: llm`. They never
 reach the merge gate, whatever severity they carry. A gate that blocks on

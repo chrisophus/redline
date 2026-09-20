@@ -175,7 +175,7 @@ func TestReviewRunObservesThenReviews(t *testing.T) {
 
 	var err error
 	out := captureStdout(t, func() {
-		err = runMain([]string{"review", "--run", "--dry-run", "--no-lint", "--no-open", "--base", "HEAD"})
+		err = runMain([]string{"review", "--run", "--dry-run", "--no-lint", "--base", "HEAD"})
 	})
 	if err != nil {
 		t.Fatalf("review --run: %v", err)

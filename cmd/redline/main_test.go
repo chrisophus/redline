@@ -173,7 +173,7 @@ func TestPostDryRunEmitsThePayloadWithoutPosting(t *testing.T) {
 
 	var err error
 	out := captureStdout(t, func() {
-		err = cmdPost(opts{out: dir, pr: "7", dryRun: true, port: 40500, noOpen: true})
+		err = cmdPost(opts{out: dir, pr: "7", dryRun: true, port: 40500})
 	})
 	if err != nil {
 		t.Fatalf("dry run should succeed offline: %v", err)
@@ -227,7 +227,7 @@ func TestPostDryRunProfileEmitsFailMarker(t *testing.T) {
 	dir := prSession(t)
 	var err error
 	out := captureStdout(t, func() {
-		err = cmdPost(opts{out: dir, pr: "7", profile: writeCmdProfile(t), dryRun: true, port: 41200, noOpen: true})
+		err = cmdPost(opts{out: dir, pr: "7", profile: writeCmdProfile(t), dryRun: true, port: 41200})
 	})
 	if err != nil {
 		t.Fatalf("dry run with profile should succeed offline: %v", err)
@@ -245,7 +245,7 @@ func TestPostDryRunProfilePassWithNoFindings(t *testing.T) {
 	dir := passSession(t)
 	var err error
 	out := captureStdout(t, func() {
-		err = cmdPost(opts{out: dir, pr: "7", profile: writeCmdProfile(t), dryRun: true, port: 41300, noOpen: true})
+		err = cmdPost(opts{out: dir, pr: "7", profile: writeCmdProfile(t), dryRun: true, port: 41300})
 	})
 	if err != nil {
 		t.Fatalf("a profiled pass still posts: %v", err)
@@ -268,7 +268,7 @@ func TestPostRejectsAMismatchedTarget(t *testing.T) {
 	t.Setenv("PATH", "")
 	dir := prSession(t)
 
-	err := cmdPost(opts{out: dir, pr: "456", dryRun: true, port: 40600, noOpen: true})
+	err := cmdPost(opts{out: dir, pr: "456", dryRun: true, port: 40600})
 	if err == nil {
 		t.Fatal("posting a PR 7 session to PR 456 should fail")
 	}
@@ -282,7 +282,7 @@ func TestPostRejectsANonPRSession(t *testing.T) {
 	t.Setenv("PATH", "")
 	dir := worktreeSession(t)
 
-	err := cmdPost(opts{out: dir, dryRun: true, port: 40700, noOpen: true})
+	err := cmdPost(opts{out: dir, dryRun: true, port: 40700})
 	if err == nil {
 		t.Fatal("posting a worktree session should fail")
 	}
@@ -297,7 +297,7 @@ func TestPostRejectsANonPRTargetFlag(t *testing.T) {
 	t.Setenv("PATH", "")
 	dir := prSession(t)
 
-	err := cmdPost(opts{out: dir, branch: "feature", dryRun: true, port: 40800, noOpen: true})
+	err := cmdPost(opts{out: dir, branch: "feature", dryRun: true, port: 40800})
 	if err == nil {
 		t.Fatal("post --branch should fail")
 	}
@@ -312,7 +312,7 @@ func TestPostRequiresGhForARealPost(t *testing.T) {
 	t.Setenv("PATH", "")
 	dir := prSession(t)
 
-	err := cmdPost(opts{out: dir, pr: "7", port: 41000, noOpen: true})
+	err := cmdPost(opts{out: dir, pr: "7", port: 41000})
 	if err == nil {
 		t.Fatal("a real post without gh should fail")
 	}
@@ -426,7 +426,7 @@ func TestPostSkipsWhenAlreadyReviewedWithNoNewFindings(t *testing.T) {
 		[]ghItem{{login, payload.Body}})
 
 	stderr := captureStderr(t, func() {
-		err = cmdPost(opts{out: dir, pr: "7", port: 41100, noOpen: true})
+		err = cmdPost(opts{out: dir, pr: "7", port: 41100})
 	})
 	if err != nil {
 		t.Fatalf("already-posted should succeed with nothing to do: %v", err)
@@ -453,7 +453,7 @@ func TestPostToAMovedHeadPostsWithoutTheGateVerdict(t *testing.T) {
 	var out string
 	stderr := captureStderr(t, func() {
 		out = captureStdout(t, func() {
-			err = cmdPost(opts{out: dir, pr: "7", profile: prof, dryRun: true, port: 41400, noOpen: true})
+			err = cmdPost(opts{out: dir, pr: "7", profile: prof, dryRun: true, port: 41400})
 		})
 	})
 	if err != nil {
@@ -561,7 +561,7 @@ func TestReviewDryRunPrintsTheSystemBlockAndTheUserTurn(t *testing.T) {
 
 	var err error
 	out := captureStdout(t, func() {
-		err = cmdReview(opts{out: dir, dryRun: true, noOpen: true})
+		err = cmdReview(opts{out: dir, dryRun: true})
 	})
 	if err != nil {
 		t.Fatalf("a dry run calls nothing and should succeed: %v", err)
@@ -668,7 +668,7 @@ func TestPostAnchorsCommentsToTheSessionDiff(t *testing.T) {
 	}
 	var err error
 	out := captureStdout(t, func() {
-		err = cmdPost(opts{out: dir, pr: "7", dryRun: true, port: 40900, noOpen: true})
+		err = cmdPost(opts{out: dir, pr: "7", dryRun: true, port: 40900})
 	})
 	if err != nil {
 		t.Fatalf("dry run should succeed offline: %v", err)
