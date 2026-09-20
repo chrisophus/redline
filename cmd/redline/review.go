@@ -342,7 +342,7 @@ func cmdReview(o opts) error {
 	// sent from one that never left — a dry run, or a refusal before the
 	// call — so those still write nothing.
 	if out != nil && !o.dryRun && out.Usage.InputTokens > 0 {
-		if rerr := review.Record(o.ledgerDir(), out, o.effort); rerr != nil {
+		if rerr := review.Record(o.ledgerDir(), out); rerr != nil {
 			// Not fatal. A review that produced findings has done its job,
 			// and losing a cost line is not worth failing the command over.
 			fmt.Fprintf(os.Stderr, "redline: could not record the run's cost: %v\n", rerr)
@@ -502,7 +502,7 @@ func writeTrace(o opts, res *run.Result, out *review.Result, tally *scoutTally) 
 		})
 	}
 	t := postmortem.Of(out, look)
-	t.Effort = o.effort
+	t.Effort = out.Effort
 	t.Target = describeSession(res)
 	t.Revision = change.ReviewIdentity(res.Report.BaseSHA, res.Change)
 	t.Note = o.note

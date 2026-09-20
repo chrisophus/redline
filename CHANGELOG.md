@@ -33,6 +33,19 @@ Releases whose tag carries only a subject line are listed as that subject.
   gates below could not be told apart.
 
 ### Changed
+- **`symbol_context` and `line_history` bound what they put into the
+  conversation.** Every other lookup counts its own unit: 60 matches, 200
+  lines, 80 documents, 3 commits. These two hand back whatever a subprocess
+  printed, and gorefactor's context for a widely-used symbol is every caller in
+  the repository. Nothing recorded or truncated it on the way past, so it went
+  into the next turn's input as it stood, priced against a budget that still
+  had to pay for the turns after it. Cut at a line boundary at 16 KiB, saying
+  it was cut and what to narrow. Found by `redline review` on its own PR #83.
+- **The ledger and the postmortem record the effort the calls were made at.**
+  Both read the `--effort` flag, which is empty on every run that takes the
+  default, so the rows a default exists to describe were the rows that did not
+  say what they ran at. `Result` now carries the resolved effort beside the
+  resolved model, and both readers take it from there.
 - **The judging call is handed the walkthrough the describing call wrote.** The
   two calls share one cached prompt and differed only in their tail, so the
   overview and the file lines the first call produced never reached the second

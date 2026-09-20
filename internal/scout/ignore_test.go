@@ -128,3 +128,28 @@ func TestSkipDirLeavesTheDirectoriesAClaimNeedsToCheck(t *testing.T) {
 		}
 	}
 }
+
+// Every lookup bounds what it puts into the conversation. The three that count
+// their own unit do it themselves; the two that hand back a subprocess's output
+// need this, and gorefactor's context for a widely-used symbol is every caller
+// in the repository. A result goes into the next turn's input as it stands.
+func TestASubprocessLookupIsCutAndSaysSo(t *testing.T) {
+	var b strings.Builder
+	for b.Len() < maxSymbolContextBytes*2 {
+		b.WriteString("caller: internal/some/package/file.go:120\n")
+	}
+	got := capLookOutput(b.String(), maxSymbolContextBytes, "narrow the symbol")
+	if len(got) > maxSymbolContextBytes+200 {
+		t.Errorf("output is %d bytes, want it cut near %d", len(got), maxSymbolContextBytes)
+	}
+	if !strings.Contains(got, "cut at") || !strings.Contains(got, "narrow the symbol") {
+		t.Errorf("a cut result must say it was cut and what to do:\n%s", got[len(got)-200:])
+	}
+	if strings.HasSuffix(strings.TrimSpace(strings.Split(got, "(cut at")[0]), "file.go:12") {
+		t.Error("the cut must land on a line boundary, not mid-line")
+	}
+	// Under the bound, nothing is added.
+	if short := capLookOutput("one line\n", maxSymbolContextBytes, "narrow"); short != "one line\n" {
+		t.Errorf("an answer that fits must pass through unchanged: %q", short)
+	}
+}

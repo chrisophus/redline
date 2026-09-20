@@ -476,7 +476,13 @@ type Result struct {
 	Review findings.Review `json:"review"`
 	API    string          `json:"api"`
 	Model  string          `json:"model"`
-	Usage  Usage           `json:"usage"`
+	// Effort is what the calls were made at, resolved. It sits beside Model
+	// because the two are read together and for the same reason: a ledger row
+	// has to say what produced it. Reading the flag instead recorded an empty
+	// string on every run that took the default, which is the whole population
+	// a default exists to describe.
+	Effort string `json:"effort,omitempty"`
+	Usage  Usage  `json:"usage"`
 	// UsageEstimated is set when the endpoint reported no token counts and
 	// Usage was filled from the pre-call estimate instead, so the ledger
 	// still gets a line for a call that was paid for. Some proxies strip
@@ -848,9 +854,10 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	cost, known := EstimateCost(opts.Model, est, expected)
 	ceiling, _ := CeilingCost(opts.Model, est, opts.MaxTokens)
 	return &Result{
-		API:   opts.API,
-		Model: opts.Model,
-		Stage: StageReview,
+		API:    opts.API,
+		Model:  opts.Model,
+		Effort: opts.Effort,
+		Stage:  StageReview,
 		// Stamped at assembly so every row has a shape, including the rows
 		// nothing staged ever touches: a ledger where one shape is a value
 		// and the other is an empty string groups into two sets by accident.

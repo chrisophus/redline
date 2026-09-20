@@ -110,8 +110,44 @@ func (l *Looker) SymbolContext(symbol string) (string, error) {
 	if _, err := exec.LookPath("gorefactor"); err != nil {
 		return "", fmt.Errorf("gorefactor is not installed, so this repository's Go symbols cannot be resolved")
 	}
-	return runCmd(l.root, "gorefactor", "context", "--json", "--", symbol)
+	out, err := runCmd(l.root, "gorefactor", "context", "--json", "--", symbol)
+	if err != nil {
+		return "", err
+	}
+	return capLookOutput(out, maxSymbolContextBytes,
+		"narrow the symbol, or read the callers you care about with read_lines"), nil
 }
+
+// capLookOutput bounds what one lookup puts into the conversation.
+//
+// Every other lookup counts its own unit: 60 matches, 200 lines, 80 documents,
+// 3 commits. These two hand back whatever a subprocess printed, and
+// gorefactor's context for a widely-used symbol is every caller in the
+// repository. The result is not recorded anywhere on the way past: it goes
+// into the next turn's input as it stands, priced against a budget that has to
+// pay for the turns still to come.
+//
+// Cut at a line boundary and say so, because a pass told nothing cannot tell a
+// symbol with no callers from an answer that was too big to send, and the
+// advice is what it can act on.
+func capLookOutput(s string, max int, advice string) string {
+	if len(s) <= max {
+		return s
+	}
+	cut := s[:max]
+	if i := strings.LastIndexByte(cut, '\n'); i > 0 {
+		cut = cut[:i]
+	}
+	return cut + fmt.Sprintf("\n\n(cut at %d bytes of %d: %s)\n", len(cut), len(s), advice)
+}
+
+// The byte bounds on the two lookups that return a subprocess's output. Set
+// near what 200 lines of read_lines or 60 grep matches come to, so no one
+// lookup can take the conversation on its own.
+const (
+	maxSymbolContextBytes = 16384
+	maxLineHistoryBytes   = 16384
+)
 
 // LineHistory is git's account of a span of lines, copied as git printed it.
 //
@@ -130,7 +166,12 @@ func (l *Looker) LineHistory(path string, start, end int) (string, error) {
 	if end < start {
 		end = start
 	}
-	return l.res.history(path, start, end)
+	out, err := l.res.history(path, start, end)
+	if err != nil {
+		return "", err
+	}
+	return capLookOutput(out, maxLineHistoryBytes,
+		"ask for a narrower line range"), nil
 }
 
 // maxLookDocs is the cap on one list_docs call, the scout's own.

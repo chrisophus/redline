@@ -437,7 +437,7 @@ func TestLedgerRecordsAndAverages(t *testing.T) {
 	for _, c := range []float64{0.05, 0.10, 0.90, 0.20, 0.25} {
 		r := &Result{Model: "claude-sonnet-5", CostUSD: c, CostKnown: true,
 			Duration: 2 * 1e9, Usage: Usage{InputTokens: 1000}}
-		if err := Record(dir, r, "high"); err != nil {
+		if err := Record(dir, r); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -475,7 +475,7 @@ func TestLedgerRecordsAndAverages(t *testing.T) {
 func TestLedgerRecordsSynopsisReused(t *testing.T) {
 	dir := t.TempDir()
 	r := &Result{Model: "claude-sonnet-5", CostUSD: 0.10, CostKnown: true, Synopsis: true, SynopsisReused: true}
-	if err := Record(dir, r, "high"); err != nil {
+	if err := Record(dir, r); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := ReadLedger(dir)
@@ -523,10 +523,10 @@ func TestMedianOfTwoIsNotTheLarger(t *testing.T) {
 
 func TestUnknownRatesAreExcludedNotCountedAsZero(t *testing.T) {
 	dir := t.TempDir()
-	if err := Record(dir, &Result{Model: "claude-sonnet-5", CostUSD: 0.40, CostKnown: true}, ""); err != nil {
+	if err := Record(dir, &Result{Model: "claude-sonnet-5", CostUSD: 0.40, CostKnown: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Record(dir, &Result{Model: "mystery", CostKnown: false}, ""); err != nil {
+	if err := Record(dir, &Result{Model: "mystery", CostKnown: false}); err != nil {
 		t.Fatal(err)
 	}
 	entries, _ := ReadLedger(dir)

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/chrisophus/redline/internal/findings"
+
+	"github.com/chrisophus/redline/internal/change"
 )
 
 // fakeLooker answers with what it was asked, so a test can tell a call that
@@ -305,5 +307,39 @@ func TestTheJudgingCallCarriesTheWalkthrough(t *testing.T) {
 	// Nothing to show means nothing is added.
 	if empty := res.judgingRequest(findings.Review{}, true).Tail; strings.Contains(empty, "already written") {
 		t.Errorf("an empty walkthrough must add nothing:\n%s", empty)
+	}
+}
+
+// The ledger records the effort the calls were made at, not the flag that was
+// typed. Those differ on every run that takes the default, which is the whole
+// population a default exists to describe: reading the flag wrote an empty
+// string for all of them and the ledger could not tell two efforts apart.
+func TestTheLedgerRecordsTheResolvedEffort(t *testing.T) {
+	in := Input{Change: &change.Set{Files: []change.File{{Path: "a.go", Diff: "@@ -1 +1 @@\n+x\n"}}}}
+	res, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Effort != DefaultEffort {
+		t.Errorf("effort = %q, want the resolved default %q", res.Effort, DefaultEffort)
+	}
+	dir := t.TempDir()
+	if err := Record(dir, res); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := ReadLedger(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("entries = %d, err = %v", len(entries), err)
+	}
+	if entries[0].Effort != DefaultEffort {
+		t.Errorf("the ledger row says effort %q, want %q", entries[0].Effort, DefaultEffort)
+	}
+	// An asked-for effort still wins.
+	asked, err := Assemble(in, Options{Effort: "high"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked.Effort != "high" {
+		t.Errorf("effort = %q, want high", asked.Effort)
 	}
 }
