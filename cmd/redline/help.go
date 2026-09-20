@@ -299,9 +299,13 @@ model:
                     (default claude-sonnet-5, or gpt-5 with --api openai)
   --effort LEVEL    low|medium|high|xhigh|max, for the review and the checking
                     alike (default: medium for the review, low for the
-                    checking). Named rather than left to the endpoint, so the
-                    same review on the same model costs and finds the same
-                    across two SDK versions.
+                    checking). Named rather than left to the endpoint, whose
+                    own default is high and is free to move, so the same
+                    review on the same model costs and finds the same across
+                    two SDK versions. Medium on measurement: reviews on this
+                    model come back good at it, and the levels above cost more
+                    without having shown they find more. Raise it with
+                    --effort on a change that warrants it.
   --scout-model NAME
                     model to check the findings with, when it should differ
                     from --model

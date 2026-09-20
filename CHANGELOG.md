@@ -34,10 +34,14 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ### Changed
 - **`--effort` defaults to `medium` rather than to whatever the endpoint
-  picks.** An unset effort meant the API's own default, which is not ours to
-  choose and can move under us: the same review on the same model would then
-  cost and find different things across two SDK versions, and the ledger would
-  record the change as noise. Medium is what the cost target was measured at.
+  picks.** An unset effort meant the API's own default, which is `high` and is
+  free to move under us: the same review on the same model could then cost and
+  find different things across two SDK versions, and the ledger would record
+  the change as noise. `medium` on measurement rather than on the general
+  guidance: reviews of real changes on `claude-sonnet-5` come back good at it,
+  and the levels above cost more per review without having shown they find
+  more. `--effort` raises it for a change that warrants it, and the checking
+  pass stays at `low`.
 - **The `--max-cost` tripwire defaults to $3.00, from $2.00.** It is a
   tripwire and not a governor, so it belongs above what a review of an
   ordinary change costs rather than near it. At $2.00 an ordinary pull request

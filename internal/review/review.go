@@ -41,10 +41,16 @@ const DefaultModel = "claude-sonnet-5"
 // DefaultEffort is how hard the review thinks when nothing says otherwise.
 //
 // Named here rather than left to the endpoint. An unset effort means the API's
-// own default, which is not ours to choose and can move under us: the same
-// review on the same model would then cost and find different things across
-// two SDK versions, and the ledger would record the change as noise. Medium is
-// what the cost target was measured at.
+// own default, which is high: not ours to choose, and free to move under us,
+// so the same review on the same model could cost and find different things
+// across two SDK versions and the ledger would record the change as noise.
+//
+// Medium rather than the endpoint's high, on measurement rather than on the
+// general guidance: reviews of real changes on this model have come back good
+// at medium, and the levels above it cost more per review without having shown
+// they find more. The levels are low, medium, high, xhigh and max, so there is
+// room to raise it with --effort on a change that warrants it. The scout's
+// lookups stay at low.
 const DefaultEffort = "medium"
 
 // DefaultMaxTokens bounds the response. Generous rather than tight, because
