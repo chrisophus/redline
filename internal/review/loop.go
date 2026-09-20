@@ -159,14 +159,15 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 			}
 			for _, call := range r.calls {
 				// Without this, the only record of what a --look pass
-				// actually searched or read is the model's own narration of
-				// it: grep and read_lines record nothing on their own. See
-				// collector.looked.
+				// actually looked up is the model's own narration of it: a
+				// lookup records nothing on its own. See collector.looked.
 				switch call.Name {
 				case CallContext:
 					opts.Debug(fmt.Sprintf("%s turn %d: get_context %s", stage, turn, string(call.Input)))
-				case CallGrep, CallRead:
-					opts.Debug(fmt.Sprintf("%s turn %d: %s %s", stage, turn, call.Name, string(call.Input)))
+				default:
+					if isLookCall(call.Name) {
+						opts.Debug(fmt.Sprintf("%s turn %d: %s %s", stage, turn, call.Name, string(call.Input)))
+					}
 				}
 			}
 			for _, res := range results {

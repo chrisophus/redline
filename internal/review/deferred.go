@@ -3,6 +3,7 @@ package review
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -81,10 +82,30 @@ func (r *Result) pulls() bool {
 	return len(r.deferred) > 0
 }
 
-// looks reports whether this run can search and read the tree, which is what
-// decides whether grep and read_lines are offered at all.
-func (r *Result) looks() bool {
-	return r.canLook
+// looks is which lookups this run can make against the tree, which is what
+// decides which of them are offered at all.
+func (r *Result) looks() []string {
+	return r.lookCalls
+}
+
+// lookCallsFor is the catalogue a Looker can serve, filtered to the calls this
+// package defines and put in catalogue order.
+//
+// Filtering rather than trusting the list keeps one bad answer from a Looker
+// from putting a tool on the wire that nothing dispatches, and the order is
+// fixed here because it is part of the bytes a cache read depends on.
+func lookCallsFor(l Looker) []string {
+	if l == nil {
+		return nil
+	}
+	can := l.Calls()
+	var out []string
+	for _, name := range LookCalls {
+		if slices.Contains(can, name) {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // contextID is an entry's id as the index shows it and get_context takes it.

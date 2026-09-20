@@ -106,20 +106,32 @@ type Input struct {
 	Note string
 }
 
-// Looker answers a search or a read for a pass that has the tools.
+// Looker answers the lookups a pass makes for itself while it writes.
 //
-// It is two of the six things internal/scout can already do, and the scout
-// implements it rather than this package growing a second copy: those tools
-// resolve a path inside the tree under review, refuse one that climbs out of
-// it, follow no symlink that escapes, and cap what comes back. A reviewer that
-// searched through a reimplementation of that would be one audit behind the
-// one that already exists.
+// internal/scout implements it rather than this package growing a second copy:
+// those tools resolve a path inside the tree under review, refuse one that
+// climbs out of it, follow no symlink that escapes, and cap what comes back. A
+// reviewer that searched through a reimplementation of that would be one audit
+// behind the one that already exists.
 type Looker interface {
 	// Grep returns matching lines with their file and line number. glob is an
 	// optional substring filter on the path.
 	Grep(pattern, glob string) (string, error)
 	// ReadLines returns a span of one file, with line numbers.
 	ReadLines(path string, start, end int) (string, error)
+	// ListDocs returns the repository's documents with their first heading.
+	ListDocs() (string, error)
+	// SymbolContext returns one Go symbol's definition, its callers resolved
+	// through the type checker, its signature types and its tests.
+	SymbolContext(symbol string) (string, error)
+	// LineHistory returns git's account of a span of lines: the commits that
+	// touched them, with messages and diffs.
+	LineHistory(path string, start, end int) (string, error)
+	// Calls names which of LookCalls this tree can answer, in catalogue
+	// order. It is asked once per run, because a catalogue that changed
+	// between calls would throw away the prefix they share, and because only
+	// the Looker knows whether the binary behind a tool is installed.
+	Calls() []string
 }
 
 // Options configures one call.
@@ -517,10 +529,10 @@ type Result struct {
 	Batched bool `json:"batched,omitempty"`
 	// Fetched is how many context entries the reviewer asked for.
 	Fetched int `json:"fetched,omitempty"`
-	// Looked is how many grep and read_lines calls a --look pass made, the
+	// Looked is how many lookups a --look pass made against the tree, the
 	// same shape of count Fetched is for get_context: without it the only
-	// record of what the pass searched or read is the model's own narration,
-	// and grep and read_lines record nothing on their own.
+	// record of what the pass looked up is the model's own narration, and a
+	// lookup records nothing on its own.
 	Looked int `json:"looked,omitempty"`
 	// CapHit records that the loop was stopped by the dollar cap rather than
 	// by the reviewer deciding it had enough.
@@ -635,10 +647,10 @@ type Result struct {
 	// deferred is the context held back behind get_context, in id order, and
 	// nil when the context went into the prompt.
 	deferred []deferredEntry
-	// canLook is whether this run was given a Looker, which decides whether
-	// grep and read_lines are on the catalogue. Fixed for the whole run, like
+	// lookCalls is which lookups this run's Looker can answer, which decides
+	// which of them are on the catalogue. Fixed for the whole run, like
 	// deferred, so every call of a run sends the same bytes.
-	canLook bool
+	lookCalls []string
 	// expect is what a pass has to record to be visibly complete, set by the
 	// requests whose completeness can be checked. A pass that has recorded all
 	// of it ends there, without waiting for done.
@@ -757,7 +769,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	describe := describingTail
 	// The block that says which calls answer the pass goes out with every
 	// request, so it is priced with the fixed parts.
-	calls := callsBlock(StageReview, opts.DeferContext, opts.Look != nil)
+	calls := callsBlock(StageReview, opts.DeferContext, lookCallsFor(opts.Look))
 	// Every stage sends the catalogue on both wires, so it is reserved for
 	// unconditionally. This was once zeroed for a brief run, which was right on
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
@@ -769,7 +781,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// would otherwise read this block unscoped - gets none of it either. See
 	// Options.CohortContext.
 	scoped := opts.CohortContext && opts.Shape() == PipelineStaged
-	fixed := toolsTokens(opts.DeferContext, opts.Look != nil) + envelope.EstimateTokens(system) +
+	fixed := toolsTokens(opts.DeferContext, lookCallsFor(opts.Look)) + envelope.EstimateTokens(system) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 && !scoped {
@@ -822,7 +834,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		Pipeline:       opts.Shape(),
 		Budget:         budget,
 		deferred:       deferred,
-		canLook:        opts.Look != nil,
+		lookCalls:      lookCallsFor(opts.Look),
 		FilesShown:     len(in.ShownFiles()),
 		Prompt:         prompt,
 		Tail:           tail + describe + note,

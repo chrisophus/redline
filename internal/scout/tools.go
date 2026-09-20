@@ -309,7 +309,7 @@ func (ts *toolset) listDocs() tool {
 			"Use it when a change looks like it is implementing something that was written down, or when its intent is not obvious from the diff. Read what looks relevant with read_lines.",
 		schema: schema(map[string]any{}),
 		run: func(json.RawMessage) (string, error) {
-			const max = 80
+			const max = maxLookDocs
 			docs := listDocs(ts.root, max+1)
 			if len(docs) == 0 {
 				return "no documents in this repository", nil
@@ -608,8 +608,7 @@ func grepTree(root string, re *regexp.Regexp, glob string, max int, ignore []str
 		}
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "node_modules", "vendor", "graphify-out", ".redline":
+			if skipDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			if rel != "." && ignoredPath(ignore, rel) {

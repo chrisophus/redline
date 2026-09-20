@@ -9,10 +9,38 @@ import (
 // fakeLooker answers with what it was asked, so a test can tell a call that
 // reached the tree from one that was rejected before it got there.
 type fakeLooker struct {
-	greps  []string
-	reads  []string
-	answer string
-	err    error
+	greps   []string
+	reads   []string
+	symbols []string
+	history []string
+	docs    int
+	answer  string
+	err     error
+	// calls is what this Looker reports it can serve. Empty means every
+	// lookup, so a test that does not care about the catalogue gets one.
+	calls []string
+}
+
+func (f *fakeLooker) Calls() []string {
+	if len(f.calls) == 0 {
+		return LookCalls
+	}
+	return f.calls
+}
+
+func (f *fakeLooker) ListDocs() (string, error) {
+	f.docs++
+	return f.answer, f.err
+}
+
+func (f *fakeLooker) SymbolContext(symbol string) (string, error) {
+	f.symbols = append(f.symbols, symbol)
+	return f.answer, f.err
+}
+
+func (f *fakeLooker) LineHistory(path string, start, end int) (string, error) {
+	f.history = append(f.history, path)
+	return f.answer, f.err
 }
 
 func (f *fakeLooker) Grep(pattern, glob string) (string, error) {
@@ -25,24 +53,109 @@ func (f *fakeLooker) ReadLines(path string, start, end int) (string, error) {
 	return f.answer, f.err
 }
 
-// Both tools are off unless the run was given somewhere to look. A catalogue
+// The lookups are off unless the run was given somewhere to look. A catalogue
 // that offered them anyway would be a pass told it can check a claim and then
 // answered "no lookup is available".
 func TestTheLookupToolsAreOffWithoutALooker(t *testing.T) {
-	names := func(looks bool) []string {
+	names := func(looks []string) string {
 		var out []string
 		for _, tl := range callTools(false, looks) {
 			out = append(out, tl.Name)
 		}
-		return out
+		return strings.Join(out, ",")
 	}
-	off := strings.Join(names(false), ",")
-	if strings.Contains(off, CallGrep) || strings.Contains(off, CallRead) {
-		t.Errorf("tools = %s, want neither lookup", off)
+	off := names(nil)
+	for _, name := range LookCalls {
+		if strings.Contains(off, name) {
+			t.Errorf("tools = %s, want no %s", off, name)
+		}
 	}
-	on := strings.Join(names(true), ",")
-	if !strings.Contains(on, CallGrep) || !strings.Contains(on, CallRead) {
-		t.Errorf("tools = %s, want both lookups", on)
+	on := names(LookCalls)
+	for _, name := range LookCalls {
+		if !strings.Contains(on, name) {
+			t.Errorf("tools = %s, want %s", on, name)
+		}
+	}
+}
+
+// A Looker that cannot serve a lookup keeps it off the catalogue. gorefactor
+// is not installed everywhere, and a tool on the wire that answers "not
+// installed" costs the pass a turn and teaches it nothing about the code.
+func TestACatalogueOffersOnlyWhatTheLookerCanServe(t *testing.T) {
+	look := &fakeLooker{calls: []string{CallGrep, CallRead, CallDocs, CallHistory}}
+	var names []string
+	for _, tl := range callTools(false, lookCallsFor(look)) {
+		names = append(names, tl.Name)
+	}
+	got := strings.Join(names, ",")
+	if strings.Contains(got, CallSymbol) {
+		t.Errorf("tools = %s, want no %s from a Looker that cannot serve it", got, CallSymbol)
+	}
+	for _, want := range []string{CallGrep, CallRead, CallDocs, CallHistory} {
+		if !strings.Contains(got, want) {
+			t.Errorf("tools = %s, want %s", got, want)
+		}
+	}
+}
+
+// A name the Looker reports that this package does not define is dropped
+// rather than put on the wire. A tool nothing dispatches would come back "no
+// tool named", which reads to the pass as its own mistake.
+func TestAnUnknownLookCallNeverReachesTheCatalogue(t *testing.T) {
+	look := &fakeLooker{calls: []string{CallGrep, "rm_rf"}}
+	if got := lookCallsFor(look); strings.Join(got, ",") != CallGrep {
+		t.Errorf("look calls = %v, want only %s", got, CallGrep)
+	}
+}
+
+// Each new lookup reaches its own method with the arguments as asked, and is
+// counted for the trace the way grep and read_lines are.
+func TestTheNewLookupsReachTheTree(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		call  string
+		input map[string]any
+		check func(*testing.T, *fakeLooker)
+	}{
+		{"docs", CallDocs, map[string]any{}, func(t *testing.T, f *fakeLooker) {
+			if f.docs != 1 {
+				t.Errorf("list_docs reached the tree %d time(s), want 1", f.docs)
+			}
+		}},
+		{"symbol", CallSymbol, map[string]any{"symbol": "Store.Insert"}, func(t *testing.T, f *fakeLooker) {
+			if len(f.symbols) != 1 || f.symbols[0] != "Store.Insert" {
+				t.Errorf("symbols = %v, want the symbol as asked", f.symbols)
+			}
+		}},
+		{"history", CallHistory, map[string]any{"path": "store.go", "start_line": 3, "end_line": 9},
+			func(t *testing.T, f *fakeLooker) {
+				if len(f.history) != 1 || f.history[0] != "store.go" {
+					t.Errorf("history = %v, want the path as asked", f.history)
+				}
+			}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			look := &fakeLooker{answer: "what the tree said"}
+			c := newCollector(StageFindings, passExpect{}, nil, look)
+			input, err := json.Marshal(tc.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			results, done, rejected := c.take([]toolCall{{ID: "t1", Name: tc.call, Input: input}})
+			if rejected != 0 || done {
+				t.Fatalf("rejected=%d done=%v; a lookup is neither refused nor an ending", rejected, done)
+			}
+			if len(results) != 1 || results[0].isError {
+				t.Fatalf("results = %+v, want the answer back", results)
+			}
+			if !strings.Contains(results[0].content, "what the tree said") {
+				t.Errorf("content = %q, want what the tree said", results[0].content)
+			}
+			if c.looked != 1 {
+				t.Errorf("looked = %d, want the lookup counted for the trace", c.looked)
+			}
+			tc.check(t, look)
+		})
 	}
 }
 
@@ -59,7 +172,7 @@ func TestOnlyTheJudgingPassesMayLookThingsUp(t *testing.T) {
 		{StageSynopsis, false},
 		{StageRuling, false},
 	} {
-		got := strings.Join(callsFor(tc.stage, false, true), ",")
+		got := strings.Join(callsFor(tc.stage, false, LookCalls), ",")
 		if has := strings.Contains(got, CallGrep); has != tc.want {
 			t.Errorf("%s may call %s: got %v, want %v (calls = %s)", tc.stage, CallGrep, has, tc.want, got)
 		}

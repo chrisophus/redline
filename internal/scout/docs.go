@@ -113,8 +113,7 @@ func listDocs(root string, max int) []docFile {
 			return nil
 		}
 		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "node_modules", "vendor", "graphify-out", ".redline", "dist":
+			if skipDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil

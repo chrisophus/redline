@@ -163,7 +163,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.note, "note", "", "what to look at or what worries you, added to every judging call")
 	fs.StringVar(&o.noteFile, "note-file", "", "read the note from a file")
 	fs.BoolVar(&o.deferContext, "defer-context", false, "list the resolved context beside each file's diff and let the reviewer read it with get_context")
-	fs.BoolVar(&o.look, "look", false, "let the judging pass search and read the tree with grep and read_lines")
+	fs.BoolVar(&o.look, "look", false, "let the judging pass look things up in the tree while it writes")
 	fs.BoolVar(&o.verify, "verify", false, "check each finding against the repository before posting it")
 	fs.BoolVar(&o.noVerify, "no-verify", false, "skip the checking pass")
 	fs.BoolVar(&o.cache, "cache", false, "mark the shared prefix for the prompt cache (on by default)")
@@ -315,20 +315,36 @@ what to look at:
                     committed outranks it. Saved in review.json and the
                     postmortem, and shown on the report.
   --note-file PATH  the same, read from a file. Pass one or the other.
-  --look            give the judging pass grep and read_lines, so a claim
-                    about code outside the diff is one it can check while it
-                    writes rather than only name as a question for the lookup
-                    pass. This is the direction: a reviewer that pulls the
-                    context it needs beats one handed a guess about what it
-                    would want. It costs turns, and three runs on one pull
-                    request put the inline shape at 4.7x a plain review's
-                    cost, so watch Result.Looked (printed as looked=N) to see
-                    what the searching bought. A path climbing out of the
-                    tree is refused and a search is capped, the same
-                    hardening the scout's own lookups have. A path
-                    .cursorindexingignore names at the repository root is
-                    excluded from both the search and a direct read: it
-                    says in as many words that a path is not for an
+  --look            let the judging pass look things up in the tree while it
+                    writes, so a claim about code outside the diff is one it
+                    can check rather than only name as a question for the
+                    lookup pass. This is the direction: a reviewer that pulls
+                    the context it needs beats one handed a guess about what
+                    it would want. Five lookups, and a run offers the ones
+                    this checkout can answer:
+                      grep            search the repository
+                      read_lines      read a span of one file
+                      list_docs       what the team wrote down, so a
+                                      deliberate construction is a decision
+                                      you can find rather than a defect you
+                                      file
+                      symbol_context  one Go symbol's definition, its callers
+                                      resolved through the type checker, its
+                                      signature types and its tests. Needs
+                                      gorefactor on PATH, and is left off the
+                                      catalogue where it is missing
+                      line_history    why a span of lines is there, from git,
+                                      for a change that removes or rewrites
+                                      code
+                    It costs turns, and three runs on one pull request put
+                    the inline shape at 4.7x a plain review's cost, so watch
+                    Result.Looked (printed as looked=N) to see what the
+                    lookups bought. A path climbing out of the tree is
+                    refused and a search is capped, the same hardening the
+                    scout's own lookups have. A path .cursorindexingignore
+                    names at the repository root is excluded from the search,
+                    a direct read, the document list and the history lookup:
+                    it says in as many words that a path is not for an
                     automated reader. .gitignore is not read for this -
                     generated code and vendored deps are routinely both
                     gitignored and something a claim needs to check against.

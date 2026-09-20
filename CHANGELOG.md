@@ -12,6 +12,20 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Added
+- **`--look` gets three more lookups: `list_docs`, `symbol_context` and
+  `line_history`.** The judging pass could search and read; now it can also
+  ask what the team wrote down, ask gorefactor for a Go symbol's callers
+  resolved through the type checker, and ask git why a span of lines is
+  there. Each answers the question behind a whole class of dismissed finding:
+  the construction is a decision somebody recorded, the caller the change
+  breaks is a fact rather than a name match, and the guard that was removed
+  was there for a reason the commit message states. A run offers the lookups
+  its checkout can answer, so `symbol_context` is left off the catalogue
+  where `gorefactor` is not on PATH: a tool the reviewer can see and cannot
+  use costs it a turn to find that out. The catalogue is 2454 input tokens
+  with no lookups, 3073 with `grep` and `read_lines` alone and 3888 with all
+  five, and it sits in the cached prefix, so only a run's first call pays
+  full rate for the difference.
 - **`ruling` on a finding in `findings.json`.** The verifying pass's verdict
   rides on the finding itself, for `source: llm` only and empty when no pass
   ran. It reached `post` as a confidence demotion before, which made "the
@@ -43,6 +57,17 @@ Releases whose tag carries only a subject line are listed as that subject.
 - **The system prompt no longer says linters have run over the change.** That
   is `priorsSection`'s sentence, which names the tools that actually ran and
   says nothing when none did.
+- **One skip list serves the scout's search and its document listing, and it
+  covers the build directories of more than two languages.** `vendor` and
+  `node_modules` were skipped while `.venv`, `__pycache__`, `target`, `.next`
+  and `.terraform` were walked and searched, so the same class of directory
+  was treated differently by language and a hit could point at a vendored copy
+  of code that lives somewhere else. It is named directories rather than every
+  dot directory, because `.github` holds the CI config and `.claude` holds the
+  house rules and a claim about the repository is exactly the kind that has to
+  check against those. `build`, `out` and `coverage` are deliberately not on
+  the list: each names a real source directory often enough that skipping it
+  would hide code from a search that then reported no match.
 
 ## [0.13.0] - 2026-09-20
 
