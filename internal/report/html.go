@@ -19,6 +19,7 @@ import (
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/mutation"
 	"github.com/chrisophus/redline/internal/pane"
+	"github.com/chrisophus/redline/internal/post"
 )
 
 //go:embed assets/report.html.tmpl
@@ -71,10 +72,13 @@ type view struct {
 	DiffFiles []fileView
 	Observed  []findingView
 
-	// LowConfidence is the agent findings that said so themselves. They are
-	// folded away rather than dropped: the review prompt promises an
-	// uncertain finding costs the reader nothing, and a reviewer who is
-	// charged full price for hedging stops hedging.
+	// LowConfidence is the agent findings a reader has to open on purpose:
+	// the unsure info remarks, and anything the verifying pass refused. They
+	// are folded away rather than dropped, because the review prompt promises
+	// an uncertain finding costs the reader nothing and a reviewer charged
+	// full price for hedging stops hedging. An unsure warning or error is not
+	// here. It is in the list, with its confidence on it, which is the same
+	// rule post applies to the pull request.
 	LowConfidence []findingView
 
 	Groups   []drillGroup
@@ -248,7 +252,7 @@ func buildView(in HTMLInput) view {
 		}
 		fv.Evidence = template.HTML(ev.String())
 		fv.Related = relatedRefs(rep, f)
-		if f.Confidence == findings.ConfidenceLow {
+		if !post.Reaches(f) {
 			v.LowConfidence = append(v.LowConfidence, fv)
 			continue
 		}

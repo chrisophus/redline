@@ -13,9 +13,12 @@ Effort is rough: **S** is days, **M** is weeks, **L** is longer. Each item
 says what is blocking it, what evidence put it here, and what would count as
 finishing it. An item with no evidence is a guess and says so.
 
-Two rules hold across all of it. `redline run` calls no model, so looking at a
-change costs nothing and can run anywhere. A finding only reaches a pull
-request through the ruling's gate.
+One rule holds across all of it: `redline run` calls no model, so looking at a
+change costs nothing and can run anywhere.
+
+The ruling is `--verify`, off by default, so what a reviewer writes is close to
+what an author reads. The work below is aimed at breadth rather than at a
+tighter gate.
 
 A third rule used to be here and is gone: that a review had to be a pure
 function of a saved session so the test fixtures could replay it. Reviews are
@@ -27,16 +30,17 @@ different real problems, which is why `--samples` unions them.
 A plain `redline review` makes two calls. The first describes the change and
 writes the overview and one line per file. The second gets the findings, and
 reads the first call's prompt back out of the cache instead of paying for it
-again. `--verify` adds the scout's lookups and a ruling behind them.
+again. `--verify`, off by default, adds the scout's lookups and a ruling behind them.
 `--cohorts N` above 1 splits the files into groups and sends one judging call
 per group, with `--plan` to stop after the split and `--only-cohorts` to judge
 part of it. `--defer-context` leaves the resolved context out of the prompt
 and lets any pass read an entry with `get_context`; see Context the reviewer
 pulls below. `--look` gives the judging passes `grep` and `read_lines`, so a
 claim about code outside the diff is one they can check rather than only name.
-The prompts are files under `internal/review/prompts`. `post` gates on the ruling, holds back low
-confidence and hedged wording, and keeps the reviewer's info findings in the
-review body instead of on the diff.
+The prompts are files under `internal/review/prompts`. `post` gates on the ruling when one ran,
+holds back hedged wording and an unsure `info` remark, and keeps the reviewer's
+info findings in the review body instead of on the diff. An unsure warning or
+error posts.
 
 Context comes from one provider per language. `gorefactor` resolves Go through
 `go/types`, and `tsrefactor` does the same for TypeScript through `ts-morph`,

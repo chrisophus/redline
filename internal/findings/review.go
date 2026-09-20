@@ -389,6 +389,7 @@ func (r *Review) CommentFindings() []Finding {
 			Source:          SourceLLM,
 			RelatedFindings: c.RelatedFindings,
 			Confidence:      conf,
+			Ruling:          c.Ruling.Verdict,
 		})
 	}
 	return out

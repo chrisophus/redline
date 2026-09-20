@@ -174,6 +174,12 @@ type Finding struct {
 	// Confidence is meaningful for source "llm" only. Empty on a
 	// deterministic finding, where it would be a category error.
 	Confidence Confidence `json:"confidence,omitempty"`
+	// Ruling is the verifying pass's verdict on this finding, for source
+	// "llm" only, and empty when no pass ran. It is carried separately from
+	// Confidence because the two answer different questions: Confidence is
+	// how sure the reviewer was, and this is what the repository said back.
+	// Only a kept verdict reaches an author, whatever the severity.
+	Ruling string `json:"ruling,omitempty"`
 	// Verdict is the agent's judgment of this finding, merged from review.json
 	// after fingerprints are stamped. Nil until an agent has ruled on it.
 	Verdict *Verdict `json:"verdict,omitempty"`

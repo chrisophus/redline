@@ -101,9 +101,9 @@ table.comp td.minus{color:var(--error);font-variant-numeric:tabular-nums}
    text does not appear twice on one page. */
 .f .rel{color:var(--muted);font-size:13px;margin-top:8px}
 .f .rel .id{font-family:ui-monospace,monospace;opacity:.7}
-/* Low-confidence agent findings are folded away, not discarded: an uncertain
-   finding has to cost the reader nothing, or the agent stops reporting the
-   class of finding this layer exists to surface. */
+/* The agent findings that do not reach a pull request are folded away, not
+   discarded: an uncertain finding has to cost the reader nothing, or the agent
+   stops reporting the class of finding this layer exists to surface. */
 details.fold>summary{color:var(--muted)}
 blockquote{margin:12px 0 0;padding:10px 14px;background:var(--code);border-radius:6px;
   font-size:14px;color:var(--muted)}
@@ -384,7 +384,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 {{end}}
 {{if .LowConfidence}}
 <details class="fold">
-  <summary>{{len .LowConfidence}} low-confidence agent finding{{if ne (len .LowConfidence) 1}}s{{end}} folded away<span class="s">uncertain, not discarded — open to read them</span></summary>
+  <summary>{{len .LowConfidence}} agent finding{{if ne (len .LowConfidence) 1}}s{{end}} folded away<span class="s">held back from the pull request, not discarded — open to read them</span></summary>
   <div class="body">{{range .LowConfidence}}{{template "finding" .}}{{end}}</div>
 </details>
 {{end}}

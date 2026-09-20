@@ -111,14 +111,14 @@ func cmdReview(o opts) error {
 		ExpectedOutput: expected,
 		DryRun:         o.dryRun,
 	}
-	// The checking pass is off unless it is asked for. It ran by default for
-	// most of this tool's life and was never scored: no eval arm has ever set
-	// it, so the scout's five lookup turns and the ruling that reads them are
-	// unmeasured cost on every review. The one trace that exists points the
-	// wrong way - on this repository's PR #46, nine of the ten findings that
-	// never reached the reader came back unverifiable from the ruling, six of
-	// those on questions the review had certified itself. --verify turns it
-	// back on; when an arm measures it, this default is the line to revisit.
+	// The checking pass is off unless it is asked for. No eval arm scores it,
+	// so the scout's five lookup turns and the ruling that reads them would be
+	// unmeasured cost on every review, and the one trace that exists points
+	// the wrong way: on this repository's PR #46, nine of the ten findings
+	// that never reached the reader came back unverifiable from the ruling,
+	// six of those on questions the review had certified itself. A pass whose
+	// main output is withholding is the wrong trade for a reviewer meant to
+	// say more. --verify turns it on.
 	ropts.Verify = o.verify && o.mode != review.ModeExplore
 	// The breakpoint is on unless it is turned off, for the same shape of
 	// reason: a run that pays two full-rate calls over one prefix is paying
@@ -263,12 +263,13 @@ func cmdReview(o opts) error {
 	if ropts.Verify {
 		ropts.Answer = scoutAnswerer(res, ropts, o.scoutSettings(), &tally)
 	}
-	// Off by default. Three runs on one pull request under the new
-	// instrumentation (see Result.Looked) put the inline shape at 4.7x a
-	// plain review's cost for one PR's worth of data - real evidence
-	// against a default this is not, but the counters exist now precisely
-	// so that decision can be made from a ledger rather than three traces
-	// read as prose. --look turns it on.
+	// Off by default, and the default is the open question here rather than
+	// the feature. Letting the judging pass pull what it needs is the
+	// direction the rest of this tool is moving in, and price is the only
+	// thing holding the default back: three runs on one pull request put the
+	// inline shape at 4.7x a plain review (see Result.Looked). That is one
+	// PR's worth of data, and the counters are there so the decision comes
+	// off a ledger rather than three traces read as prose. --look turns it on.
 	if o.look {
 		ropts.Look = lookerFor(res)
 	}

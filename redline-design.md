@@ -209,11 +209,14 @@ result instead of making the model grep and read. Cheap turns, not no turns.
 
 Three things follow, and all three are now implemented.
 
-The one-shot design still holds, for a reason narrower than the original one.
-Resending a large diff on every turn is what makes a loop expensive, and this
-tool's diffs are large. Two-stage retrieval was measured and rejected: on the
-largest change here it would have cost more than sending everything once,
-because the diff would be paid for twice.
+Every pass runs a tool loop with a turn cap (`--call-turns`), the reviewer
+pulls context with `get_context` under `--defer-context`, and `--look` gives
+the judging pass `grep` and `read_lines`. What holds is the cost shape:
+resending a large diff on every turn is what makes a loop expensive, and this
+tool's diffs are large. On the largest change here, two-stage retrieval costs
+more than sending everything once, because the diff is paid for twice. So the
+turns stay few and the prefix stays cached. Price per turn is the open
+question, and the Result.Looked counters are what measure it.
 
 Whole changed files are now carried, up to four hundred lines, which is what
 Copilot does and what this did not. The gap was real: the model was seeing
