@@ -138,14 +138,17 @@ func capLookOutput(s string, max int, advice string) string {
 
 // The byte bounds on the two lookups that return a subprocess's output.
 //
-// These exist so no single lookup can take the conversation, not to keep the
-// answer small: sixty-four kilobytes is about sixteen thousand tokens, which
-// is two cents on a pass and a sixteenth of one review's ceiling. Every
-// caller of a widely-used symbol fits, and the pass does not spend a turn
-// discovering it was cut.
+// These exist so no single lookup can take the conversation, and they are set
+// to land where the lookups that count their own unit land. That needs the
+// measured ratio rather than the familiar one: envelope prices Redline's
+// payloads at 2.33 characters per token, because they are code, diffs and
+// JSON rather than prose. At that ratio 32 KiB is about 14,000 tokens, which
+// is where 600 lines of read_lines sits; 64 KiB would be 28,000, twice
+// read_lines and four times grep, which is a lookup that can take the
+// conversation on its own.
 const (
-	maxSymbolContextBytes = 65536
-	maxLineHistoryBytes   = 65536
+	maxSymbolContextBytes = 32768
+	maxLineHistoryBytes   = 32768
 )
 
 // LineHistory is git's account of a span of lines, copied as git printed it.

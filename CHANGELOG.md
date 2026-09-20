@@ -36,6 +36,15 @@ Releases whose tag carries only a subject line are listed as that subject.
   cache once and read back at a tenth of the input rate, so six hundred lines
   of a file cost about a cent and a half and five hundred document lines about
   two. A cap tight enough to force a second call was the expensive choice.
+
+  The two byte caps are 32 KiB, not 64. Three of these lookups count lines,
+  matches or documents and two count bytes, so the judgement has to be made in
+  tokens, and the ratio is the trap: prose runs near four characters per token
+  and `envelope` measures Redline's payloads at 2.33, because they are code,
+  diffs and JSON. At four, 64 KiB reads as 16k tokens and looks level with the
+  rest; at the real ratio it is 28k, twice `read_lines` and four times `grep`.
+  A test now prices all five against each other and fails when any is more
+  than three times another.
 - **`list_docs` takes a `path` filter, and a cut listing says where the rest
   are.** Every lookup that cuts gives advice the caller can act on, and this
   one said "grep for a word a document would use" - which cannot be taken,

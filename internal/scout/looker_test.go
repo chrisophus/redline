@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/review"
 )
 
@@ -85,5 +86,43 @@ func TestLookerReadsASpanAndRefusesEscapes(t *testing.T) {
 	}
 	if _, err := l.ReadLines("store.go", 9000, 9001); err == nil {
 		t.Error("a start past the end of the file must be an error, not an empty result")
+	}
+}
+
+// Every lookup returns about as much as every other. A cap is a judgement
+// about what one answer may take of the conversation, and that judgement has
+// to be made in tokens: three of these count lines, matches or documents, and
+// two count bytes, so the same number means different amounts in each.
+//
+// The trap is the ratio. Prose runs near four characters per token and the
+// familiar figure is that one; envelope measures Redline's payloads at 2.33,
+// because they are code, diffs and JSON. Costed at four, 64 KiB reads as
+// sixteen thousand tokens and looks level with the rest. Costed at the real
+// ratio it is twenty-eight thousand, twice read_lines and four times grep,
+// and one lookup can take the conversation on its own.
+func TestTheLookupCapsReturnComparableAmounts(t *testing.T) {
+	rep := func(s string, n int) int { return envelope.EstimateTokens(strings.Repeat(s, n)) }
+	sizes := map[string]int{
+		"read_lines":     rep("  1234\tif err := doTheThing(ctx, arg); err != nil {\n", maxReadLines),
+		"grep":           rep("internal/review/prompt.go:412: func (in Input) coverageSection() string {\n", maxGrepMatches),
+		"list_docs":      rep("docs/adr/0042-use-advisory-locks.md (120 lines): Use advisory locks for the lease\n", maxLookDocs),
+		"symbol_context": envelope.EstimateTokensLen(maxSymbolContextBytes),
+		"line_history":   envelope.EstimateTokensLen(maxLineHistoryBytes),
+	}
+	lo, hi := "", ""
+	for name, n := range sizes {
+		if lo == "" || n < sizes[lo] {
+			lo = name
+		}
+		if hi == "" || n > sizes[hi] {
+			hi = name
+		}
+	}
+	// Three is room to differ for a reason and not room for one lookup to be
+	// in a different class from the others.
+	const maxSpread = 3.0
+	if got := float64(sizes[hi]) / float64(sizes[lo]); got > maxSpread {
+		t.Errorf("%s returns %d tokens and %s returns %d, a spread of %.1fx (max %.1f). Sizes: %v",
+			hi, sizes[hi], lo, sizes[lo], got, maxSpread, sizes)
 	}
 }
