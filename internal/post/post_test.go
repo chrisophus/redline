@@ -506,11 +506,11 @@ func TestFindingLabelNamesTheAgent(t *testing.T) {
 	}
 }
 
-// A guess the report folds away must not reach the pull request. The report
-// hides a low-confidence reviewer finding behind a fold and post used to send
-// the same finding as an ordinary line comment, so the two readers disagreed
-// about what Redline was willing to stand behind.
-func TestBuildWithholdsLowConfidenceReviewerFindings(t *testing.T) {
+// The reviewer's own doubt keeps a finding off the pull request at info and
+// nowhere else. A defect held back is lost and a wrong one costs the author a
+// minute reading it, so an unsure warning posts and carries its doubt, while
+// an unsure info remark folds the way the report folds it.
+func TestBuildPostsAnUnsureWarningAndWithholdsAnUnsureInfo(t *testing.T) {
 	rep := &findings.Report{
 		Findings: []findings.Finding{
 			{File: "a.go", Line: 3, Rule: "agent-comment", Substrate: "redline/review",
@@ -519,6 +519,51 @@ func TestBuildWithholdsLowConfidenceReviewerFindings(t *testing.T) {
 			{File: "a.go", Line: 4, Rule: "agent-comment", Substrate: "redline/review",
 				Severity: findings.SeverityWarning, Source: findings.SourceLLM,
 				Confidence: findings.ConfidenceHigh, Message: "this leaks a file handle"},
+			{File: "a.go", Line: 5, Rule: "agent-comment", Substrate: "redline/review",
+				Severity: findings.SeverityInfo, Source: findings.SourceLLM,
+				Confidence: findings.ConfidenceLow, Message: "this name reads oddly"},
+		},
+	}
+	rep.Finalize()
+
+	p := Build(rep, prTarget(), "", nil)
+
+	if len(p.Comments) != 2 {
+		t.Fatalf("both warnings post, whatever their confidence: %+v", p.Comments)
+	}
+	var bodies string
+	for _, c := range p.Comments {
+		bodies += c.Body
+	}
+	for _, want := range []string{"might race", "leaks a file handle"} {
+		if !strings.Contains(bodies, want) {
+			t.Errorf("%q did not reach the diff", want)
+		}
+	}
+	if strings.Contains(p.Body, "reads oddly") {
+		t.Error("the withheld info remark must not fall through into the body either")
+	}
+	// Counted, not hidden. A reader who is not told it exists cannot tell a
+	// reviewer that held something back from one that had nothing to say.
+	if !strings.Contains(p.Body, "1 further finding(s)") {
+		t.Errorf("the body should say what was withheld:\n%s", p.Body)
+	}
+}
+
+// A ruling that did not keep a finding stops it at every severity. Running the
+// verifying pass and then posting what it refused is paying for a check and
+// ignoring it, and doubt is a separate question from what the repository said.
+func TestBuildWithholdsARefusedFindingAtEverySeverity(t *testing.T) {
+	rep := &findings.Report{
+		Findings: []findings.Finding{
+			{File: "a.go", Line: 3, Rule: "agent-comment", Substrate: "redline/review",
+				Severity: findings.SeverityError, Source: findings.SourceLLM,
+				Confidence: findings.ConfidenceHigh, Message: "this drops the second write",
+				Ruling: findings.VerifiedWithdrawn},
+			{File: "a.go", Line: 4, Rule: "agent-comment", Substrate: "redline/review",
+				Severity: findings.SeverityError, Source: findings.SourceLLM,
+				Confidence: findings.ConfidenceHigh, Message: "this leaks a file handle",
+				Ruling: findings.VerifiedKept},
 		},
 	}
 	rep.Finalize()
@@ -526,18 +571,40 @@ func TestBuildWithholdsLowConfidenceReviewerFindings(t *testing.T) {
 	p := Build(rep, prTarget(), "", nil)
 
 	if len(p.Comments) != 1 {
-		t.Fatalf("only the confident finding posts: %+v", p.Comments)
+		t.Fatalf("only the kept finding posts: %+v", p.Comments)
 	}
 	if !strings.Contains(p.Comments[0].Body, "leaks a file handle") {
 		t.Fatalf("the wrong finding survived: %q", p.Comments[0].Body)
 	}
-	if strings.Contains(p.Body, "might race") {
-		t.Fatal("the withheld finding must not fall through into the body either")
+	if strings.Contains(p.Body, "drops the second write") {
+		t.Error("a withdrawn finding must not fall through into the body either")
 	}
-	// Counted, not hidden. A reader who is not told it exists cannot tell a
-	// reviewer that held something back from one that had nothing to say.
-	if !strings.Contains(p.Body, "1 further finding(s)") {
-		t.Fatalf("the body should say what was withheld:\n%s", p.Body)
+}
+
+// A finding whose author said nothing would settle it is speculation by its
+// own account, and that holds at every severity too.
+func TestBuildWithholdsAnUnfalsifiableFindingAtEverySeverity(t *testing.T) {
+	rep := &findings.Report{
+		Findings: []findings.Finding{
+			{File: "a.go", Line: 3, Rule: "agent-comment", Substrate: "redline/review",
+				Severity: findings.SeverityError, Source: findings.SourceLLM,
+				Confidence: findings.ConfidenceHigh, Message: "this feels wrong somehow",
+				Question: findings.Question{Kind: findings.QuestionNone}},
+			{File: "a.go", Line: 4, Rule: "agent-comment", Substrate: "redline/review",
+				Severity: findings.SeverityError, Source: findings.SourceLLM,
+				Confidence: findings.ConfidenceHigh, Message: "this leaks a file handle",
+				Question: findings.Question{Kind: findings.QuestionDiff}},
+		},
+	}
+	rep.Finalize()
+
+	p := Build(rep, prTarget(), "", nil)
+
+	if len(p.Comments) != 1 {
+		t.Fatalf("only the falsifiable finding posts: %+v", p.Comments)
+	}
+	if !strings.Contains(p.Comments[0].Body, "leaks a file handle") {
+		t.Fatalf("the wrong finding survived: %q", p.Comments[0].Body)
 	}
 }
 
