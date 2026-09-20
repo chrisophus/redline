@@ -33,6 +33,17 @@ Releases whose tag carries only a subject line are listed as that subject.
   gates below could not be told apart.
 
 ### Changed
+- **`--effort` defaults to `medium` rather than to whatever the endpoint
+  picks.** An unset effort meant the API's own default, which is not ours to
+  choose and can move under us: the same review on the same model would then
+  cost and find different things across two SDK versions, and the ledger would
+  record the change as noise. Medium is what the cost target was measured at.
+- **The `--max-cost` tripwire defaults to $3.00, from $2.00.** It is a
+  tripwire and not a governor, so it belongs above what a review of an
+  ordinary change costs rather than near it. At $2.00 an ordinary pull request
+  on this repository tripped it, and a tripwire that fires on work the tool is
+  meant to do teaches whoever hits it to pass `--max-cost` without reading the
+  number, which is the one habit that makes it useless on the day it matters.
 - **`--look` is on by default, and `--no-look` turns it off.** A reviewer that
   pulls the context it needs beats one working from a guess made in advance
   about what it would want, and a claim it can check while it writes is one

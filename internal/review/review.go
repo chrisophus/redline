@@ -38,6 +38,15 @@ import (
 // per-run cost is logged either way so the trade is measurable.
 const DefaultModel = "claude-sonnet-5"
 
+// DefaultEffort is how hard the review thinks when nothing says otherwise.
+//
+// Named here rather than left to the endpoint. An unset effort means the API's
+// own default, which is not ours to choose and can move under us: the same
+// review on the same model would then cost and find different things across
+// two SDK versions, and the ledger would record the change as noise. Medium is
+// what the cost target was measured at.
+const DefaultEffort = "medium"
+
 // DefaultMaxTokens bounds the response. Generous rather than tight, because
 // hitting the cap truncates a review mid-finding and the truncated response
 // is discarded: the whole call is paid for and yields nothing.
@@ -57,7 +66,12 @@ const DefaultMaxTokens int64 = 64000
 // DefaultMaxCostUSD is a tripwire, not a governor. It stops a request whose
 // estimated cost is absurd, which in practice means a change far larger than
 // this tool is meant for.
-const DefaultMaxCostUSD = 2.00
+//
+// It sits above what a review of an ordinary change costs rather than near
+// it. A tripwire that fires on work the tool is meant to do teaches whoever
+// hits it to pass --max-cost without reading the number, which is the one
+// habit that makes the tripwire useless on the day it matters.
+const DefaultMaxCostUSD = 3.00
 
 // Modes. One shot sends the context it decided on; explore sends a catalogue
 // and lets the reviewer ask.
@@ -356,6 +370,9 @@ func (o Options) withDefaults() Options {
 		if o.API == APIOpenAI {
 			o.Model = DefaultOpenAIModel
 		}
+	}
+	if o.Effort == "" {
+		o.Effort = DefaultEffort
 	}
 	if o.Ceiling <= 0 {
 		o.Ceiling = envelope.DefaultCeiling

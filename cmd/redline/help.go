@@ -153,7 +153,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.baseURL, "base-url", "", "endpoint to send the call to, for a proxy")
 	fs.StringVar(&o.apiUser, "api-user", "", "with --api openai: caller name for a proxy that wants one beside the key")
 	fs.StringVar(&o.model, "model", "", "model to review and check the findings with")
-	fs.StringVar(&o.effort, "effort", "", "low|medium|high|xhigh|max, for the review and the checking")
+	fs.StringVar(&o.effort, "effort", "", "low|medium|high|xhigh|max, for the review and the checking (default medium)")
 	fs.StringVar(&o.scoutModel, "scout-model", "", "model to check the findings with, when it should differ from --model")
 	fs.StringVar(&o.scoutEffort, "scout-effort", "", "effort for the checking, when it should differ from --effort")
 	fs.StringVar(&o.mode, "mode", "", "oneshot or explore")
@@ -298,8 +298,10 @@ model:
   --model NAME      model to review with, and to check the findings with
                     (default claude-sonnet-5, or gpt-5 with --api openai)
   --effort LEVEL    low|medium|high|xhigh|max, for the review and the checking
-                    alike (default: the model's for the review, low for the
-                    checking)
+                    alike (default: medium for the review, low for the
+                    checking). Named rather than left to the endpoint, so the
+                    same review on the same model costs and finds the same
+                    across two SDK versions.
   --scout-model NAME
                     model to check the findings with, when it should differ
                     from --model
@@ -485,7 +487,10 @@ cost and caching:
                     with the context dropped.
   --max-tokens N    cap on the response (default 64000)
   --max-cost USD    refuse to send a request estimated above this (default
-                    2.00). A tripwire, not a governor.
+                    3.00). A tripwire, not a governor: it sits above what an
+                    ordinary change costs rather than near it, because a
+                    tripwire that fires on ordinary work teaches whoever hits
+                    it to pass --max-cost without reading the number.
 
 output:
   --dry-run         print the assembled prompt and its estimated cost, and
