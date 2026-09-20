@@ -11,6 +11,44 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-20
+
+### Added
+- **`--cohort-context` scopes resolved context to each cohort's own files.**
+  A split run used to send the whole change's context on every call,
+  including the describing call, which never judges anything and read none
+  of it. With this the describing call gets no context at all, and each
+  cohort call gets only what belongs to files outside every *other*
+  cohort's list, written fresh into its own tail rather than the shared
+  prefix. Excluding another cohort's files rather than keeping only this
+  cohort's own is deliberate: an expansion's file is where the resolved
+  code lives, not the file the change is about — a caller's file is the
+  calling function's own path — so keeping only this cohort's own files
+  would drop most caller and type context outright. The room each call
+  fits into is the fan-out's own bound divided into what is left of the
+  ceiling, since `fanOut` runs every cohort at once against one budget.
+  The tradeoff is real: this context no longer rides the cached prefix, so
+  it is paid for on every cohort's call rather than read back from what an
+  earlier one wrote (#81).
+
+### Changed
+- **`--look`'s `grep` and `read_lines` skip anything `.cursorindexingignore`
+  excludes at the repository root.** `.gitignore` is not read for this: it
+  says what should not be committed, not what an automated reader should
+  skip, and generated code or vendored deps are routinely both gitignored
+  and something a claim needs to check against. A `grep` that turns up no
+  matches now says when a path in scope was excluded rather than reading
+  as proof the code is not there, the same distinction `read_lines`
+  already made by naming the excluded path outright (#81).
+
+### Fixed
+- **`Result.Looked` counts a `--look` pass's `grep`/`read_lines` calls, the
+  way `Fetched` already counts `get_context`'s.** Until now the only record
+  of what a `--look` pass actually searched or read was the model's own
+  narration of it; the count reaches the summary line (`looked=N`) and the
+  postmortem trace, and the per-call debug line, which special-cased
+  `get_context`, now logs `grep` and `read_lines` input too (#81).
+
 ## [0.12.0] - 2026-09-19
 
 ### Added
