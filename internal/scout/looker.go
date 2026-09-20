@@ -80,7 +80,13 @@ func (l *Looker) ListDocs(filter string) (string, error) {
 }
 
 // maxLookDocs is the cap on one list_docs call, the scout's own.
-const maxLookDocs = 80
+//
+// Five hundred, because the listing is one line each and the break-even
+// against forcing a second call is around five hundred and fifty. A
+// repository with more than this gets the directory map and the path filter,
+// which is the case those are for; a repository with two hundred documents
+// should simply be shown them.
+const maxLookDocs = 500
 
 // SymbolContext asks gorefactor for one Go symbol's definition, its callers
 // resolved through the type checker, its signature types and its tests.
@@ -130,12 +136,16 @@ func capLookOutput(s string, max int, advice string) string {
 	return cut + fmt.Sprintf("\n\n(cut at %d bytes of %d: %s)\n", len(cut), len(s), advice)
 }
 
-// The byte bounds on the two lookups that return a subprocess's output. Set
-// near what 200 lines of read_lines or 60 grep matches come to, so no one
-// lookup can take the conversation on its own.
+// The byte bounds on the two lookups that return a subprocess's output.
+//
+// These exist so no single lookup can take the conversation, not to keep the
+// answer small: sixty-four kilobytes is about sixteen thousand tokens, which
+// is two cents on a pass and a sixteenth of one review's ceiling. Every
+// caller of a widely-used symbol fits, and the pass does not spend a turn
+// discovering it was cut.
 const (
-	maxSymbolContextBytes = 16384
-	maxLineHistoryBytes   = 16384
+	maxSymbolContextBytes = 65536
+	maxLineHistoryBytes   = 65536
 )
 
 // LineHistory is git's account of a span of lines, copied as git printed it.

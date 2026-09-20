@@ -73,14 +73,18 @@ func isLookCall(name string) bool {
 	return slices.Contains(LookCalls, name)
 }
 
-// MaxReadLines is the cap on one read_lines call, so a pass that asks for a
-// file gets a declaration instead of the whole thing.
+// MaxReadLines is the cap on one read_lines call.
+//
+// Large enough that asking for a declaration and getting it is the normal
+// case. A cap that cuts a long function in half buys nothing: the pass asks
+// again for the rest, and that turn re-reads the whole cached prefix, which
+// costs more than the lines would have.
 //
 // Exported because the number is in the tool's description, which is a promise
 // to the model, and the Looker that enforces it lives in another package. A
 // test there pins the two together: a cap that moved without the description
 // would leave the model told one thing and given another.
-const MaxReadLines = 200
+const MaxReadLines = 600
 
 // callTool is one tool's definition as it goes on the wire.
 type callTool struct {

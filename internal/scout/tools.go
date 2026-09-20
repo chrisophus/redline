@@ -220,9 +220,18 @@ func num(desc string) map[string]any { return map[string]any{"type": "integer", 
 // tool description and applied at a call site, and a limit a model is told
 // about in one place and held to in another is the drift this file already
 // fixed once for record.
+//
+// Set against the window rather than against a worry about size. The model
+// reads a million tokens and a review's ceiling is a quarter of that, so the
+// question a cap answers is not "is this a lot of text" but "is this cheaper
+// than the turn it costs to ask again". It is not close: a turn re-reads the
+// whole cached prefix, which on a large review is around five cents, while
+// the extra text is written to cache once and read back at a tenth of the
+// input rate. Six hundred lines of a file come to about a cent and a half.
+// A cap tight enough to force a second call is the expensive choice.
 const (
-	maxReadLines   = 200
-	maxGrepMatches = 60
+	maxReadLines   = 600
+	maxGrepMatches = 200
 )
 
 func (ts *toolset) readLines() tool {

@@ -25,6 +25,17 @@ Releases whose tag carries only a subject line are listed as that subject.
   than a second copy of the conversation.
 
 ### Changed
+- **Every lookup cap is raised: `read_lines` 200 to 600 lines, `grep` 60 to 200
+  matches, `list_docs` 80 to 500 documents, `symbol_context` and
+  `line_history` 16 KiB to 64 KiB.** The caps were set against a worry about
+  size rather than against the window. The model reads a million tokens, a
+  review's ceiling is a quarter of that, and the question a cap answers is not
+  whether the text is a lot but whether it is cheaper than the turn it costs
+  to ask again. It is not close: on a large review one extra turn re-reads the
+  whole cached prefix for about five cents, while the extra text is written to
+  cache once and read back at a tenth of the input rate, so six hundred lines
+  of a file cost about a cent and a half and five hundred document lines about
+  two. A cap tight enough to force a second call was the expensive choice.
 - **`list_docs` takes a `path` filter, and a cut listing says where the rest
   are.** Every lookup that cuts gives advice the caller can act on, and this
   one said "grep for a word a document would use" - which cannot be taken,
