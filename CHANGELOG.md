@@ -33,6 +33,17 @@ Releases whose tag carries only a subject line are listed as that subject.
   gates below could not be told apart.
 
 ### Changed
+- **`--look` is on by default, and `--no-look` turns it off.** A reviewer that
+  pulls the context it needs beats one working from a guess made in advance
+  about what it would want, and a claim it can check while it writes is one
+  that does not have to survive a pass whose main output is withholding. It
+  costs turns: three runs on one pull request put the inline shape at 4.7x a
+  plain review, which is price rather than doubt about the shape, and
+  `--max-cost` is the control for price. `looked=N` on each run says what the
+  lookups bought. `--no-look` writes the review from the material alone, for a
+  run that has to cost what a plain one costs and for measuring against the
+  shape without them. `--look` still parses and wins over `--no-look`, the
+  precedence `--cache` uses.
 - **A reviewer finding that says it is unsure posts, at warning and error.** A
   defect held back is lost and a wrong one costs the author a minute reading
   it, and at those two severities the second price is the smaller one. So a

@@ -163,7 +163,8 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.note, "note", "", "what to look at or what worries you, added to every judging call")
 	fs.StringVar(&o.noteFile, "note-file", "", "read the note from a file")
 	fs.BoolVar(&o.deferContext, "defer-context", false, "list the resolved context beside each file's diff and let the reviewer read it with get_context")
-	fs.BoolVar(&o.look, "look", false, "let the judging pass look things up in the tree while it writes")
+	fs.BoolVar(&o.look, "look", false, "let the judging pass look things up in the tree while it writes (on by default)")
+	fs.BoolVar(&o.noLook, "no-look", false, "the judging pass writes from the material it was sent, looking nothing up")
 	fs.BoolVar(&o.verify, "verify", false, "check each finding against the repository before posting it")
 	fs.BoolVar(&o.noVerify, "no-verify", false, "skip the checking pass")
 	fs.BoolVar(&o.cache, "cache", false, "mark the shared prefix for the prompt cache (on by default)")
@@ -318,10 +319,11 @@ what to look at:
   --look            let the judging pass look things up in the tree while it
                     writes, so a claim about code outside the diff is one it
                     can check rather than only name as a question for the
-                    lookup pass. This is the direction: a reviewer that pulls
-                    the context it needs beats one handed a guess about what
-                    it would want. Five lookups, and a run offers the ones
-                    this checkout can answer:
+                    lookup pass. Already the default; kept so scripts that
+                    pass it still run. A reviewer that pulls the context it
+                    needs beats one handed a guess about what it would want,
+                    and that is worth its turns. Five lookups, and a run
+                    offers the ones this checkout can answer:
                       grep            search the repository
                       read_lines      read a span of one file
                       list_docs       what the team wrote down, so a
@@ -336,10 +338,11 @@ what to look at:
                       line_history    why a span of lines is there, from git,
                                       for a change that removes or rewrites
                                       code
-                    It costs turns, and three runs on one pull request put
-                    the inline shape at 4.7x a plain review's cost, so watch
-                    Result.Looked (printed as looked=N) to see what the
-                    lookups bought. A path climbing out of the tree is
+                    It costs turns: three runs on one pull request put the
+                    inline shape at 4.7x a plain review's cost, and --max-cost
+                    is what holds that down. Result.Looked (printed as
+                    looked=N) is what each run bought for it. A path climbing
+                    out of the tree is
                     refused and a search is capped, the same hardening the
                     scout's own lookups have. A path .cursorindexingignore
                     names at the repository root is excluded from the search,
@@ -348,6 +351,10 @@ what to look at:
                     automated reader. .gitignore is not read for this -
                     generated code and vendored deps are routinely both
                     gitignored and something a claim needs to check against.
+  --no-look         the judging pass writes from the material it was sent,
+                    looking nothing up. For a review that has to cost what a
+                    plain one costs, and for measuring against the shape
+                    without the lookups.
   --defer-context   leave the context the providers resolved out of the
                     prompt. Each file's diff is followed by an index
                     of the context that belongs to it, callers, types, tests

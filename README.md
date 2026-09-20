@@ -83,7 +83,7 @@ release changed.
 | The split: `--cohorts N` judges each group of files in its own call | shipped |
 | `--note`, so whoever asks for the review can say what worries them | shipped |
 | `--defer-context`, the reviewer reading resolved context with `get_context` | shipped, off by default |
-| `--look`, the judging pass looking things up in the tree while it writes | shipped, off by default |
+| `--look`, the judging pass looking things up in the tree while it writes | shipped, on by default |
 | A `diff` question's claim checked against what the prompt carried | shipped |
 | `redline postmortem`: what the review proposed, what the lookups found, what was ruled | shipped |
 | Migration adds a NOT NULL column with no default | shipped |
@@ -232,8 +232,8 @@ overview and one line per file. The second is asked for findings alone, over
 the same prefix, which prompt caching serves at a fraction of the input rate.
 `--no-synopsis` collapses the two into one call.
 
-Everything else is a flag on that shape, and every one of them is off unless
-asked for:
+Everything else is a flag on that shape. `--look` is on and the rest are off
+unless asked for:
 
 | Flag | What it changes |
 |---|---|
@@ -244,15 +244,15 @@ asked for:
 | `--samples N` | take N independent reviews and union them. They do not overlap, so recall rises with N and so does the bill |
 | `--note` / `--note-file` | what whoever asked for the review wants looked at. It reaches the judging calls only, and the prompt says it is not evidence |
 | `--verify` | the scout answers each finding's question, then a ruling rules on every finding with the answers in hand. Only findings it keeps are posted. Off by default |
-| `--look` | the judging pass gets `grep`, `read_lines`, `list_docs`, `symbol_context` and `line_history`, so a claim about code outside the diff is one it can check rather than name |
+| `--look` | the judging pass gets `grep`, `read_lines`, `list_docs`, `symbol_context` and `line_history`, so a claim about code outside the diff is one it can check rather than name. On by default; `--no-look` writes from the material alone |
 | `--defer-context` | the resolved context leaves the prompt and any pass reads an entry with `get_context` |
 | `--model`, `--effort` | what the calls are made with. `--scout-model` and `--scout-effort` set the checking pass apart |
 | `--cohorts`, `--samples`, `--verify` | each multiplies calls, so each multiplies the bill; `--max-cost` refuses a request estimated above it |
 
 `--verify` and `--look` are the only two that read anything beyond the session:
 the first sends the scout out between the review and the ruling, the second
-lets the judging pass search while it writes. Everything else works from what
-`run` already wrote.
+lets the judging pass look things up while it writes. Everything else works
+from what `run` already wrote.
 
 On a pull request, the review is shown what that pull request already heard
 from Redline and what people said back: the comments it posted before, the
@@ -361,8 +361,8 @@ about code it has never seen, and the finding that comes back dismissed in
 seconds is the accurate observation about code the team wrote that way on
 purpose.
 
-`--look` is the answer being built on: it lets the judging pass look things up
-in the tree, so the reviewer settles the question while it writes instead of
+`--look` is the answer, and it is on by default: the judging pass looks things
+up in the tree, so the reviewer settles the question while it writes instead of
 handing it to a pass afterwards. Five lookups, and a run offers the ones the
 checkout can answer:
 
@@ -379,10 +379,13 @@ checkout can answer:
   touched them, with messages and diffs. It is the lookup for a change that
   removes or rewrites code, where the question is what the lines were for. `--defer-context` and `--mode explore` are the
 same idea applied to the material itself, the reviewer asking for the context
-it wants rather than being handed a guess. `--look` is still off by default,
-on price and not on principle: three runs on one pull request put the inline
-shape at 4.7x a plain review, which is a trace rather than a measurement, and
-`looked=N` on each run is what will settle it.
+it wants rather than being handed a guess.
+
+It costs turns. Three runs on one pull request put the inline shape at 4.7x a
+plain review, which is price and not doubt about the shape, and `--max-cost` is
+the control for price. `looked=N` on each run says what the lookups bought.
+`--no-look` writes the review from the material alone, for a run that has to
+cost what a plain one costs.
 
 The checking pass below is the older answer, and it is off by default now. It
 withholds rather than checks in place, which is the wrong direction for a

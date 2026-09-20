@@ -263,14 +263,17 @@ func cmdReview(o opts) error {
 	if ropts.Verify {
 		ropts.Answer = scoutAnswerer(res, ropts, o.scoutSettings(), &tally)
 	}
-	// Off by default, and the default is the open question here rather than
-	// the feature. Letting the judging pass pull what it needs is the
-	// direction the rest of this tool is moving in, and price is the only
-	// thing holding the default back: three runs on one pull request put the
-	// inline shape at 4.7x a plain review (see Result.Looked). That is one
-	// PR's worth of data, and the counters are there so the decision comes
-	// off a ledger rather than three traces read as prose. --look turns it on.
-	if o.look {
+	// On unless it is turned off. A reviewer that pulls what it needs beats
+	// one working from a guess made in advance about what it would want, and
+	// a claim it can check while it writes is one that does not have to
+	// survive a pass whose main output is withholding.
+	//
+	// It costs turns: three runs on one pull request put the inline shape at
+	// 4.7x a plain review (see Result.Looked, printed as looked=N). That is
+	// price rather than doubt about the shape, and --max-cost is the control
+	// for price. --no-look is there for a review that has to cost what a
+	// plain one costs, and for measuring against the shape without them.
+	if !o.noLook || o.look {
 		ropts.Look = lookerFor(res)
 	}
 	if !o.dryRun {
