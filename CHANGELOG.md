@@ -12,6 +12,33 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Fixed
+- **Every lookup answers within one byte bound, and a matched line is
+  clipped.** A cap counted in matches, lines or documents does not bound
+  bytes. Searching this repository for `BaseSHA` returned 76 matches, well
+  under the cap of 200, in **220,095 bytes — 94,000 tokens** from a lookup
+  priced at six thousand, because one matched line was 19,391 characters: a
+  tree holds generated JSON and embedded templates beside its source. All five
+  lookups now answer within 32 KiB, a matched line is clipped at 400
+  characters and says so, and the same search comes back at 21,580 bytes.
+  Found by the lookup trace on its first real run.
+- **`emptyAnswer` counts `line_history`'s "no history before this change".**
+  That message is the lookup saying it found nothing, and it was recorded as a
+  full answer, overstating what the lookups turned up. Found by `redline
+  review` on PR #84.
+- **A deduplicated commit block keeps its subject line.** The budget walk drops
+  an expansion that does not fit and carries on, and deduplication makes the
+  expansion holding the full message the largest while every other is tiny, so
+  under a tight ceiling the walk can drop the message and keep the pointers -
+  leaving a reference to something the model was never shown. Ranked order
+  means the full copy is tried first, not that it fits. Each block now carries
+  its subject, so a dropped bearer costs the body rather than the commit.
+  Found by `redline review` on PR #84.
+- **`line_history` walks 20 commits, not 8.** Every commit walked that belongs
+  to the change is one that does not reach the answer, so a branch with many
+  commits over one span exhausted a shallow walk and reported no prior history
+  when there was some - the one wrong answer this lookup can give, since the
+  reader takes it as "nothing was here before" and that is the argument for
+  deleting the line. Found by `redline review` on PR #84.
 - **`line_history` no longer answers with the change under review.**
   `resolver.history` passed no revision, so `git log -L` walked from HEAD, and
   in a pull request worktree HEAD is the change being reviewed: asking why a

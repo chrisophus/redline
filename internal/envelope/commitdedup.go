@@ -22,11 +22,17 @@ import (
 // the source at the lines they name. That exemption is right and it left the
 // one role with tenfold internal duplication with no deduplication at all.
 //
-// What is kept per expansion is the part that differs: the commit header and
-// the hunk git printed for that range. Only the message body is replaced, by
-// a line saying where to read it. Order is the ranked order, so the copy that
-// survives in full is the one in the highest-ranked expansion, which is the
-// one most likely to be kept when the budget binds.
+// What is kept per expansion is the part that differs: the commit header, the
+// subject line, and the hunk git printed for that range. Only the body below
+// the subject is replaced, by a line saying where the rest is.
+//
+// The subject stays in every copy because the reference can dangle. The budget
+// walk drops an expansion that does not fit and carries on, and deduplication
+// makes the expansion holding the full message the largest one while every
+// other is tiny, so under a tight ceiling the walk drops the message and keeps
+// the pointers. Ranked order means the full copy is tried first, not that it
+// fits. With the subject in each block a dropped bearer costs the reader the
+// body and not the commit: "add the guard" still says why the line is there.
 func dedupeCommits(ranked []Expansion) {
 	// where records the expansion that carried each commit's message in full.
 	where := map[string]string{}
@@ -81,7 +87,10 @@ func dedupeCommitsIn(content, here string, where map[string]string) string {
 		body := lines[start:i]
 		i-- // the loop's own i++ steps onto the first line past the message
 		if prior, seen := where[sha]; seen {
-			fmt.Fprintf(&b, "    (message above, under %s)\n", prior)
+			if subject := firstNonBlank(body); subject != "" {
+				b.WriteString(subject + "\n")
+			}
+			fmt.Fprintf(&b, "    (rest of this message under %s)\n", prior)
 			continue
 		}
 		where[sha] = here
@@ -115,4 +124,15 @@ func commitSHA(line string) (string, bool) {
 // it, and anything flush left has ended it.
 func isMessageLine(line string) bool {
 	return strings.TrimSpace(line) == "" || strings.HasPrefix(line, "    ")
+}
+
+// firstNonBlank is a commit message's subject: the first line with anything on
+// it, indented as git printed it.
+func firstNonBlank(lines []string) string {
+	for _, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			return l
+		}
+	}
+	return ""
 }

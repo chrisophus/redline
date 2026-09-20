@@ -153,9 +153,19 @@ func capLookOutput(s string, max int, advice string) string {
 // read_lines and four times grep, which is a lookup that can take the
 // conversation on its own.
 const (
-	maxSymbolContextBytes = 32768
-	maxLineHistoryBytes   = 32768
+	maxSymbolContextBytes = maxLookupBytes
+	maxLineHistoryBytes   = maxLookupBytes
 )
+
+// maxLookupBytes is the byte bound every lookup answers within.
+//
+// One number for all five, because the caps each lookup counts in its own unit
+// do not bound bytes and were never comparable without one. A grep of this
+// repository came back at 220,095 bytes inside a cap of 200 matches; 600 lines
+// of a file with long lines does the same. At the measured 2.33 characters per
+// token this is about 14,000 tokens, which is where 600 lines of ordinary
+// source sits.
+const maxLookupBytes = 32768
 
 // LineHistory is git's account of a span of lines, copied as git printed it.
 //
@@ -197,7 +207,15 @@ func (l *Looker) LineHistory(path string, start, end int) (string, error) {
 // historyWalk is how many commits deep LineHistory asks. Larger than what
 // comes back, because the change's own commits are dropped from the answer and
 // a pull request can carry several touching one span.
-const historyWalk = 8
+//
+// Twenty rather than a number near the cap. Every commit walked that belongs
+// to the change is one that does not reach the answer, so a branch with many
+// commits over one span exhausts a shallow walk and reports no prior history
+// when there is some, which is the one wrong answer this lookup can give: the
+// reader takes it as "nothing was here before" and that is the argument for
+// deleting the line. Walking further costs a git invocation, not tokens, and
+// the byte cap bounds what comes back either way.
+const historyWalk = 20
 
 // changeCommits is every commit between the base and HEAD: the change under
 // review. Empty when no base is known, which leaves the history unfiltered
@@ -285,7 +303,11 @@ func (l *Looker) Grep(pattern, glob string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("bad pattern: %w", err)
 	}
-	return grepTree(l.root, re, glob, maxGrepMatches, l.ignore)
+	out, err := grepTree(l.root, re, glob, maxGrepMatches, l.ignore)
+	if err != nil {
+		return "", err
+	}
+	return capLookOutput(out, maxLookupBytes, "narrow the pattern or the glob"), nil
 }
 
 // ReadLines returns a span of one file, with line numbers.
@@ -313,5 +335,5 @@ func (l *Looker) ReadLines(path string, start, end int) (string, error) {
 	for i := from; i <= to; i++ {
 		fmt.Fprintf(&b, "%d\t%s\n", i, lines[i-1])
 	}
-	return b.String(), nil
+	return capLookOutput(b.String(), maxLookupBytes, "ask for a narrower line range"), nil
 }

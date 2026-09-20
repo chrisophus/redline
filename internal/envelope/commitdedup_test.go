@@ -39,7 +39,7 @@ func TestACommitMessageIsCarriedOnceForTheWholeChange(t *testing.T) {
 	if strings.Contains(ranked[1].Content, essay) {
 		t.Error("the second must not repeat it")
 	}
-	if !strings.Contains(ranked[1].Content, "(message above, under a.go:14-45)") {
+	if !strings.Contains(ranked[1].Content, "(rest of this message under a.go:14-45)") {
 		t.Errorf("the second must say where to read it:\n%s", ranked[1].Content)
 	}
 	// What differs per range is kept: the header and git's hunk for it.

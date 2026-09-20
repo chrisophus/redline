@@ -234,6 +234,26 @@ const (
 	maxGrepMatches = 200
 )
 
+// maxMatchLine bounds one matched line.
+//
+// A cap counted in matches does not bound bytes. Searching this repository for
+// BaseSHA returned 76 matches, under the cap of 200, in 220,095 bytes: one
+// line was 19,391 characters, because a tree holds generated JSON and embedded
+// templates alongside its source. That is 94,000 tokens from a lookup priced
+// at six thousand. What a reviewer reads off a match is the file, the line and
+// enough of the text to recognise it, and none of that needs four hundred
+// characters.
+const maxMatchLine = 400
+
+// clipLine cuts a matched line and says it was cut, so a line that continues
+// past the bound is not read as one that ends there.
+func clipLine(s string) string {
+	if len(s) <= maxMatchLine {
+		return s
+	}
+	return s[:maxMatchLine] + "… (line continues)"
+}
+
 func (ts *toolset) readLines() tool {
 	return tool{
 		name: "read_lines",
@@ -662,7 +682,7 @@ func grepTree(root string, re *regexp.Regexp, glob string, max int, ignore []str
 			}
 			if re.MatchString(line) {
 				matches++
-				fmt.Fprintf(&b, "%s:%d: %s\n", rel, i+1, strings.TrimSpace(line))
+				fmt.Fprintf(&b, "%s:%d: %s\n", rel, i+1, clipLine(strings.TrimSpace(line)))
 			}
 		}
 	}

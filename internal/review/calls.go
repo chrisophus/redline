@@ -623,7 +623,12 @@ func emptyAnswer(s string) bool {
 	case strings.HasPrefix(s, "no match"),
 		strings.HasPrefix(s, "no documents"),
 		strings.HasPrefix(s, "gorefactor knows no symbol"),
-		strings.HasPrefix(s, "no recorded history"):
+		strings.HasPrefix(s, "no recorded history"),
+		// A span the change itself introduced. LineHistory says so in its own
+		// words rather than returning nothing, and that is still an answer
+		// that found nothing: counting it as a full one overstates what the
+		// lookups turned up.
+		strings.HasPrefix(s, "these lines have no history before this change"):
 		return true
 	}
 	return strings.TrimSpace(s) == ""

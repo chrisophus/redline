@@ -125,6 +125,35 @@ func TestTheLookupCapsReturnComparableAmounts(t *testing.T) {
 		t.Errorf("%s returns %d tokens and %s returns %d, a spread of %.1fx (max %.1f). Sizes: %v",
 			hi, sizes[hi], lo, sizes[lo], got, maxSpread, sizes)
 	}
+	// And the bound that the sizes above cannot check. Those are priced off a
+	// representative line, and the failure this catches is content that is not
+	// representative: a search of this repository for BaseSHA came back at
+	// 220,095 bytes inside a cap of 200 matches, because one matched line was
+	// 19,391 characters. A cap counted in matches, lines or documents does not
+	// bound bytes, so every lookup answers within one byte bound as well.
+	if maxLookupBytes <= 0 {
+		t.Fatal("every lookup needs a byte bound; a unit count does not give one")
+	}
+	if tok := envelope.EstimateTokensLen(maxLookupBytes); tok > sizes[lo]*int(maxSpread) {
+		t.Errorf("the byte bound is %d tokens, more than %.0fx the smallest lookup (%s at %d)",
+			tok, maxSpread, lo, sizes[lo])
+	}
+}
+
+// A single matched line is clipped. The byte bound alone would let one line
+// take the whole answer, which is a search that returns one result.
+func TestALongMatchIsClipped(t *testing.T) {
+	long := strings.Repeat("x", maxMatchLine*3)
+	got := clipLine(long)
+	if len(got) > maxMatchLine+40 {
+		t.Errorf("a %d character line came back as %d", len(long), len(got))
+	}
+	if !strings.Contains(got, "line continues") {
+		t.Errorf("a clipped line must say it was clipped: %q", got[len(got)-40:])
+	}
+	if short := clipLine("if err != nil {"); short != "if err != nil {" {
+		t.Errorf("an ordinary line must pass through: %q", short)
+	}
 }
 
 // In a pull request worktree HEAD is the change under review, so a history

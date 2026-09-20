@@ -391,3 +391,32 @@ func TestThePassRecordsWhatItLookedUpAndWhatWasRefused(t *testing.T) {
 		t.Errorf("refusal = %+v, want the reason counted twice", r)
 	}
 }
+
+// Every message a lookup uses to say it found nothing counts as empty. The
+// trace's whole value is telling ground that was checked and came back bare
+// from ground that came back with something, and a lookup that says so in its
+// own words rather than returning "" must not be counted as a full answer.
+func TestEveryNothingFoundMessageCountsAsEmpty(t *testing.T) {
+	for _, s := range []string{
+		"no match in this repository, which is the whole of what this searches",
+		"no documents in this repository",
+		"no documents under docs/adr/",
+		"gorefactor knows no symbol by that name",
+		"no recorded history for those lines",
+		"these lines have no history before this change; 3 commit(s) touching them are the change itself",
+		"",
+		"   \n",
+	} {
+		if !emptyAnswer(s) {
+			t.Errorf("not counted as empty: %q", s)
+		}
+	}
+	for _, s := range []string{
+		"store.go:3: func Insert() error {",
+		"commit abc123\n    add the guard\n",
+	} {
+		if emptyAnswer(s) {
+			t.Errorf("wrongly counted as empty: %q", s)
+		}
+	}
+}
