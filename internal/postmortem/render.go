@@ -84,6 +84,27 @@ func (t *Trace) header(b *strings.Builder) {
 	}
 	if t.Looked > 0 {
 		fmt.Fprintf(b, "  looked     %d lookup(s) against the tree\n", t.Looked)
+		for _, l := range t.Lookups {
+			// Empty is called out because it is the useful half. A lookup
+			// that found nothing says the ground is covered and a later pass
+			// need not go there; one that found something says where the
+			// reviewer's claim came from.
+			yield := fmt.Sprintf("%d bytes", l.Bytes)
+			if l.Empty {
+				yield = "nothing found"
+			}
+			fmt.Fprintf(b, "             %s %s → %s\n", l.Tool, l.Input, yield)
+		}
+	}
+	for _, r := range t.Refusals {
+		times := ""
+		if r.Count > 1 {
+			times = fmt.Sprintf(" ×%d", r.Count)
+		}
+		fmt.Fprintf(b, "  refused    %s%s: %s\n", r.Tool, times, r.Why)
+		if r.Input != "" {
+			fmt.Fprintf(b, "             %s\n", r.Input)
+		}
 	}
 	for _, s := range t.Stopped {
 		fmt.Fprintf(b, "  incomplete %s\n", s)

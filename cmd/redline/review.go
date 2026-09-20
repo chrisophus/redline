@@ -697,5 +697,5 @@ func lookerFor(res *run.Result) review.Looker {
 	if root == "" || !isDir(root) {
 		return nil
 	}
-	return scout.NewLooker(root)
+	return scout.NewLooker(root, res.Report.BaseSHA)
 }

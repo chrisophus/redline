@@ -220,10 +220,39 @@ func num(desc string) map[string]any { return map[string]any{"type": "integer", 
 // tool description and applied at a call site, and a limit a model is told
 // about in one place and held to in another is the drift this file already
 // fixed once for record.
+//
+// Set against the window rather than against a worry about size. The model
+// reads a million tokens and a review's ceiling is a quarter of that, so the
+// question a cap answers is not "is this a lot of text" but "is this cheaper
+// than the turn it costs to ask again". It is not close: a turn re-reads the
+// whole cached prefix, which on a large review is around five cents, while
+// the extra text is written to cache once and read back at a tenth of the
+// input rate. Six hundred lines of a file come to about a cent and a half.
+// A cap tight enough to force a second call is the expensive choice.
 const (
-	maxReadLines   = 200
-	maxGrepMatches = 60
+	maxReadLines   = 600
+	maxGrepMatches = 200
 )
+
+// maxMatchLine bounds one matched line.
+//
+// A cap counted in matches does not bound bytes. Searching this repository for
+// BaseSHA returned 76 matches, under the cap of 200, in 220,095 bytes: one
+// line was 19,391 characters, because a tree holds generated JSON and embedded
+// templates alongside its source. That is 94,000 tokens from a lookup priced
+// at six thousand. What a reviewer reads off a match is the file, the line and
+// enough of the text to recognise it, and none of that needs four hundred
+// characters.
+const maxMatchLine = 400
+
+// clipLine cuts a matched line and says it was cut, so a line that continues
+// past the bound is not read as one that ends there.
+func clipLine(s string) string {
+	if len(s) <= maxMatchLine {
+		return s
+	}
+	return s[:maxMatchLine] + "… (line continues)"
+}
 
 func (ts *toolset) readLines() tool {
 	return tool{
@@ -306,32 +335,21 @@ func (ts *toolset) listDocs() tool {
 	return tool{
 		name: "list_docs",
 		description: "List the repository's documents with their first heading: design notes, decision records, plans, READMEs. " +
-			"Use it when a change looks like it is implementing something that was written down, or when its intent is not obvious from the diff. Read what looks relevant with read_lines.",
-		schema: schema(map[string]any{}),
-		run: func(json.RawMessage) (string, error) {
-			const max = maxLookDocs
-			docs := listDocs(ts.root, max+1)
-			if len(docs) == 0 {
-				return "no documents in this repository", nil
+			"Use it when a change looks like it is implementing something that was written down, or when its intent is not obvious from the diff. " +
+			"Pass path to list one directory when the first listing says there are more. Read what looks relevant with read_lines.",
+		schema: schema(map[string]any{
+			"path": str("optional: only documents whose path contains this text, for example docs/adr/"),
+		}),
+		run: func(input json.RawMessage) (string, error) {
+			var in struct {
+				Path string `json:"path"`
 			}
-			cut := len(docs) > max
-			if cut {
-				docs = docs[:max]
-			}
-			var b strings.Builder
-			for _, d := range docs {
-				fmt.Fprintf(&b, "%s (%d lines)", d.Path, d.Lines)
-				if d.Heading != "" {
-					fmt.Fprintf(&b, ": %s", d.Heading)
+			if len(input) > 0 {
+				if err := json.Unmarshal(input, &in); err != nil {
+					return "", fmt.Errorf("bad arguments: %w", err)
 				}
-				b.WriteString("\n")
 			}
-			if cut {
-				// Said, so a design note that sorts after the cut is a gap
-				// the scout knows about rather than one it cannot.
-				fmt.Fprintf(&b, "(stopped at %d documents, sorted by path; there are more, so grep for a word a document would use)\n", max)
-			}
-			return b.String(), nil
+			return renderDocs(listDocsIn(ts.root, in.Path), maxLookDocs, in.Path), nil
 		},
 	}
 }
@@ -664,7 +682,7 @@ func grepTree(root string, re *regexp.Regexp, glob string, max int, ignore []str
 			}
 			if re.MatchString(line) {
 				matches++
-				fmt.Fprintf(&b, "%s:%d: %s\n", rel, i+1, strings.TrimSpace(line))
+				fmt.Fprintf(&b, "%s:%d: %s\n", rel, i+1, clipLine(strings.TrimSpace(line)))
 			}
 		}
 	}

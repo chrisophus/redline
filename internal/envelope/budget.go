@@ -281,6 +281,11 @@ func FitFilter(e *Envelope, ceiling int, seen Seen, filter Filter) Budgeted {
 		return a.Symbol < b.Symbol
 	})
 
+	// Before the walk, because it changes what an expansion costs and the
+	// walk is what spends the ceiling. In ranked order, so the full copy of a
+	// commit message lands in the expansion most likely to survive.
+	dedupeCommits(ranked)
+
 	// Kept lines join seen as the walk goes, so the same code is paid for
 	// once however many providers resolved it.
 	//

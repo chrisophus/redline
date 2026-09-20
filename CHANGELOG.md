@@ -11,6 +11,112 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Fixed
+- **Every lookup answers within one byte bound, and a matched line is
+  clipped.** A cap counted in matches, lines or documents does not bound
+  bytes. Searching this repository for `BaseSHA` returned 76 matches, well
+  under the cap of 200, in **220,095 bytes — 94,000 tokens** from a lookup
+  priced at six thousand, because one matched line was 19,391 characters: a
+  tree holds generated JSON and embedded templates beside its source. All five
+  lookups now answer within 32 KiB, a matched line is clipped at 400
+  characters and says so, and the same search comes back at 21,580 bytes.
+  Found by the lookup trace on its first real run.
+- **`emptyAnswer` counts `line_history`'s "no history before this change".**
+  That message is the lookup saying it found nothing, and it was recorded as a
+  full answer, overstating what the lookups turned up. Found by `redline
+  review` on PR #84.
+- **A deduplicated commit block keeps its subject line.** The budget walk drops
+  an expansion that does not fit and carries on, and deduplication makes the
+  expansion holding the full message the largest while every other is tiny, so
+  under a tight ceiling the walk can drop the message and keep the pointers -
+  leaving a reference to something the model was never shown. Ranked order
+  means the full copy is tried first, not that it fits. Each block now carries
+  its subject, so a dropped bearer costs the body rather than the commit.
+  Found by `redline review` on PR #84.
+- **`line_history` walks 20 commits, not 8.** Every commit walked that belongs
+  to the change is one that does not reach the answer, so a branch with many
+  commits over one span exhausted a shallow walk and reported no prior history
+  when there was some - the one wrong answer this lookup can give, since the
+  reader takes it as "nothing was here before" and that is the argument for
+  deleting the line. Found by `redline review` on PR #84.
+- **`line_history` no longer answers with the change under review.**
+  `resolver.history` passed no revision, so `git log -L` walked from HEAD, and
+  in a pull request worktree HEAD is the change being reviewed: asking why a
+  span exists returned the diff the reviewer was already reading. It is the
+  mistake gorefactor's own history walk made and corrected, measured there at
+  fifteen of twenty-one expansions carrying exactly one commit, the commit
+  being reviewed; `--look` reintroduced it by reusing the scout's helper. The
+  walk still starts at HEAD, because `git log -L` tracks a range backwards and
+  adjusts the coordinates as it goes, so head-tree line numbers are the one
+  pairing that is self-consistent - handing base the head coordinates is the
+  *second* error gorefactor then had to fix. The commits between the base and
+  HEAD are dropped from the answer instead, and a span the change itself
+  introduced says so rather than coming back empty.
+- **A commit's message is carried once for the whole change, not once per line
+  range.** `git log -L` is asked per range, so a commit that touched many
+  ranges shipped its entire message once for each. On this repository's own
+  PR #83 that was 98 history and removal expansions carrying 186 commit blocks
+  between **18 distinct commits**, one of them emitted 58 times: 429,000
+  tokens, 73% of everything resolved, against a context ceiling of 184,000.
+  Twenty-eight history expansions were dropped for want of room while the room
+  was full of the same essay. `Seen` could not catch it, because it removes
+  lines the diff already shows and `carriesHistory` exempts these two roles
+  from it on purpose - their content is commit messages rather than source at
+  the lines they name. That exemption is right, and it left the one role with
+  tenfold internal duplication with no deduplication at all. What each
+  expansion keeps is the part that differs, the commit header and the hunk git
+  printed for that range; only the message body is replaced, by a line saying
+  where to read it, and the full copy lands in the highest-ranked expansion so
+  it is the one that survives a binding budget. On PR #83: history and removal
+  429,314 to 64,593 tokens, the whole envelope 587,072 to 222,351, and nothing
+  exceeds the ceiling any more - the 52 expansions it used to drop all fit,
+  the context block goes from 174.7k of 174.9k room to 119.1k of 172.2k, and
+  the request falls from 245,922 tokens to 192,672.
+
+### Added
+- **The postmortem records what the lookups asked and what the refused calls
+  were.** `Looked` and `Rejected` were counts: a saved artifact said a pass
+  checked sixteen things and had thirteen calls refused, and nothing about
+  which. On PR #1462 that left the mistake readable only off a terminal that
+  was no longer there. `Result` now carries `Lookups` (tool, arguments, bytes
+  back, and whether the answer was "nothing found" - which is an answer) and
+  `Refusals` (tool, reason, arguments, and how many times the same reason
+  recurred, so one mistake repeated every turn is one entry). Both render in
+  `redline postmortem`. Arguments are cut at 200 characters and distinct
+  refusal reasons at 20, because the trace wants the shape of a mistake rather
+  than a second copy of the conversation.
+
+### Changed
+- **Every lookup cap is raised: `read_lines` 200 to 600 lines, `grep` 60 to 200
+  matches, `list_docs` 80 to 500 documents, `symbol_context` and
+  `line_history` 16 KiB to 64 KiB.** The caps were set against a worry about
+  size rather than against the window. The model reads a million tokens, a
+  review's ceiling is a quarter of that, and the question a cap answers is not
+  whether the text is a lot but whether it is cheaper than the turn it costs
+  to ask again. It is not close: on a large review one extra turn re-reads the
+  whole cached prefix for about five cents, while the extra text is written to
+  cache once and read back at a tenth of the input rate, so six hundred lines
+  of a file cost about a cent and a half and five hundred document lines about
+  two. A cap tight enough to force a second call was the expensive choice.
+
+  The two byte caps are 32 KiB, not 64. Three of these lookups count lines,
+  matches or documents and two count bytes, so the judgement has to be made in
+  tokens, and the ratio is the trap: prose runs near four characters per token
+  and `envelope` measures Redline's payloads at 2.33, because they are code,
+  diffs and JSON. At four, 64 KiB reads as 16k tokens and looks level with the
+  rest; at the real ratio it is 28k, twice `read_lines` and four times `grep`.
+  A test now prices all five against each other and fails when any is more
+  than three times another.
+- **`list_docs` takes a `path` filter, and a cut listing says where the rest
+  are.** Every lookup that cuts gives advice the caller can act on, and this
+  one said "grep for a word a document would use" - which cannot be taken,
+  because the reason to list documents is not yet knowing which one to ask
+  for. On a repository with more documents than the bound, the answer now
+  names the directories holding the remainder with a count each, biggest
+  first, and `path` lists one of them. A repository with 167 documents gets a
+  map and one follow-up call instead of the first 80 paths alphabetically and
+  a dead end. Both the `--look` tool and the scout's own take the filter.
+
 ### Added
 - **`--look` gets three more lookups: `list_docs`, `symbol_context` and
   `line_history`.** The judging pass could search and read; now it can also

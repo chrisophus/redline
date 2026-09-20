@@ -369,11 +369,20 @@ func (r *resolver) inTree(rel string) (string, error) {
 
 // history is git's account of the changed lines, copied as git printed it.
 func (r *resolver) history(file string, start, end int) (string, error) {
+	return r.historyDepth(file, start, end, r.limits.MaxHistoryLog)
+}
+
+// historyDepth is history, walked to a stated number of commits. A caller that
+// filters the answer needs to reach past what it will drop.
+func (r *resolver) historyDepth(file string, start, end, depth int) (string, error) {
 	if _, err := r.inTree(normPath(file)); err != nil {
 		return "", err
 	}
+	if depth <= 0 {
+		depth = r.limits.MaxHistoryLog
+	}
 	cmd := exec.Command("git", "log",
-		fmt.Sprintf("--max-count=%d", r.limits.MaxHistoryLog),
+		fmt.Sprintf("--max-count=%d", depth),
 		"--no-color", "--patch",
 		fmt.Sprintf("-L%d,%d:%s", start, end, normPath(file)))
 	cmd.Dir = r.root

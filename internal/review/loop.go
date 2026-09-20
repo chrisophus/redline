@@ -228,6 +228,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 				// constrained and says what is wrong when it cannot.
 				c.text = r.text
 				c.usage, c.thinking, c.rejected, c.fetched, c.looked = total, thinking.String(), col.rejected, col.fetched, col.looked
+				c.lookups, c.refusals = col.lookups, col.refusals
 				return c, nil
 			}
 			c.stopped = StoppedNoCalls
@@ -237,6 +238,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 		gov.answered(results)
 	}
 	c.usage, c.thinking, c.rejected, c.fetched, c.looked = total, thinking.String(), col.rejected, col.fetched, col.looked
+	c.lookups, c.refusals = col.lookups, col.refusals
 	if !c.refused && !c.truncated {
 		c.text, c.fromTool = col.body(), true
 	}
@@ -272,6 +274,8 @@ func (r *Result) foldCalls(other *Result) {
 	r.Rejected += other.Rejected
 	r.Fetched += other.Fetched
 	r.Looked += other.Looked
+	r.Lookups = append(r.Lookups, other.Lookups...)
+	r.Refusals = append(r.Refusals, other.Refusals...)
 	r.Stopped = append(r.Stopped, other.Stopped...)
 	r.Thinking = append(r.Thinking, other.Thinking...)
 }

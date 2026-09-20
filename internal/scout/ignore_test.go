@@ -1,8 +1,10 @@
 package scout
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -36,7 +38,7 @@ func ignoreTree(t *testing.T) string {
 // automated reader should skip, and generated code or vendored deps are
 // routinely both gitignored and something --look legitimately needs to read.
 func TestLookExcludesOnlyCursorIndexingIgnore(t *testing.T) {
-	l := NewLooker(ignoreTree(t))
+	l := NewLooker(ignoreTree(t), "")
 
 	out, err := l.Grep("Insert", "")
 	if err != nil {
@@ -69,7 +71,7 @@ func TestLookGrepNamesWhatItExcludedOnAnEmptyResult(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".cursorindexingignore"), []byte("other/\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	l := NewLooker(dir)
+	l := NewLooker(dir, "")
 	out, err := l.Grep("func Use", "")
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +84,7 @@ func TestLookGrepNamesWhatItExcludedOnAnEmptyResult(t *testing.T) {
 // No .cursorindexingignore at the root is not an error: a tree without one
 // excludes nothing beyond the hardcoded housekeeping directories.
 func TestLookWithNoIgnoreFileExcludesNothingExtra(t *testing.T) {
-	l := NewLooker(lookerTree(t))
+	l := NewLooker(lookerTree(t), "")
 	out, err := l.Grep("Insert", "")
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +102,7 @@ func TestANegatedIgnorePatternExcludesNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".cursorindexingignore"), []byte("!store.go\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	l := NewLooker(dir)
+	l := NewLooker(dir, "")
 	if _, err := l.ReadLines("store.go", 1, 1); err != nil {
 		t.Errorf("a negated pattern must not exclude the path it means to keep: %v", err)
 	}
@@ -151,5 +153,44 @@ func TestASubprocessLookupIsCutAndSaysSo(t *testing.T) {
 	// Under the bound, nothing is added.
 	if short := capLookOutput("one line\n", maxSymbolContextBytes, "narrow"); short != "one line\n" {
 		t.Errorf("an answer that fits must pass through unchanged: %q", short)
+	}
+}
+
+// A repository with more documents than one listing holds gets a map, not a
+// dead end. The reason to list documents is not yet knowing which one to ask
+// for, so "there are more, go and grep" is advice that cannot be taken.
+func TestACutDocListingSaysWhereTheRestAre(t *testing.T) {
+	var docs []docFile
+	for i := 0; i < 54; i++ {
+		docs = append(docs, docFile{Path: fmt.Sprintf("docs/adr/%03d.md", i), Lines: 10})
+	}
+	for i := 0; i < 33; i++ {
+		docs = append(docs, docFile{Path: fmt.Sprintf("internal/notes/%03d.md", i), Lines: 10})
+	}
+	docs = append(docs, docFile{Path: "README.md", Lines: 10, Heading: "Redline"})
+	sort.Slice(docs, func(i, j int) bool { return docs[i].Path < docs[j].Path })
+
+	got := renderDocs(docs, 40, "")
+	if !strings.Contains(got, "40 of 88 shown") {
+		t.Errorf("the cut must say how much it did not show:\n%s", got)
+	}
+	if !strings.Contains(got, "docs/adr (") || !strings.Contains(got, "internal/notes (") {
+		t.Errorf("the cut must name the directories holding the rest:\n%s", got)
+	}
+	if !strings.Contains(got, "Pass path") {
+		t.Errorf("the cut must say how to ask for them:\n%s", got)
+	}
+	// Biggest first, so the one worth asking for is read first. 40 shown of 88
+	// sorted by path leaves 15 under docs/adr and all 33 under internal/notes,
+	// so the smaller directory is the one already half read.
+	if !strings.Contains(got, "internal/notes (33), docs/adr (15)") {
+		t.Errorf("the remainder must be counted and listed biggest first:\n%s", got)
+	}
+	// A listing that fits says nothing extra.
+	if full := renderDocs(docs, 0, ""); strings.Contains(full, "shown, sorted by path") {
+		t.Error("an uncut listing must not claim it was cut")
+	}
+	if none := renderDocs(nil, 40, "docs/adr/"); !strings.Contains(none, "no documents under docs/adr/") {
+		t.Errorf("an empty filtered listing must name the filter: %q", none)
 	}
 }

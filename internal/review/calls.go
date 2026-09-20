@@ -73,14 +73,18 @@ func isLookCall(name string) bool {
 	return slices.Contains(LookCalls, name)
 }
 
-// MaxReadLines is the cap on one read_lines call, so a pass that asks for a
-// file gets a declaration instead of the whole thing.
+// MaxReadLines is the cap on one read_lines call.
+//
+// Large enough that asking for a declaration and getting it is the normal
+// case. A cap that cuts a long function in half buys nothing: the pass asks
+// again for the rest, and that turn re-reads the whole cached prefix, which
+// costs more than the lines would have.
 //
 // Exported because the number is in the tool's description, which is a promise
 // to the model, and the Looker that enforces it lives in another package. A
 // test there pins the two together: a cap that moved without the description
 // would leave the model told one thing and given another.
-const MaxReadLines = 200
+const MaxReadLines = 600
 
 // callTool is one tool's definition as it goes on the wire.
 type callTool struct {
@@ -151,8 +155,12 @@ func callTools(pulls bool, looks []string) []callTool {
 		{CallDocs, "List the repository's own documents with their first heading: design notes, decision records, plans, READMEs. " +
 			"Use it when a change looks like it is implementing something that was written down, or when what looks like a defect " +
 			"may be a decision the team recorded. Read what looks relevant with read_lines. A rule the repository committed to " +
-			"outranks your reading of the diff, so this is the check that keeps a finding off a deliberate choice.",
-			map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}},
+			"outranks your reading of the diff, so this is the check that keeps a finding off a deliberate choice. " +
+			"On a repository with more documents than one listing holds, the answer says which directories hold the rest and how " +
+			"many are in each; pass path to list one of those.",
+			flatObject(map[string]any{
+				"path": map[string]any{"type": "string", "description": "optional: only documents whose path contains this text, for example docs/adr/"},
+			})},
 		{CallSymbol, "Ask gorefactor for the exact Go context of one symbol: its definition, its callers resolved through the " +
 			"type checker, the types in its signature, and its tests. Takes a symbol like Store.Insert or Insert. This resolves " +
 			"by type identity rather than by name, so the callers it returns are facts and not leads. It is the call to make when " +
@@ -385,6 +393,18 @@ type collector struct {
 	// and the trace: a judging pass that checked nothing is worth telling
 	// apart from one that had nothing to check.
 	looked int
+	// lookups is what those calls actually asked and what came back. The
+	// count alone says a pass checked sixteen things and not one of them, so
+	// nothing downstream can say what ground was already covered, and a run
+	// whose lookups all came back empty reads the same as one that found what
+	// it went for.
+	lookups []Lookup
+	// refusals is every call this pass made that was not taken, with the
+	// reason. The count alone had the same hole: on PR #1462 a pass had
+	// thirteen calls refused and the artifact recorded the number and nothing
+	// else, so what went wrong could only be read off a terminal that was no
+	// longer there.
+	refusals []Refusal
 	// lookCalls is which lookups this run's Looker can answer, resolved once
 	// so the catalogue a call is checked against is the catalogue that went
 	// out with it.
@@ -461,16 +481,20 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 			// Not a malformed call but one this pass has no use for, so it is
 			// not to be sent again.
 			rejected++
+			why := fmt.Sprintf("this pass does not take %s; it takes %s",
+				call.Name, strings.Join(callsFor(c.stage, len(c.deferred) > 0, c.lookCalls), ", "))
+			c.refuse(call, why)
 			results = append(results, callResult{id: call.ID, isError: true,
-				content: fmt.Sprintf("Not recorded: this pass does not take %s; it takes %s. Do not send it again.",
-					call.Name, strings.Join(callsFor(c.stage, len(c.deferred) > 0, c.lookCalls), ", "))})
+				content: "Not recorded: " + why + ". Do not send it again."})
 			continue
 		}
 		problems := c.check(call)
 		if len(problems) > 0 {
 			rejected++
+			why := strings.Join(problems, "; ")
+			c.refuse(call, why)
 			results = append(results, callResult{id: call.ID, isError: true,
-				content: "Not recorded: " + strings.Join(problems, "; ") + ". Send this call again with that fixed."})
+				content: "Not recorded: " + why + ". Send this call again with that fixed."})
 			continue
 		}
 		if call.Name == CallContext {
@@ -489,7 +513,12 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 			// neither completes a pass nor counts toward one, the same as
 			// get_context.
 			c.looked++
-			results = append(results, callResult{id: call.ID, content: c.lookup(call)})
+			answer := c.lookup(call)
+			c.lookups = append(c.lookups, Lookup{
+				Tool: call.Name, Input: boundedArgs(call.Input), Bytes: len(answer),
+				Empty: emptyAnswer(answer),
+			})
+			results = append(results, callResult{id: call.ID, content: answer})
 			continue
 		}
 		if call.Name == CallDone {
@@ -510,6 +539,7 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 			results = append(results, callResult{id: id, isError: true, content: "Not done: " + c.missing() + "."})
 			rejected++
 			c.rejected++
+			c.refuse(toolCall{Name: CallDone}, c.missing())
 		default:
 			results = append(results, callResult{id: id, content: "Done."})
 		}
@@ -543,6 +573,65 @@ func (c *collector) check(call toolCall) []string {
 		return []string{"the input is not a JSON object: " + err.Error()}
 	}
 	return validate(schema, in, call.Name)
+}
+
+// refuse records a call that was not taken, so the reason survives the run.
+//
+// Bounded in two directions. A pass that sends the same wrong call every turn
+// would otherwise fill the trace with one mistake, so identical reasons are
+// counted rather than repeated; and the arguments are cut, because a refused
+// add_comment carries the whole comment body and the trace wants the shape of
+// the mistake rather than its contents.
+func (c *collector) refuse(call toolCall, why string) {
+	for i := range c.refusals {
+		if c.refusals[i].Tool == call.Name && c.refusals[i].Why == why {
+			c.refusals[i].Count++
+			return
+		}
+	}
+	if len(c.refusals) >= maxRefusalsKept {
+		return
+	}
+	c.refusals = append(c.refusals, Refusal{
+		Tool: call.Name, Why: why, Input: boundedArgs(call.Input), Count: 1,
+	})
+}
+
+// maxRefusalsKept bounds distinct refusal reasons in one pass's trace. Past
+// this the pass is not making mistakes, it is failing, and the reasons already
+// kept say how.
+const maxRefusalsKept = 20
+
+// boundedArgs renders a call's arguments on one line, cut. It is the shape of
+// the call that matters downstream, not a second copy of a comment body.
+func boundedArgs(input json.RawMessage) string {
+	s := strings.Join(strings.Fields(string(input)), " ")
+	if len(s) > maxTraceArgs {
+		s = s[:maxTraceArgs] + "…"
+	}
+	return s
+}
+
+const maxTraceArgs = 200
+
+// emptyAnswer reports whether a lookup came back with nothing found, as
+// against nothing at all. Each of these is a lookup's own words for "I looked
+// and it is not there", which is an answer and is worth telling apart from an
+// answer that carried something.
+func emptyAnswer(s string) bool {
+	switch {
+	case strings.HasPrefix(s, "no match"),
+		strings.HasPrefix(s, "no documents"),
+		strings.HasPrefix(s, "gorefactor knows no symbol"),
+		strings.HasPrefix(s, "no recorded history"),
+		// A span the change itself introduced. LineHistory says so in its own
+		// words rather than returning nothing, and that is still an answer
+		// that found nothing: counting it as a full one overstates what the
+		// lookups turned up.
+		strings.HasPrefix(s, "these lines have no history before this change"):
+		return true
+	}
+	return strings.TrimSpace(s) == ""
 }
 
 func contains(list []string, s string) bool {
@@ -764,7 +853,15 @@ func (c *collector) lookup(call toolCall) string {
 		}
 		return out
 	case CallDocs:
-		out, err := c.look.ListDocs()
+		var in struct {
+			Path string `json:"path"`
+		}
+		if len(call.Input) > 0 {
+			if err := json.Unmarshal(call.Input, &in); err != nil {
+				return "bad arguments: " + err.Error()
+			}
+		}
+		out, err := c.look.ListDocs(in.Path)
 		if err != nil {
 			return err.Error()
 		}
