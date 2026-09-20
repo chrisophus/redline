@@ -30,7 +30,7 @@ func TestTheDefaultDescribingCallDoesNotBreakTheShapesThatReplaceIt(t *testing.T
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			o := tc.o
-			o.out, o.dryRun, o.noOpen = dir, true, true
+			o.out, o.dryRun = dir, true
 			var err error
 			captureStdout(t, func() { err = cmdReview(o) })
 			if err != nil {
@@ -50,11 +50,11 @@ func TestAnExplicitSynopsisBesideTheShapesThatReplaceItIsAccepted(t *testing.T) 
 		name string
 		o    opts
 	}{
-		{"a fan-out", opts{cohorts: 4, synopsis: true}},
+		{"a fan-out", opts{cohorts: 4}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			o := tc.o
-			o.out, o.dryRun, o.noOpen = dir, true, true
+			o.out, o.dryRun = dir, true
 			var err error
 			captureStdout(t, func() { err = cmdReview(o) })
 			if err != nil {
@@ -79,7 +79,7 @@ func TestThePartitionFlagsNeedTheSplit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			o := tc.o
-			o.out, o.dryRun, o.noOpen = dir, true, true
+			o.out, o.dryRun = dir, true
 			var err error
 			captureStdout(t, func() { err = cmdReview(o) })
 			if err == nil || !strings.Contains(err.Error(), "--cohorts") {
@@ -105,7 +105,7 @@ func TestReuseSynopsisIsRefusedBesideTheFlagsThatReplaceTheDescribingCall(t *tes
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			o := tc.o
-			o.out, o.dryRun, o.noOpen = dir, true, true
+			o.out, o.dryRun = dir, true
 			var err error
 			captureStdout(t, func() { err = cmdReview(o) })
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -128,7 +128,7 @@ func TestReuseSynopsisNeedsAPartitionForCohortsAboveOne(t *testing.T) {
 	}
 	var err error
 	captureStdout(t, func() {
-		err = cmdReview(opts{out: dir, dryRun: true, noOpen: true, reuseSynopsis: true, cohorts: 3})
+		err = cmdReview(opts{out: dir, dryRun: true, reuseSynopsis: true, cohorts: 3})
 	})
 	if err == nil || !strings.Contains(err.Error(), "--cohorts") {
 		t.Errorf("err = %v, want a refusal naming --cohorts", err)
@@ -149,7 +149,7 @@ func TestReuseSynopsisCanStandInForAStagedRunsPartitionToo(t *testing.T) {
 	}
 	var err error
 	captureStdout(t, func() {
-		err = cmdReview(opts{out: dir, dryRun: true, noOpen: true, reuseSynopsis: true, cohorts: 3})
+		err = cmdReview(opts{out: dir, dryRun: true, reuseSynopsis: true, cohorts: 3})
 	})
 	if err != nil {
 		t.Fatalf("a review.json carrying a partition must be accepted for --cohorts above 1: %v", err)
@@ -163,7 +163,7 @@ func TestReuseSynopsisCanStandInForAStagedRunsPartitionToo(t *testing.T) {
 func TestReuseSynopsisIsRefusedWithNoReviewJSON(t *testing.T) {
 	dir := worktreeSession(t)
 	var err error
-	captureStdout(t, func() { err = cmdReview(opts{out: dir, dryRun: true, noOpen: true, reuseSynopsis: true}) })
+	captureStdout(t, func() { err = cmdReview(opts{out: dir, dryRun: true, reuseSynopsis: true}) })
 	if err == nil || !strings.Contains(err.Error(), "does not exist") {
 		t.Errorf("err = %v, want a refusal naming the missing review.json", err)
 	}
@@ -179,7 +179,7 @@ func TestReuseSynopsisIsRefusedAgainstAStaleReviewJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	var err error
-	captureStdout(t, func() { err = cmdReview(opts{out: dir, dryRun: true, noOpen: true, reuseSynopsis: true}) })
+	captureStdout(t, func() { err = cmdReview(opts{out: dir, dryRun: true, reuseSynopsis: true}) })
 	if err == nil || !strings.Contains(err.Error(), "stale:revision") {
 		t.Errorf("err = %v, want a refusal naming the stale revision", err)
 	}
@@ -194,7 +194,7 @@ func TestReuseSynopsisIsRefusedAgainstAReviewJSONWithNoWalkthrough(t *testing.T)
 		t.Fatal(err)
 	}
 	var err error
-	captureStdout(t, func() { err = cmdReview(opts{out: dir, dryRun: true, noOpen: true, reuseSynopsis: true}) })
+	captureStdout(t, func() { err = cmdReview(opts{out: dir, dryRun: true, reuseSynopsis: true}) })
 	if err == nil || !strings.Contains(err.Error(), "no walkthrough") {
 		t.Errorf("err = %v, want a refusal naming the missing walkthrough", err)
 	}
@@ -213,7 +213,7 @@ func TestReuseSynopsisIsAcceptedAgainstAMatchingReviewJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	var err error
-	captureStdout(t, func() { err = cmdReview(opts{out: dir, dryRun: true, noOpen: true, reuseSynopsis: true}) })
+	captureStdout(t, func() { err = cmdReview(opts{out: dir, dryRun: true, reuseSynopsis: true}) })
 	if err != nil {
 		t.Fatalf("a matching review.json must be accepted: %v", err)
 	}

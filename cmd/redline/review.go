@@ -128,9 +128,6 @@ func cmdReview(o opts) error {
 	// the OpenAI wire, several samples, the batch tier - so this is only the
 	// policy, not the arithmetic.
 	ropts.Cache = !o.noCache
-	if o.cache {
-		ropts.Cache = true
-	}
 	switch o.cacheTTL {
 	case "", review.CacheTTL5m, review.CacheTTL1h:
 		ropts.CacheTTL = o.cacheTTL
@@ -201,7 +198,7 @@ func cmdReview(o opts) error {
 	// are what a cohort call knows about its neighbours, and a fan-out with
 	// none of them gives up every cross-cohort correlation from the cohort
 	// side. Turning them off is an arm to measure, not a default.
-	ropts.CrossSummaries = !o.noCrossSummaries || o.crossSummaries
+	ropts.CrossSummaries = !o.noCrossSummaries
 	// On the OpenAI wire the credentials are read here, in the vendor's own
 	// env names, before the checking pass is wired up: the scout that runs
 	// inside it now goes over the same wire and needs them. The flag wins over
@@ -273,7 +270,7 @@ func cmdReview(o opts) error {
 	// price rather than doubt about the shape, and --max-cost is the control
 	// for price. --no-look is there for a review that has to cost what a
 	// plain one costs, and for measuring against the shape without them.
-	if !o.noLook || o.look {
+	if !o.noLook {
 		ropts.Look = lookerFor(res)
 	}
 	if !o.dryRun {
@@ -456,7 +453,7 @@ func cmdReview(o opts) error {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "redline: wrote %s\n", path)
-	return announce(o.out, o.port, o.open && !o.noOpen)
+	return announce(o.out, o.port, o.open)
 }
 
 // describeSession names what is about to be reviewed, so the line printed

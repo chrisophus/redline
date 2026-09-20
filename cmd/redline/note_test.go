@@ -39,7 +39,7 @@ func TestADryRunShowsTheNoteFromEitherFlag(t *testing.T) {
 		"--note-file": {noteFile: file},
 	} {
 		t.Run(name, func(t *testing.T) {
-			o.out, o.dryRun, o.noOpen, o.noSynopsis = dir, true, true, true
+			o.out, o.dryRun, o.noSynopsis = dir, true, true
 			var err error
 			out := captureStdout(t, func() { err = cmdReview(o) })
 			if err != nil {

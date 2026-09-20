@@ -116,7 +116,6 @@ func targetFlags(fs *flag.FlagSet, o *opts) {
 
 func browseFlags(fs *flag.FlagSet, o *opts) {
 	fs.BoolVar(&o.open, "open", false, "open the HTML report when done")
-	fs.BoolVar(&o.noOpen, "no-open", false, "never open a browser")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 }
 
@@ -163,19 +162,14 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.note, "note", "", "what to look at or what worries you, added to every judging call")
 	fs.StringVar(&o.noteFile, "note-file", "", "read the note from a file")
 	fs.BoolVar(&o.deferContext, "defer-context", false, "list the resolved context beside each file's diff and let the reviewer read it with get_context")
-	fs.BoolVar(&o.look, "look", false, "let the judging pass look things up in the tree while it writes (on by default)")
 	fs.BoolVar(&o.noLook, "no-look", false, "the judging pass writes from the material it was sent, looking nothing up")
 	fs.BoolVar(&o.verify, "verify", false, "check each finding against the repository before posting it")
-	fs.BoolVar(&o.noVerify, "no-verify", false, "skip the checking pass")
-	fs.BoolVar(&o.cache, "cache", false, "mark the shared prefix for the prompt cache (on by default)")
 	fs.BoolVar(&o.noCache, "no-cache", false, "send every call at full input rate")
 	fs.StringVar(&o.cacheTTL, "cache-ttl", "", "how long the cached prefix lives, 5m or 1h")
-	fs.BoolVar(&o.synopsis, "synopsis", false, "describe the change in its own call before judging it")
 	fs.BoolVar(&o.noSynopsis, "no-synopsis", false, "one call writes the walkthrough and the findings together")
 	fs.BoolVar(&o.reuseSynopsis, "reuse-synopsis", false, "reuse review.json's walkthrough instead of paying for a new describing call; refused if it is missing or stale")
 	fs.IntVar(&o.cohorts, "cohorts", 0, "split the change into at most this many cohorts and judge each in its own call (default 1, no split)")
 	fs.IntVar(&o.minCohortFiles, "min-cohort-files", 0, "below this many shown files a split run is one cohort (default 3)")
-	fs.BoolVar(&o.crossSummaries, "cross-summaries", false, "give each cohort the other cohorts' summaries (on by default)")
 	fs.BoolVar(&o.noCrossSummaries, "no-cross-summaries", false, "each cohort reviews its files knowing nothing of the others")
 	fs.BoolVar(&o.cohortContext, "cohort-context", false, "with --cohorts above 1: keep the resolved context out of the describing call and give each cohort only the context that belongs to its own files")
 	fs.BoolVar(&o.planOnly, "plan", false, "with --cohorts above 1: describe and partition, then stop before judging any cohort")
@@ -248,7 +242,6 @@ flags:
                     repository rules, no neighbouring files. For comparing a
                     review with context against one without.
   --open            open the HTML report when done
-  --no-open         never open a browser
   --file            print the report as a file:// path, no server
   --port N          loopback port for the report server (default 8765; the
                     next free port is used if it is taken)
@@ -322,14 +315,16 @@ what to look at:
                     committed outranks it. Saved in review.json and the
                     postmortem, and shown on the report.
   --note-file PATH  the same, read from a file. Pass one or the other.
-  --look            let the judging pass look things up in the tree while it
-                    writes, so a claim about code outside the diff is one it
-                    can check rather than only name as a question for the
-                    lookup pass. Already the default; kept so scripts that
-                    pass it still run. A reviewer that pulls the context it
-                    needs beats one handed a guess about what it would want,
-                    and that is worth its turns. Five lookups, and a run
-                    offers the ones this checkout can answer:
+  --no-look         the judging pass writes from the material it was sent,
+                    looking nothing up. Looking things up is the default: a
+                    claim about code outside the diff is one the reviewer can
+                    check while it writes rather than only name as a question
+                    for the lookup pass, and a reviewer that pulls the context
+                    it needs beats one handed a guess about what it would
+                    want. Turn it off for a review that has to cost what a
+                    plain one costs, or to measure against the shape without
+                    the lookups. Five lookups, and a run offers the ones this
+                    checkout can answer:
                       grep            search the repository
                       read_lines      read a span of one file
                       list_docs       what the team wrote down, so a
@@ -357,10 +352,6 @@ what to look at:
                     automated reader. .gitignore is not read for this -
                     generated code and vendored deps are routinely both
                     gitignored and something a claim needs to check against.
-  --no-look         the judging pass writes from the material it was sent,
-                    looking nothing up. For a review that has to cost what a
-                    plain one costs, and for measuring against the shape
-                    without the lookups.
   --defer-context   leave the context the providers resolved out of the
                     prompt. Each file's diff is followed by an index
                     of the context that belongs to it, callers, types, tests
@@ -398,17 +389,14 @@ shape:
                     nine of the ten findings that never reached the reader
                     came back unverifiable from the ruling, six of those on
                     questions the review had certified itself.
-  --no-verify       skip the checking pass, which is already the default
-  --synopsis        describe the change in its own call, then judge it in a
-                    second one that writes only the comments and the
-                    verdicts. Already the default; kept so scripts that pass
-                    it still run. The two share a prefix, so the second reads
-                    what the first cached. What it buys is a walkthrough that
-                    covers every shown file and an output cap the findings no
-                    longer share with fifty file summaries: on the stored
-                    samples, one call in three above 34k tokens wrote no
-                    walkthrough at all.
-  --no-synopsis     one call writes the walkthrough and the findings together
+  --no-synopsis     one call writes the walkthrough and the findings
+                    together. Describing and judging in two calls is the
+                    default: they share a prefix, so the second reads what the
+                    first cached, and what it buys is a walkthrough covering
+                    every shown file plus an output cap the findings no longer
+                    share with fifty file summaries. On the stored samples one
+                    call in three above 34k tokens wrote no walkthrough at
+                    all.
   --reuse-synopsis  reuse review.json's walkthrough (its overview and
                     per-file summaries) instead of paying for a new
                     describing call: the judging call still gets the
@@ -436,12 +424,11 @@ shape:
   --min-cohort-files N
                     below this many shown files a split run is one cohort
                     (default 3).
-  --cross-summaries give each cohort the other cohorts' summaries, which is
-                    the default
   --no-cross-summaries
                     each cohort is told nothing about its neighbours.
                     Cheaper, and gives up the correlations a cohort call
-                    raises about a change it can see but was not given.
+                    raises about a change it can see but was not given. By
+                    default each cohort gets the other cohorts' summaries.
   --cohort-context  with --cohorts above 1: send the describing call no
                     resolved context at all, and give each cohort call only
                     the callers, types, tests and history that belong to
@@ -477,12 +464,11 @@ shape:
                     refused rather than silently reviewing none of it.
 
 cost and caching:
-  --cache           mark the prompt the review and the ruling share for the
+  --no-cache        send every call at full input rate. By default the
+                    prompt the review and the ruling share is marked for the
                     prompt cache, so the second call reads it back instead of
-                    paying for it again. On by default; --no-cache sends both
-                    at full input rate. Ignored where the write could not be
-                    read: --api openai.
-  --no-cache        send every call at full input rate
+                    paying for it again; the marking is ignored where the
+                    write could not be read, which is --api openai.
   --cache-ttl D     how long the cached prefix lives, 5m (default) or 1h. The
                     hour costs 2x base input to write against the five
                     minutes' 1.25x, and is worth it only when the gap between
@@ -520,7 +506,6 @@ output:
                     captured files survive as an artifact. REDLINE_DEBUG
                     does the same.
   --open            open the HTML report when done
-  --no-open         never open a browser
   --port N          loopback port for the report server (default 8765)
 `
 

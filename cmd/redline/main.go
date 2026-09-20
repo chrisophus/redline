@@ -55,21 +55,21 @@ type opts struct {
 	reportURL, profile, olderThan                                     string
 	model, effort, mode, api, baseURL, apiUser                        string
 	scoutModel, scoutEffort                                           string
-	open, noOpen, stop, dryRun, file, prepare, allowMissingCoverage   bool
+	open, stop, dryRun, file, prepare, allowMissingCoverage           bool
 	noLint                                                            bool
 	noContext                                                         bool
-	stats, verify, noVerify, debug, verbose, cache, noCache           bool
-	synopsis, noSynopsis                                              bool
+	stats, verify, debug, verbose, noCache                            bool
+	noSynopsis                                                        bool
 	port, ceiling, maxTokens, maxTurns, callTurns, samples            int
 	cohorts, minCohortFiles                                           int
 	maxCost                                                           float64
 	cacheTTL                                                          string
-	crossSummaries, noCrossSummaries                                  bool
+	noCrossSummaries                                                  bool
 	planOnly                                                          bool
 	onlyCohorts                                                       string
 	reuseSynopsis                                                     bool
 	note, noteFile                                                    string
-	deferContext, look, noLook                                        bool
+	deferContext, noLook                                              bool
 	cohortContext                                                     bool
 	// observe is review's --run. session is --session; root is the --out the
 	// caller gave, and sessionKey the session resolveSession chose under it.
@@ -173,12 +173,12 @@ func cmdRun(o opts) error {
 	}
 	fmt.Print(report.Markdown(&res.Report, res.Renders, res.Evidence, res.Change))
 	if o.file {
-		if err := openFile(o.out, o.open && !o.noOpen); err != nil {
+		if err := openFile(o.out, o.open); err != nil {
 			return err
 		}
 		return runErr
 	}
-	if err := announce(o.out, o.port, o.open && !o.noOpen); err != nil {
+	if err := announce(o.out, o.port, o.open); err != nil {
 		return err
 	}
 	return runErr

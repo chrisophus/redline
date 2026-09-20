@@ -11,6 +11,32 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Removed
+- **The `--x` / `--no-x` flag pairs. Every boolean setting has one flag, which
+  flips its default.** Gone: `--look`, `--cache`, `--cross-summaries`,
+  `--synopsis`, `--no-verify`, `--no-open`. Kept: `--no-look`, `--no-cache`,
+  `--no-cross-summaries`, `--no-synopsis`, `--verify`, `--open`.
+
+  The pairs did not work. Each was resolved with an expression like
+  `!o.noLook || o.look`, so `--look=false` left both booleans false, the
+  `!noX` arm turned the setting on anyway, and the flag silently did nothing -
+  the same for `--cache=false` and `--cross-summaries=false`. Three of the
+  twelve names were already documented as no-ops kept for scripts, and
+  `--no-open` could never fire at all, since the expression was
+  `o.open && !o.noOpen` and nothing opens without `--open`.
+
+  Cobra was considered for this and rejected: pflag gives bool flags a
+  `NoOptDefVal` of `"true"`, so `--look false` leaves `false` as a positional
+  there exactly as it does under stdlib `flag`, which was the motivating
+  problem. It would also have displaced 386 lines of hand-written help prose
+  in favour of generated usage lines. The parser was never the problem; the
+  wiring was.
+
+  With one flag per setting the flag's own value is what is read, so
+  `--no-look=false` turns the lookups back on and a dropped name is a
+  parse error rather than a silent no-op. That is breaking for anything
+  passing the old names, and loudly so.
+
 ### Fixed
 - **Every lookup answers within one byte bound, and a matched line is
   clipped.** A cap counted in matches, lines or documents does not bound
