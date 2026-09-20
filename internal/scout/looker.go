@@ -23,6 +23,10 @@ import (
 type Looker struct {
 	root string
 	res  *resolver
+	// ignore is .cursorindexingignore's patterns, read once at construction.
+	// Both search and read refuse a path it names: it says in as many words
+	// that a path is not for an automated reader, and --look is one.
+	ignore []string
 }
 
 // NewLooker returns the lookups for one tree. root is the tree under review,
@@ -30,7 +34,7 @@ type Looker struct {
 // a detached worktree otherwise -- the same root the scout is given, because it
 // is the same question being asked earlier.
 func NewLooker(root string) *Looker {
-	return &Looker{root: root, res: newResolver(root, Limits{})}
+	return &Looker{root: root, res: newResolver(root, Limits{}), ignore: loadIgnorePatterns(root)}
 }
 
 // Grep searches the tree for a regular expression.
@@ -49,7 +53,7 @@ func (l *Looker) Grep(pattern, glob string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("bad pattern: %w", err)
 	}
-	return grepTree(l.root, re, glob, maxGrepMatches)
+	return grepTree(l.root, re, glob, maxGrepMatches, l.ignore)
 }
 
 // ReadLines returns a span of one file, with line numbers.
@@ -60,6 +64,9 @@ func (l *Looker) Grep(pattern, glob string) (string, error) {
 func (l *Looker) ReadLines(path string, start, end int) (string, error) {
 	if l == nil {
 		return "", fmt.Errorf("no tree to read")
+	}
+	if ignoredPath(l.ignore, normPath(path)) {
+		return "", fmt.Errorf("%s is excluded by .cursorindexingignore", normPath(path))
 	}
 	lines, err := l.res.read(path)
 	if err != nil {

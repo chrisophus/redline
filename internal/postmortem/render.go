@@ -82,6 +82,9 @@ func (t *Trace) header(b *strings.Builder) {
 		fmt.Fprintf(b, "  turns      %d across the review's passes, %d call(s) sent back for failing their schema\n",
 			t.CallTurns, t.Rejected)
 	}
+	if t.Looked > 0 {
+		fmt.Fprintf(b, "  looked     %d grep/read_lines call(s) against the tree\n", t.Looked)
+	}
 	for _, s := range t.Stopped {
 		fmt.Fprintf(b, "  incomplete %s\n", s)
 	}

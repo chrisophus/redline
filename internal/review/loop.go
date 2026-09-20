@@ -158,8 +158,15 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 				byID[call.ID] = call
 			}
 			for _, call := range r.calls {
-				if call.Name == CallContext {
+				// Without this, the only record of what a --look pass
+				// actually searched or read is the model's own narration of
+				// it: grep and read_lines record nothing on their own. See
+				// collector.looked.
+				switch call.Name {
+				case CallContext:
 					opts.Debug(fmt.Sprintf("%s turn %d: get_context %s", stage, turn, string(call.Input)))
+				case CallGrep, CallRead:
+					opts.Debug(fmt.Sprintf("%s turn %d: %s %s", stage, turn, call.Name, string(call.Input)))
 				}
 			}
 			for _, res := range results {
@@ -208,7 +215,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 				// parser, which reads a review out of a reply nothing
 				// constrained and says what is wrong when it cannot.
 				c.text = r.text
-				c.usage, c.thinking, c.rejected, c.fetched = total, thinking.String(), col.rejected, col.fetched
+				c.usage, c.thinking, c.rejected, c.fetched, c.looked = total, thinking.String(), col.rejected, col.fetched, col.looked
 				return c, nil
 			}
 			c.stopped = StoppedNoCalls
@@ -217,7 +224,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 		conv.answer(r, results)
 		gov.answered(results)
 	}
-	c.usage, c.thinking, c.rejected, c.fetched = total, thinking.String(), col.rejected, col.fetched
+	c.usage, c.thinking, c.rejected, c.fetched, c.looked = total, thinking.String(), col.rejected, col.fetched, col.looked
 	if !c.refused && !c.truncated {
 		c.text, c.fromTool = col.body(), true
 	}
@@ -252,6 +259,7 @@ func (r *Result) foldCalls(other *Result) {
 	r.CallTurns += other.CallTurns
 	r.Rejected += other.Rejected
 	r.Fetched += other.Fetched
+	r.Looked += other.Looked
 	r.Stopped = append(r.Stopped, other.Stopped...)
 	r.Thinking = append(r.Thinking, other.Thinking...)
 }

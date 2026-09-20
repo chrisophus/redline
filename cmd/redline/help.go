@@ -176,6 +176,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.IntVar(&o.minCohortFiles, "min-cohort-files", 0, "below this many shown files a split run is one cohort (default 3)")
 	fs.BoolVar(&o.crossSummaries, "cross-summaries", false, "give each cohort the other cohorts' summaries (on by default)")
 	fs.BoolVar(&o.noCrossSummaries, "no-cross-summaries", false, "each cohort reviews its files knowing nothing of the others")
+	fs.BoolVar(&o.cohortContext, "cohort-context", false, "with --cohorts above 1: keep the resolved context out of the describing call and give each cohort only the context that belongs to its own files")
 	fs.BoolVar(&o.planOnly, "plan", false, "with --cohorts above 1: describe and partition, then stop before judging any cohort")
 	fs.StringVar(&o.onlyCohorts, "only-cohorts", "", "with --cohorts above 1: comma-separated cohort names or 1-based indices to judge, skipping the rest")
 	fs.BoolVar(&o.verbose, "verbose", false, "log each model request, response, and scout tool call to stderr")
@@ -314,14 +315,23 @@ what to look at:
                     committed outranks it. Saved in review.json and the
                     postmortem, and shown on the report.
   --note-file PATH  the same, read from a file. Pass one or the other.
-  --look            experiment: give the judging pass grep and read_lines, so a
-                    claim about code outside the diff is one it can check
-                    rather than only name as a question for the lookup pass.
-                    Off by default because nothing has measured what searching
-                    buys, and it spends turns: the one published run of this
-                    shape went past $20 a review on a 43-file change. The
-                    lookups are the scout's own, so a path climbing out of the
-                    tree is refused and a search is capped.
+  --look            experiment: give the judging pass grep and read_lines,
+                    so a claim about code outside the diff is one it can
+                    check rather than only name as a question for the
+                    lookup pass. Off by default: three runs on one pull
+                    request under this flag's own instrumentation put the
+                    inline shape at 4.7x a plain review's cost, and that is
+                    one PR's worth of data rather than a measurement -
+                    watch Result.Looked (printed as looked=N) before
+                    turning it on for real work. A path climbing out of the
+                    tree is refused and a search is capped, the same
+                    hardening the scout's own lookups have. A path
+                    .cursorindexingignore names at the repository root is
+                    excluded from both the search and a direct read: it
+                    says in as many words that a path is not for an
+                    automated reader. .gitignore is not read for this -
+                    generated code and vendored deps are routinely both
+                    gitignored and something a claim needs to check against.
   --defer-context   experiment: leave the context the providers resolved out
                     of the prompt. Each file's diff is followed by an index
                     of the context that belongs to it, callers, types, tests
@@ -338,7 +348,8 @@ shape:
   --call-turns N    turn cap for each describing/findings/ruling pass over
                     the tool loop every mode runs (default 12). Raise it
                     when a pass hits the cap without calling done, e.g. with
-                    --defer-context, where get_context calls spend turns.
+                    --defer-context or --look, where get_context or
+                    grep/read_lines calls spend turns.
   --samples N       take N independent reviews and union them (default 1).
                     Samples do not overlap, so recall rises with N and cost
                     rises with it too. With the cache on, the first goes out
@@ -400,6 +411,17 @@ shape:
                     each cohort is told nothing about its neighbours.
                     Cheaper, and gives up the correlations a cohort call
                     raises about a change it can see but was not given.
+  --cohort-context  with --cohorts above 1: send the describing call no
+                    resolved context at all, and give each cohort call only
+                    the callers, types, tests and history that belong to
+                    its own files rather than the whole change's. Written
+                    into each cohort's own tail instead of the shared
+                    prefix, since a block scoped to one cohort's files is
+                    not a block any other cohort's call could read back -
+                    the saving --defer-context and --cache buy on that
+                    block is given up for it. Refused together with
+                    --defer-context, which answers the same question a
+                    different way, unless --plan already forces it off.
   --plan            with --cohorts above 1: describe the change and draw the
                     partition, then stop. No cohort call is sent, so
                     Comments comes back empty because nothing judged the

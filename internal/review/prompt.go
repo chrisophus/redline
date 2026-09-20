@@ -225,6 +225,60 @@ func cohortTail(mine Cohort, all []Cohort, mineIdx int, crossSummaries bool) str
 	return b.String()
 }
 
+// cohortContextFilter drops context belonging to another cohort's files, on
+// top of whatever the run already drops for every call (test code).
+//
+// It excludes rather than includes. Expansion.File is where the resolved
+// code lives, not necessarily the changed file the expansion is about: a
+// caller's File is the calling function's own path, and for a change to
+// money.go its callers live in use.go. Keeping only expansions whose File is
+// in this cohort's own file list would drop most caller and type context
+// outright - a cohort holding money.go would lose the callers of money.go,
+// because they live in use.go - and an unchanged caller file, in no
+// cohort's list at all, would be dropped by every cohort.
+//
+// Excluding what is definitely another cohort's leaves context whose
+// subject cannot be attributed to any one cohort - that unchanged caller
+// included - reaching every cohort rather than none. Some duplication
+// across cohorts is the result, which is the direction to err in until the
+// envelope carries the subject file itself rather than only the location.
+func cohortContextFilter(in Input, othersFiles []string) envelope.Filter {
+	exclude := make(map[string]bool, len(othersFiles))
+	for _, f := range othersFiles {
+		exclude[f] = true
+	}
+	base := in.contextFilter()
+	return envelope.Filter{
+		What: "context belonging to another cohort's files",
+		Drop: func(x envelope.Expansion) bool {
+			return (base.Drop != nil && base.Drop(x)) || exclude[x.File]
+		},
+	}
+}
+
+// cohortContextTail is one cohort's own slice of the resolved context,
+// fitted to what room is left in this call and rendered into its tail
+// instead of the cached prefix: scoping it there would make every cohort's
+// prefix a different block, and nothing would ever be read back from the
+// write another cohort paid for. Empty when there is no context to send or
+// no room left for it. othersFiles is every file named by another cohort,
+// not this one's own - see cohortContextFilter for why.
+func (in Input) cohortContextTail(room int, othersFiles []string) string {
+	if len(in.Envelopes) == 0 || room <= 0 {
+		return ""
+	}
+	budget := envelope.FitAllFilter(in.Envelopes, room, in.shownLines(), cohortContextFilter(in, othersFiles))
+	rendered := budget.Render()
+	if rendered == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\n")
+	b.WriteString(in.contextHeader(keptRoles(budget)))
+	b.WriteString(rendered)
+	return b.String()
+}
+
 // hidesTests reports whether the request holds the change's test files back.
 //
 // Test code is the biggest thing a review can be sent that it was not asked

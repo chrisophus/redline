@@ -294,7 +294,10 @@ func (ts *toolset) grep() tool {
 			if err != nil {
 				return "", fmt.Errorf("bad pattern: %w", err)
 			}
-			return grepTree(ts.root, re, in.Glob, maxGrepMatches)
+			// The scout's own grep, not --look's: unaffected by
+			// .gitignore/.cursorindexingignore, which is a --look-specific
+			// exclusion. See Looker.Grep.
+			return grepTree(ts.root, re, in.Glob, maxGrepMatches, nil)
 		},
 	}
 }
@@ -573,7 +576,12 @@ func runCmd(dir, name string, args ...string) (string, error) {
 // shelled out to ripgrep so the tool exists on every machine, and bounded on
 // both file size and match count so one broad pattern cannot fill the
 // scout's context with its own search results.
-func grepTree(root string, re *regexp.Regexp, glob string, max int) (string, error) {
+//
+// ignore is .cursorindexingignore's patterns, checked beside the hardcoded
+// directory names below: those are Redline's own housekeeping (its own
+// output, the module caches a repository already keeps out of git), and
+// ignore is the tree's own word that a path is not for an automated reader.
+func grepTree(root string, re *regexp.Regexp, glob string, max int, ignore []string) (string, error) {
 	// The walk collects paths and reads nothing. Reading inside the callback
 	// means acting on a path the walk resolved earlier, which is a symlink
 	// race the moment the tree is not yours alone; it is also what gosec's
@@ -583,23 +591,38 @@ func grepTree(root string, re *regexp.Regexp, glob string, max int) (string, err
 		realRoot = root
 	}
 	var candidates []string
+	// excluded records that .cursorindexingignore kept at least one path out
+	// of this search, so a zero-match result can say so rather than read as
+	// "this is nowhere in the tree" when it may only be somewhere this
+	// search was not allowed to look. ReadLines already says this for a
+	// direct read; Grep had no equivalent, and a hit that fell silently out
+	// of the candidate list is the harder case to notice.
+	var excluded bool
 	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
 			switch d.Name() {
 			case ".git", "node_modules", "vendor", "graphify-out", ".redline":
 				return filepath.SkipDir
 			}
+			if rel != "." && ignoredPath(ignore, rel) {
+				excluded = true
+				return filepath.SkipDir
+			}
 			return nil
 		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
 		if glob != "" && !strings.Contains(rel, glob) {
+			return nil
+		}
+		if ignoredPath(ignore, rel) {
+			excluded = true
 			return nil
 		}
 		if info, err := d.Info(); err != nil || info.Size() > 1<<20 {
@@ -652,8 +675,16 @@ func grepTree(root string, re *regexp.Regexp, glob string, max int) (string, err
 		// "no matches" reads as "this is nowhere in the code" when what
 		// happened is that the code is outside the tree: the module cache and
 		// everything else off the repository is not walked.
-		return "no matches in this repository, which is the whole of what this searches; " +
-			"code in a dependency is outside it and cannot be found from here", nil
+		msg := "no matches in this repository, which is the whole of what this searches; " +
+			"code in a dependency is outside it and cannot be found from here"
+		if excluded {
+			// The same misreading, for the same reason ReadLines already
+			// names: at least one path this search would otherwise have
+			// looked at was excluded by .cursorindexingignore and never
+			// read, which is not the same as nothing there matching.
+			msg += ". At least one path in scope was excluded by .cursorindexingignore and never searched"
+		}
+		return msg, nil
 	}
 	if matches >= max {
 		fmt.Fprintf(&b, "(stopped at %d matches; narrow the pattern or the glob)\n", max)

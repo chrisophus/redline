@@ -168,6 +168,10 @@ func cmdReview(o opts) error {
 	}
 	ropts.Cohorts = o.cohorts
 	ropts.MinCohortFiles = o.minCohortFiles
+	if o.cohortContext && o.cohorts <= 1 {
+		return fmt.Errorf("--cohort-context scopes context to a cohort's own files, and without --cohorts above 1 there is no split to scope by; pass --cohorts N")
+	}
+	ropts.CohortContext = o.cohortContext
 	if o.reuseSynopsis {
 		if o.noSynopsis {
 			return fmt.Errorf("--reuse-synopsis reuses a walkthrough and --no-synopsis asks for none; pass one or the other")
@@ -259,6 +263,12 @@ func cmdReview(o opts) error {
 	if ropts.Verify {
 		ropts.Answer = scoutAnswerer(res, ropts, o.scoutSettings(), &tally)
 	}
+	// Off by default. Three runs on one pull request under the new
+	// instrumentation (see Result.Looked) put the inline shape at 4.7x a
+	// plain review's cost for one PR's worth of data - real evidence
+	// against a default this is not, but the counters exist now precisely
+	// so that decision can be made from a ledger rather than three traces
+	// read as prose. --look turns it on.
 	if o.look {
 		ropts.Look = lookerFor(res)
 	}

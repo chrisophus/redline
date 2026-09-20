@@ -85,7 +85,7 @@ func TestSymlinkEscapeIsRefused(t *testing.T) {
 		t.Error("read_lines followed a symlink out of the tree")
 	}
 
-	out, err := grepTree(root, regexp.MustCompile("TOP-SECRET-TOKEN"), "", 60)
+	out, err := grepTree(root, regexp.MustCompile("TOP-SECRET-TOKEN"), "", 60, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
