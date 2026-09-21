@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,6 +42,10 @@ const (
 // A var so a test can drive a stall in milliseconds rather than minutes;
 // nothing in the product writes to it.
 var idleTimeout = 120 * time.Second
+
+// errStalled names a connection that went silent, so the turn loop can tell it
+// from a refusal or a bad request and send the turn again.
+var errStalled = errors.New("the connection stalled")
 
 // idleTransport wraps the default transport so a streamed response times
 // out on its own silence, independent of what the API is sending: a read
@@ -88,7 +93,7 @@ func (d *idleReader) Read(p []byte) (int, error) {
 		copy(p, res.buf[:res.n])
 		return res.n, res.err
 	case <-time.After(idleTimeout):
-		return 0, fmt.Errorf("no data received in %s, not even a ping: the connection stalled, this is not the model reasoning", idleTimeout)
+		return 0, fmt.Errorf("no data received in %s, not even a ping: %w, this is not the model reasoning", idleTimeout, errStalled)
 	}
 }
 
