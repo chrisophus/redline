@@ -75,6 +75,10 @@ type Options struct {
 	Commit string // a single commit, reviewed against its parent
 	Range  string // A..B (B defaults to HEAD)
 	Base   string // explicit base ref, overriding the implied one
+	// Warn, when set, is called with something the caller should know that
+	// did not stop the resolve. Nil is silence, which is what the tests and
+	// any programmatic caller want.
+	Warn func(string)
 }
 
 // Resolve turns options into a target, fetching from GitHub if needed.
@@ -255,9 +259,35 @@ func prBaseRef(repo *gitx.Repo, opts Options, pr *PullRequest) (string, error) {
 		return base, nil
 	}
 	base = "origin/" + pr.BaseRefName
-	if !repo.Exists(base) {
-		if err := repo.Fetch("origin", pr.BaseRefName); err != nil {
+	// Fetched every time, not only when the ref is missing.
+	//
+	// The head can check itself: prHeadRef compares what it resolves against
+	// the HeadRefOid gh reported and re-fetches when they disagree. The base
+	// has no such check, because the query asks for baseRefName and there is
+	// no sha beside it, so a stale origin/<base> is used exactly as if it
+	// were current. It is not a rare state: anyone who has not pulled since
+	// the last merge into the base branch has one.
+	//
+	// What that cost was a wrong diff, not a stale number. Redline takes the
+	// merge base against this ref, so a base behind by one merged pull
+	// request produces a diff carrying that pull request's changes as though
+	// they belonged to the one under review: on PR #90 it added seven hunks
+	// to one file, the review spent its budget on code that was already
+	// reviewed and merged, and post was refused by GitHub with "Line could
+	// not be resolved" for a comment anchored in a hunk GitHub's own diff
+	// does not have.
+	//
+	// A failure is only fatal when there is no ref to fall back on. A fetch
+	// needs the network and observing a change does not, so a run offline
+	// with the ref already present carries on with what it has and says so.
+	if err := repo.Fetch("origin", pr.BaseRefName); err != nil {
+		if !repo.Exists(base) {
 			return "", fmt.Errorf("fetching PR base %s: %w", pr.BaseRefName, err)
+		}
+		if opts.Warn != nil {
+			opts.Warn(fmt.Sprintf("could not fetch %s (%v); using the %s already in this checkout, "+
+				"which may be behind and would put another change's commits in this diff",
+				pr.BaseRefName, err, base))
 		}
 	}
 	return base, nil

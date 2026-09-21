@@ -11,6 +11,31 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Fixed
+- **A pull request's base ref is fetched on every resolve, not only when it is
+  missing.** `prBaseRef` fetched `origin/<base>` under `if !repo.Exists`, so a
+  ref that was present but behind was used exactly as if it were current -
+  which is the state of any checkout that has not pulled since the last merge
+  into the base branch. The head does not have this problem: `prHeadRef`
+  compares what it resolves against the `HeadRefOid` gh reported and
+  re-fetches when they disagree, while the base has no sha beside its name to
+  check against.
+
+  What it cost was a wrong diff rather than a stale number. Redline takes the
+  merge base against that ref, so a base behind by one merged pull request
+  produces a diff carrying that pull request's changes as though they belonged
+  to the one under review. On PR #90 the base resolved eleven commits back:
+  `internal/review/review.go` came out with fourteen hunks where GitHub's diff
+  has seven, the review spent its budget reading code that was already
+  reviewed and merged, and `post` was refused with `422 Line could not be
+  resolved` for a comment anchored at line 486 - inside a hunk that belongs to
+  PR #89. With the fix the same observe resolves the base GitHub uses and the
+  hunks match.
+
+  A fetch needs the network and observing a change does not, so a resolve that
+  cannot reach the remote carries on with the ref it has and says so, rather
+  than losing the ability to review offline.
+
 ### Added
 - **The describing call can go out on a model of its own**, through
   `--synopsis-model`, with `--synopsis-api`, `--synopsis-base-url` and

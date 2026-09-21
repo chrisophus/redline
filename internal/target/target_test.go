@@ -312,3 +312,87 @@ func TestRequestedIsFalseForTheWorkingTree(t *testing.T) {
 		t.Fatal("--commit is a requested target")
 	}
 }
+
+// The base ref is fetched on every resolve, not only when it is missing.
+//
+// The head checks itself: prHeadRef compares what it resolves against the
+// HeadRefOid gh reported. The base has no sha beside its name, so a stale
+// origin/<base> is used exactly as if it were current, and anyone who has not
+// pulled since the last merge into the base branch has one. What that costs is
+// a wrong diff: the merge base comes out behind, and the change under review
+// carries the commits of whatever merged in between.
+func TestThePRBaseIsFetchedEvenWhenTheRefIsPresent(t *testing.T) {
+	origin := initRepo(t)
+	clone := t.TempDir()
+	runGit(t, "", "clone", "-q", origin, clone)
+
+	// origin moves on after the clone: the state every stale checkout is in.
+	writeCommit(t, origin, "b.go", "package b\n", "second")
+	want := strings.TrimSpace(string(mustOutput(t, origin, "rev-parse", "HEAD")))
+
+	repo, err := gitx.Open(clone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, _ := repo.Resolve("origin/main")
+	if stale == want {
+		t.Fatal("the clone is already current; this test needs it stale")
+	}
+
+	base, err := prBaseRef(repo, Options{}, &PullRequest{BaseRefName: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.Resolve(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Errorf("base resolved to %s, want the current origin/main %s; it was left at %s",
+			short(got), short(want), short(stale))
+	}
+}
+
+// A fetch needs the network and observing a change does not, so a resolve that
+// cannot reach the remote carries on with the ref it has and says so. Losing
+// the ability to review offline would be a worse trade than the staleness.
+func TestAnUnreachableRemoteFallsBackAndSaysSo(t *testing.T) {
+	dir := initRepo(t)
+	runGit(t, dir, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runGit(t, dir, "remote", "add", "origin", filepath.Join(dir, "no-such-remote"))
+
+	repo, err := gitx.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var said []string
+	base, err := prBaseRef(repo, Options{Warn: func(s string) { said = append(said, s) }},
+		&PullRequest{BaseRefName: "main"})
+	if err != nil {
+		t.Fatalf("a present ref must survive an unreachable remote: %v", err)
+	}
+	if base != "origin/main" {
+		t.Errorf("base = %q, want origin/main", base)
+	}
+	if len(said) != 1 || !strings.Contains(said[0], "may be behind") {
+		t.Errorf("the fallback must say what it used and why it may be wrong: %v", said)
+	}
+}
+
+func short(s string) string {
+	if len(s) > 8 {
+		return s[:8]
+	}
+	return s
+}
+
+func mustOutput(t *testing.T, dir string, args ...string) []byte {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %s: %v", strings.Join(args, " "), err)
+	}
+	return out
+}
