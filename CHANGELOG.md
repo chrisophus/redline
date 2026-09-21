@@ -11,12 +11,6 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
-### Fixed
-- **`main` builds again.** #90 gave `newCollector` a `recaps` argument and #95
-  added tests calling it without one. Each was green on its own branch and the
-  pair is not, which is the one kind of break a per-branch CI run cannot see:
-  neither diff is wrong and their merge does not compile.
-
 ## [0.15.0] - 2026-09-21
 
 ### Added
@@ -96,6 +90,10 @@ Releases whose tag carries only a subject line are listed as that subject.
   judging call's prefix and its fallback writes a complete review.
 
 ### Fixed
+- **`main` builds again.** #90 gave `newCollector` a `recaps` argument and #95
+  added tests calling it without one. Each was green on its own branch and the
+  pair is not, which is the one kind of break a per-branch CI run cannot see:
+  neither diff is wrong and their merge does not compile.
 - **A line number the model writes as a string is read as a number.**
   `read_lines` asks for two integers and kept being given a string. Across four
   runs of this tool the same field arrived as `"70, 145"`, `"20-1"`, `"412/-"`
