@@ -36,6 +36,12 @@ var priceTable = map[string]Pricing{
 	// matching OpenRouter's listing. gpt-5.6-sol is left out: OpenAI's page
 	// and the third-party listings disagree on its rate.
 	"gpt-5.6-terra": {InPerM: 2, OutPerM: 12},
+	// Not from a vendor page: this rate was given by the operator of the
+	// gateway this repository reaches it through, so it is the one row here
+	// nothing public can be checked against. Output below input is backwards
+	// against every other model in this table, which is worth knowing before
+	// reading a cost line that rests on it.
+	"gpt-5.6-luna":  {InPerM: 1.20, OutPerM: 0.20},
 	"gpt-5.4":       {InPerM: 2.50, OutPerM: 15},
 	"gpt-5.3-codex": {InPerM: 1.75, OutPerM: 14},
 	"gpt-5-mini":    {InPerM: 0.25, OutPerM: 2},
