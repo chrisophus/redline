@@ -668,6 +668,12 @@ func buildBodyWalkthrough(p Payload) string {
 	// before.
 	perFile, leftover := splitBodyFindingsByFile(p)
 	if p.recap != "" {
+		// A finding grouped under a file rides in the per-file table, and the
+		// recap replaces that table. With nowhere to ride it would be dropped
+		// from the body without a word, so every body finding goes in the flat
+		// list below instead. Taken from bodyFindings rather than merged back
+		// out of perFile so they keep the order the report gave them.
+		perFile, leftover = nil, p.bodyFindings
 		recap := p.recap
 		if len(recap) > maxNarrative {
 			recap = recap[:maxNarrative] + "\n\n_(truncated; the full walkthrough is on the report)_"

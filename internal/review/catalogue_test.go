@@ -342,3 +342,65 @@ func TestTheDescribingCallsEstimateCountsTheCatalogueItSends(t *testing.T) {
 			apart, together)
 	}
 }
+
+// set_recap is only reachable on the describing call of a one-shot review.
+// A staged run's stage one carries the partition instruction instead of the
+// recap question, a reused walkthrough makes no describing call at all, and
+// the combined pass is not allowed to call it. Putting the tool on the
+// catalogue for any of those spends input on a tool nothing will ask for and
+// leaves the run silently producing no recap, so --since is refused there and
+// the catalogue does not carry the tool.
+func TestSinceIsRefusedWhereNoCallCanAnswerIt(t *testing.T) {
+	base := func() Options {
+		return Options{
+			API: APIAnthropic, Model: "claude-sonnet-5", Synopsis: true,
+			Cache: true, CacheTTL: CacheTTL5m, Cohorts: 1, MaxTokens: 1000,
+			SinceReview: "abc1234", SinceFiles: []string{"internal/review/review.go"},
+		}
+	}
+	offered := func(t *testing.T, opts Options) bool {
+		t.Helper()
+		res, err := Assemble(deferredInput(), opts.withDefaults())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return slices.Contains(catalogueNames(res.synopsisRequest(opts.withDefaults(), deferredInput())), CallRecap)
+	}
+	if !offered(t, base()) {
+		t.Fatal("the one review that can answer a recap was not offered set_recap, so this test is not comparing what it thinks")
+	}
+	for _, tc := range []struct {
+		name string
+		opts func() Options
+	}{
+		{"the combined pass, with no describing call to ask", func() Options {
+			o := base()
+			o.Synopsis = false
+			return o
+		}},
+		{"a staged run, whose stage one is partitioning instead", func() Options {
+			o := base()
+			o.Cohorts = 4
+			return o
+		}},
+		{"a reused walkthrough, which calls nothing", func() Options {
+			o := base()
+			o.ReuseSynopsis = &findings.Review{Overview: "from disk"}
+			return o
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if offered(t, tc.opts()) {
+				t.Error("set_recap is on the catalogue for a run that will never be asked for a recap")
+			}
+			// Run refuses ahead of any call, so this sends nothing.
+			_, err := Run(context.Background(), deferredInput(), tc.opts())
+			if err == nil {
+				t.Fatal("--since was accepted by a run that cannot produce a recap")
+			}
+			if !strings.Contains(err.Error(), "--since") {
+				t.Errorf("the refusal does not name the flag it is about: %v", err)
+			}
+		})
+	}
+}

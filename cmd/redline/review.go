@@ -626,7 +626,25 @@ func (o opts) scoutSettings() scoutSettings {
 // The head is the target's when it has one and the working tree otherwise,
 // which is the same pair ReviewIdentity distinguishes.
 func (o opts) sinceLastReview(res *run.Result) (string, []string, error) {
-	repo, err := gitx.Open(o.root)
+	// The checkout under review, not o.root. o.root is the session directory,
+	// which is .redline inside the checkout by default and so happens to
+	// resolve, but --out and --session can put it anywhere: a session cache
+	// outside the repository would resolve --since against the wrong
+	// repository or none at all. The target's own directory is what the panes
+	// observe, and the working directory is the fallback the other commands
+	// use when there is no target.
+	dir := ""
+	if res != nil && res.Change != nil && res.Change.Target != nil {
+		dir = res.Change.Target.Dir
+	}
+	if dir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", nil, fmt.Errorf("--since: %w", err)
+		}
+		dir = cwd
+	}
+	repo, err := gitx.Open(dir)
 	if err != nil {
 		return "", nil, fmt.Errorf("--since: %w", err)
 	}

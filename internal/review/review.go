@@ -503,6 +503,21 @@ func (o Options) describingSharesPrefix() bool {
 // failed describing call does not widen it: where the two calls share a
 // prefix the fallback still runs and the array was already wide, and where
 // they do not there is no fallback. See runJudged.
+// recapable reports whether this run makes the call a recap can be asked of.
+//
+// That is the describing call of a one-shot review and nothing else. A staged
+// run describes too, but stage one's tail is the partition instruction and
+// never carries the recap question, and a reused walkthrough makes no
+// describing call at all. Offering set_recap anywhere else puts a tool on the
+// wire that is never asked for and, where the pass is the combined one, never
+// allowed either.
+func (o Options) recapable() bool {
+	if o.SinceReview == "" || o.ReuseSynopsis != nil {
+		return false
+	}
+	return o.Shape() == PipelineOneShot && o.Synopsis
+}
+
 func (o Options) judgingCatalogueDescribes() bool {
 	switch {
 	case o.Shape() != PipelineOneShot && o.ReuseSynopsis == nil:
@@ -1100,7 +1115,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		deferred:           deferred,
 		lookCalls:          lookCallsFor(opts.Look),
 		catalogueDescribes: opts.judgingCatalogueDescribes(),
-		catalogueRecaps:    opts.SinceReview != "",
+		catalogueRecaps:    opts.recapable(),
 		FilesShown:         len(in.ShownFiles()),
 		Prompt:             prompt,
 		Tail:               tail + describe + note,
@@ -1164,6 +1179,11 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	if d := opts.Describing.API; d != "" && d != APIAnthropic && d != APIOpenAI {
 		return nil, fmt.Errorf("unknown api %q for the describing call; use %s or %s",
 			d, APIAnthropic, APIOpenAI)
+	}
+	if opts.SinceReview != "" && !opts.recapable() {
+		return nil, fmt.Errorf("--since asks the describing call what has changed since %s, and this "+
+			"run makes no describing call to ask; drop --since, or drop whichever of --no-synopsis, "+
+			"--cohorts or a reused walkthrough turned that call off", opts.SinceReview)
 	}
 	if opts.CohortContext && opts.Shape() != PipelineStaged {
 		return nil, fmt.Errorf("--cohort-context scopes the resolved context to each cohort's own " +

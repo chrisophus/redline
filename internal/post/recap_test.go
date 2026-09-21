@@ -84,3 +84,32 @@ func TestTheHeadsOfEarlierReviewsComeOffTheirMarkers(t *testing.T) {
 		t.Errorf("a body with no marker yielded %d head(s)", n)
 	}
 }
+
+// A finding on a file the walkthrough would have shown rides in the per-file
+// table, and the recap replaces that table. It has to fall back to the flat
+// list, or posting with --recap drops it from the body without saying so.
+//
+// This is the one thing the recap must not do: it exists to stop a walkthrough
+// being repeated, not to stop a finding being read.
+func TestTheRecapBodyStillCarriesAFindingOnAShownFile(t *testing.T) {
+	p := recapPayload(t)
+	p.bodyFindings = []findings.Finding{
+		{File: "a.go", Line: 12, Rule: "shown-file", Severity: findings.SeverityWarning,
+			Message: "this rides in the per-file table"},
+		{Rule: "no-file", Severity: findings.SeverityWarning,
+			Message: "this was always in the flat list"},
+	}
+	// The ordinary body puts the first one in the table, which is what makes
+	// the recap body the interesting case.
+	before := p.renderBody()
+	if !strings.Contains(before, "this rides in the per-file table") {
+		t.Fatal("the ordinary body does not carry the per-file finding, so this test is not comparing what it thinks")
+	}
+	after := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678").Body
+	if !strings.Contains(after, "this was always in the flat list") {
+		t.Error("the recap body dropped a finding that never depended on the table")
+	}
+	if !strings.Contains(after, "this rides in the per-file table") {
+		t.Error("the recap body dropped the finding on a shown file, which is the whole bug")
+	}
+}
