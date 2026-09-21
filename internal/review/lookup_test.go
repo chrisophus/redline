@@ -608,7 +608,7 @@ func TestALineNumberWrittenAsAStringIsRead(t *testing.T) {
 		{`412`, 412},
 	} {
 		look := &fakeLooker{answer: "a.go:1-2\n1\tx\n"}
-		c := newCollector(StageFindings, passExpect{}, nil, look)
+		c := newCollector(StageFindings, passExpect{}, nil, look, false)
 		in := json.RawMessage(`{"path":"a.go","start_line":` + tc.written + `,"end_line":430}`)
 		results, _, rejected := c.take([]toolCall{{ID: "t1", Name: CallRead, Input: in}})
 		if rejected != 0 {
@@ -630,7 +630,7 @@ func TestALineNumberWrittenAsAStringIsRead(t *testing.T) {
 // A string with no number at the front is still refused: there the meaning is
 // genuinely unknown, and guessing at one would read the wrong lines silently.
 func TestAStringWithNoNumberIsStillRefused(t *testing.T) {
-	c := newCollector(StageFindings, passExpect{}, nil, &fakeLooker{})
+	c := newCollector(StageFindings, passExpect{}, nil, &fakeLooker{}, false)
 	in := json.RawMessage(`{"path":"a.go","start_line":"the guard","end_line":430}`)
 	results, _, rejected := c.take([]toolCall{{ID: "t1", Name: CallRead, Input: in}})
 	if rejected != 1 {
