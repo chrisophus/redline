@@ -108,7 +108,7 @@ func TestAPassReadsHeldBackContext(t *testing.T) {
 func TestGetContextIsOfferedOnlyWhenContextIsDeferred(t *testing.T) {
 	for _, pulls := range []bool{false, true} {
 		var named bool
-		for _, tool := range callTools(true, pulls, nil) {
+		for _, tool := range callTools(true, false, pulls, nil) {
 			named = named || tool.Name == CallContext
 		}
 		if named != pulls {

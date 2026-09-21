@@ -659,19 +659,42 @@ func (r *Repo) ChangedPaths(rev string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	return changedBetween(base, work), nil
+}
+
+// ChangedPathsBetween is the same question asked of two revisions rather than
+// of a revision and the working tree. It is what says which part of a change
+// arrived after a particular commit, which the diff against the merge base
+// cannot answer: that diff shows the whole change and nothing in it records
+// when any of it landed.
+func (r *Repo) ChangedPathsBetween(from, to string) ([]string, error) {
+	a, err := r.Blobs(from)
+	if err != nil {
+		return nil, err
+	}
+	b, err := r.Blobs(to)
+	if err != nil {
+		return nil, err
+	}
+	return changedBetween(a, b), nil
+}
+
+// changedBetween is every path whose blob differs between two trees, added and
+// removed included, sorted.
+func changedBetween(from, to map[string]string) []string {
 	seen := map[string]bool{}
 	var out []string
-	for p, sha := range work {
-		if base[p] != sha {
+	for p, sha := range to {
+		if from[p] != sha {
 			seen[p] = true
 			out = append(out, p)
 		}
 	}
-	for p := range base {
-		if _, ok := work[p]; !ok && !seen[p] {
+	for p := range from {
+		if _, ok := to[p]; !ok && !seen[p] {
 			out = append(out, p)
 		}
 	}
 	sort.Strings(out)
-	return out, nil
+	return out
 }
