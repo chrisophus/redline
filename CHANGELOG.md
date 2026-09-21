@@ -12,81 +12,12 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Fixed
-- **A line number the model writes as a string is read as a number.**
-  `read_lines` asks for two integers and kept being given a string. Across four
-  runs of this tool the same field arrived as `"70, 145"`, `"20-1"`, `"412/-"`
-  and `"20, \n"`: a line number, then whatever the model was still thinking.
-  Every one cost a turn - the call was refused, the correction went back, and
-  the call came again - and `read_lines` is the tool a pass reaches for most,
-  so this was the commonest refusal in the trace. Refusing was the honest
-  answer while nothing else was available and it did not work: the message says
-  "want an integer, got the string" and the string comes back differently
-  mangled next time. A field the schema declares as an integer, holding a
-  string that starts with one, is now read as that integer. Only a leading
-  integer, only where the schema says integer, and a string with no number at
-  the front is still refused, because there the meaning is genuinely unknown.
-  The trace keeps the arguments as the model wrote them, so a coerced call is
-  still visible as one.
+- **`main` builds again.** #90 gave `newCollector` a `recaps` argument and #95
+  added tests calling it without one. Each was green on its own branch and the
+  pair is not, which is the one kind of break a per-branch CI run cannot see:
+  neither diff is wrong and their merge does not compile.
 
-### Fixed
-- **The walkthrough's file lines stop wrapping.** Each changed file was a row
-  in a table of File, Lines and What changed. GitHub divides a table's width
-  between its columns and the prose column is the longest, so it took the
-  space: paths wrapped in the middle of a directory name and a file's added
-  and removed counts landed on separate lines. A file is now one list item,
-  which has no columns to divide, and the two counts are joined by a
-  non-breaking space so nothing can split them. A section is about 40 bytes
-  cheaper than the table it replaces, since there is no header row to repeat
-  per group.
-- **A tool with no required field no longer breaks every OpenAI call.**
-  `flatObject` takes its required fields variadically, and a call with none
-  left a nil `[]string`, which marshals to `null`. The Anthropic wire tolerates
-  that; the OpenAI wire refuses the whole request with `Invalid schema for
-  function 'list_docs': None is not of type 'array'`. `list_docs` acquired the
-  shape when it got its `path` filter, and because it only fails on the wire
-  this repository does not usually point at, it went out working. `done` now
-  builds its schema through the same constructor rather than a bare literal,
-  so there is one path, and a test asserts no tool marshals a null `required`.
-  Found by the first `--synopsis-api openai` run.
-### Changed
-- **A describing call that fails stops the run.** It used to carry on and write
-  the findings without a walkthrough, on the argument that a degraded review
-  beats a lost one. That argument is for a call nobody can retry. This one can:
-  the reason is on the screen, whatever caused it is usually a flag or a schema
-  away from fixed, and the session on disk makes the next attempt free to set
-  up. What carrying on bought instead was the judging call's price - the larger
-  of the two - spent on a review the caller did not ask for, in a shape they
-  would have to run again anyway. Measured on the run that prompted this: the
-  describing call was refused for a bad schema and the run spent $1.39 finding
-  nothing. The error names the cause and the two ways out, and the describing
-  call's own cost comes back with it so the ledger still records what was
-  spent. The fallback in a split run is untouched: there stage one shares the
-  judging call's prefix and its fallback writes a complete review.
-
-### Fixed
-- **A pull request's base ref is fetched on every resolve, not only when it is
-  missing.** `prBaseRef` fetched `origin/<base>` under `if !repo.Exists`, so a
-  ref that was present but behind was used exactly as if it were current -
-  which is the state of any checkout that has not pulled since the last merge
-  into the base branch. The head does not have this problem: `prHeadRef`
-  compares what it resolves against the `HeadRefOid` gh reported and
-  re-fetches when they disagree, while the base has no sha beside its name to
-  check against.
-
-  What it cost was a wrong diff rather than a stale number. Redline takes the
-  merge base against that ref, so a base behind by one merged pull request
-  produces a diff carrying that pull request's changes as though they belonged
-  to the one under review. On PR #90 the base resolved eleven commits back:
-  `internal/review/review.go` came out with fourteen hunks where GitHub's diff
-  has seven, the review spent its budget reading code that was already
-  reviewed and merged, and `post` was refused with `422 Line could not be
-  resolved` for a comment anchored at line 486 - inside a hunk that belongs to
-  PR #89. With the fix the same observe resolves the base GitHub uses and the
-  hunks match.
-
-  A fetch needs the network and observing a change does not, so a resolve that
-  cannot reach the remote carries on with the ref it has and says so, rather
-  than losing the ability to review offline.
+## [0.15.0] - 2026-09-21
 
 ### Added
 - **The posted review says what the change is made of.** The HTML report has
@@ -149,7 +80,79 @@ Releases whose tag carries only a subject line are listed as that subject.
   committed file. The flag still wins, and the Anthropic wire is left alone so
   its SDK's own credential chain is not shadowed.
 
+### Changed
+- **A describing call that fails stops the run.** It used to carry on and write
+  the findings without a walkthrough, on the argument that a degraded review
+  beats a lost one. That argument is for a call nobody can retry. This one can:
+  the reason is on the screen, whatever caused it is usually a flag or a schema
+  away from fixed, and the session on disk makes the next attempt free to set
+  up. What carrying on bought instead was the judging call's price - the larger
+  of the two - spent on a review the caller did not ask for, in a shape they
+  would have to run again anyway. Measured on the run that prompted this: the
+  describing call was refused for a bad schema and the run spent $1.39 finding
+  nothing. The error names the cause and the two ways out, and the describing
+  call's own cost comes back with it so the ledger still records what was
+  spent. The fallback in a split run is untouched: there stage one shares the
+  judging call's prefix and its fallback writes a complete review.
+
 ### Fixed
+- **A line number the model writes as a string is read as a number.**
+  `read_lines` asks for two integers and kept being given a string. Across four
+  runs of this tool the same field arrived as `"70, 145"`, `"20-1"`, `"412/-"`
+  and `"20, \n"`: a line number, then whatever the model was still thinking.
+  Every one cost a turn - the call was refused, the correction went back, and
+  the call came again - and `read_lines` is the tool a pass reaches for most,
+  so this was the commonest refusal in the trace. Refusing was the honest
+  answer while nothing else was available and it did not work: the message says
+  "want an integer, got the string" and the string comes back differently
+  mangled next time. A field the schema declares as an integer, holding a
+  string that starts with one, is now read as that integer. Only a leading
+  integer, only where the schema says integer, and a string with no number at
+  the front is still refused, because there the meaning is genuinely unknown.
+  The trace keeps the arguments as the model wrote them, so a coerced call is
+  still visible as one.
+- **The walkthrough's file lines stop wrapping.** Each changed file was a row
+  in a table of File, Lines and What changed. GitHub divides a table's width
+  between its columns and the prose column is the longest, so it took the
+  space: paths wrapped in the middle of a directory name and a file's added
+  and removed counts landed on separate lines. A file is now one list item,
+  which has no columns to divide, and the two counts are joined by a
+  non-breaking space so nothing can split them. A section is about 40 bytes
+  cheaper than the table it replaces, since there is no header row to repeat
+  per group.
+- **A tool with no required field no longer breaks every OpenAI call.**
+  `flatObject` takes its required fields variadically, and a call with none
+  left a nil `[]string`, which marshals to `null`. The Anthropic wire tolerates
+  that; the OpenAI wire refuses the whole request with `Invalid schema for
+  function 'list_docs': None is not of type 'array'`. `list_docs` acquired the
+  shape when it got its `path` filter, and because it only fails on the wire
+  this repository does not usually point at, it went out working. `done` now
+  builds its schema through the same constructor rather than a bare literal,
+  so there is one path, and a test asserts no tool marshals a null `required`.
+  Found by the first `--synopsis-api openai` run.
+- **A pull request's base ref is fetched on every resolve, not only when it is
+  missing.** `prBaseRef` fetched `origin/<base>` under `if !repo.Exists`, so a
+  ref that was present but behind was used exactly as if it were current -
+  which is the state of any checkout that has not pulled since the last merge
+  into the base branch. The head does not have this problem: `prHeadRef`
+  compares what it resolves against the `HeadRefOid` gh reported and
+  re-fetches when they disagree, while the base has no sha beside its name to
+  check against.
+
+  What it cost was a wrong diff rather than a stale number. Redline takes the
+  merge base against that ref, so a base behind by one merged pull request
+  produces a diff carrying that pull request's changes as though they belonged
+  to the one under review. On PR #90 the base resolved eleven commits back:
+  `internal/review/review.go` came out with fourteen hunks where GitHub's diff
+  has seven, the review spent its budget reading code that was already
+  reviewed and merged, and `post` was refused with `422 Line could not be
+  resolved` for a comment anchored at line 486 - inside a hunk that belongs to
+  PR #89. With the fix the same observe resolves the base GitHub uses and the
+  hunks match.
+
+  A fetch needs the network and observing a change does not, so a resolve that
+  cannot reach the remote carries on with the ref it has and says so, rather
+  than losing the ability to review offline.
 - **The input estimate counts the tool array.** `ruleRequest` had always
   counted it and says why; every other request left it out, so each quoted
   price understated a review by 2800 to 4400 tokens depending on how many
@@ -159,7 +162,6 @@ Releases whose tag carries only a subject line are listed as that subject.
   out") rather than failing on it. The estimate feeds `--dry-run`, the price
   quoted before a call goes out, and the tripwire's own figure, so all three
   were low by the same amount.
-
 - **The judging call stops carrying the tools that write a walkthrough**, where
   the describing call ran somewhere its prefix cannot be read from. The
   catalogue drops from 2820 to 1965 tokens, or 4383 to 3528 with every lookup
