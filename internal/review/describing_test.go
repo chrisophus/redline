@@ -167,15 +167,20 @@ func TestOneModelPricesTheDescribingCallWithTheRest(t *testing.T) {
 // its two calls, which is the one thing the price table's own comment says it
 // will not do.
 func TestAnUnpricedDescribingModelMakesTheTotalUnknown(t *testing.T) {
-	if _, ok := LookupPricing("gpt-5.6-luna"); ok {
-		t.Skip("gpt-5.6-luna is priced now; this test needs a model that is not")
+	// A name no row can ever match, rather than a real model that is unpriced
+	// today. The first version of this test named one, and adding its rate
+	// turned the test into a skip: it went on passing and stopped checking
+	// anything.
+	const unpriced = "a-model-this-table-has-never-heard-of"
+	if _, ok := LookupPricing(unpriced); ok {
+		t.Fatalf("%q resolved to a rate; this test needs a name that cannot", unpriced)
 	}
 	res := &Result{Usage: Usage{InputTokens: 100_000, OutputTokens: 4_000}}
 	applySynopsis(res, "claude-sonnet-5", described{
 		Walkthrough: reviewWithOverview("what the change does"),
 		Usage:       Usage{InputTokens: 200_000},
 		Written:     3_000,
-		Model:       "gpt-5.6-luna",
+		Model:       unpriced,
 	})
 	if res.CostKnown {
 		t.Error("one of the two calls ran on a model with no price, so the total is not known")
@@ -232,5 +237,22 @@ func TestAnUnknownDescribingWireIsRefused(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "describing call") {
 		t.Errorf("a typo in the describing wire was not refused: %v", err)
+	}
+}
+
+// Luna resolves to its own row and not to gpt-5's. The component guard in
+// LookupPricing is what stops "gpt-5.6-luna" borrowing "gpt-5"'s rate, and a
+// borrowed rate here would misprice every describing call by a factor of
+// several in both directions.
+func TestLunaResolvesToItsOwnRate(t *testing.T) {
+	p, ok := LookupPricing("gpt-5.6-luna")
+	if !ok {
+		t.Fatal("gpt-5.6-luna has no rate")
+	}
+	if p.InPerM != 1.20 || p.OutPerM != 0.20 {
+		t.Errorf("gpt-5.6-luna priced at %+v, not the rate it was given", p)
+	}
+	if base, _ := LookupPricing("gpt-5"); p == base {
+		t.Error("gpt-5.6-luna resolved to gpt-5's rate through the prefix match")
 	}
 }
