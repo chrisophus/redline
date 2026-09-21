@@ -117,3 +117,16 @@ func TestTheRecapBodyStillCarriesAFindingOnAShownFile(t *testing.T) {
 		t.Error("the recap body dropped the finding on a shown file, which is the whole bug")
 	}
 }
+
+// Only the walkthrough body has a walkthrough for the recap to replace, so on
+// the evidence body WithRecap changes nothing. That is why cmdPost refuses
+// --recap there rather than applying it: the flag would pass every check and
+// then quietly make no difference to what gets posted.
+func TestARecapDoesNothingToTheEvidenceBody(t *testing.T) {
+	p := recapPayload(t)
+	p.profile = &Profile{BodyStyle: BodyEvidence}
+	after := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678").Body
+	if strings.Contains(after, "transaction boundary moved") || strings.Contains(after, "Since the last review") {
+		t.Error("the evidence body rendered a recap, so cmdPost need not refuse one")
+	}
+}

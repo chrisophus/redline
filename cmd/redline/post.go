@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -146,13 +147,17 @@ func cmdPost(o opts) error {
 		// overrides it for a first --recap post, or a body someone edited.
 		since := o.since
 		if since == "" {
-			for _, h := range post.ReviewedHeads(reviewBodies) {
-				if h != tgt.Head {
-					since = h
-				}
-			}
+			since = latestReviewedHead(reviews, me, tgt.Head)
 		}
 		switch {
+		case prof == nil || prof.BodyStyle != post.BodyWalkthrough:
+			// WithRecap only reaches the body buildBodyWalkthrough writes, so
+			// on the evidence body the flag passes every check above and then
+			// changes nothing. Refused rather than ignored: a recap that was
+			// asked for and is not there reads as the review having nothing
+			// to say about what moved.
+			return fmt.Errorf("--recap replaces the walkthrough, and this post writes the evidence body, "+
+				"which has none; post with a profile whose body_style is %s", post.BodyWalkthrough)
 		case since == "":
 			return fmt.Errorf("--recap replaces the walkthrough with what changed since the previous review, " +
 				"and no earlier Redline review was found on this pull request; drop --recap, or pass --since COMMIT")
@@ -445,6 +450,12 @@ func sanitizeIntent(body string) string {
 type ghAuthoredBody struct {
 	Login string
 	Body  string
+	// At is when the item was submitted or written, as GitHub's own RFC 3339
+	// string, which sorts correctly as text. Carried because the order the
+	// API returns reviews in is not something to rest a choice on: picking
+	// the previous review by position is right only while that order holds,
+	// and a recap measured from the wrong baseline says nothing about it.
+	At string
 }
 
 // ghAuthoredField returns every item's author login and body under a PR
@@ -465,6 +476,9 @@ func ghAuthoredField(owner, repo string, num int, sub string) ([]ghAuthoredBody,
 			Login string `json:"login"`
 		} `json:"user"`
 		Body string `json:"body"`
+		// A review carries submitted_at and a comment created_at.
+		SubmittedAt string `json:"submitted_at"`
+		CreatedAt   string `json:"created_at"`
 	}
 	if err := json.Unmarshal(out, &pages); err != nil {
 		return nil, err
@@ -472,7 +486,9 @@ func ghAuthoredField(owner, repo string, num int, sub string) ([]ghAuthoredBody,
 	var items []ghAuthoredBody
 	for _, page := range pages {
 		for _, it := range page {
-			items = append(items, ghAuthoredBody{Login: it.User.Login, Body: it.Body})
+			items = append(items, ghAuthoredBody{
+				Login: it.User.Login, Body: it.Body, At: cmp.Or(it.SubmittedAt, it.CreatedAt),
+			})
 		}
 	}
 	return items, nil
@@ -490,6 +506,37 @@ func trustedBodies(items []ghAuthoredBody, login string) []string {
 		}
 	}
 	return out
+}
+
+// latestReviewedHead is the commit the most recent earlier review ran against,
+// read from the marker each posted review carries.
+//
+// By submitted time rather than by position in the list. The GitHub API does
+// return reviews oldest first, and reading the last one worked because of
+// that, but nothing here checks it and a recap measured from the wrong
+// baseline describes the wrong change without saying anything is amiss. The
+// timestamps are RFC 3339 from one clock, so they sort as text; where two
+// match, or where a body carries none, the later item still wins, which is
+// the order the list came in.
+//
+// A review at the head being posted now is skipped: that is this review being
+// re-posted, not a previous one to measure against.
+func latestReviewedHead(reviews []ghAuthoredBody, login, head string) string {
+	var bestAt, best string
+	for _, r := range reviews {
+		if r.Login != login {
+			continue
+		}
+		for _, h := range post.ReviewedHeads([]string{r.Body}) {
+			if h == head {
+				continue
+			}
+			if best == "" || r.At >= bestAt {
+				bestAt, best = r.At, h
+			}
+		}
+	}
+	return best
 }
 
 // ghError explains a failed `gh api` call. gh writes its diagnosis to stderr,
