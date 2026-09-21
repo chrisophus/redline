@@ -101,7 +101,12 @@ func TestTheOpenAIWireNeverPinsTheChoice(t *testing.T) {
 }
 
 // Every part is sized, and the parts account for the whole request the
-// one-line total prices plus the tools it leaves out.
+// one-line total prices.
+//
+// This used to allow for the tools on top, because the estimate left the tool
+// array out while promptParts listed it: the breakdown a reader is shown did
+// not add up to the number beside it. The estimate counts it now, so the two
+// agree and this asserts that rather than the gap.
 func TestTheRequestIsSizedByPart(t *testing.T) {
 	res, err := Assemble(exploreInput(), Options{Model: "claude-sonnet-5", API: APIAnthropic})
 	if err != nil {
@@ -116,9 +121,9 @@ func TestTheRequestIsSizedByPart(t *testing.T) {
 	if byName["diff"] == 0 || byName["system"] == 0 || byName["tools"] == 0 {
 		t.Fatalf("parts %+v, want the diff, the system block and the tools sized", res.Parts)
 	}
-	want := res.InputEstimate + byName["tools"]
+	want := res.InputEstimate
 	if math.Abs(float64(sum-want)) > 0.02*float64(want)+10 {
-		t.Errorf("parts sum to %d, want about %d (the estimate plus the tools)", sum, want)
+		t.Errorf("parts sum to %d, want about %d (the estimate it is a breakdown of)", sum, want)
 	}
 	line := res.PartsLine()
 	if !strings.Contains(line, "diff ") || !strings.Contains(line, "room") {

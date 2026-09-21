@@ -100,7 +100,17 @@ type callTool struct {
 // in a review with the context inline, a findings pass called it, was told
 // nothing was held back, and ended without a comment. Whether it is there is
 // fixed for the whole run, so every call of a run still sends the same bytes.
-func callTools(pulls bool, looks []string) []callTool {
+//
+// describes is the same shape of decision for the three calls that write a
+// walkthrough. It is false only where no call sharing this catalogue writes
+// one, which needs the describing call to be on another model; see
+// Options.judgingCatalogueDescribes. Offering them to a pass that has been
+// told to file findings is the failure recorded in synopsis.go: on PR #1462 a
+// pass told only that it takes add_comment spent a turn on an overview and
+// twelve file lines and had every one of those calls refused. Showing it the
+// finished walkthrough is an argument against a catalogue; taking the tools
+// away is not an argument.
+func callTools(describes, pulls bool, looks []string) []callTool {
 	all := []callTool{
 		{CallOverview, "Set the overview: one or two paragraphs on what this change does and why it exists, " +
 			"written for a reviewer about to read the diff. Say what the change is for, not whether it is correct. " +
@@ -182,6 +192,9 @@ func callTools(pulls bool, looks []string) []callTool {
 	drop := map[string]bool{}
 	if !pulls {
 		drop[CallContext] = true
+	}
+	if !describes {
+		drop[CallOverview], drop[CallFile], drop[CallCohort] = true, true, true
 	}
 	for _, name := range LookCalls {
 		if !slices.Contains(looks, name) {
@@ -414,7 +427,7 @@ type collector struct {
 func newCollector(stage string, expect passExpect, deferred []deferredEntry, look Looker) *collector {
 	looks := lookCallsFor(look)
 	schemas := map[string]map[string]any{}
-	for _, t := range callTools(len(deferred) > 0, looks) {
+	for _, t := range callTools(true, len(deferred) > 0, looks) {
 		schemas[t.Name] = t.Schema
 	}
 	return &collector{stage: stage, schemas: schemas, expect: expect,

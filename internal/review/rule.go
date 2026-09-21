@@ -549,7 +549,7 @@ func (r *Result) ruleRequest(in Input, opts Options, cands []Candidate, answers 
 	// The catalogue rides on this call as it does on the review's, so it is
 	// counted here as Assemble counts it. Left out, the ruling would report an
 	// estimate short by the whole tool array against a request that carries it.
-	out.InputEstimate = toolsTokens(out.pulls(), out.looks()) + envelope.EstimateTokens(out.System) +
+	out.InputEstimate = toolsTokens(out.describes(), out.pulls(), out.looks()) + envelope.EstimateTokens(out.System) +
 		envelope.EstimateTokens(out.Prompt) + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedRulingTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)

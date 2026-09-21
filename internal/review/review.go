@@ -455,6 +455,52 @@ func (o Options) describing() Options {
 	return out
 }
 
+// describingSharesPrefix reports whether the describing call and the judging
+// call read and write one cache entry.
+//
+// They do when nothing sends the describing call elsewhere, which is the
+// default and was the only shape before Describing existed. They stop when it
+// moves, and a cache entry belongs to the model that wrote it, so a different
+// model is enough on its own: same wire, same endpoint, same key, still two
+// entries. With the cache off there is no entry to share either way.
+//
+// Two things hang off this. The catalogue may narrow only where the answer is
+// false, because a judging call that sent different tools than the describing
+// call would not match the prefix that call wrote and would pay a full write
+// to save a fifth of a cent. And the fallback below is only affordable where
+// it is true.
+func (o Options) describingSharesPrefix() bool {
+	d := o.describing()
+	return o.cacheOn() && d.cacheOn() && d.API == o.API && d.Model == o.Model
+}
+
+// judgingCatalogueDescribes reports whether the tool array the judging call
+// sends has to carry the three calls that write a walkthrough.
+//
+// It has to whenever some call sharing that array writes one. A staged stage
+// one describes and partitions on this wire. A run with the describing stage
+// off writes the walkthrough and the findings in one call. And a describing
+// call that shares the prefix is sending this very array. What is left, and
+// the only case that narrows, is a run whose walkthrough is written somewhere
+// else or not paid for at all.
+//
+// Decided from the options rather than from how the describing call turned
+// out, so the estimate Assemble prices is the array that is actually sent. A
+// failed describing call does not widen it: where the two calls share a
+// prefix the fallback still runs and the array was already wide, and where
+// they do not there is no fallback. See runJudged.
+func (o Options) judgingCatalogueDescribes() bool {
+	switch {
+	case o.Shape() != PipelineOneShot && o.ReuseSynopsis == nil:
+		return true
+	case o.ReuseSynopsis != nil:
+		return false
+	case !o.Synopsis:
+		return true
+	}
+	return o.describingSharesPrefix()
+}
+
 // DescribingEndpoint is where the describing call will go, resolved the way
 // the call itself resolves it.
 //
@@ -836,6 +882,12 @@ type Result struct {
 	// which of them are on the catalogue. Fixed for the whole run, like
 	// deferred, so every call of a run sends the same bytes.
 	lookCalls []string
+	// catalogueDescribes is whether the catalogue carries the three calls that
+	// write a walkthrough. Fixed for the whole run and set from
+	// Options.judgingCatalogueDescribes, for the reason deferred and
+	// lookCalls are: it is part of the bytes a cache read depends on, and the
+	// ruling clones this result, so it cannot be decided twice.
+	catalogueDescribes bool
 	// expect is what a pass has to record to be visibly complete, set by the
 	// requests whose completeness can be checked. A pass that has recorded all
 	// of it ends there, without waiting for done.
@@ -966,7 +1018,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// would otherwise read this block unscoped - gets none of it either. See
 	// Options.CohortContext.
 	scoped := opts.CohortContext && opts.Shape() == PipelineStaged
-	fixed := toolsTokens(opts.DeferContext, lookCallsFor(opts.Look)) + envelope.EstimateTokens(system) +
+	fixed := toolsTokens(opts.judgingCatalogueDescribes(), opts.DeferContext, lookCallsFor(opts.Look)) + envelope.EstimateTokens(system) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 && !scoped {
@@ -992,7 +1044,15 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		prompt = in.buildDeferred(deferred)
 	}
 	parts := promptParts(in, opts, system, budget)
-	est := envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
+	// The catalogue is counted here for the reason ruleRequest counts it
+	// there: it rides on every call, so an estimate without it is short by
+	// the whole tool array against a request that carries it. The ruling was
+	// the only request that had it, so every quoted price up to here
+	// understated a review by between 2800 and 4400 tokens depending on how
+	// many lookups were offered, and promptParts had been listing a `tools`
+	// line the total it sits beside did not include.
+	est := toolsTokens(opts.judgingCatalogueDescribes(), opts.DeferContext, lookCallsFor(opts.Look)) +
+		envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls)
 	expected := opts.ExpectedOutput
@@ -1017,24 +1077,25 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		// Stamped at assembly so every row has a shape, including the rows
 		// nothing staged ever touches: a ledger where one shape is a value
 		// and the other is an empty string groups into two sets by accident.
-		Pipeline:       opts.Shape(),
-		Budget:         budget,
-		deferred:       deferred,
-		lookCalls:      lookCallsFor(opts.Look),
-		FilesShown:     len(in.ShownFiles()),
-		Prompt:         prompt,
-		Tail:           tail + describe + note,
-		note:           note,
-		System:         system,
-		InputEstimate:  est,
-		FixedEstimate:  fixed,
-		Parts:          parts,
-		ContextRoom:    room,
-		OverCeiling:    fixed > opts.Ceiling,
-		Ceiling:        opts.Ceiling,
-		CostUSD:        cost,
-		CostCeilingUSD: ceiling,
-		CostKnown:      known,
+		Pipeline:           opts.Shape(),
+		Budget:             budget,
+		deferred:           deferred,
+		lookCalls:          lookCallsFor(opts.Look),
+		catalogueDescribes: opts.judgingCatalogueDescribes(),
+		FilesShown:         len(in.ShownFiles()),
+		Prompt:             prompt,
+		Tail:               tail + describe + note,
+		note:               note,
+		System:             system,
+		InputEstimate:      est,
+		FixedEstimate:      fixed,
+		Parts:              parts,
+		ContextRoom:        room,
+		OverCeiling:        fixed > opts.Ceiling,
+		Ceiling:            opts.Ceiling,
+		CostUSD:            cost,
+		CostCeilingUSD:     ceiling,
+		CostKnown:          known,
 	}, nil
 }
 
@@ -1212,14 +1273,21 @@ func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 	switch {
 	case reused:
 		d.Walkthrough = *opts.ReuseSynopsis
-		res = res.judgingRequest(d.Walkthrough, true)
+		res = res.judgingRequest(d.Walkthrough, false)
 	case opts.Synopsis:
 		d = describe(ctx, in, opts, res)
 		if d.Failed != "" && opts.Progress != nil {
 			opts.Progress("the describing call did not produce a walkthrough (" + d.Failed +
 				"); this review writes its own")
 		}
-		res = res.judgingRequest(d.Walkthrough, d.Failed == "")
+		// A failed describing call falls back to one call doing both jobs only
+		// where it left a prefix this call can read. Where it ran on another
+		// model it left nothing here, so this call stays a findings call and
+		// the report says the walkthrough is missing, which applySynopsis
+		// writes from SynopsisFailed. Paying a second full-price call to put
+		// the two jobs back under one output cap is how a degraded run becomes
+		// a lost review.
+		res = res.judgingRequest(d.Walkthrough, d.Failed != "" && opts.describingSharesPrefix())
 	}
 	var out *Result
 	var err error
@@ -1268,7 +1336,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			"cache": map[string]any{"breakpoint": res.Cached, "ttl": opts.CacheTTL},
 			// The whole array, because the whole array is what was sent and
 			// its bytes are what a cache read depends on.
-			"tools": callTools(res.pulls(), res.looks()), "calls": callsFor(stage, res.pulls(), res.looks()),
+			"tools": callTools(res.describes(), res.pulls(), res.looks()), "calls": callsFor(stage, res.pulls(), res.looks()),
 			// instructions is the prose callsBlock sends as its own content
 			// block, on the wire but not otherwise in this file: "calls"
 			// above names which tools answer the pass, not the words that

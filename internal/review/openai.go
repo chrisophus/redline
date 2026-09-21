@@ -145,7 +145,7 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 				// and there is no breakpoint here to keep the parts apart for.
 				{Role: "user", Content: res.Prompt + callsBlock(res.stage(), res.pulls(), res.looks()) + res.Tail},
 			},
-			Tools:           openAITools(res.pulls(), res.looks()),
+			Tools:           openAITools(res.describes(), res.pulls(), res.looks()),
 			ToolChoice:      "auto",
 			ReasoningEffort: opts.Effort,
 		},
