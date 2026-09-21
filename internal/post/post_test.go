@@ -5,10 +5,26 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/cover"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/target"
 )
+
+// changedFiles is the file list a payload is built from, from paths alone: a
+// language off the extension and line counts that differ per file, so a test
+// can tell one row from another.
+func changedFiles(paths ...string) []change.File {
+	out := make([]change.File, 0, len(paths))
+	for i, path := range paths {
+		lang := "other"
+		if dot := strings.LastIndex(path, "."); dot >= 0 {
+			lang = path[dot+1:]
+		}
+		out = append(out, change.File{Path: path, Language: lang, Added: 10 + i, Removed: i})
+	}
+	return out
+}
 
 func sampleReport() *findings.Report {
 	rep := &findings.Report{
@@ -823,7 +839,7 @@ func TestWalkthroughBodyMatchesCopilotOrder(t *testing.T) {
 	}
 	rep.Finalize()
 	prof := walkthroughProfile("coverage", "lint", "confirmations", "unknowns")
-	p := BuildAttest(rep, prTarget(), "", nil, prof, []string{"a.go", "b.go"}).
+	p := BuildAttest(rep, prTarget(), "", nil, prof, changedFiles("a.go", "b.go")).
 		WithMeta("TICKET-1: do a thing", "bot[bot]")
 	for _, want := range []string{
 		"### Review findings",
@@ -831,8 +847,8 @@ func TestWalkthroughBodyMatchesCopilotOrder(t *testing.T) {
 		"**Stated intent.** TICKET-1: do a thing",
 		"**What it does.** Adds a feed.",
 		"<summary>Walkthrough</summary>",
-		"| `a.go` | Staging. |",
-		"| `b.go` | No notes. |",
+		"| `a.go` | +10 −0 | Staging. |",
+		"| `b.go` | +11 −1 | No notes. |",
 		"2 line(s) uncovered",
 		"1 warning",
 		"<summary>Evidence</summary>",
@@ -853,7 +869,7 @@ func TestWalkthroughLeanByDefault(t *testing.T) {
 		Agent:         &findings.AgentReview{Files: map[string]string{"a.go": "x"}},
 	}
 	rep.Finalize()
-	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), []string{"a.go"})
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changedFiles("a.go"))
 	if !strings.Contains(p.Body, "<summary>Walkthrough</summary>") {
 		t.Fatal("the walkthrough table is always present in walkthrough mode")
 	}
@@ -873,24 +889,40 @@ func TestEvidenceBodyIsUnchangedByWalkthroughCode(t *testing.T) {
 	}
 }
 
-// Test files are left out of the walkthrough: their rows are noise there, and
-// whether the tests assert enough is a coverage/mutation question answered as
-// findings. A testdata doc is prose and stays.
-func TestWalkthroughOmitsTestFiles(t *testing.T) {
+// Test files have a section of their own rather than being left out. Grouped
+// under a heading they answer the question a reviewer opens the walkthrough
+// with, which is how much of the change is test; it was interleaving them with
+// the code they test that made them noise.
+func TestWalkthroughGroupsTestFilesOfTheirOwn(t *testing.T) {
 	rep := &findings.Report{Agent: &findings.AgentReview{Files: map[string]string{"a.go": "real"}}}
 	rep.Finalize()
-	changed := []string{"a.go", "a_test.go", "ui/x.test.tsx", "internal/data/foo_integration_test.go"}
-	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changed)
-	if !strings.Contains(p.Body, "| `a.go` |") {
-		t.Fatalf("the non-test file must be in the walkthrough:\n%s", p.Body)
+	changed := []change.File{
+		{Path: "a.go", Language: "go", Added: 30, Removed: 4},
+		{Path: "a_test.go", Language: "go", Added: 80, Removed: 1},
+		{Path: "ui/x.test.tsx", Language: "tsx", Added: 12, Removed: 0},
 	}
-	for _, f := range []string{"a_test.go", "x.test.tsx", "foo_integration_test.go"} {
-		if strings.Contains(p.Body, f) {
-			t.Fatalf("test file %q must not be in the walkthrough:\n%s", f, p.Body)
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changed)
+	for _, want := range []string{
+		"**go test** (1 file(s), +80 −1)",
+		"| `a_test.go` | +80 −1 | No notes. |",
+		"**go source** (1 file(s), +30 −4)",
+		"| `a.go` | +30 −4 | real |",
+		"**tsx test** (1 file(s), +12 −0)",
+	} {
+		if !strings.Contains(p.Body, want) {
+			t.Fatalf("walkthrough missing %q:\n%s", want, p.Body)
 		}
 	}
-	if !strings.Contains(p.Body, "3 test file(s) omitted") {
-		t.Fatalf("the omitted test-file count should be noted:\n%s", p.Body)
+	// The test group's files sit under the test heading, not under the source
+	// one, so a reader can stop at the section they care about.
+	src := strings.Index(p.Body, "**go source**")
+	tst := strings.Index(p.Body, "**go test**")
+	if src < 0 || tst < 0 || strings.Index(p.Body, "`a_test.go`") < tst {
+		t.Fatalf("a test file belongs under the test heading:\n%s", p.Body)
+	}
+	// Most added lines first, which is the order the HTML report draws.
+	if tst > src {
+		t.Fatalf("the dominant group leads:\n%s", p.Body)
 	}
 }
 
@@ -908,7 +940,7 @@ func TestWalkthroughAttachesFileFindingsToTheFile(t *testing.T) {
 		Agent: &findings.AgentReview{Files: map[string]string{"a.go": "did a thing"}},
 	}
 	rep.Finalize()
-	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), []string{"a.go"})
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changedFiles("a.go"))
 	body := p.Body
 	if !strings.Contains(body, "**`a.go`**") || !strings.Contains(body, "complexity 16 here") {
 		t.Fatalf("a file finding must ride under its file in the walkthrough:\n%s", body)
@@ -969,7 +1001,7 @@ func TestLowConfidenceFoldsIntoTheBodyWhenIncluded(t *testing.T) {
 	rep.Finalize()
 	commentable := map[string]map[int]bool{"a.go": {1: true}}
 
-	off := BuildAttest(rep, prTarget(), "", commentable, &Profile{}, []string{"a.go"})
+	off := BuildAttest(rep, prTarget(), "", commentable, &Profile{}, changedFiles("a.go"))
 	if len(off.Comments) != 0 {
 		t.Fatalf("a low-confidence finding is never a line comment: %+v", off.Comments)
 	}
@@ -981,7 +1013,7 @@ func TestLowConfidenceFoldsIntoTheBodyWhenIncluded(t *testing.T) {
 	}
 
 	on := BuildAttest(rep, prTarget(), "", commentable,
-		&Profile{BodyInclude: map[string]bool{"low-confidence": true}}, []string{"a.go"})
+		&Profile{BodyInclude: map[string]bool{"low-confidence": true}}, changedFiles("a.go"))
 	if len(on.Comments) != 0 {
 		t.Fatalf("folded low-confidence stays body-only, never a comment: %+v", on.Comments)
 	}
@@ -1004,7 +1036,7 @@ func TestUnfalsifiableWarningFoldsIntoTheBodyWhenIncluded(t *testing.T) {
 	rep.Finalize()
 
 	p := BuildAttest(rep, prTarget(), "", map[string]map[int]bool{"a.go": {1: true}},
-		&Profile{BodyInclude: map[string]bool{"low-confidence": true}}, []string{"a.go"})
+		&Profile{BodyInclude: map[string]bool{"low-confidence": true}}, changedFiles("a.go"))
 	if len(p.Comments) != 0 {
 		t.Fatalf("an unfalsifiable warning must stay out of line comments: %+v", p.Comments)
 	}
@@ -1014,5 +1046,91 @@ func TestUnfalsifiableWarningFoldsIntoTheBodyWhenIncluded(t *testing.T) {
 	}
 	if strings.Contains(p.Body, "said they were uncertain") {
 		t.Fatalf("a folded warning must not also be reported as withheld:\n%s", p.Body)
+	}
+}
+
+// What the change is made of reaches the pull request, not just the HTML
+// report. A reviewer who can see that most of the added lines are tests knows
+// what they are about to read before opening the diff, and GitHub's own Files
+// tab will not tell them: it lists paths and leaves the adding up to the
+// reader.
+func TestBodyCarriesTheComposition(t *testing.T) {
+	files := []change.File{
+		{Path: "internal/feed/feed.go", Language: "go", Added: 120, Removed: 8},
+		{Path: "internal/feed/feed_test.go", Language: "go", Added: 200, Removed: 0},
+		{Path: "README.md", Language: "markdown", Added: 4, Removed: 2},
+	}
+	p := BuildAttest(sampleReport(), prTarget(), "", nil, nil, files)
+	for _, want := range []string{
+		"**Lines by language and type.**",
+		"| Language | Type | Files | + | − |",
+		"| go | test | 1 | 200 | 0 |",
+		"| go | source | 1 | 120 | 8 |",
+		"| markdown | docs | 1 | 4 | 2 |",
+	} {
+		if !strings.Contains(p.Body, want) {
+			t.Fatalf("composition row %q missing from the body:\n%s", want, p.Body)
+		}
+	}
+	// The walkthrough layout says the same thing in its own headings, so it
+	// does not also carry the table.
+	w := BuildAttest(sampleReport(), prTarget(), "", nil, walkthroughProfile(), files)
+	if strings.Contains(w.Body, "**Lines by language and type.**") {
+		t.Fatalf("the walkthrough headings replace the table, not sit under it:\n%s", w.Body)
+	}
+	for _, want := range []string{
+		"**go test** (1 file(s), +200 −0)",
+		"**go source** (1 file(s), +120 −8)",
+		"**markdown docs** (1 file(s), +4 −2)",
+	} {
+		if !strings.Contains(w.Body, want) {
+			t.Fatalf("walkthrough heading %q missing:\n%s", want, w.Body)
+		}
+	}
+}
+
+// A post with no file list renders no table at all, rather than a header with
+// nothing under it. That is every offline preview and every caller that still
+// uses Build.
+func TestCompositionOmittedWithoutFiles(t *testing.T) {
+	p := Build(sampleReport(), prTarget(), "", nil)
+	if strings.Contains(p.Body, "| Language | Type |") {
+		t.Fatalf("no files means no composition table:\n%s", p.Body)
+	}
+}
+
+// The table is written into the part of the body that is kept whole, so its
+// length is capped rather than trusted. A change touching more languages than
+// the cap has the rest summed into one row, and the counts still add up.
+func TestCompositionCapsItsRows(t *testing.T) {
+	var files []change.File
+	for i := 0; i < maxCompositionRows+3; i++ {
+		files = append(files, change.File{
+			Path:     fmt.Sprintf("a%d/x.src", i),
+			Language: fmt.Sprintf("lang%02d", i),
+			Added:    maxCompositionRows + 3 - i,
+			Removed:  1,
+		})
+	}
+	body := compositionSection(files)
+	// The capped rows, and one row for the rest.
+	if n := strings.Count(body, "\n| "); n != maxCompositionRows+2 {
+		t.Fatalf("want %d rows under the header, got %d:\n%s",
+			maxCompositionRows+1, n-1, body)
+	}
+	if !strings.Contains(body, "| 3 more | | 3 | 6 | 3 |") {
+		t.Fatalf("the rest must be counted rather than dropped:\n%s", body)
+	}
+}
+
+// How many lines each file moved rides in the walkthrough table, beside the
+// file it is about.
+func TestWalkthroughCarriesPerFileLines(t *testing.T) {
+	rep := &findings.Report{Agent: &findings.AgentReview{Files: map[string]string{"a.go": "Staging."}}}
+	rep.Finalize()
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(),
+		[]change.File{{Path: "a.go", Language: "go", Added: 12, Removed: 3}})
+	if !strings.Contains(p.Body, "| `a.go` | +12 −3 | Staging. |") {
+		t.Fatalf("the walkthrough row must say how many lines moved:\n%s", p.Body)
 	}
 }

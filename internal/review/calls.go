@@ -202,7 +202,7 @@ func callTools(describes, recaps, pulls bool, looks []string) []callTool {
 				"end_line":   map[string]any{"type": "integer", "description": "last line, inclusive"},
 			}, "path", "start_line", "end_line")},
 		{CallDone, "End this pass once every call it needs has been made. Anything recorded before it stays recorded.",
-			map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}},
+			flatObject(map[string]any{})},
 	}
 	drop := map[string]bool{}
 	if !pulls {
@@ -254,6 +254,15 @@ func propsOf(schema map[string]any, keys ...string) map[string]any {
 }
 
 func flatObject(props map[string]any, required ...string) map[string]any {
+	if required == nil {
+		// An empty array, never null. A variadic with no arguments is a nil
+		// slice and marshals to `null`, which the Anthropic wire tolerates and
+		// the OpenAI wire refuses outright: "Invalid schema for function
+		// 'list_docs': None is not of type 'array'". It failed the whole call,
+		// and only on the wire nothing here is usually pointed at, so a tool
+		// with no required field went out broken for anyone sending one there.
+		required = []string{}
+	}
 	return map[string]any{
 		"type": "object", "additionalProperties": false,
 		"required": required, "properties": props,

@@ -1,9 +1,16 @@
 package review
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/chrisophus/redline/internal/findings"
 
@@ -417,6 +424,166 @@ func TestEveryNothingFoundMessageCountsAsEmpty(t *testing.T) {
 	} {
 		if emptyAnswer(s) {
 			t.Errorf("wrongly counted as empty: %q", s)
+		}
+	}
+}
+
+// Every tool's schema says required is an array, even when nothing is
+// required. A variadic with no arguments is a nil slice and marshals to
+// `null`: the Anthropic wire tolerates that and the OpenAI wire refuses the
+// whole call with "None is not of type 'array'", so a tool with no required
+// field went out broken on the wire nothing here is usually pointed at.
+func TestEveryToolSchemaHasAnArrayOfRequiredFields(t *testing.T) {
+	raw, err := json.Marshal(callTools(true, true, LookCalls))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(`"required":null`)) {
+		t.Errorf("a tool schema carries a null required:\n%s", raw)
+	}
+	var tools []struct {
+		Name   string `json:"name"`
+		Schema struct {
+			Required *[]string `json:"required"`
+		} `json:"input_schema"`
+	}
+	if err := json.Unmarshal(raw, &tools); err != nil {
+		t.Fatal(err)
+	}
+	for _, tl := range tools {
+		if tl.Schema.Required == nil {
+			t.Errorf("%s: required is null, want an array", tl.Name)
+		}
+	}
+}
+
+// The judging catalogue carries the three describing tools only where the two
+// calls share a prefix. Sent to another model or another wire, a cache entry
+// belongs to whoever wrote it, there is no prefix to match, and the tools come
+// off: which is why a findings pass cannot be asked to write a walkthrough
+// after the fact, and why a failed describing call stops the run.
+func TestTheJudgingCatalogueNarrowsWhenThePrefixIsNotShared(t *testing.T) {
+	shared := Options{Synopsis: true, Cache: true}.withDefaults()
+	if !shared.describingSharesPrefix() {
+		t.Fatal("the default shape shares a prefix")
+	}
+	if !shared.judgingCatalogueDescribes() {
+		t.Error("a shared prefix keeps the describing tools on the catalogue, so a fallback can write one")
+	}
+
+	apart := Options{Synopsis: true, Cache: true,
+		Describing: Endpoint{API: "openai", Model: "gpt-5.6-luna"}}.withDefaults()
+	if apart.describingSharesPrefix() {
+		t.Fatal("a describing call on another wire shares no prefix")
+	}
+	if apart.judgingCatalogueDescribes() {
+		t.Error("with no shared prefix the describing tools come off the catalogue")
+	}
+	// Which is why there is nothing to fall back to: the request the run would
+	// have to send is one whose tools it is no longer sending.
+	res := &Result{Prompt: "material"}
+	if got := res.judgingRequest(findings.Review{}, false); got.Stage != StageFindings {
+		t.Errorf("stage = %q, want the run to stay a findings call", got.Stage)
+	}
+}
+
+// stallingConv fails the first n sends with err, then behaves.
+type stallingConv struct {
+	fail int
+	err  error
+	sent int
+	last turnReply
+}
+
+func (c *stallingConv) send(_ context.Context, _ int64) (turnReply, error) {
+	c.sent++
+	if c.sent <= c.fail {
+		// A stream that dies partway still reports what it read: message_start
+		// carries the input count before any content arrives.
+		return turnReply{usage: Usage{InputTokens: 100}}, c.err
+	}
+	return c.last, nil
+}
+func (c *stallingConv) answer(turnReply, []callResult) {}
+func (c *stallingConv) nudge(turnReply, string)        {}
+
+// A stalled connection is not an answer, so the turn goes out again. Without
+// this a pass thirteen turns into its lookups ends with whatever it recorded,
+// which is nothing, and a network blip costs the whole review.
+func TestAStalledTurnIsSentAgain(t *testing.T) {
+	old := sendBackoff
+	sendBackoff = []time.Duration{time.Millisecond, time.Millisecond}
+	defer func() { sendBackoff = old }()
+
+	conv := &stallingConv{fail: 1, err: fmt.Errorf("no data received: %w", errStalled),
+		last: turnReply{usage: Usage{InputTokens: 900}}}
+	var said []string
+	var total Usage
+	r, err := sendTurn(context.Background(), Options{Progress: func(s string) { said = append(said, s) }},
+		conv, 1000, StageFindings, 7, &total)
+	if err != nil {
+		t.Fatalf("a retried turn must succeed: %v", err)
+	}
+	if conv.sent != 2 {
+		t.Errorf("sent %d time(s), want the turn tried again", conv.sent)
+	}
+	if r.usage.InputTokens != 900 {
+		t.Errorf("the successful reply must come back: %+v", r.usage)
+	}
+	// The broken attempt was billed and has to stay in the accounting.
+	if total.InputTokens != 100 {
+		t.Errorf("total = %+v, want the failed attempt's 100 input tokens counted", total)
+	}
+	if len(said) != 1 || !strings.Contains(said[0], "sending it again") {
+		t.Errorf("a retry must be visible: %v", said)
+	}
+}
+
+// Bounded, and only for the connection. A 400 will be a 400 again, a refusal
+// is an answer, and sending either a second time buys the same reply twice.
+func TestOnlyABrokenConnectionIsRetried(t *testing.T) {
+	old := sendBackoff
+	sendBackoff = []time.Duration{time.Millisecond, time.Millisecond}
+	defer func() { sendBackoff = old }()
+
+	var total Usage
+	bad := &stallingConv{fail: 9, err: errors.New("400 Bad Request: Invalid schema")}
+	if _, err := sendTurn(context.Background(), Options{}, bad, 1000, StageFindings, 1, &total); err == nil {
+		t.Fatal("a bad request must come straight back")
+	}
+	if bad.sent != 1 {
+		t.Errorf("a bad request was sent %d times, want once", bad.sent)
+	}
+
+	stalls := &stallingConv{fail: 9, err: fmt.Errorf("gone: %w", errStalled)}
+	if _, err := sendTurn(context.Background(), Options{}, stalls, 1000, StageFindings, 1, &total); err == nil {
+		t.Fatal("a connection that never comes back must still fail")
+	}
+	if stalls.sent != sendAttempts {
+		t.Errorf("sent %d time(s), want the bound of %d", stalls.sent, sendAttempts)
+	}
+}
+
+func TestConnectionBrokeNamesTheNetworkOnly(t *testing.T) {
+	for _, err := range []error{
+		fmt.Errorf("wrapped: %w", errStalled),
+		io.ErrUnexpectedEOF,
+		syscall.ECONNRESET,
+		syscall.EPIPE,
+	} {
+		if !connectionBroke(err) {
+			t.Errorf("not treated as the connection: %v", err)
+		}
+	}
+	for _, err := range []error{
+		nil,
+		context.Canceled,
+		context.DeadlineExceeded,
+		errors.New("400 Bad Request"),
+		errors.New("the model declined this request"),
+	} {
+		if connectionBroke(err) {
+			t.Errorf("wrongly treated as the connection: %v", err)
 		}
 	}
 }

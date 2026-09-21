@@ -693,6 +693,19 @@ number with its provenance, and how many changed files any pane examined. A
 pane that applied and did not run is named there in bold, which is what
 makes the review's scope verifiable from the pull request alone.
 
+Under the evidence table is what the change is made of: its lines grouped by
+language and by the role each file plays, test against source against config
+against prose, with the file count and the lines added and removed in each
+group. It calls `change.Composition`, which is what the HTML report
+groups its sections with, so the page and the pull request cannot disagree
+about what counts as a test. GitHub shows none of this; its Files tab gives
+paths and line counts and leaves the reader to add them up. The table costs
+about 130 bytes for a change in one language and 30 more for each further
+language-and-role pair, and a change touching more than twelve pairs has the
+rest summed into one row, so it cannot push a finding off the end of the body.
+The walkthrough body says the same thing in the headings of its own sections,
+so it does not carry this table as well.
+
 When a review has been written — by `redline review` or by hand into
 `review.json` — the body also carries the agent's account of the change: what
 it does, and a collapsed table of one line per file. That is what makes the
@@ -756,10 +769,15 @@ not get the gate's finding marker. See `redline-review.yml.example`.
 `body_style` chooses the layout. `evidence` (the default) is the body above.
 `walkthrough` reads like the author-published Copilot and Bugbot reviews:
 reviewed-by and commit, the pull request's stated intent, what the change
-does, then a collapsible walkthrough of every changed file, test files aside,
-with the agent's one-line summary or "No notes." A finding that names one of
-those files rides under it there; only a finding with no file lands in the
-list after. `body_include` decides how much of the report rides along:
+does, then a collapsible walkthrough of every changed file. The walkthrough is
+sectioned the way the report's drill-in is: one heading per language and role
+pair carrying that group's file count and lines, the files of the group listed
+under it with how many lines each one moved and the agent's one-line summary
+or "No notes." Test files have a section of their own rather than being left
+out, which is the question a reviewer opens the walkthrough with. A section
+costs about 85 bytes over the rows in it, and each row about 55. A finding
+that names one of those files rides under it there; only a finding with no
+file lands in the list after. `body_include` decides how much of the report rides along:
 `coverage` and `lint` add per-file columns, `confirmations` and `unknowns`
 fold in the report sections the body otherwise drops, and `low-confidence`
 folds the reviewer's unsure findings behind a chevron rather than withholding

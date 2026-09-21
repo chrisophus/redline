@@ -3,8 +3,13 @@ package review
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/chrisophus/redline/internal/envelope"
 )
@@ -120,7 +125,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 			}
 			remaining = min(minTurnTokens, opts.MaxTokens)
 		}
-		r, err := conv.send(ctx, remaining)
+		r, err := sendTurn(ctx, opts, conv, remaining, stage, turn, &total)
 		gov.sent(r)
 		total = total.plus(r.usage)
 		c.turns = turn
@@ -243,6 +248,77 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 		c.text, c.fromTool = col.body(), true
 	}
 	return c, nil
+}
+
+// sendTurn sends one turn, and sends it again when the connection broke rather
+// than the request being wrong.
+//
+// A stalled stream is not an answer. The idle reader gives up after two
+// minutes of total silence, pings included, which on a sound connection means
+// the other end is gone - and on a bad one means the packets stopped for a
+// while. Without a retry those are the same event: a pass thirteen turns into
+// its lookups ends with whatever it had recorded, which on the run that
+// prompted this was nothing, and the review is lost for a network blip.
+//
+// Retrying is cheap and safe here. The conversation is not mutated until a
+// turn succeeds, so the same request goes out again; the prompt is behind a
+// cache breakpoint, so what it costs to resend is a cache read rather than the
+// prompt; and the tool results are Redline's own, so nothing was half-applied
+// at the other end.
+//
+// It is bounded, and only for errors that are the connection. A 400 will be a
+// 400 again, a refusal is an answer, and a cap is arithmetic - sending any of
+// those a second time spends money to be told the same thing. Attempts that
+// broke are still added to the running usage: message_start carries the input
+// count before any content arrives, so a stream that dies partway was billed
+// for what it read.
+func sendTurn(ctx context.Context, opts Options, conv conversation, remaining int64,
+	stage string, turn int, total *Usage) (turnReply, error) {
+	var r turnReply
+	var err error
+	for attempt := 1; ; attempt++ {
+		r, err = conv.send(ctx, remaining)
+		if err == nil || attempt >= sendAttempts || !connectionBroke(err) {
+			return r, err
+		}
+		*total = total.plus(r.usage)
+		wait := sendBackoff[min(attempt-1, len(sendBackoff)-1)]
+		if opts.Progress != nil {
+			opts.Progress(fmt.Sprintf("%s turn %d: %v; sending it again in %s (attempt %d of %d)",
+				stage, turn, err, wait, attempt+1, sendAttempts))
+		}
+		select {
+		case <-ctx.Done():
+			return r, ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+}
+
+// sendAttempts bounds how many times one turn is sent. Three, because a
+// connection that fails twice over the better part of a minute is not a blip,
+// and a loop that keeps trying turns a lost review into a large bill.
+const sendAttempts = 3
+
+// sendBackoff is the wait before each retry. A var so a test can drive it in
+// milliseconds; nothing in the product writes to it.
+var sendBackoff = []time.Duration{2 * time.Second, 8 * time.Second}
+
+// connectionBroke reports whether an error is the network rather than the
+// request. A stall is Redline's own; the rest are what a dropped connection
+// looks like by the time it reaches here.
+func connectionBroke(err error) bool {
+	switch {
+	case err == nil, errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return false
+	case errors.Is(err, errStalled),
+		errors.Is(err, io.ErrUnexpectedEOF),
+		errors.Is(err, syscall.ECONNRESET),
+		errors.Is(err, syscall.EPIPE):
+		return true
+	}
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
 }
 
 // callTurns is the turn cap for one pass.

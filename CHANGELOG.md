@@ -11,7 +11,78 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Fixed
+- **A tool with no required field no longer breaks every OpenAI call.**
+  `flatObject` takes its required fields variadically, and a call with none
+  left a nil `[]string`, which marshals to `null`. The Anthropic wire tolerates
+  that; the OpenAI wire refuses the whole request with `Invalid schema for
+  function 'list_docs': None is not of type 'array'`. `list_docs` acquired the
+  shape when it got its `path` filter, and because it only fails on the wire
+  this repository does not usually point at, it went out working. `done` now
+  builds its schema through the same constructor rather than a bare literal,
+  so there is one path, and a test asserts no tool marshals a null `required`.
+  Found by the first `--synopsis-api openai` run.
+### Changed
+- **A describing call that fails stops the run.** It used to carry on and write
+  the findings without a walkthrough, on the argument that a degraded review
+  beats a lost one. That argument is for a call nobody can retry. This one can:
+  the reason is on the screen, whatever caused it is usually a flag or a schema
+  away from fixed, and the session on disk makes the next attempt free to set
+  up. What carrying on bought instead was the judging call's price - the larger
+  of the two - spent on a review the caller did not ask for, in a shape they
+  would have to run again anyway. Measured on the run that prompted this: the
+  describing call was refused for a bad schema and the run spent $1.39 finding
+  nothing. The error names the cause and the two ways out, and the describing
+  call's own cost comes back with it so the ledger still records what was
+  spent. The fallback in a split run is untouched: there stage one shares the
+  judging call's prefix and its fallback writes a complete review.
+
+### Fixed
+- **A pull request's base ref is fetched on every resolve, not only when it is
+  missing.** `prBaseRef` fetched `origin/<base>` under `if !repo.Exists`, so a
+  ref that was present but behind was used exactly as if it were current -
+  which is the state of any checkout that has not pulled since the last merge
+  into the base branch. The head does not have this problem: `prHeadRef`
+  compares what it resolves against the `HeadRefOid` gh reported and
+  re-fetches when they disagree, while the base has no sha beside its name to
+  check against.
+
+  What it cost was a wrong diff rather than a stale number. Redline takes the
+  merge base against that ref, so a base behind by one merged pull request
+  produces a diff carrying that pull request's changes as though they belonged
+  to the one under review. On PR #90 the base resolved eleven commits back:
+  `internal/review/review.go` came out with fourteen hunks where GitHub's diff
+  has seven, the review spent its budget reading code that was already
+  reviewed and merged, and `post` was refused with `422 Line could not be
+  resolved` for a comment anchored at line 486 - inside a hunk that belongs to
+  PR #89. With the fix the same observe resolves the base GitHub uses and the
+  hunks match.
+
+  A fetch needs the network and observing a change does not, so a resolve that
+  cannot reach the remote carries on with the ref it has and says so, rather
+  than losing the ability to review offline.
+
 ### Added
+- **The posted review says what the change is made of.** The HTML report has
+  always grouped a change by language and by the role each file plays, test
+  against source against config against prose; the review `post` puts on the
+  pull request now carries that grouping as a small table under the evidence.
+  It comes from `change.Composition`, the same function
+  the page groups its sections with, so the two cannot disagree about what
+  counts as a test. The table runs about 130 bytes for a change in one
+  language and 30 more per further language-and-role pair, and past twelve
+  pairs the rest is summed into one row, so a wide change cannot push a
+  finding off the end of the body.
+- **The walkthrough body is sectioned by group.** It was one flat table of
+  every changed file. It is now one section per language and role pair, the
+  heading carrying that group's file count and lines, the files under it with
+  how many lines each one moved. Test files have a section of their own
+  instead of being dropped with a count: interleaved with the code they test
+  their rows read as noise, and under a heading of their own they are what a
+  reviewer opened the walkthrough to see. The sectioned body carries the
+  composition table's numbers in its headings, so it does not also carry the
+  table. A section costs about 85 bytes over the rows in it, and each row
+  about 55.
 - **The describing call can go out on a model of its own**, through
   `--synopsis-model`, with `--synopsis-api`, `--synopsis-base-url` and
   `--synopsis-effort` beside it. It writes the walkthrough by reading the diff

@@ -102,6 +102,7 @@ func Run(opts Options) (*Result, error) {
 	tgt, err := target.Resolve(target.Options{
 		Dir: opts.Dir, PR: opts.PR, Branch: opts.Branch,
 		Commit: opts.Commit, Range: opts.Range, Base: opts.Base,
+		Warn: opts.Progress,
 	})
 	if err != nil {
 		return nil, err

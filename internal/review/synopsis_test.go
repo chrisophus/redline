@@ -1,7 +1,6 @@
 package review
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"strings"
@@ -140,68 +139,41 @@ func TestBothStagesSendOneSharedPrefixAndDifferentTails(t *testing.T) {
 	}
 }
 
-// A describing call that breaks must not cost the review. The run falls back
-// to one call that writes the whole review, under the same tools and the same
-// prefix as the call that failed, so it reads what that call cached.
-func TestAFailedDescribingCallFallsBackToTheWholeReview(t *testing.T) {
+// A describing call that fails stops the run.
+//
+// It used to carry on and write the findings without a walkthrough, on the
+// argument that a degraded review beats a lost one. That argument is for a
+// call nobody can retry. This one can, and carrying on spent the judging
+// call's price - the larger of the two - on a review the caller did not ask
+// for, in a shape they would have to run again anyway.
+//
+// What the stop must not lose is the money already spent. The describing call
+// was billed whether or not it answered, so its usage comes back with the
+// error for the ledger to record.
+func TestAFailedDescribingCallStopsTheRun(t *testing.T) {
 	api := serveSSE(t,
 		anthropicSSE("refusal", 10, 0),
 		anthropicSSE("tool_use", 10, 5, flatCalls(StageReview, exploreReviewJSON)),
 	)
-	var said []string
 	opts := synopsisOpts(api)
 	opts.Cache, opts.CacheTTL = true, CacheTTL5m
-	opts.Progress = func(s string) { said = append(said, s) }
 	res, err := Run(context.Background(), exploreInput(), opts)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("a describing call that produced no walkthrough must stop the run")
 	}
-	if res.Synopsis {
-		t.Error("a describing call that wrote no overview must not be recorded as the source of one")
-	}
-	if res.SynopsisFailed == "" {
-		t.Error("the fallback has to say why, or a thin walkthrough reads as the model's")
-	}
-	if len(res.Review.Comments) != 1 {
-		t.Fatalf("the fallback must still produce a review: %+v", res.Review)
-	}
-	var warned bool
-	for _, s := range said {
-		if strings.Contains(s, "did not produce a walkthrough") {
-			warned = true
+	for _, want := range []string{"did not produce a walkthrough", "run again", "--no-synopsis"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error is missing %q: %v", want, err)
 		}
 	}
-	if !warned {
-		t.Errorf("the fallback was silent on the terminal: %q", said)
+	// The judging call must not have been sent: it is the expensive half and
+	// the whole point of stopping.
+	if res != nil && len(res.Review.Comments) > 0 {
+		t.Errorf("the judging call was sent anyway: %+v", res.Review)
 	}
-	if res.Review.Overview != "Removes a nil guard." {
-		t.Errorf("the fallback writes its own walkthrough, got overview %q", res.Review.Overview)
-	}
-	seen := api.seen()
-	var failed, fallback wireRequest
-	if err := json.Unmarshal(seen[0], &failed); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(seen[1], &fallback); err != nil {
-		t.Fatal(err)
-	}
-	if a, b := failed.Messages[0].Content[0], fallback.Messages[0].Content[0]; a.Text != b.Text || !hasCacheControl(b) {
-		t.Error("the fallback must resend the failed call's cached prefix byte for byte")
-	}
-	var tools [2]struct {
-		Tools json.RawMessage `json:"tools"`
-	}
-	for i := range tools {
-		if err := json.Unmarshal(seen[i], &tools[i]); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if !bytes.Equal(tools[0].Tools, tools[1].Tools) {
-		t.Error("the fallback must send the same tools as the failed call, or the cache is lost")
-	}
-	if !strings.Contains(string(seen[1]), "add_comment once per comment") ||
-		!strings.Contains(string(seen[1]), "set_overview once") {
-		t.Error("the fallback must ask for the whole review: the overview, the file lines and the comments")
+	// And the describing call's cost survives, or the ledger loses a paid call.
+	if res == nil || res.Usage.InputTokens == 0 {
+		t.Errorf("the describing call's usage must come back for the ledger: %+v", res)
 	}
 }
 

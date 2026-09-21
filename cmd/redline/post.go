@@ -76,7 +76,7 @@ func cmdPost(o opts) error {
 			return err
 		}
 	}
-	payload := post.BuildAttest(&res.Report, tgt, o.reportURL, commentable, prof, changedPaths(res.Change))
+	payload := post.BuildAttest(&res.Report, tgt, o.reportURL, commentable, prof, changedFiles(res.Change))
 	if prof != nil && prof.BodyStyle == post.BodyWalkthrough {
 		// The walkthrough body opens with who reviewed and the author's stated
 		// intent, both from gh. Each degrades to empty offline, where the body
@@ -361,18 +361,26 @@ func sessionCommentable(ch *change.Set) map[string]map[int]bool {
 	return post.CommentableLines(patches)
 }
 
-// changedPaths is every path in the change, for the walkthrough table. It
-// comes from the session the run wrote, the same file list the report's own
-// walkthrough uses, so the posted body observes nothing.
+// changedPaths is every path in the change, for callers that want the paths
+// alone: the answering scout walks up from each one to find the guideline
+// files nearest the code a question is about.
 func changedPaths(ch *change.Set) []string {
-	if ch == nil {
-		return nil
-	}
-	out := make([]string, 0, len(ch.Files))
-	for _, f := range ch.Files {
+	files := changedFiles(ch)
+	out := make([]string, 0, len(files))
+	for _, f := range files {
 		out = append(out, f.Path)
 	}
 	return out
+}
+
+// changedFiles is every file in the change, for the walkthrough table and the
+// composition table. It comes from the session the run wrote, the same file
+// list the HTML report groups, so the posted body observes nothing.
+func changedFiles(ch *change.Set) []change.File {
+	if ch == nil {
+		return nil
+	}
+	return ch.Files
 }
 
 // maxIntent bounds the stated-intent block so a long PR description does not
