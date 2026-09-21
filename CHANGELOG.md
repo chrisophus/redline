@@ -11,6 +11,38 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Added
+- **The describing call can go out on a model of its own**, through
+  `--synopsis-model`, with `--synopsis-api`, `--synopsis-base-url` and
+  `--synopsis-effort` beside it. It writes the walkthrough by reading the diff
+  and putting a line against each file, which is the cheapest thing either
+  call does, so it is the one worth handing to a cheaper model. Naming a model
+  alone moves that call and leaves the wire, endpoint, credential and effort
+  where the review put them. Naming another wire drops the endpoint, the key
+  and `--api-user` for that call instead of sending an Anthropic base URL and
+  key to an OpenAI endpoint; `OPENAI_API_KEY` and `OPENAI_BASE_URL` are read
+  for it. An unknown wire is refused at the top of `Run` rather than falling
+  through to Anthropic, where a typo would have arrived as a describing call
+  that produced no walkthrough.
+- **What that call cost is priced where it ran.** `Usage` is a token count
+  with no model attached and one record cannot carry two rate cards, so a
+  describing call on a second model keeps its tokens out of `Usage` and its
+  cost lands in `Result.SynopsisCostUSD`, the shape `ScoutCostUSD` already
+  had. `Result.SynopsisModel` records what wrote the walkthrough on every run
+  that had one, and the ledger row carries both, the model only where it
+  differs. A describing model with no entry in the price table makes the whole
+  run's cost read as unknown rather than as the judging call's alone. On one
+  model nothing moves: the tokens join `Usage` and are priced with everything
+  else, exactly as before.
+
+### Note
+- The OpenAI wire marks no cache breakpoint, so a describing call sent there
+  writes no prefix for the judging call to read back and the judging call pays
+  that write instead. On a 250k prefix at Sonnet 5's rates that trades a
+  $0.05 cache read for the describing call's own price, and what is actually
+  saved is the walkthrough's output tokens. Measure it from
+  `.redline/reviews.jsonl` before assuming the move pays.
+
 ## [0.14.0] - 2026-09-20
 
 ### Added

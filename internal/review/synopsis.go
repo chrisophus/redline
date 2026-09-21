@@ -33,8 +33,40 @@ import (
 // actually wrote.
 const ExpectedSynopsisTokens int64 = 3000
 
+// described is what the describing stage produced.
+//
+// A struct rather than the five return values this used to be, because the
+// model it ran on is a sixth and the cost priced at that model is a seventh,
+// and a caller unpacking seven positional values gets two of them the wrong
+// way round eventually.
+type described struct {
+	// Walkthrough is the overview and the line per file, empty when Failed.
+	Walkthrough findings.Review
+	// Usage is what the call consumed, with the output count zeroed out and
+	// moved to Written. Priced at Model, which is not always the judging
+	// call's, so whether this can be folded into the review's own Usage is
+	// applySynopsis's decision and not this struct's.
+	Usage   Usage
+	Written int64
+	// Model is the model that answered, and CostUSD what the call cost at
+	// that model's rates. CostKnown is false for a model with no entry in the
+	// price table, where the cost has to read as unknown rather than as zero.
+	Model     string
+	CostUSD   float64
+	CostKnown bool
+	// Failed is why there is no walkthrough, empty when there is one.
+	Failed string
+	// Result is the describing call's own result, for the turn counts and
+	// lookups the judging result folds in.
+	Result *Result
+}
+
 // synopsisRequest is the describing call, assembled from the review's own
 // prefix. Everything ahead of the tail is stage one's bytes exactly.
+//
+// opts is the describing call's own Options, not the review's: the estimate
+// and the ceiling below price this call at the model it will actually go out
+// on. See Options.describing.
 func (r *Result) synopsisRequest(opts Options, in Input) *Result {
 	out := r.clone()
 	out.Stage = StageSynopsis
@@ -56,6 +88,7 @@ func synopsisCeilingCost(opts Options, in Input, res *Result) float64 {
 	if !opts.Synopsis || res == nil {
 		return 0
 	}
+	opts = opts.describing()
 	cost, ok := CeilingCost(opts.Model, res.synopsisRequest(opts, in).InputEstimate, opts.MaxTokens)
 	if !ok {
 		return 0
@@ -73,28 +106,48 @@ func synopsisCeilingCost(opts Options, in Input, res *Result) float64 {
 //
 // The usage is folded in whichever way it ended, because the call was billed
 // either way.
-func describe(ctx context.Context, in Input, opts Options, res *Result) (findings.Review, Usage, int64, string, *Result) {
+//
+// opts is the review's, and the describing endpoint is resolved here rather
+// than by the caller, so there is one place that decides which wire this call
+// goes out on and one place that knows the answer has to be priced there too.
+func describe(ctx context.Context, in Input, opts Options, res *Result) described {
+	opts = opts.describing()
 	if opts.Progress != nil {
-		opts.Progress("describing the change before judging it")
+		msg := "describing the change before judging it"
+		if opts.Describing.set() {
+			msg += ", on " + opts.Model
+		}
+		opts.Progress(msg)
 	}
 	out, err := runOnce(ctx, in, opts, res.synopsisRequest(opts, in))
-	usage, written := out.Usage, out.Usage.OutputTokens
+	d := described{
+		Usage: out.Usage, Written: out.Usage.OutputTokens, Model: opts.Model,
+		// Priced against the model this call was made on, here, while that is
+		// still known. runOnce has already done the same arithmetic onto
+		// out.CostUSD; it is read back rather than recomputed so a run whose
+		// usage was estimated rather than reported carries the same number in
+		// both places.
+		CostUSD: out.CostUSD, CostKnown: out.CostKnown,
+		Result: out,
+	}
 	// The describing call's output is not the review's output. Usage carries
-	// input, which is real either way; the output count is returned apart so
+	// input, which is real either way; the output count is kept apart so
 	// the ledger's median keeps meaning what a judging call writes.
-	usage.OutputTokens = 0
+	d.Usage.OutputTokens = 0
 	switch {
 	case err != nil:
-		return findings.Review{}, usage, written, err.Error(), out
+		d.Failed = err.Error()
+		return d
 	case out.Review.Overview == "":
-		return findings.Review{}, usage, written,
-			"the describing call returned no overview", out
+		d.Failed = "the describing call returned no overview"
+		return d
 	}
+	d.Walkthrough = out.Review
 	if opts.Progress != nil {
 		opts.Progress(fmt.Sprintf("described %d file(s) in %s",
 			len(out.Review.Files), out.Duration.Round(time.Second)))
 	}
-	return out.Review, usage, written, "", out
+	return d
 }
 
 // judgingRequest is the judging call on a shape that described separately.
@@ -167,27 +220,50 @@ func missingWalkthrough(failed string) string {
 }
 
 // applySynopsis puts the walkthrough on the review the judging call wrote, and
-// records which call it came from.
-func applySynopsis(res *Result, model string, walkthrough findings.Review, usage Usage, written int64, failed string) {
+// records which call it came from and what that call cost.
+//
+// model is the judging call's. Where the describing call ran on that same
+// model its tokens join Usage and are priced with everything else, which is
+// what every review did before a second model was reachable. Where it ran on
+// another one they cannot: Usage is a token count with no model attached, and
+// one record cannot carry two rate cards. Those tokens stay out of it and the
+// cost the describing call was already priced at is carried across instead.
+func applySynopsis(res *Result, model string, d described) {
 	if res == nil {
 		return
 	}
-	res.Usage.InputTokens += usage.InputTokens
-	res.Usage.CacheReadTokens += usage.CacheReadTokens
-	res.Usage.CacheWriteTokens += usage.CacheWriteTokens
-	res.Usage.ThinkingTokens += usage.ThinkingTokens
-	res.SynopsisOutputTokens += written
-	res.SynopsisFailed = failed
+	res.SynopsisModel = d.Model
+	if res.synopsisPricedApart(model) {
+		res.SynopsisCostUSD = d.CostUSD
+	} else {
+		res.Usage.InputTokens += d.Usage.InputTokens
+		res.Usage.CacheReadTokens += d.Usage.CacheReadTokens
+		res.Usage.CacheWriteTokens += d.Usage.CacheWriteTokens
+		res.Usage.ThinkingTokens += d.Usage.ThinkingTokens
+	}
+	res.SynopsisOutputTokens += d.Written
+	res.SynopsisFailed = d.Failed
 	res.recost(model)
-	if failed != "" {
+	if d.Failed != "" {
 		if res.Review.Overview == "" {
-			res.Review.Overview = missingWalkthrough(failed)
+			res.Review.Overview = missingWalkthrough(d.Failed)
 		}
 		return
 	}
 	res.Synopsis = true
-	res.Review.Overview = walkthrough.Overview
-	res.Review.Files = walkthrough.Files
+	res.Review.Overview = d.Walkthrough.Overview
+	res.Review.Files = d.Walkthrough.Files
+}
+
+// synopsisPricedApart reports whether the describing call's cost is already a
+// number in SynopsisCostUSD rather than tokens in Usage waiting to be priced.
+//
+// True exactly when that call ran on a model other than the judging one,
+// which is the only case where pricing its tokens at the judging model's rate
+// would be wrong. Derived from the two model names rather than stored as its
+// own flag, so there is no second copy of the fact to fall out of step.
+func (r *Result) synopsisPricedApart(model string) bool {
+	return r != nil && r.SynopsisModel != "" && r.SynopsisModel != model
 }
 
 // recost recomputes what this run has cost so far.
@@ -205,9 +281,22 @@ func (r *Result) recost(model string) {
 	if !r.CostKnown {
 		return
 	}
-	apart := Usage{OutputTokens: r.RulingOutputTokens + r.SynopsisOutputTokens}
+	apart := Usage{OutputTokens: r.RulingOutputTokens}
+	if !r.synopsisPricedApart(model) {
+		apart.OutputTokens += r.SynopsisOutputTokens
+	}
 	if extra, ok := apart.Cost(model); ok {
 		r.CostUSD += extra
+	}
+	if r.synopsisPricedApart(model) {
+		// A model with no entry in the price table prices as unknown, and a
+		// total missing one of its two calls has to say so. Asked of the
+		// table rather than carried on the result, so the one place that
+		// knows what is priced is the only place that decides.
+		if _, ok := LookupPricing(r.SynopsisModel); !ok {
+			r.CostKnown = false
+		}
+		r.CostUSD += r.SynopsisCostUSD
 	}
 }
 

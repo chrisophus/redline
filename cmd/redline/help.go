@@ -155,6 +155,10 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.effort, "effort", "", "low|medium|high|xhigh|max, for the review and the checking (default medium)")
 	fs.StringVar(&o.scoutModel, "scout-model", "", "model to check the findings with, when it should differ from --model")
 	fs.StringVar(&o.scoutEffort, "scout-effort", "", "effort for the checking, when it should differ from --effort")
+	fs.StringVar(&o.synopsisModel, "synopsis-model", "", "model to write the walkthrough with, when it should differ from --model")
+	fs.StringVar(&o.synopsisAPI, "synopsis-api", "", "wire for the describing call, when it should differ from --api")
+	fs.StringVar(&o.synopsisBaseURL, "synopsis-base-url", "", "endpoint for the describing call, when it should differ from --base-url")
+	fs.StringVar(&o.synopsisEffort, "synopsis-effort", "", "effort for the describing call, when it should differ from --effort")
 	fs.StringVar(&o.mode, "mode", "", "oneshot or explore")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "with --mode explore: turn limit")
 	fs.IntVar(&o.callTurns, "call-turns", 0, "turn cap for each describing/findings/ruling pass (default 30)")
@@ -305,6 +309,33 @@ model:
   --scout-effort LEVEL
                     effort for the checking, when it should differ from
                     --effort
+  --synopsis-model NAME
+                    model to write the walkthrough with, when it should
+                    differ from --model. The describing call reads the diff
+                    and writes a line per file, which is the cheapest thing
+                    either call does, so it is the one worth moving to a
+                    cheaper model. What it costs is priced where it was
+                    spent and recorded on its own in the ledger, because a
+                    token count carries no model and one usage record cannot
+                    hold two rate cards. A model with no entry in the price
+                    table makes the whole run's cost read as unknown rather
+                    than as the judging call's alone.
+  --synopsis-api WIRE
+                    anthropic or openai for the describing call, when it
+                    should differ from --api. Naming another wire here drops
+                    --base-url, the key and --api-user for that one call
+                    rather than sending them somewhere they do not belong;
+                    give it --synopsis-base-url, or set OPENAI_API_KEY and
+                    OPENAI_BASE_URL, which are read for it. Note that the
+                    OpenAI wire marks no cache breakpoint, so a describing
+                    call sent there writes no prefix for the judging call to
+                    read back, and the judging call pays that write instead.
+  --synopsis-base-url URL
+                    endpoint for the describing call, when it should differ
+                    from --base-url
+  --synopsis-effort LEVEL
+                    effort for the describing call, when it should differ
+                    from --effort
 what to look at:
   --note TEXT       a note from you to the reviewer: which file worries you,
                     what to look at first, a question to answer. It goes at
