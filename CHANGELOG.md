@@ -11,6 +11,17 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Fixed
+- **The input estimate counts the tool array.** `ruleRequest` had always
+  counted it and says why; every other request left it out, so each quoted
+  price understated a review by 2800 to 4400 tokens depending on how many
+  lookups were offered. `promptParts` made that visible without anyone
+  noticing: it listed a `tools` line beside a total that excluded it, and the
+  test covering the breakdown allowed for the gap ("plus the tools it leaves
+  out") rather than failing on it. The estimate feeds `--dry-run`, the price
+  quoted before a call goes out, and the tripwire's own figure, so all three
+  were low by the same amount.
+
 ## [0.14.1] - 2026-09-21
 
 ### Changed

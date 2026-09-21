@@ -876,7 +876,15 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		prompt = in.buildDeferred(deferred)
 	}
 	parts := promptParts(in, opts, system, budget)
-	est := envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
+	// The catalogue is counted here for the reason ruleRequest counts it
+	// there: it rides on every call, so an estimate without it is short by
+	// the whole tool array against a request that carries it. The ruling was
+	// the only request that had it, so every quoted price understated a
+	// review by between 2800 and 4400 tokens depending on how many lookups
+	// were offered, and promptParts had been listing a `tools` line the total
+	// it sits beside did not include.
+	est := toolsTokens(opts.DeferContext, lookCallsFor(opts.Look)) +
+		envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls)
 	expected := opts.ExpectedOutput
