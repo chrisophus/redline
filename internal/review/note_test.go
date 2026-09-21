@@ -69,8 +69,8 @@ func TestOnlyTheJudgingCallsCarryTheNote(t *testing.T) {
 	carries := func(r *Result) bool { return strings.Contains(r.Prompt+r.Tail, testNote) }
 	one := Cohort{Name: "queue", Summary: "s", Files: []string{"internal/queue/q.go"}}
 	for name, r := range map[string]*Result{
-		"the judging call after a walkthrough": res.judgingRequest(findings.Review{}, true),
-		"the judging call without one":         res.judgingRequest(findings.Review{}, false),
+		"the judging call after a walkthrough": res.judgingRequest(findings.Review{}, false),
+		"the judging call without one":         res.judgingRequest(findings.Review{}, true),
 		"a cohort call":                        res.cohortRequest(opts, in, one, []Cohort{one}, 0, 1),
 	} {
 		if !carries(r) {

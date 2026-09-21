@@ -46,6 +46,30 @@ Releases whose tag carries only a subject line are listed as that subject.
   quoted before a call goes out, and the tripwire's own figure, so all three
   were low by the same amount.
 
+- **The judging call stops carrying the tools that write a walkthrough**, where
+  the describing call ran somewhere its prefix cannot be read from. The
+  catalogue drops from 2820 to 1965 tokens, or 4383 to 3528 with every lookup
+  on, which is about a fifth of a cent and not the reason: a findings pass
+  offered `set_overview` has been measured using it, and on PR #1462 one spent
+  a turn on an overview and twelve file lines and had every call refused.
+  Showing it the finished walkthrough was an argument against a catalogue.
+  This takes the tools away instead. It is gated on the describing call not
+  sharing the judging call's cache entry, since a judging call whose tools
+  differ from the describing call's does not match the prefix that call wrote
+  and would pay a full write, about sixty cents on a 250k prefix, to save the
+  fifth of a cent. A reused walkthrough narrows too, having no describing call
+  at all; a staged run and a run with the stage off do not, because a call
+  sharing that array still writes one.
+- **A describing call that failed on another model no longer falls back to one
+  call doing both jobs.** The fallback was affordable because the failed call
+  had cached the prompt the fallback sends, so it cost one output cap and no
+  extra input. A call on another model caches nothing there, so the fallback
+  would be a second full-price call putting the walkthrough and the findings
+  back under one output cap, which is the failure the describing stage exists
+  to prevent. The review now files findings alone and the report says the
+  walkthrough is missing and why. The fallback is unchanged where the two
+  calls do share a prefix, including the staged path.
+
 ### Note
 - A prompt cache entry belongs to the model that wrote it, so a describing
   call on a second model shares no prefix with the judging call: it pays for

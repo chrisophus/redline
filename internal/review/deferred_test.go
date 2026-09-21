@@ -84,7 +84,7 @@ func TestAPassReadsHeldBackContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res = res.judgingRequest(findings.Review{}, true)
+	res = res.judgingRequest(findings.Review{}, false)
 	out, err := runOnce(context.Background(), deferredInput(), loopOpts(api), res)
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestAPassReadsHeldBackContext(t *testing.T) {
 func TestGetContextIsOfferedOnlyWhenContextIsDeferred(t *testing.T) {
 	for _, pulls := range []bool{false, true} {
 		var named bool
-		for _, tool := range callTools(pulls, nil) {
+		for _, tool := range callTools(true, pulls, nil) {
 			named = named || tool.Name == CallContext
 		}
 		if named != pulls {

@@ -70,6 +70,15 @@ type described struct {
 func (r *Result) synopsisRequest(opts Options, in Input) *Result {
 	out := r.clone()
 	out.Stage = StageSynopsis
+	// This is the call that writes the walkthrough, so it carries the tools
+	// for it whatever the judging call decided. Set rather than inherited,
+	// because the clone above brings the judging call's catalogue and that one
+	// narrows exactly when this call is somewhere it cannot be read from. A
+	// describing call sent without describe_file has nothing to answer with.
+	//
+	// Where the two do share a prefix the judging catalogue already carries
+	// them, so this changes nothing and the bytes still match.
+	out.catalogueDescribes = true
 	out.expect = passExpect{files: sortedKeys(in.ShownFiles())}
 	// The describing half and nothing else. This call is not judging the
 	// change, so the judging tail would be two thousand tokens telling it what
@@ -151,10 +160,17 @@ func describe(ctx context.Context, in Input, opts Options, res *Result) describe
 }
 
 // judgingRequest is the judging call on a shape that described separately.
-// With a walkthrough in hand it asks for findings alone. Without one it is the
-// whole review, the request Assemble built, so the run still gets a
-// walkthrough: every call sends the same tools, so the fallback reads the
-// prompt the failed describing call cached.
+// With a walkthrough in hand it asks for findings alone. Under alsoDescribes
+// it is the whole review, the request Assemble built, so a run whose
+// describing call failed still gets a walkthrough.
+//
+// That fallback is only worth taking where the failed describing call cached
+// the prompt this call is about to send, because then it costs one output cap
+// and no extra input. Where the describing call went to another model it
+// cached nothing here, and asking this call for both jobs would be a second
+// full-price call doing the two things the split exists to keep apart: they
+// were never equal partners under one output cap, which is what the header of
+// this file records. runJudged decides it.
 //
 // The walkthrough itself rides in the tail. Telling this pass that one exists
 // has been tried and does not hold: the prompt block carried "the overview is
@@ -165,14 +181,17 @@ func describe(ctx context.Context, in Input, opts Options, res *Result) describe
 // make one. Showing it the walkthrough answers that: the work is visibly done.
 // It goes behind the cache breakpoint because it is this run's own output and
 // cannot be in the block every call reads back.
-func (r *Result) judgingRequest(walkthrough findings.Review, described bool) *Result {
+func (r *Result) judgingRequest(walkthrough findings.Review, alsoDescribes bool) *Result {
 	out := r.clone()
-	if !described {
+	if alsoDescribes {
 		out.Stage = StageReview
 		out.Tail = judgingTail + describingTail + r.note
 		return out
 	}
 	out.Stage = StageFindings
+	// An empty walkthrough writes no tail, so a run that gave up on one sends
+	// this call the judging instruction alone rather than a heading with
+	// nothing under it.
 	out.Tail = walkthroughTail(walkthrough) + judgingTail + r.note
 	return out
 }
