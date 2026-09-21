@@ -12,6 +12,23 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Fixed
+- **A line number the model writes as a string is read as a number.**
+  `read_lines` asks for two integers and kept being given a string. Across four
+  runs of this tool the same field arrived as `"70, 145"`, `"20-1"`, `"412/-"`
+  and `"20, \n"`: a line number, then whatever the model was still thinking.
+  Every one cost a turn - the call was refused, the correction went back, and
+  the call came again - and `read_lines` is the tool a pass reaches for most,
+  so this was the commonest refusal in the trace. Refusing was the honest
+  answer while nothing else was available and it did not work: the message says
+  "want an integer, got the string" and the string comes back differently
+  mangled next time. A field the schema declares as an integer, holding a
+  string that starts with one, is now read as that integer. Only a leading
+  integer, only where the schema says integer, and a string with no number at
+  the front is still refused, because there the meaning is genuinely unknown.
+  The trace keeps the arguments as the model wrote them, so a coerced call is
+  still visible as one.
+
+### Fixed
 - **A tool with no required field no longer breaks every OpenAI call.**
   `flatObject` takes its required fields variadically, and a call with none
   left a nil `[]string`, which marshals to `null`. The Anthropic wire tolerates

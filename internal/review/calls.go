@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -510,6 +511,10 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 				content: "Not recorded: " + why + ". Do not send it again."})
 			continue
 		}
+		// A number the model wrote as a string becomes a number, before the
+		// schema is checked and before anything reads the call.
+		raw := call.Input
+		call.Input = coerceIntegers(c.schemas[call.Name], call.Input)
 		problems := c.check(call)
 		if len(problems) > 0 {
 			rejected++
@@ -537,7 +542,10 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 			c.looked++
 			answer := c.lookup(call)
 			c.lookups = append(c.lookups, Lookup{
-				Tool: call.Name, Input: boundedArgs(call.Input), Bytes: len(answer),
+				// The arguments as the model wrote them, not as they were
+				// read. A trace that showed the coerced value would hide the
+				// thing worth knowing: that the call needed coercing.
+				Tool: call.Name, Input: boundedArgs(raw), Bytes: len(answer),
 				Empty: emptyAnswer(answer),
 			})
 			results = append(results, callResult{id: call.ID, content: answer})
@@ -654,6 +662,75 @@ func emptyAnswer(s string) bool {
 		return true
 	}
 	return strings.TrimSpace(s) == ""
+}
+
+// coerceIntegers turns a number the model wrote as a string into a number.
+//
+// read_lines asks for two integers and keeps being given a string. Across four
+// runs of this tool the same field arrived as "70, 145", "20-1", "412/-" and
+// "20, \n": a line number, then whatever the model was still thinking. Every
+// one cost a turn, because the call was refused, the correction went back, and
+// the model sent it again - and read_lines is the tool a pass reaches for most.
+//
+// Refusing was the honest answer while nothing else was available, and it did
+// not work: the message says "want an integer, got the string" and the string
+// comes back differently mangled next time. What the model means is never in
+// doubt. A field declared as an integer, holding a string that starts with
+// one, is that integer; the rest is noise it appended.
+//
+// Only a leading integer, and only where the schema says integer. A string
+// with no number at the front is still refused, because there the meaning is
+// genuinely unknown, and every other type is left alone.
+func coerceIntegers(schema map[string]any, input json.RawMessage) json.RawMessage {
+	props, ok := schema["properties"].(map[string]any)
+	if !ok || len(input) == 0 {
+		return input
+	}
+	var obj map[string]any
+	if json.Unmarshal(input, &obj) != nil {
+		return input
+	}
+	changed := false
+	for field, v := range obj {
+		ps, ok := props[field].(map[string]any)
+		if !ok || ps["type"] != "integer" {
+			continue
+		}
+		written, ok := v.(string)
+		if !ok {
+			continue
+		}
+		if n, ok := leadingInteger(written); ok {
+			obj[field] = float64(n)
+			changed = true
+		}
+	}
+	if !changed {
+		return input
+	}
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return input
+	}
+	return out
+}
+
+// leadingInteger reads the integer a string starts with, after its spaces.
+func leadingInteger(s string) (int64, bool) {
+	t := strings.TrimSpace(s)
+	i := 0
+	if i < len(t) && (t[i] == '+' || t[i] == '-') {
+		i++
+	}
+	start := i
+	for i < len(t) && t[i] >= '0' && t[i] <= '9' {
+		i++
+	}
+	if i == start {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(t[:i], 10, 64)
+	return n, err == nil
 }
 
 func contains(list []string, s string) bool {
