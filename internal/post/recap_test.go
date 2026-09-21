@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/findings"
 )
 
@@ -18,7 +19,10 @@ func recapPayload(t *testing.T) Payload {
 				Recap:    "The transaction boundary moved inside the loop.",
 			},
 		},
-		changed: []string{"a.go", "b.go"},
+		files: []change.File{
+			{Path: "a.go", Language: "go", Added: 12, Removed: 3},
+			{Path: "b.go", Language: "go", Added: 4, Removed: 1},
+		},
 		profile: &Profile{BodyStyle: BodyWalkthrough},
 	}
 }

@@ -1051,7 +1051,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// would otherwise read this block unscoped - gets none of it either. See
 	// Options.CohortContext.
 	scoped := opts.CohortContext && opts.Shape() == PipelineStaged
-	fixed := toolsTokens(opts.judgingCatalogueDescribes(), opts.SinceReview != "", opts.DeferContext, lookCallsFor(opts.Look)) + envelope.EstimateTokens(system) +
+	fixed := toolsTokens(opts.judgingCatalogueDescribes(), opts.recapable(), opts.DeferContext, lookCallsFor(opts.Look)) + envelope.EstimateTokens(system) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 && !scoped {
@@ -1084,7 +1084,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// review by between 2800 and 4400 tokens depending on how many lookups
 	// were offered, and promptParts had been listing a `tools` line the total
 	// it sits beside did not include.
-	est := toolsTokens(opts.judgingCatalogueDescribes(), opts.SinceReview != "", opts.DeferContext, lookCallsFor(opts.Look)) +
+	est := toolsTokens(opts.judgingCatalogueDescribes(), opts.recapable(), opts.DeferContext, lookCallsFor(opts.Look)) +
 		envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls)

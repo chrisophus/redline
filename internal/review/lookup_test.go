@@ -434,7 +434,7 @@ func TestEveryNothingFoundMessageCountsAsEmpty(t *testing.T) {
 // whole call with "None is not of type 'array'", so a tool with no required
 // field went out broken on the wire nothing here is usually pointed at.
 func TestEveryToolSchemaHasAnArrayOfRequiredFields(t *testing.T) {
-	raw, err := json.Marshal(callTools(true, true, LookCalls))
+	raw, err := json.Marshal(callTools(true, true, true, LookCalls))
 	if err != nil {
 		t.Fatal(err)
 	}
