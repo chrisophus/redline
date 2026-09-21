@@ -1,0 +1,17 @@
+# .github/redline-post.yml
+
+# Required, both of them. post refuses to load a profile without them.
+# They are hidden markers a merge gate reads, so if nothing is gating on
+# your reviews the names are yours to pick.
+review_marker: redline-review:v1
+finding_marker: redline-finding:v1
+
+# The setting you want. "evidence" is the default and gives the table.
+body_style: walkthrough
+
+# Optional extras in the walkthrough. Drop the ones you don't want.
+body_include:
+  - coverage        # per-file uncovered added lines
+  - lint            # per-file finding counts by severity
+  - confirmations   # the checks that ran clean, folded away
+  - unknowns        # what could not be determined, folded away

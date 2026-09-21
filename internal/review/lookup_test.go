@@ -587,3 +587,69 @@ func TestConnectionBrokeNamesTheNetworkOnly(t *testing.T) {
 		}
 	}
 }
+
+// read_lines asks for two integers and keeps being given a string. Across four
+// runs the same field arrived as "70, 145", "20-1", "412/-" and "20, \n": a
+// line number, then whatever the model was still thinking. Refusing was the
+// honest answer while nothing else was available and it did not work - the
+// message says "want an integer, got the string" and the string comes back
+// differently mangled next time, at a turn each.
+func TestALineNumberWrittenAsAStringIsRead(t *testing.T) {
+	for _, tc := range []struct {
+		written string
+		want    int
+	}{
+		{`"412"`, 412},
+		{`" 412 "`, 412},
+		{`"70, 145"`, 70},
+		{`"20-1"`, 20},
+		{`"412/-"`, 412},
+		{`"20, \n"`, 20},
+		{`412`, 412},
+	} {
+		look := &fakeLooker{answer: "a.go:1-2\n1\tx\n"}
+		c := newCollector(StageFindings, passExpect{}, nil, look)
+		in := json.RawMessage(`{"path":"a.go","start_line":` + tc.written + `,"end_line":430}`)
+		results, _, rejected := c.take([]toolCall{{ID: "t1", Name: CallRead, Input: in}})
+		if rejected != 0 {
+			t.Errorf("start_line %s was refused: %s", tc.written, results[0].content)
+			continue
+		}
+		if len(c.lookups) != 1 {
+			t.Errorf("start_line %s reached no lookup", tc.written)
+			continue
+		}
+		// The trace keeps what the model wrote, not what was read from it:
+		// a trace showing the coerced value hides that coercion happened.
+		if !strings.Contains(c.lookups[0].Input, strings.Trim(tc.written, `"`)[:2]) {
+			t.Errorf("the trace lost the written form %s: %s", tc.written, c.lookups[0].Input)
+		}
+	}
+}
+
+// A string with no number at the front is still refused: there the meaning is
+// genuinely unknown, and guessing at one would read the wrong lines silently.
+func TestAStringWithNoNumberIsStillRefused(t *testing.T) {
+	c := newCollector(StageFindings, passExpect{}, nil, &fakeLooker{})
+	in := json.RawMessage(`{"path":"a.go","start_line":"the guard","end_line":430}`)
+	results, _, rejected := c.take([]toolCall{{ID: "t1", Name: CallRead, Input: in}})
+	if rejected != 1 {
+		t.Fatalf("rejected = %d, want the unreadable value refused", rejected)
+	}
+	if !strings.Contains(results[0].content, "want an integer") {
+		t.Errorf("the refusal must say what was wanted: %s", results[0].content)
+	}
+}
+
+func TestLeadingIntegerReadsOnlyALeadingInteger(t *testing.T) {
+	for in, want := range map[string]int64{"412": 412, " 412 ": 412, "70, 145": 70, "-3x": -3, "20-1": 20} {
+		if got, ok := leadingInteger(in); !ok || got != want {
+			t.Errorf("leadingInteger(%q) = %d, %v; want %d", in, got, ok, want)
+		}
+	}
+	for _, in := range []string{"", "   ", "abc", "-", "+", "x412"} {
+		if got, ok := leadingInteger(in); ok {
+			t.Errorf("leadingInteger(%q) = %d, true; want no number", in, got)
+		}
+	}
+}
