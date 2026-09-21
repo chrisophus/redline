@@ -12,6 +12,25 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Fixed
+- **A tool with no required field no longer breaks every OpenAI call.**
+  `flatObject` takes its required fields variadically, and a call with none
+  left a nil `[]string`, which marshals to `null`. The Anthropic wire tolerates
+  that; the OpenAI wire refuses the whole request with `Invalid schema for
+  function 'list_docs': None is not of type 'array'`. `list_docs` acquired the
+  shape when it got its `path` filter, and because it only fails on the wire
+  this repository does not usually point at, it went out working. `done` now
+  builds its schema through the same constructor rather than a bare literal,
+  so there is one path, and a test asserts no tool marshals a null `required`.
+  Found by the first `--synopsis-api openai` run.
+- **A failed describing call says what actually happens next.** The line read
+  "this review writes its own" whatever the shape, but the fallback is gated
+  on the two calls sharing a prefix: only there does the judging call already
+  carry the tools to write a walkthrough. Sent to another model, its catalogue
+  has no `set_overview` on it, the run stays a findings call, and the report
+  records the walkthrough as missing - which is what the code comment said and
+  the message contradicted.
+
+### Fixed
 - **A pull request's base ref is fetched on every resolve, not only when it is
   missing.** `prBaseRef` fetched `origin/<base>` under `if !repo.Exists`, so a
   ref that was present but behind was used exactly as if it were current -

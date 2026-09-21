@@ -1,6 +1,7 @@
 package review
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -418,5 +419,64 @@ func TestEveryNothingFoundMessageCountsAsEmpty(t *testing.T) {
 		if emptyAnswer(s) {
 			t.Errorf("wrongly counted as empty: %q", s)
 		}
+	}
+}
+
+// Every tool's schema says required is an array, even when nothing is
+// required. A variadic with no arguments is a nil slice and marshals to
+// `null`: the Anthropic wire tolerates that and the OpenAI wire refuses the
+// whole call with "None is not of type 'array'", so a tool with no required
+// field went out broken on the wire nothing here is usually pointed at.
+func TestEveryToolSchemaHasAnArrayOfRequiredFields(t *testing.T) {
+	raw, err := json.Marshal(callTools(true, true, LookCalls))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(`"required":null`)) {
+		t.Errorf("a tool schema carries a null required:\n%s", raw)
+	}
+	var tools []struct {
+		Name   string `json:"name"`
+		Schema struct {
+			Required *[]string `json:"required"`
+		} `json:"input_schema"`
+	}
+	if err := json.Unmarshal(raw, &tools); err != nil {
+		t.Fatal(err)
+	}
+	for _, tl := range tools {
+		if tl.Schema.Required == nil {
+			t.Errorf("%s: required is null, want an array", tl.Name)
+		}
+	}
+}
+
+// A describing call that fails is only fallen back on where it shared the
+// judging call's prefix: there the judging call already carries the tools to
+// write a walkthrough. Sent elsewhere, the judging catalogue has no
+// set_overview on it, so the run stays a findings call and the report records
+// the walkthrough as missing.
+func TestAFailedDescribingCallOnlyFallsBackWhereThePrefixIsShared(t *testing.T) {
+	shared := Options{Synopsis: true, Cache: true}.withDefaults()
+	if !shared.describingSharesPrefix() {
+		t.Fatal("the default shape shares a prefix")
+	}
+	if !shared.judgingCatalogueDescribes() {
+		t.Error("a shared prefix keeps the describing tools on the catalogue, so a fallback can write one")
+	}
+
+	apart := Options{Synopsis: true, Cache: true,
+		Describing: Endpoint{API: "openai", Model: "gpt-5.6-luna"}}.withDefaults()
+	if apart.describingSharesPrefix() {
+		t.Fatal("a describing call on another wire shares no prefix")
+	}
+	if apart.judgingCatalogueDescribes() {
+		t.Error("with no shared prefix the describing tools come off the catalogue")
+	}
+	// Which is why there is nothing to fall back to: the request the run would
+	// have to send is one whose tools it is no longer sending.
+	res := &Result{Prompt: "material"}
+	if got := res.judgingRequest(findings.Review{}, false); got.Stage != StageFindings {
+		t.Errorf("stage = %q, want the run to stay a findings call", got.Stage)
 	}
 }

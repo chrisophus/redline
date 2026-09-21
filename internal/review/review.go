@@ -1277,8 +1277,22 @@ func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 	case opts.Synopsis:
 		d = describe(ctx, in, opts, res)
 		if d.Failed != "" && opts.Progress != nil {
-			opts.Progress("the describing call did not produce a walkthrough (" + d.Failed +
-				"); this review writes its own")
+			// What happens next depends on the prefix, so the line has to as
+			// well. Only a describing call that shared the judging call's
+			// prefix can be fallen back on: the judging call already carries
+			// the tools to write a walkthrough and pays nothing extra to read
+			// the prompt. A describing call sent elsewhere leaves a judging
+			// call whose catalogue has no set_overview on it, so there is
+			// nothing to fall back to, and saying otherwise sent the reader
+			// looking for a walkthrough the report would go on to record as
+			// missing.
+			if opts.describingSharesPrefix() {
+				opts.Progress("the describing call did not produce a walkthrough (" + d.Failed +
+					"); this review writes its own")
+			} else {
+				opts.Progress("the describing call did not produce a walkthrough (" + d.Failed +
+					"); this review has none, and the report says so")
+			}
 		}
 		// A failed describing call falls back to one call doing both jobs only
 		// where it left a prefix this call can read. Where it ran on another
