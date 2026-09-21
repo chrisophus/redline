@@ -237,9 +237,11 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 			continue
 		}
 		if refused(f) || unfalsifiable(f) || withheldForConfidence(f) {
-			if prof.includes("low-confidence") {
+			if !refused(f) && prof.includes("low-confidence") {
 				// Shown behind a chevron instead of withheld: a guess the
-				// reader can open, never a line comment and never a gate.
+				// reader can open, never a line comment and never a gate. This
+				// also covers findings whose question says nothing would settle
+				// them; that is another form of reviewer uncertainty.
 				p.lowConf = append(p.lowConf, f)
 			} else {
 				p.withheld++

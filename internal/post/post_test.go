@@ -993,3 +993,26 @@ func TestLowConfidenceFoldsIntoTheBodyWhenIncluded(t *testing.T) {
 		t.Fatalf("a folded finding must not also be reported as withheld:\n%s", on.Body)
 	}
 }
+
+func TestUnfalsifiableWarningFoldsIntoTheBodyWhenIncluded(t *testing.T) {
+	rep := &findings.Report{Findings: []findings.Finding{{
+		File: "a.go", Line: 1, Rule: "agent-comment", Substrate: "redline/review",
+		Severity: findings.SeverityWarning, Source: findings.SourceLLM,
+		Confidence: findings.ConfidenceLow, Message: "the migration may hold a long lock",
+		Question: findings.Question{Kind: findings.QuestionNone},
+	}}}
+	rep.Finalize()
+
+	p := BuildAttest(rep, prTarget(), "", map[string]map[int]bool{"a.go": {1: true}},
+		&Profile{BodyInclude: map[string]bool{"low-confidence": true}}, []string{"a.go"})
+	if len(p.Comments) != 0 {
+		t.Fatalf("an unfalsifiable warning must stay out of line comments: %+v", p.Comments)
+	}
+	if !strings.Contains(p.Body, "<summary>Low confidence (1)</summary>") ||
+		!strings.Contains(p.Body, "the migration may hold a long lock") {
+		t.Fatalf("an unfalsifiable warning should fold behind a chevron:\n%s", p.Body)
+	}
+	if strings.Contains(p.Body, "said they were uncertain") {
+		t.Fatalf("a folded warning must not also be reported as withheld:\n%s", p.Body)
+	}
+}

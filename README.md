@@ -726,7 +726,8 @@ reviewer's own findings: a pane's finding carries no confidence at all, so
 this can never withhold something that was measured.
 A repository that would rather see them can set `body_include: low-confidence`,
 which folds them into a collapsed block on the pull request instead of holding
-them back; they still never open a line comment and never gate.
+them back. This includes findings whose question says nothing would settle them;
+they still never open a line comment and never gate.
 
 A finding becomes a line-anchored comment only when its `file:line` is on a
 changed line in the PR's diff; findings off the diff (or with no line) go in

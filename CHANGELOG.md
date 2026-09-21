@@ -11,6 +11,16 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-09-21
+
+### Changed
+- **Low-confidence findings can be shown behind a collapsed section.** With
+  `body_include: low-confidence`, findings withheld because they are uncertain
+  or have no falsifiable question now appear behind a `Low confidence` chevron
+  in the pull request body. They remain out of line comments and merge-gate
+  verdicts, while findings rejected by an explicit verification ruling remain
+  suppressed.
+
 ## [0.14.0] - 2026-09-20
 
 ### Added
