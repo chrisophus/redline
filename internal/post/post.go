@@ -725,14 +725,17 @@ func buildBodyWalkthrough(p Payload) string {
 	// joining them. Repeating a walkthrough that has not changed is what it
 	// exists to stop, so rendering both would leave the body longer than
 	// before.
-	perFile, leftover := splitBodyFindingsByFile(p)
+	// A finding grouped under a file rides in the per-file table, so the split
+	// only happens where that table does. Under a recap the table is gone and
+	// a grouped finding would have nowhere to ride, which dropped it from the
+	// body without a word; every body finding goes in the flat list instead,
+	// in the order the report gave them.
+	var perFile map[string][]findings.Finding
+	leftover := p.bodyFindings
+	if p.recap == "" {
+		perFile, leftover = splitBodyFindingsByFile(p)
+	}
 	if p.recap != "" {
-		// A finding grouped under a file rides in the per-file table, and the
-		// recap replaces that table. With nowhere to ride it would be dropped
-		// from the body without a word, so every body finding goes in the flat
-		// list below instead. Taken from bodyFindings rather than merged back
-		// out of perFile so they keep the order the report gave them.
-		perFile, leftover = nil, p.bodyFindings
 		recap := p.recap
 		if len(recap) > maxNarrative {
 			recap = recap[:maxNarrative] + "\n\n_(truncated; the full walkthrough is on the report)_"
