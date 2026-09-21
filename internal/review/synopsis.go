@@ -84,7 +84,16 @@ func (r *Result) synopsisRequest(opts Options, in Input) *Result {
 	// change, so the judging tail would be two thousand tokens telling it what
 	// to do with findings it has been told not to write.
 	out.Tail = describingTail + synopsisTail(in)
-	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
+	// r.InputEstimate prices the judging call's catalogue, and the line above
+	// widened this one. Where the two differ the difference has to be added
+	// back: this call sends the wide array, so an estimate carrying the narrow
+	// one quotes a price for a request smaller than the one that goes out,
+	// which is the fault counting the tool array exists to stop. The two terms
+	// cancel wherever the catalogues agree, which is every run sharing a
+	// prefix.
+	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail) +
+		toolsTokens(out.describes(), out.pulls(), out.looks()) -
+		toolsTokens(r.describes(), r.pulls(), r.looks())
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedSynopsisTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)
 	return out
