@@ -273,11 +273,21 @@ func flatObject(props map[string]any, required ...string) map[string]any {
 // was assembled around. The catalogue still carries them on every call of the
 // run, since a tool list that changed between calls would throw away the
 // prefix they share; this is what a pass is permitted to call.
-func callsFor(stage string, pulls bool, looks []string) []string {
+func callsFor(stage string, recaps, pulls bool, looks []string) []string {
 	var calls []string
 	switch stage {
 	case StageSynopsis:
 		calls = []string{CallOverview, CallFile, CallCohort}
+		// set_recap goes on the describing pass, and only where the run was
+		// given a previous review to compare against. It has to be named here
+		// as well as put on the catalogue: take() gates every call against
+		// this list before check() ever sees its schema, so a tool offered on
+		// the wire and left out here is refused with "this pass does not take
+		// set_recap" and the pass is told not to send it again. The recap
+		// feature shipped that way and could not produce a recap at all.
+		if recaps {
+			calls = append(calls, CallRecap)
+		}
 	case StageFindings:
 		calls = []string{CallComment}
 	case StageRuling:
@@ -304,7 +314,7 @@ func callsFor(stage string, pulls bool, looks []string) []string {
 // decide it, one asking for every call in one reply and one asking for one
 // area at a time, each moved the reasoning around less than they moved the
 // calls. It goes after the cached prompt, so every pass reads the same entry.
-func callsBlock(stage string, deferred bool, looks []string) string {
+func callsBlock(stage string, recaps, deferred bool, looks []string) string {
 	var takes string
 	switch stage {
 	case StageSynopsis:
@@ -445,16 +455,21 @@ type collector struct {
 	// so the catalogue a call is checked against is the catalogue that went
 	// out with it.
 	lookCalls []string
+	// recaps is whether this pass may call set_recap, which needs the run to
+	// have been given a previous review. It rides here for the reason
+	// lookCalls does: take() decides what a pass may call, and it has to
+	// decide it the same way the catalogue that went out was built.
+	recaps bool
 }
 
-func newCollector(stage string, expect passExpect, deferred []deferredEntry, look Looker) *collector {
+func newCollector(stage string, expect passExpect, deferred []deferredEntry, look Looker, recaps bool) *collector {
 	looks := lookCallsFor(look)
 	schemas := map[string]map[string]any{}
 	for _, t := range callTools(true, true, len(deferred) > 0, looks) {
 		schemas[t.Name] = t.Schema
 	}
 	return &collector{stage: stage, schemas: schemas, expect: expect,
-		deferred: deferred, look: look, lookCalls: looks}
+		deferred: deferred, look: look, lookCalls: looks, recaps: recaps}
 }
 
 // complete reports whether the pass has recorded everything its expectation
@@ -513,12 +528,12 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 	sawDone := false
 	var doneIDs []string
 	for _, call := range calls {
-		if call.Name != CallDone && !contains(callsFor(c.stage, len(c.deferred) > 0, c.lookCalls), call.Name) {
+		if call.Name != CallDone && !contains(callsFor(c.stage, c.recaps, len(c.deferred) > 0, c.lookCalls), call.Name) {
 			// Not a malformed call but one this pass has no use for, so it is
 			// not to be sent again.
 			rejected++
 			why := fmt.Sprintf("this pass does not take %s; it takes %s",
-				call.Name, strings.Join(callsFor(c.stage, len(c.deferred) > 0, c.lookCalls), ", "))
+				call.Name, strings.Join(callsFor(c.stage, c.recaps, len(c.deferred) > 0, c.lookCalls), ", "))
 			c.refuse(call, why)
 			results = append(results, callResult{id: call.ID, isError: true,
 				content: "Not recorded: " + why + ". Do not send it again."})

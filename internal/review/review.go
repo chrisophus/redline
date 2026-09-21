@@ -1024,7 +1024,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	describe := describingTail
 	// The block that says which calls answer the pass goes out with every
 	// request, so it is priced with the fixed parts.
-	calls := callsBlock(StageReview, opts.DeferContext, lookCallsFor(opts.Look))
+	calls := callsBlock(StageReview, opts.SinceReview != "", opts.DeferContext, lookCallsFor(opts.Look))
 	// Every stage sends the catalogue on both wires, so it is reserved for
 	// unconditionally. This was once zeroed for a brief run, which was right on
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
@@ -1355,7 +1355,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			"cache": map[string]any{"breakpoint": res.Cached, "ttl": opts.CacheTTL},
 			// The whole array, because the whole array is what was sent and
 			// its bytes are what a cache read depends on.
-			"tools": callTools(res.describes(), res.recaps(), res.pulls(), res.looks()), "calls": callsFor(stage, res.pulls(), res.looks()),
+			"tools": callTools(res.describes(), res.recaps(), res.pulls(), res.looks()), "calls": callsFor(stage, res.recaps(), res.pulls(), res.looks()),
 			// instructions is the prose callsBlock sends as its own content
 			// block, on the wire but not otherwise in this file: "calls"
 			// above names which tools answer the pass, not the words that
@@ -1363,7 +1363,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			// you need with get_context before writing comments" among them
 			// - a reader asking whether a pass was actually told to defer
 			// context needs to see, not reconstruct from source.
-			"instructions": callsBlock(stage, res.pulls(), res.looks()),
+			"instructions": callsBlock(stage, res.recaps(), res.pulls(), res.looks()),
 		}
 		req, _ := json.MarshalIndent(captured, "", "  ")
 		opts.Capture(stage+".request.json", req)

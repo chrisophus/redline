@@ -295,7 +295,7 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	}
 	// Which calls answer this pass, after the cached prompt so every pass of a
 	// run reads the same entry, and ahead of the pass's own instruction.
-	blocks = append(blocks, prefix, anthropic.NewTextBlock(callsBlock(res.stage(), res.pulls(), res.looks())))
+	blocks = append(blocks, prefix, anthropic.NewTextBlock(callsBlock(res.stage(), res.recaps(), res.pulls(), res.looks())))
 	if res.Tail != "" {
 		blocks = append(blocks, anthropic.NewTextBlock(res.Tail))
 	}

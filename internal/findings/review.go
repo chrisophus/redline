@@ -110,6 +110,7 @@ type ReviewComment struct {
 // reviewWire is the on-disk shape before aliases and flexible fields normalize.
 type reviewWire struct {
 	Overview         string             `json:"overview"`
+	Recap            string             `json:"recap,omitempty"`
 	WhatItDoes       string             `json:"what_it_does"`
 	Files            json.RawMessage    `json:"files"`
 	Comments         json.RawMessage    `json:"comments"`
@@ -216,6 +217,7 @@ func LoadReview(path string) (*Review, error) {
 	if r.Overview == "" {
 		r.Overview = strings.TrimSpace(wire.WhatItDoes)
 	}
+	r.Recap = strings.TrimSpace(wire.Recap)
 	files, err := parseReviewFiles(wire.Files)
 	if err != nil {
 		return nil, fmt.Errorf("review files: %w", err)

@@ -1,6 +1,7 @@
 package review
 
 import (
+	"context"
 	"encoding/json"
 	"slices"
 	"strings"
@@ -251,5 +252,61 @@ func TestARunWithNothingNewIsToldSo(t *testing.T) {
 	tail := synopsisTail(opts, deferredInput())
 	if !strings.Contains(tail, "No file has changed since that commit") {
 		t.Errorf("a run with no new files is not told to say so:\n%s", tail)
+	}
+}
+
+// A describing pass given a previous review calls set_recap and the call is
+// recorded, not refused.
+//
+// This is the test the recap shipped without. The ones above check that the
+// tool reaches the catalogue and that the instruction asks for it, and both
+// passed while the feature could not work: take() gates every call against
+// callsFor before check() ever sees a schema, callsFor listed no CallRecap
+// for any stage, and every set_recap call came back "this pass does not take
+// set_recap. Do not send it again." Driving the pass is what catches that;
+// reading the catalogue is not.
+func TestADescribingPassCanActuallyRecordARecap(t *testing.T) {
+	api := serveSSE(t,
+		reply(
+			[2]string{CallOverview, `{"overview":"This change batches the recompute."}`},
+			[2]string{CallRecap, `{"recap":"The transaction boundary moved inside the loop."}`},
+			[2]string{CallDone, `{}`},
+		),
+	)
+	opts := loopOpts(api)
+	opts.Synopsis = true
+	opts.SinceReview = "abc1234"
+	opts.SinceFiles = []string{"internal/review/review.go"}
+	opts = opts.withDefaults()
+	res, err := Assemble(deferredInput(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := runOnce(context.Background(), deferredInput(), opts,
+		res.synopsisRequest(opts.describing(), deferredInput()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Rejected != 0 {
+		t.Errorf("the describing pass had %d call(s) refused, want none", out.Rejected)
+	}
+	if out.Review.Recap != "The transaction boundary moved inside the loop." {
+		t.Errorf("the recap was not recorded: %q", out.Review.Recap)
+	}
+}
+
+// And a run with no previous review still refuses it, so the tool is not
+// quietly accepted from a pass that was never offered it.
+func TestAPassWithNoPreviousReviewRefusesARecap(t *testing.T) {
+	if contains(callsFor(StageSynopsis, false, false, nil), CallRecap) {
+		t.Error("a describing pass with nothing to recap may call set_recap")
+	}
+	if !contains(callsFor(StageSynopsis, true, false, nil), CallRecap) {
+		t.Error("a describing pass given a previous review may not call set_recap")
+	}
+	for _, stage := range []string{StageFindings, StageRuling, StageReview} {
+		if contains(callsFor(stage, true, false, nil), CallRecap) {
+			t.Errorf("the %s pass may call set_recap", stage)
+		}
 	}
 }
