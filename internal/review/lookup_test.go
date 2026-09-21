@@ -63,7 +63,7 @@ func (f *fakeLooker) ReadLines(path string, start, end int) (string, error) {
 func TestTheLookupToolsAreOffWithoutALooker(t *testing.T) {
 	names := func(looks []string) string {
 		var out []string
-		for _, tl := range callTools(false, looks) {
+		for _, tl := range callTools(true, false, looks) {
 			out = append(out, tl.Name)
 		}
 		return strings.Join(out, ",")
@@ -88,7 +88,7 @@ func TestTheLookupToolsAreOffWithoutALooker(t *testing.T) {
 func TestACatalogueOffersOnlyWhatTheLookerCanServe(t *testing.T) {
 	look := &fakeLooker{calls: []string{CallGrep, CallRead, CallDocs, CallHistory}}
 	var names []string
-	for _, tl := range callTools(false, lookCallsFor(look)) {
+	for _, tl := range callTools(true, false, lookCallsFor(look)) {
 		names = append(names, tl.Name)
 	}
 	got := strings.Join(names, ",")
@@ -284,7 +284,7 @@ func TestTheJudgingCallCarriesTheWalkthrough(t *testing.T) {
 	}
 	res := &Result{Prompt: "material", Tail: "old tail"}
 
-	got := res.judgingRequest(w, true).Tail
+	got := res.judgingRequest(w, false).Tail
 	for _, want := range []string{"batches the recompute", "a.go: first file", "b.go: second file"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the judging tail is missing %q:\n%s", want, got)
@@ -301,11 +301,11 @@ func TestTheJudgingCallCarriesTheWalkthrough(t *testing.T) {
 	}
 
 	// The fallback writes its own walkthrough, so it is not handed one.
-	if fb := res.judgingRequest(findings.Review{}, false).Tail; strings.Contains(fb, "already written") {
+	if fb := res.judgingRequest(findings.Review{}, true).Tail; strings.Contains(fb, "already written") {
 		t.Errorf("the fallback pass must not be told a walkthrough exists:\n%s", fb)
 	}
 	// Nothing to show means nothing is added.
-	if empty := res.judgingRequest(findings.Review{}, true).Tail; strings.Contains(empty, "already written") {
+	if empty := res.judgingRequest(findings.Review{}, false).Tail; strings.Contains(empty, "already written") {
 		t.Errorf("an empty walkthrough must add nothing:\n%s", empty)
 	}
 }

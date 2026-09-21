@@ -230,9 +230,7 @@ func pricingCohortBound(opts Options, in Input) int {
 func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Result, error) {
 	bound := cohortBound(opts, in)
 	var one *Result
-	var walkthrough findings.Review
-	var usage Usage
-	var written int64
+	var d described
 	var cohorts []Cohort
 	if opts.ReuseSynopsis != nil {
 		// Stage one makes no call: the walkthrough and the partition it drew
@@ -240,16 +238,17 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		// reused review.json with no partition to draw from - Cohorts is
 		// trusted non-empty here for the same reason a fresh partition is
 		// trusted after repairPartition below.
-		walkthrough = *opts.ReuseSynopsis
-		cohorts = fromFindingsCohorts(walkthrough.Cohorts)
+		d.Walkthrough = *opts.ReuseSynopsis
+		d.Model = opts.Model
+		cohorts = fromFindingsCohorts(d.Walkthrough.Cohorts)
 	} else {
 		if opts.Progress != nil {
 			opts.Progress(fmt.Sprintf("describing the change and splitting it into at most %d cohort(s)", bound))
 		}
 		var err error
-		var failed string
 		one, err = runOnce(ctx, in, opts, res.cohortsRequest(opts, in))
-		walkthrough, usage, written, failed = describedBy(one, err)
+		d = describedBy(one, err, opts.Model)
+		failed := d.Failed
 		if failed != "" {
 			// Stage one is the call the whole shape depends on: it writes the
 			// cache the fan-out reads and the partition the fan-out is drawn
@@ -262,13 +261,13 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 			}
 			// One judging call over the whole change, under the same tools the
 			// failed call sent, so it reads the prefix that call wrote.
-			out, rerr := runOnce(ctx, in, opts, res.judgingRequest(findings.Review{}, false))
+			out, rerr := runOnce(ctx, in, opts, res.judgingRequest(findings.Review{}, true))
 			// Stage one was billed whether or not it answered, and the write it
 			// made over the whole prefix is the expensive half. Folding it in
 			// here is what stops a run that paid for two calls from joining the
 			// one-shot distribution at one call's price - FellBack labels the
 			// row, and without this the number on it is still wrong.
-			applySynopsis(out, opts.Model, findings.Review{}, usage, written, failed)
+			applySynopsis(out, opts.Model, d)
 			if out != nil {
 				out.foldCalls(one)
 				out.Pipeline = PipelineOneShot
@@ -284,7 +283,7 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 	}
 	if opts.Progress != nil {
 		opts.Progress(fmt.Sprintf("described %d file(s) in %d cohort(s): %s",
-			len(walkthrough.Files), len(cohorts), cohortNames(cohorts)))
+			len(d.Walkthrough.Files), len(cohorts), cohortNames(cohorts)))
 	}
 	if len(opts.OnlyCohorts) > 0 {
 		selected, serr := selectCohorts(cohorts, opts.OnlyCohorts)
@@ -303,7 +302,7 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		// the change, which is what PlanOnly on the result says so Summary
 		// does not read it as a clean review.
 		out := res.clone()
-		applySynopsis(out, opts.Model, walkthrough, usage, written, "")
+		applySynopsis(out, opts.Model, d)
 		out.Pipeline = PipelineStaged
 		out.Cohorts = cohorts
 		out.PlanOnly = true
@@ -313,7 +312,7 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 	}
 
 	merged, err := fanOut(ctx, in, opts, res, cohorts)
-	applySynopsis(merged, opts.Model, walkthrough, usage, written, "")
+	applySynopsis(merged, opts.Model, d)
 	if merged != nil {
 		merged.foldCalls(one)
 		merged.Pipeline = PipelineStaged
@@ -326,19 +325,30 @@ func runStaged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 // describedBy reads stage one's answer the way describe does, so the staged
 // path and the synopsis path agree on what counts as a walkthrough and on
 // which tokens belong to the judging call's median.
-func describedBy(one *Result, err error) (findings.Review, Usage, int64, string) {
+// model is the model stage one ran on, which under this shape is the judging
+// call's: a staged stage one draws the partition the fan-out is built from as
+// well as describing the change, so it is not the call Options.Describing
+// moves. Recording it keeps the cost arithmetic in one place for both shapes,
+// and it is what says so on the row.
+func describedBy(one *Result, err error, model string) described {
+	d := described{Model: model, Result: one}
 	if one == nil {
-		return findings.Review{}, Usage{}, 0, "the describing call returned nothing"
+		d.Failed = "the describing call returned nothing"
+		return d
 	}
-	usage, written := one.Usage, one.Usage.OutputTokens
-	usage.OutputTokens = 0
+	d.Usage, d.Written = one.Usage, one.Usage.OutputTokens
+	d.Usage.OutputTokens = 0
+	d.CostUSD, d.CostKnown = one.CostUSD, one.CostKnown
 	switch {
 	case err != nil:
-		return findings.Review{}, usage, written, err.Error()
+		d.Failed = err.Error()
+		return d
 	case one.Review.Overview == "":
-		return findings.Review{}, usage, written, "the describing call returned no overview"
+		d.Failed = "the describing call returned no overview"
+		return d
 	}
-	return one.Review, usage, written, ""
+	d.Walkthrough = one.Review
+	return d
 }
 
 // fanOut runs one judging call per cohort, together, and unions what they

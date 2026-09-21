@@ -11,6 +11,30 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Added
+- **The describing call can go out on a model of its own**, through
+  `--synopsis-model`, with `--synopsis-api`, `--synopsis-base-url` and
+  `--synopsis-effort` beside it. It writes the walkthrough by reading the diff
+  and putting a line against each file, which is the cheapest thing either
+  call does, so it is the one worth handing to a cheaper model. Naming a model
+  alone moves that call and leaves the wire, endpoint, credential and effort
+  where the review put them. Naming another wire drops the endpoint, the key
+  and `--api-user` for that call instead of sending an Anthropic base URL and
+  key to an OpenAI endpoint; `OPENAI_API_KEY` and `OPENAI_BASE_URL` are read
+  for it. An unknown wire is refused at the top of `Run` rather than falling
+  through to Anthropic, where a typo would have arrived as a describing call
+  that produced no walkthrough.
+- **What that call cost is priced where it ran.** `Usage` is a token count
+  with no model attached and one record cannot carry two rate cards, so a
+  describing call on a second model keeps its tokens out of `Usage` and its
+  cost lands in `Result.SynopsisCostUSD`, the shape `ScoutCostUSD` already
+  had. `Result.SynopsisModel` records what wrote the walkthrough on every run
+  that had one, and the ledger row carries both, the model only where it
+  differs. A describing model with no entry in the price table makes the whole
+  run's cost read as unknown rather than as the judging call's alone. On one
+  model nothing moves: the tokens join `Usage` and are priced with everything
+  else, exactly as before.
+
 ### Fixed
 - **The input estimate counts the tool array.** `ruleRequest` had always
   counted it and says why; every other request left it out, so each quoted
@@ -21,6 +45,46 @@ Releases whose tag carries only a subject line are listed as that subject.
   out") rather than failing on it. The estimate feeds `--dry-run`, the price
   quoted before a call goes out, and the tripwire's own figure, so all three
   were low by the same amount.
+
+- **The judging call stops carrying the tools that write a walkthrough**, where
+  the describing call ran somewhere its prefix cannot be read from. The
+  catalogue drops from 2820 to 1965 tokens, or 4383 to 3528 with every lookup
+  on, which is about a fifth of a cent and not the reason: a findings pass
+  offered `set_overview` has been measured using it, and on PR #1462 one spent
+  a turn on an overview and twelve file lines and had every call refused.
+  Showing it the finished walkthrough was an argument against a catalogue.
+  This takes the tools away instead. It is gated on the describing call not
+  sharing the judging call's cache entry, since a judging call whose tools
+  differ from the describing call's does not match the prefix that call wrote
+  and would pay a full write, about sixty cents on a 250k prefix, to save the
+  fifth of a cent. A reused walkthrough narrows too, having no describing call
+  at all; a staged run and a run with the stage off do not, because a call
+  sharing that array still writes one.
+- **A describing call that failed on another model no longer falls back to one
+  call doing both jobs.** The fallback was affordable because the failed call
+  had cached the prompt the fallback sends, so it cost one output cap and no
+  extra input. A call on another model caches nothing there, so the fallback
+  would be a second full-price call putting the walkthrough and the findings
+  back under one output cap, which is the failure the describing stage exists
+  to prevent. The review now files findings alone and the report says the
+  walkthrough is missing and why. The fallback is unchanged where the two
+  calls do share a prefix, including the staged path.
+
+### Note
+- A prompt cache entry belongs to the model that wrote it, so a describing
+  call on a second model shares no prefix with the judging call: it pays for
+  the prefix itself, and the judging call pays the cache write the describing
+  call used to pay. The write moves rather than disappearing, so what a move
+  can save is the walkthrough's output tokens and nothing else.
+  Worked at Sonnet 5 and `gpt-5.6-luna`, whose input happens to be exactly
+  Sonnet's cache-read rate, which zeroes the prefix term: the saving is
+  $0.0088 per 1k of walkthrough whatever the prefix, so about 3 cents on a
+  typical walkthrough and 9 cents on a long one. As a share of the review it
+  is 7% on a 50k prefix and 3% on a 250k one, because the prefix is most of
+  the bill and this does not touch it. A model whose input is above the
+  judging model's cache-read rate loses money at any walkthrough size.
+  What the walkthrough costs this installation is in `.redline/reviews.jsonl`
+  as `synopsisOutputTokens`; measure there before moving anything.
 
 ## [0.14.1] - 2026-09-21
 

@@ -155,6 +155,32 @@ type Looker interface {
 	Calls() []string
 }
 
+// Endpoint is one call's wire identity: the protocol it speaks, the model it
+// asks for, where it sends the request, the credential it sends with it, and
+// the effort it runs at.
+//
+// Every field is separately overridable because a model on another vendor's
+// wire needs all of them. Naming a model alone and inheriting the rest is how
+// a request meant for one vendor's endpoint arrives at another's, carrying a
+// key that endpoint will not accept, after the whole prompt has been
+// uploaded.
+type Endpoint struct {
+	API     string
+	Model   string
+	BaseURL string
+	APIKey  string
+	APIUser string
+	Effort  string
+}
+
+// set reports whether this endpoint asks for anything at all. The credential
+// is left out on purpose: a key with no model or wire beside it names no
+// endpoint to send anywhere, and treating it as one would move a call because
+// an environment variable happened to be exported.
+func (e Endpoint) set() bool {
+	return e.API != "" || e.Model != "" || e.BaseURL != "" || e.Effort != ""
+}
+
 // Options configures one call.
 type Options struct {
 	Model     string
@@ -206,6 +232,16 @@ type Options struct {
 	// When set, the openai wire sends "Bearer user=<user>&key=<key>"
 	// instead of the bare key. Ignored by the anthropic wire.
 	APIUser string
+	// Describing sends the describing call out under a wire identity of its
+	// own. The zero value is the judging call's, which is what every review
+	// made before this existed.
+	//
+	// The reason there is a whole endpoint here and not just a model name:
+	// the describing call is the cheapest thing a review does, a reading of
+	// the diff and a line per file, and the models worth handing that to are
+	// usually on another vendor's wire. See Options.describing for what each
+	// empty field falls back to.
+	Describing Endpoint
 	// Samples is how many independent reviews to take and union. One is the
 	// default and the only value that costs what a review used to.
 	//
@@ -366,6 +402,116 @@ func (o Options) Shape() string {
 		return PipelineStaged
 	}
 	return PipelineOneShot
+}
+
+// describing is the Options the describing call goes out under.
+//
+// An unset Describing returns the judging call's own Options unchanged, so a
+// review that names no describing endpoint makes the same two calls it always
+// did, on one model, priced as one.
+//
+// What each empty field falls back to depends on whether the wire moved.
+// Model, API and Effort carry over from the judging call, so naming a model
+// alone moves that one call and changes nothing else. The endpoint, the
+// credential and the caller name do not carry over across a change of
+// protocol: they belong to the wire that was configured, and handing an
+// Anthropic base URL and key to an OpenAI request sends it somewhere it does
+// not belong with something that will not authenticate it. A describing call
+// that switched protocols without naming a model gets the new wire's default
+// model rather than the judging model's name, which the new wire has never
+// heard of.
+func (o Options) describing() Options {
+	d := o.Describing
+	if !d.set() {
+		return o
+	}
+	out := o
+	if d.API != "" {
+		out.API = d.API
+	}
+	if d.Effort != "" {
+		out.Effort = d.Effort
+	}
+	switched := out.API != o.API
+	if switched {
+		out.BaseURL, out.APIKey, out.APIUser = "", "", ""
+		out.Model = DefaultModel
+		if out.API == APIOpenAI {
+			out.Model = DefaultOpenAIModel
+		}
+	}
+	if d.Model != "" {
+		out.Model = d.Model
+	}
+	if d.BaseURL != "" {
+		out.BaseURL = d.BaseURL
+	}
+	if d.APIKey != "" {
+		out.APIKey = d.APIKey
+	}
+	if d.APIUser != "" {
+		out.APIUser = d.APIUser
+	}
+	return out
+}
+
+// describingSharesPrefix reports whether the describing call and the judging
+// call read and write one cache entry.
+//
+// They do when nothing sends the describing call elsewhere, which is the
+// default and was the only shape before Describing existed. They stop when it
+// moves, and a cache entry belongs to the model that wrote it, so a different
+// model is enough on its own: same wire, same endpoint, same key, still two
+// entries. With the cache off there is no entry to share either way.
+//
+// Two things hang off this. The catalogue may narrow only where the answer is
+// false, because a judging call that sent different tools than the describing
+// call would not match the prefix that call wrote and would pay a full write
+// to save a fifth of a cent. And the fallback below is only affordable where
+// it is true.
+func (o Options) describingSharesPrefix() bool {
+	d := o.describing()
+	return o.cacheOn() && d.cacheOn() && d.API == o.API && d.Model == o.Model
+}
+
+// judgingCatalogueDescribes reports whether the tool array the judging call
+// sends has to carry the three calls that write a walkthrough.
+//
+// It has to whenever some call sharing that array writes one. A staged stage
+// one describes and partitions on this wire. A run with the describing stage
+// off writes the walkthrough and the findings in one call. And a describing
+// call that shares the prefix is sending this very array. What is left, and
+// the only case that narrows, is a run whose walkthrough is written somewhere
+// else or not paid for at all.
+//
+// Decided from the options rather than from how the describing call turned
+// out, so the estimate Assemble prices is the array that is actually sent. A
+// failed describing call does not widen it: where the two calls share a
+// prefix the fallback still runs and the array was already wide, and where
+// they do not there is no fallback. See runJudged.
+func (o Options) judgingCatalogueDescribes() bool {
+	switch {
+	case o.Shape() != PipelineOneShot && o.ReuseSynopsis == nil:
+		return true
+	case o.ReuseSynopsis != nil:
+		return false
+	case !o.Synopsis:
+		return true
+	}
+	return o.describingSharesPrefix()
+}
+
+// DescribingEndpoint is where the describing call will go, resolved the way
+// the call itself resolves it.
+//
+// Exported for the line a command prints before it sends anything. A run with
+// a describing endpoint set makes its two calls on two models, and a line
+// naming only the judging one understates what is about to be spent, which is
+// the one thing that line exists to get right. Compare Model against the
+// review's own to tell whether there is anything to say.
+func (o Options) DescribingEndpoint() Endpoint {
+	d := o.withDefaults().describing()
+	return Endpoint{API: d.API, Model: d.Model, BaseURL: d.BaseURL, Effort: d.Effort}
 }
 
 func (o Options) withDefaults() Options {
@@ -666,6 +812,22 @@ type Result struct {
 	// prices the next review's judging call, and folding a walkthrough into
 	// it would inflate every estimate after it.
 	SynopsisOutputTokens int64 `json:"synopsisOutputTokens,omitempty"`
+	// SynopsisModel is the model that wrote the walkthrough, which is not
+	// always Model. Recorded whether or not it differs, for the reason every
+	// finding already names which of the three judges produced it: a reader
+	// comparing two walkthroughs needs to know whether a thin one came from a
+	// cheap model or an expensive one having a bad run.
+	SynopsisModel string `json:"synopsisModel,omitempty"`
+	// SynopsisCostUSD is what the describing call cost when it ran somewhere
+	// Usage cannot price it. Usage is one record at one model's rates, so a
+	// call on a second model has to be priced where it was made and carried
+	// here as a number. Zero when the describing call ran on Model, where its
+	// tokens are inside Usage and priced with everything else.
+	//
+	// The same shape as ScoutCostUSD above, for the same reason: a separate
+	// call on a separate model, folded into CostUSD and recorded apart so the
+	// ledger can still say what each one cost.
+	SynopsisCostUSD float64 `json:"synopsisCostUSD,omitempty"`
 	// Pipeline is the shape this result actually came out of, which is not
 	// always the shape that was asked for: a staged run whose describing call
 	// failed finishes as a one-shot review and says so here, with FellBack
@@ -720,6 +882,12 @@ type Result struct {
 	// which of them are on the catalogue. Fixed for the whole run, like
 	// deferred, so every call of a run sends the same bytes.
 	lookCalls []string
+	// catalogueDescribes is whether the catalogue carries the three calls that
+	// write a walkthrough. Fixed for the whole run and set from
+	// Options.judgingCatalogueDescribes, for the reason deferred and
+	// lookCalls are: it is part of the bytes a cache read depends on, and the
+	// ruling clones this result, so it cannot be decided twice.
+	catalogueDescribes bool
 	// expect is what a pass has to record to be visibly complete, set by the
 	// requests whose completeness can be checked. A pass that has recorded all
 	// of it ends there, without waiting for done.
@@ -850,7 +1018,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// would otherwise read this block unscoped - gets none of it either. See
 	// Options.CohortContext.
 	scoped := opts.CohortContext && opts.Shape() == PipelineStaged
-	fixed := toolsTokens(opts.DeferContext, lookCallsFor(opts.Look)) + envelope.EstimateTokens(system) +
+	fixed := toolsTokens(opts.judgingCatalogueDescribes(), opts.DeferContext, lookCallsFor(opts.Look)) + envelope.EstimateTokens(system) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 && !scoped {
@@ -883,7 +1051,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// review by between 2800 and 4400 tokens depending on how many lookups
 	// were offered, and promptParts had been listing a `tools` line the total
 	// it sits beside did not include.
-	est := toolsTokens(opts.DeferContext, lookCallsFor(opts.Look)) +
+	est := toolsTokens(opts.judgingCatalogueDescribes(), opts.DeferContext, lookCallsFor(opts.Look)) +
 		envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls)
@@ -909,24 +1077,25 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		// Stamped at assembly so every row has a shape, including the rows
 		// nothing staged ever touches: a ledger where one shape is a value
 		// and the other is an empty string groups into two sets by accident.
-		Pipeline:       opts.Shape(),
-		Budget:         budget,
-		deferred:       deferred,
-		lookCalls:      lookCallsFor(opts.Look),
-		FilesShown:     len(in.ShownFiles()),
-		Prompt:         prompt,
-		Tail:           tail + describe + note,
-		note:           note,
-		System:         system,
-		InputEstimate:  est,
-		FixedEstimate:  fixed,
-		Parts:          parts,
-		ContextRoom:    room,
-		OverCeiling:    fixed > opts.Ceiling,
-		Ceiling:        opts.Ceiling,
-		CostUSD:        cost,
-		CostCeilingUSD: ceiling,
-		CostKnown:      known,
+		Pipeline:           opts.Shape(),
+		Budget:             budget,
+		deferred:           deferred,
+		lookCalls:          lookCallsFor(opts.Look),
+		catalogueDescribes: opts.judgingCatalogueDescribes(),
+		FilesShown:         len(in.ShownFiles()),
+		Prompt:             prompt,
+		Tail:               tail + describe + note,
+		note:               note,
+		System:             system,
+		InputEstimate:      est,
+		FixedEstimate:      fixed,
+		Parts:              parts,
+		ContextRoom:        room,
+		OverCeiling:        fixed > opts.Ceiling,
+		Ceiling:            opts.Ceiling,
+		CostUSD:            cost,
+		CostCeilingUSD:     ceiling,
+		CostKnown:          known,
 	}, nil
 }
 
@@ -966,6 +1135,16 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	default:
 		return nil, fmt.Errorf("unknown api %q; use %s or %s",
 			opts.API, APIAnthropic, APIOpenAI)
+	}
+	// The describing call's wire is checked here too. runOnce sends anything
+	// that is not the OpenAI wire to Anthropic's, so an unknown name there
+	// does not fail: it quietly asks Anthropic for a model it has never heard
+	// of, and the describing stage swallows that as a call that did not
+	// produce a walkthrough. A typed flag should not read as a model having a
+	// bad day.
+	if d := opts.Describing.API; d != "" && d != APIAnthropic && d != APIOpenAI {
+		return nil, fmt.Errorf("unknown api %q for the describing call; use %s or %s",
+			d, APIAnthropic, APIOpenAI)
 	}
 	if opts.CohortContext && opts.Shape() != PipelineStaged {
 		return nil, fmt.Errorf("--cohort-context scopes the resolved context to each cohort's own " +
@@ -1089,23 +1268,26 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 // findings alone, and without one it is asked for the whole review, as it
 // always was.
 func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Result, error) {
-	var walkthrough findings.Review
-	var synUsage Usage
-	var synWritten int64
-	var synFailed string
-	var described *Result
+	var d described
 	reused := opts.ReuseSynopsis != nil
 	switch {
 	case reused:
-		walkthrough = *opts.ReuseSynopsis
-		res = res.judgingRequest(walkthrough, true)
+		d.Walkthrough = *opts.ReuseSynopsis
+		res = res.judgingRequest(d.Walkthrough, false)
 	case opts.Synopsis:
-		walkthrough, synUsage, synWritten, synFailed, described = describe(ctx, in, opts, res)
-		if synFailed != "" && opts.Progress != nil {
-			opts.Progress("the describing call did not produce a walkthrough (" + synFailed +
+		d = describe(ctx, in, opts, res)
+		if d.Failed != "" && opts.Progress != nil {
+			opts.Progress("the describing call did not produce a walkthrough (" + d.Failed +
 				"); this review writes its own")
 		}
-		res = res.judgingRequest(walkthrough, synFailed == "")
+		// A failed describing call falls back to one call doing both jobs only
+		// where it left a prefix this call can read. Where it ran on another
+		// model it left nothing here, so this call stays a findings call and
+		// the report says the walkthrough is missing, which applySynopsis
+		// writes from SynopsisFailed. Paying a second full-price call to put
+		// the two jobs back under one output cap is how a degraded run becomes
+		// a lost review.
+		res = res.judgingRequest(d.Walkthrough, d.Failed != "" && opts.describingSharesPrefix())
 	}
 	var out *Result
 	var err error
@@ -1115,10 +1297,10 @@ func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		out, err = runOnce(ctx, in, opts, res)
 	}
 	if out != nil {
-		out.foldCalls(described)
+		out.foldCalls(d.Result)
 	}
 	if opts.Synopsis || reused {
-		applySynopsis(out, opts.Model, walkthrough, synUsage, synWritten, synFailed)
+		applySynopsis(out, opts.Model, d)
 		if out != nil && reused {
 			out.SynopsisReused = true
 		}
@@ -1154,7 +1336,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			"cache": map[string]any{"breakpoint": res.Cached, "ttl": opts.CacheTTL},
 			// The whole array, because the whole array is what was sent and
 			// its bytes are what a cache read depends on.
-			"tools": callTools(res.pulls(), res.looks()), "calls": callsFor(stage, res.pulls(), res.looks()),
+			"tools": callTools(res.describes(), res.pulls(), res.looks()), "calls": callsFor(stage, res.pulls(), res.looks()),
 			// instructions is the prose callsBlock sends as its own content
 			// block, on the wire but not otherwise in this file: "calls"
 			// above names which tools answer the pass, not the words that

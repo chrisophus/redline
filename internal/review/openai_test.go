@@ -141,7 +141,7 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 	// them, and leaves the choice to the model: forcing it is incompatible
 	// with thinking on the Anthropic API a proxy may forward this to.
 	var want []string
-	for _, tool := range callTools(false, nil) {
+	for _, tool := range callTools(true, false, nil) {
 		want = append(want, tool.Name)
 	}
 	if !slices.Equal(names, want) {

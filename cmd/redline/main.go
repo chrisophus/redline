@@ -55,6 +55,7 @@ type opts struct {
 	reportURL, profile, olderThan                                     string
 	model, effort, mode, api, baseURL, apiUser                        string
 	scoutModel, scoutEffort                                           string
+	synopsisModel, synopsisAPI, synopsisBaseURL, synopsisEffort       string
 	open, stop, dryRun, file, prepare, allowMissingCoverage           bool
 	noLint                                                            bool
 	noContext                                                         bool

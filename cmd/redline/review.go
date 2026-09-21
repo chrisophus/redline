@@ -213,6 +213,7 @@ func cmdReview(o opts) error {
 			ropts.APIUser = os.Getenv("OPENAI_USER")
 		}
 	}
+	ropts.Describing = o.describingEndpoint(ropts)
 	// The scout's spend is accumulated here so a cost paid inside the verify
 	// pass reaches the ledger and not only its own log line.
 	tally := scoutTally{known: true}
@@ -286,6 +287,12 @@ func cmdReview(o opts) error {
 				describeSession(res), est.Model, est.API, est.InputEstimate,
 				review.FormatCost(est.CostUSD, est.CostKnown),
 				review.FormatCost(est.CostCeilingUSD, est.CostKnown))
+			// Named separately when there is a second model, because the line
+			// above quotes one model's price for a run that will pay two.
+			if d := ropts.DescribingEndpoint(); d.Model != est.Model {
+				fmt.Fprintf(os.Stderr, "redline: the walkthrough is written by %s (%s), billed apart\n",
+					d.Model, d.API)
+			}
 			fmt.Fprintf(os.Stderr, "redline: request by part: %s\n", est.PartsLine())
 		}
 	}
@@ -597,6 +604,40 @@ func (o opts) scoutSettings() scoutSettings {
 		s.Effort = o.effort
 	}
 	return s
+}
+
+// describingEndpoint resolves where the describing call goes, from the
+// --synopsis-* flags and the environment.
+//
+// The same rule scoutSettings follows: a --synopsis-* flag wins, and what it
+// does not name the review's own call supplies, so --synopsis-model alone
+// moves that one call and leaves the wire, the endpoint and the effort where
+// they were. An endpoint with nothing set is the zero value, which the library
+// reads as "the judging call's own", so a review with none of these flags
+// makes exactly the calls it made before they existed.
+//
+// The credential is read here for the same reason the judging call's is read
+// above: only the command knows the vendor's env names. It is read only when
+// the describing call is on the OpenAI wire and the judging call is not,
+// because that is the case where the key already in ropts belongs to another
+// vendor and cannot be inherited. Where both calls are on that wire the
+// library inherits the one already resolved, and an empty key on the
+// Anthropic wire is left to the SDK's own credential chain.
+func (o opts) describingEndpoint(ropts review.Options) review.Endpoint {
+	e := review.Endpoint{
+		API:     o.synopsisAPI,
+		Model:   o.synopsisModel,
+		BaseURL: o.synopsisBaseURL,
+		Effort:  o.synopsisEffort,
+	}
+	if e.API == review.APIOpenAI && ropts.API != review.APIOpenAI {
+		e.APIKey = os.Getenv("OPENAI_API_KEY")
+		e.APIUser = os.Getenv("OPENAI_USER")
+		if e.BaseURL == "" {
+			e.BaseURL = os.Getenv("OPENAI_BASE_URL")
+		}
+	}
+	return e
 }
 
 // answerOptions is the scout run the review's flags describe. The lookups go

@@ -88,6 +88,14 @@ func (r *Result) looks() []string {
 	return r.lookCalls
 }
 
+// describes is whether this request's catalogue carries the calls that write
+// a walkthrough. Named beside pulls and looks because it is read in the same
+// places and is the same kind of fact: a fixed property of the run that the
+// tool array is built from.
+func (r *Result) describes() bool {
+	return r.catalogueDescribes
+}
+
 // lookCallsFor is the catalogue a Looker can serve, filtered to the calls this
 // package defines and put in catalogue order.
 //

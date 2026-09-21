@@ -16,7 +16,7 @@ func TestTheEstimateCountsTheCatalogue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools := toolsTokens(res.pulls(), res.looks())
+	tools := toolsTokens(res.describes(), res.pulls(), res.looks())
 	if tools == 0 {
 		t.Fatal("this fixture sends no tools, so it cannot test that they are counted")
 	}
@@ -44,7 +44,7 @@ func TestTheReviewAndTheRulingPriceTheSameCatalogue(t *testing.T) {
 		t.Fatal(err)
 	}
 	ruling := res.ruleRequest(exploreInput(), opts, nil, nil)
-	if a, b := toolsTokens(res.pulls(), res.looks()), toolsTokens(ruling.pulls(), ruling.looks()); a != b {
+	if a, b := toolsTokens(res.describes(), res.pulls(), res.looks()), toolsTokens(ruling.describes(), ruling.pulls(), ruling.looks()); a != b {
 		t.Errorf("the review prices %d catalogue token(s) and the ruling %d", a, b)
 	}
 }

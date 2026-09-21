@@ -36,6 +36,16 @@ var priceTable = map[string]Pricing{
 	// matching OpenRouter's listing. gpt-5.6-sol is left out: OpenAI's page
 	// and the third-party listings disagree on its rate.
 	"gpt-5.6-terra": {InPerM: 2, OutPerM: 12},
+	// Not from a vendor page: this rate was given by the operator of the
+	// gateway this repository reaches it through, so it is the one row here
+	// nothing public can be checked against.
+	//
+	// Its input is exactly a tenth of claude-sonnet-5's, which is also what a
+	// cache read costs there. That coincidence is what makes it worth naming
+	// here: a describing call moved to this model pays the same for the
+	// prefix as leaving it on Sonnet and reading the prefix back, so the
+	// whole of what such a move saves is the walkthrough's output tokens.
+	"gpt-5.6-luna":  {InPerM: 0.20, OutPerM: 1.20},
 	"gpt-5.4":       {InPerM: 2.50, OutPerM: 15},
 	"gpt-5.3-codex": {InPerM: 1.75, OutPerM: 14},
 	"gpt-5-mini":    {InPerM: 0.25, OutPerM: 2},
