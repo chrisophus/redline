@@ -1,8 +1,10 @@
 package review
 
 import (
+	"context"
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/chrisophus/redline/internal/findings"
@@ -15,7 +17,7 @@ import (
 
 func catalogueNames(r *Result) []string {
 	var out []string
-	for _, t := range callTools(r.describes(), r.pulls(), r.looks()) {
+	for _, t := range callTools(r.describes(), r.recaps(), r.pulls(), r.looks()) {
 		out = append(out, t.Name)
 	}
 	return out
@@ -133,8 +135,8 @@ func TestTheRulingSendsTheJudgingCallsCatalogue(t *testing.T) {
 		}
 		judging := res.judgingRequest(findings.Review{Overview: "x"}, false)
 		ruling := judging.ruleRequest(deferredInput(), opts, nil, nil)
-		a, _ := json.Marshal(callTools(judging.describes(), judging.pulls(), judging.looks()))
-		b, _ := json.Marshal(callTools(ruling.describes(), ruling.pulls(), ruling.looks()))
+		a, _ := json.Marshal(callTools(judging.describes(), judging.recaps(), judging.pulls(), judging.looks()))
+		b, _ := json.Marshal(callTools(ruling.describes(), ruling.recaps(), ruling.pulls(), ruling.looks()))
 		if string(a) != string(b) {
 			t.Errorf("apart=%v: the ruling's catalogue differs from the judging call's", apart)
 		}
@@ -195,5 +197,116 @@ func TestANarrowedCatalogueIsCheaperToSend(t *testing.T) {
 	if narrow.InputEstimate >= wide.InputEstimate {
 		t.Errorf("narrowing the catalogue did not shrink the request: %d against %d",
 			narrow.InputEstimate, wide.InputEstimate)
+	}
+}
+
+// set_recap is on the catalogue only for a run that was told which commit the
+// previous review ran against, and the describing instruction names the files
+// that moved since it. A pass asked for a recap with no list would be
+// guessing: the diff it is shown is against the merge base and nothing in it
+// records when any of it landed.
+func TestTheRecapToolAndItsSectionArriveTogether(t *testing.T) {
+	base := Options{
+		API: APIAnthropic, Model: "claude-sonnet-5", Synopsis: true,
+		Cache: true, CacheTTL: CacheTTL5m, Cohorts: 1, MaxTokens: 1000,
+	}
+	named := func(opts Options) []string {
+		res, err := Assemble(deferredInput(), opts.withDefaults())
+		if err != nil {
+			t.Fatal(err)
+		}
+		syn := res.synopsisRequest(opts.withDefaults(), deferredInput())
+		var out []string
+		for _, tool := range callTools(syn.describes(), syn.recaps(), syn.pulls(), syn.looks()) {
+			out = append(out, tool.Name)
+		}
+		return out
+	}
+	if slices.Contains(named(base), CallRecap) {
+		t.Error("a first review was offered set_recap with nothing to recap")
+	}
+	since := base
+	since.SinceReview = "abc1234"
+	since.SinceFiles = []string{"internal/review/review.go"}
+	if !slices.Contains(named(since), CallRecap) {
+		t.Error("a review given a previous commit cannot call set_recap")
+	}
+	tail := synopsisTail(since.withDefaults(), deferredInput())
+	for _, want := range []string{"abc1234", "set_recap", "internal/review/review.go"} {
+		if !strings.Contains(tail, want) {
+			t.Errorf("the describing instruction is missing %q", want)
+		}
+	}
+	if plain := synopsisTail(base.withDefaults(), deferredInput()); strings.Contains(plain, "set_recap") {
+		t.Error("a first review's instruction mentions a tool it was not given")
+	}
+}
+
+// A run where nothing moved since the last review still gets the tool and is
+// told to say so, rather than being left to invent a change.
+func TestARunWithNothingNewIsToldSo(t *testing.T) {
+	opts := Options{
+		API: APIAnthropic, Model: "claude-sonnet-5", Synopsis: true, Cohorts: 1,
+		SinceReview: "abc1234",
+	}.withDefaults()
+	tail := synopsisTail(opts, deferredInput())
+	if !strings.Contains(tail, "No file has changed since that commit") {
+		t.Errorf("a run with no new files is not told to say so:\n%s", tail)
+	}
+}
+
+// A describing pass given a previous review calls set_recap and the call is
+// recorded, not refused.
+//
+// This is the test the recap shipped without. The ones above check that the
+// tool reaches the catalogue and that the instruction asks for it, and both
+// passed while the feature could not work: take() gates every call against
+// callsFor before check() ever sees a schema, callsFor listed no CallRecap
+// for any stage, and every set_recap call came back "this pass does not take
+// set_recap. Do not send it again." Driving the pass is what catches that;
+// reading the catalogue is not.
+func TestADescribingPassCanActuallyRecordARecap(t *testing.T) {
+	api := serveSSE(t,
+		reply(
+			[2]string{CallOverview, `{"overview":"This change batches the recompute."}`},
+			[2]string{CallRecap, `{"recap":"The transaction boundary moved inside the loop."}`},
+			[2]string{CallDone, `{}`},
+		),
+	)
+	opts := loopOpts(api)
+	opts.Synopsis = true
+	opts.SinceReview = "abc1234"
+	opts.SinceFiles = []string{"internal/review/review.go"}
+	opts = opts.withDefaults()
+	res, err := Assemble(deferredInput(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := runOnce(context.Background(), deferredInput(), opts,
+		res.synopsisRequest(opts.describing(), deferredInput()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Rejected != 0 {
+		t.Errorf("the describing pass had %d call(s) refused, want none", out.Rejected)
+	}
+	if out.Review.Recap != "The transaction boundary moved inside the loop." {
+		t.Errorf("the recap was not recorded: %q", out.Review.Recap)
+	}
+}
+
+// And a run with no previous review still refuses it, so the tool is not
+// quietly accepted from a pass that was never offered it.
+func TestAPassWithNoPreviousReviewRefusesARecap(t *testing.T) {
+	if contains(callsFor(StageSynopsis, false, false, nil), CallRecap) {
+		t.Error("a describing pass with nothing to recap may call set_recap")
+	}
+	if !contains(callsFor(StageSynopsis, true, false, nil), CallRecap) {
+		t.Error("a describing pass given a previous review may not call set_recap")
+	}
+	for _, stage := range []string{StageFindings, StageRuling, StageReview} {
+		if contains(callsFor(stage, true, false, nil), CallRecap) {
+			t.Errorf("the %s pass may call set_recap", stage)
+		}
 	}
 }

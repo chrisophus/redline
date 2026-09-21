@@ -25,8 +25,17 @@ type Review struct {
 	// and nothing stopped that being a different change. A review of one
 	// pull request rendered onto another, and was one command away from
 	// being posted there.
-	Revision string             `json:"revision,omitempty"`
-	Overview string             `json:"overview,omitempty"`
+	Revision string `json:"revision,omitempty"`
+	Overview string `json:"overview,omitempty"`
+	// Recap is one paragraph on what changed since the previous review of
+	// this pull request, written by the describing call when it was told
+	// which commit that review ran against. Empty on a first review and on
+	// every run that was not told.
+	//
+	// It is beside Overview rather than replacing it. The overview describes
+	// the whole change and stays correct across reviews; this is what a
+	// reader who has already read the last one needs instead.
+	Recap    string             `json:"recap,omitempty"`
 	Files    map[string]string  `json:"files,omitempty"`
 	Comments []ReviewComment    `json:"comments,omitempty"`
 	Verdicts map[string]Verdict `json:"verdicts,omitempty"`
@@ -101,6 +110,7 @@ type ReviewComment struct {
 // reviewWire is the on-disk shape before aliases and flexible fields normalize.
 type reviewWire struct {
 	Overview         string             `json:"overview"`
+	Recap            string             `json:"recap,omitempty"`
 	WhatItDoes       string             `json:"what_it_does"`
 	Files            json.RawMessage    `json:"files"`
 	Comments         json.RawMessage    `json:"comments"`
@@ -207,6 +217,7 @@ func LoadReview(path string) (*Review, error) {
 	if r.Overview == "" {
 		r.Overview = strings.TrimSpace(wire.WhatItDoes)
 	}
+	r.Recap = strings.TrimSpace(wire.Recap)
 	files, err := parseReviewFiles(wire.Files)
 	if err != nil {
 		return nil, fmt.Errorf("review files: %w", err)

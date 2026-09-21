@@ -259,7 +259,7 @@ func TestTheDescribingTurnNamesTheFilesItMayDescribe(t *testing.T) {
 	in.Change.Files = append(in.Change.Files, change.File{
 		Path: "internal/queue/q_test.go", Added: 40,
 	})
-	tail := synopsisTail(in)
+	tail := synopsisTail(Options{}, in)
 	if !strings.Contains(tail, "- internal/queue/q.go\n") {
 		t.Errorf("the roster must name the file whose diff was sent:\n%s", tail)
 	}

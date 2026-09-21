@@ -136,6 +136,17 @@ type Payload struct {
 	// with, set by the command from gh once it is known. Empty renders nothing.
 	intent     string
 	reviewedBy string
+	// recap is the describing call's paragraph on what changed since the
+	// previous review, and recapSince the commit it was written against.
+	// Set by WithRecap, and both empty on a body that repeats the walkthrough
+	// as it always did.
+	//
+	// When they are set the body opens with that paragraph and leaves out the
+	// overview and the per-file table, because a pull request reviewed four
+	// times carried four copies of a walkthrough that had not changed. The
+	// report still has all of it, and the body still links to the report.
+	recap      string
+	recapSince string
 	// staleHead is the pull request's head when it is no longer the commit
 	// this review is of, and empty otherwise. unattested withholds the gate
 	// verdict marker, for a profile that wants its verdict to cover the
@@ -611,6 +622,21 @@ func (p Payload) renderBody() string {
 		p.profile, p.attestedVerdict(), p.withheld, p.hedged, p.lint)
 }
 
+// WithRecap puts the describing call's account of what is new in place of
+// the walkthrough, for a post to a pull request Redline has reviewed before.
+//
+// Both arguments are required: a paragraph with no commit beside it cannot be
+// read, because "since the last review" means nothing without saying which
+// one. Given neither, the body is unchanged.
+func (p Payload) WithRecap(recap, since string) Payload {
+	if strings.TrimSpace(recap) == "" || strings.TrimSpace(since) == "" {
+		return p
+	}
+	p.recap, p.recapSince = strings.TrimSpace(recap), since
+	p.Body = p.renderBody()
+	return p
+}
+
 // WithMeta stamps the PR metadata the walkthrough body opens with and
 // re-renders. The command fills these from gh once the login and the pull
 // request title are known; an evidence body ignores them.
@@ -636,17 +662,29 @@ func buildBodyWalkthrough(p Payload) string {
 	if p.intent != "" {
 		fmt.Fprintf(&head0, "**Stated intent.** %s\n\n", p.intent)
 	}
-	if p.rep != nil && p.rep.Agent != nil {
-		if ov := strings.TrimSpace(p.rep.Agent.Overview); ov != "" {
-			if len(ov) > maxNarrative {
-				ov = ov[:maxNarrative] + "\n\n_(truncated; the full overview is on the report)_"
-			}
-			fmt.Fprintf(&head0, "**What it does.** %s\n\n", ov)
-		}
-	}
+	// The recap replaces the overview and the per-file table rather than
+	// joining them. Repeating a walkthrough that has not changed is what it
+	// exists to stop, so rendering both would leave the body longer than
+	// before.
 	perFile, leftover := splitBodyFindingsByFile(p)
-	if s := walkthroughSection(p, perFile, maxNarrative); s != "" {
-		head0.WriteString(s)
+	if p.recap != "" {
+		recap := p.recap
+		if len(recap) > maxNarrative {
+			recap = recap[:maxNarrative] + "\n\n_(truncated; the full walkthrough is on the report)_"
+		}
+		fmt.Fprintf(&head0, "**Since the last review** (`%s`). %s\n\n", shortSHA12(p.recapSince), recap)
+	} else {
+		if p.rep != nil && p.rep.Agent != nil {
+			if ov := strings.TrimSpace(p.rep.Agent.Overview); ov != "" {
+				if len(ov) > maxNarrative {
+					ov = ov[:maxNarrative] + "\n\n_(truncated; the full overview is on the report)_"
+				}
+				fmt.Fprintf(&head0, "**What it does.** %s\n\n", ov)
+			}
+		}
+		if s := walkthroughSection(p, perFile, maxNarrative); s != "" {
+			head0.WriteString(s)
+		}
 	}
 	if table := evidenceTable(p.rep); table != "" {
 		head0.WriteString("<details>\n<summary>Evidence</summary>\n\n")
@@ -1151,6 +1189,23 @@ func ReviewedAt(bodies []string, head string) bool {
 		}
 	}
 	return false
+}
+
+// ReviewedHeads is every commit Redline has already posted a review body for
+// on this pull request, in the order the bodies were given.
+//
+// The head is in the marker each body already carries, so what the previous
+// review ran against does not have to be supplied from outside. `redline post
+// --recap` uses the last one that is not the current head, which is the
+// commit a reader of that review last saw.
+func ReviewedHeads(bodies []string) []string {
+	var out []string
+	for _, body := range bodies {
+		for _, m := range reviewMarkerRe.FindAllStringSubmatch(body, -1) {
+			out = append(out, m[1])
+		}
+	}
+	return out
 }
 
 // bodyLocation explains why a finding is in the body rather than on a line: it

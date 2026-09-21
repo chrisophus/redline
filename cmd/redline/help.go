@@ -159,6 +159,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.synopsisAPI, "synopsis-api", "", "wire for the describing call, when it should differ from --api")
 	fs.StringVar(&o.synopsisBaseURL, "synopsis-base-url", "", "endpoint for the describing call, when it should differ from --base-url")
 	fs.StringVar(&o.synopsisEffort, "synopsis-effort", "", "effort for the describing call, when it should differ from --effort")
+	fs.StringVar(&o.since, "since", "", "the commit the previous review of this change ran against; the walkthrough then comes with a paragraph on what is new")
 	fs.StringVar(&o.mode, "mode", "", "oneshot or explore")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "with --mode explore: turn limit")
 	fs.IntVar(&o.callTurns, "call-turns", 0, "turn cap for each describing/findings/ruling pass (default 30)")
@@ -193,6 +194,8 @@ func postFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.reportURL, "report-url", "", "link to the full report in the review body (e.g. a CI artifact URL)")
 	fs.StringVar(&o.profile, "profile", "", "YAML profile for merge-gate pass/fail markers")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "print the review payload as JSON instead of posting")
+	fs.BoolVar(&o.recap, "recap", false, "open the body with what changed since the previous review instead of repeating the walkthrough")
+	fs.StringVar(&o.since, "since", "", "with --recap: the previous review's commit, when it cannot be read off that review's own marker")
 }
 
 func postmortemFlags(fs *flag.FlagSet, o *opts) {
@@ -336,6 +339,18 @@ model:
   --synopsis-effort LEVEL
                     effort for the describing call, when it should differ
                     from --effort
+  --since COMMIT    the commit the previous review of this change ran
+                    against. The describing call is told which files have
+                    moved since then and writes one paragraph on what is
+                    new, beside the walkthrough rather than instead of it:
+                    the overview and the file lines still describe the whole
+                    change, because a reader arriving at the pull request
+                    for the first time needs them and GitHub is not somewhere
+                    the last review's file lines can be read back from.
+                    redline post --recap is what puts that paragraph on the
+                    pull request in place of repeating the walkthrough.
+                    Resolved against this checkout, so a commit it cannot
+                    find is refused rather than quietly ignored.
 what to look at:
   --note TEXT       a note from you to the reviewer: which file worries you,
                     what to look at first, a question to answer. It goes at
@@ -569,6 +584,20 @@ flags:
   --profile PATH    YAML that stamps pass/fail markers a merge gate can read
                     (error and warning fail unless the file says otherwise).
                     Without it, post still comments and never approves.
+  --recap           open the body with what changed since the previous
+                    review instead of repeating the walkthrough. A pull
+                    request reviewed four times carried four copies of a
+                    walkthrough that had not changed; this replaces the
+                    overview and the per-file table with the paragraph
+                    redline review --since asked the describing call for.
+                    The report still has all of it and the body still links
+                    there. The previous review's commit is read off the
+                    marker that review already carries, so it usually needs
+                    no argument. Refused when this session has no such
+                    paragraph, rather than posting the walkthrough again
+                    under a heading that promises otherwise.
+  --since COMMIT    with --recap: name the previous review's commit, for a
+                    first recap post or a body whose marker was edited away
   --dry-run         print the review payload instead of posting
 `
 

@@ -108,3 +108,24 @@ func TestReviewKeepsTheNoteItWasGiven(t *testing.T) {
 		t.Errorf("note = %q", rev.Note)
 	}
 }
+
+// Recap survives a round trip through review.json. LoadReview builds a Review
+// field by field from a wire struct rather than unmarshalling into one, so a
+// field added to Review without a line here is read back as empty. That is
+// how the recap reached the report as "" after the describing call had
+// written it.
+func TestRecapSurvivesAReviewFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "review.json")
+	body := `{"overview":"what it does","recap":"  what moved since  ","files":{"a.go":"first"}}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := findings.LoadReview(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Recap != "what moved since" {
+		t.Errorf("Recap read back as %q", got.Recap)
+	}
+}
