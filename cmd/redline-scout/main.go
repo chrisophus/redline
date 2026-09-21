@@ -64,7 +64,10 @@ flags:
   --covered-scope GLOBS  the files that applies to (for example **/*.go)
   --api WIRE        anthropic (default) or openai, the wire it calls over
   --api-user USER   caller id for an OpenAI gateway that meters by user
-  --base-url URL    endpoint, for a proxy
+                    (also read from OPENAI_USER under --api openai)
+  --base-url URL    endpoint, for a proxy (also read from OPENAI_BASE_URL
+                    under --api openai, so a gateway's address need not be
+                    written into a committed .redline.yml)
   --version         print the adapter version
 
 It writes one context envelope as JSON to stdout and exits 0. It calls a
@@ -146,9 +149,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 		Covered:      coveredRoles(*covered),
 		CoveredScope: commaList(*coverScope),
 		API:          *api,
-		BaseURL:      *baseURL,
+		BaseURL:      scoutBaseURL(*api, *baseURL),
 		APIKey:       scoutKey(*api),
-		APIUser:      *apiUser,
+		APIUser:      scoutUser(*api, *apiUser),
 	}
 	env, spend, err := scout.Run(context.Background(), opts)
 	if err != nil {
@@ -206,6 +209,31 @@ func scoutKey(api string) string {
 		return os.Getenv("OPENAI_API_KEY")
 	}
 	return os.Getenv("ANTHROPIC_API_KEY")
+}
+
+// scoutBaseURL and scoutUser fall back to the vendor's own environment
+// variables, the same two `redline review` already reads for its wire.
+//
+// The flag wins. The fallback is what keeps a gateway's address and a metered
+// caller id out of `.redline.yml`, which is a committed file: a scout
+// configured there has its arguments in git, and an endpoint that is internal
+// to whoever runs it does not belong in them. Without this the only way to
+// reach a gateway was to write its URL into that file.
+//
+// Anthropic is left alone. Its SDK reads its own environment, including an
+// `ant auth login` profile, and a second reader here would shadow that.
+func scoutBaseURL(api, flag string) string {
+	if flag != "" || api != review.APIOpenAI {
+		return flag
+	}
+	return os.Getenv("OPENAI_BASE_URL")
+}
+
+func scoutUser(api, flag string) string {
+	if flag != "" || api != review.APIOpenAI {
+		return flag
+	}
+	return os.Getenv("OPENAI_USER")
 }
 
 // diffOf is the change as the reviewer will see it, which is the scout's

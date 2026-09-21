@@ -328,6 +328,11 @@ type ToolStatus struct {
 type AgentReview struct {
 	Overview string            `json:"overview,omitempty"`
 	Files    map[string]string `json:"files,omitempty"`
+	// Recap is what changed since the previous review of this change, when
+	// the describing call was told which commit that was. Beside the overview
+	// rather than replacing it: the overview describes the whole change and a
+	// reader arriving for the first time needs it.
+	Recap string `json:"recap,omitempty"`
 	// Note is what the person asking for the review told the reviewer.
 	Note string `json:"note,omitempty"`
 }

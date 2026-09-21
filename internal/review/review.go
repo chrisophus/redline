@@ -232,6 +232,20 @@ type Options struct {
 	// When set, the openai wire sends "Bearer user=<user>&key=<key>"
 	// instead of the bare key. Ignored by the anthropic wire.
 	APIUser string
+	// SinceReview is the commit the previous review of this change ran
+	// against, and SinceFiles the paths that have changed between it and the
+	// head under review.
+	//
+	// They put set_recap on the describing call's catalogue and a section in
+	// its instruction, so the walkthrough comes with a paragraph on what is
+	// new. The walkthrough itself is unaffected and still describes the whole
+	// change: a reader coming to the pull request for the first time needs
+	// that, and GitHub is not a place the previous review's file lines can be
+	// read back from.
+	//
+	// Empty on a first review, which has nothing to compare against.
+	SinceReview string
+	SinceFiles  []string
 	// Describing sends the describing call out under a wire identity of its
 	// own. The zero value is the judging call's, which is what every review
 	// made before this existed.
@@ -489,6 +503,21 @@ func (o Options) describingSharesPrefix() bool {
 // failed describing call does not widen it: where the two calls share a
 // prefix the fallback still runs and the array was already wide, and where
 // they do not there is no fallback. See runJudged.
+// recapable reports whether this run makes the call a recap can be asked of.
+//
+// That is the describing call of a one-shot review and nothing else. A staged
+// run describes too, but stage one's tail is the partition instruction and
+// never carries the recap question, and a reused walkthrough makes no
+// describing call at all. Offering set_recap anywhere else puts a tool on the
+// wire that is never asked for and, where the pass is the combined one, never
+// allowed either.
+func (o Options) recapable() bool {
+	if o.SinceReview == "" || o.ReuseSynopsis != nil {
+		return false
+	}
+	return o.Shape() == PipelineOneShot && o.Synopsis
+}
+
 func (o Options) judgingCatalogueDescribes() bool {
 	switch {
 	case o.Shape() != PipelineOneShot && o.ReuseSynopsis == nil:
@@ -882,6 +911,10 @@ type Result struct {
 	// which of them are on the catalogue. Fixed for the whole run, like
 	// deferred, so every call of a run sends the same bytes.
 	lookCalls []string
+	// catalogueRecaps is whether set_recap is on the catalogue, which needs
+	// this run to have been told which commit the previous review ran
+	// against. Fixed for the run for the reason catalogueDescribes is.
+	catalogueRecaps bool
 	// catalogueDescribes is whether the catalogue carries the three calls that
 	// write a walkthrough. Fixed for the whole run and set from
 	// Options.judgingCatalogueDescribes, for the reason deferred and
@@ -1006,7 +1039,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	describe := describingTail
 	// The block that says which calls answer the pass goes out with every
 	// request, so it is priced with the fixed parts.
-	calls := callsBlock(StageReview, opts.DeferContext, lookCallsFor(opts.Look))
+	calls := callsBlock(StageReview, opts.SinceReview != "", opts.DeferContext, lookCallsFor(opts.Look))
 	// Every stage sends the catalogue on both wires, so it is reserved for
 	// unconditionally. This was once zeroed for a brief run, which was right on
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
@@ -1018,7 +1051,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// would otherwise read this block unscoped - gets none of it either. See
 	// Options.CohortContext.
 	scoped := opts.CohortContext && opts.Shape() == PipelineStaged
-	fixed := toolsTokens(opts.judgingCatalogueDescribes(), opts.DeferContext, lookCallsFor(opts.Look)) + envelope.EstimateTokens(system) +
+	fixed := toolsTokens(opts.judgingCatalogueDescribes(), opts.recapable(), opts.DeferContext, lookCallsFor(opts.Look)) + envelope.EstimateTokens(system) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 && !scoped {
@@ -1051,7 +1084,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// review by between 2800 and 4400 tokens depending on how many lookups
 	// were offered, and promptParts had been listing a `tools` line the total
 	// it sits beside did not include.
-	est := toolsTokens(opts.judgingCatalogueDescribes(), opts.DeferContext, lookCallsFor(opts.Look)) +
+	est := toolsTokens(opts.judgingCatalogueDescribes(), opts.recapable(), opts.DeferContext, lookCallsFor(opts.Look)) +
 		envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls)
@@ -1082,6 +1115,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		deferred:           deferred,
 		lookCalls:          lookCallsFor(opts.Look),
 		catalogueDescribes: opts.judgingCatalogueDescribes(),
+		catalogueRecaps:    opts.recapable(),
 		FilesShown:         len(in.ShownFiles()),
 		Prompt:             prompt,
 		Tail:               tail + describe + note,
@@ -1145,6 +1179,11 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	if d := opts.Describing.API; d != "" && d != APIAnthropic && d != APIOpenAI {
 		return nil, fmt.Errorf("unknown api %q for the describing call; use %s or %s",
 			d, APIAnthropic, APIOpenAI)
+	}
+	if opts.SinceReview != "" && !opts.recapable() {
+		return nil, fmt.Errorf("--since asks the describing call what has changed since %s, and this "+
+			"run makes no describing call to ask; drop --since, or drop whichever of --no-synopsis, "+
+			"--cohorts or a reused walkthrough turned that call off", opts.SinceReview)
 	}
 	if opts.CohortContext && opts.Shape() != PipelineStaged {
 		return nil, fmt.Errorf("--cohort-context scopes the resolved context to each cohort's own " +
@@ -1349,7 +1388,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			"cache": map[string]any{"breakpoint": res.Cached, "ttl": opts.CacheTTL},
 			// The whole array, because the whole array is what was sent and
 			// its bytes are what a cache read depends on.
-			"tools": callTools(res.describes(), res.pulls(), res.looks()), "calls": callsFor(stage, res.pulls(), res.looks()),
+			"tools": callTools(res.describes(), res.recaps(), res.pulls(), res.looks()), "calls": callsFor(stage, res.recaps(), res.pulls(), res.looks()),
 			// instructions is the prose callsBlock sends as its own content
 			// block, on the wire but not otherwise in this file: "calls"
 			// above names which tools answer the pass, not the words that
@@ -1357,7 +1396,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 			// you need with get_context before writing comments" among them
 			// - a reader asking whether a pass was actually told to defer
 			// context needs to see, not reconstruct from source.
-			"instructions": callsBlock(stage, res.pulls(), res.looks()),
+			"instructions": callsBlock(stage, res.recaps(), res.pulls(), res.looks()),
 		}
 		req, _ := json.MarshalIndent(captured, "", "  ")
 		opts.Capture(stage+".request.json", req)

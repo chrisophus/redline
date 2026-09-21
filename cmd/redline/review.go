@@ -12,6 +12,7 @@ import (
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/gitx"
 	"github.com/chrisophus/redline/internal/postmortem"
 	"github.com/chrisophus/redline/internal/review"
 	"github.com/chrisophus/redline/internal/run"
@@ -214,6 +215,13 @@ func cmdReview(o opts) error {
 		}
 	}
 	ropts.Describing = o.describingEndpoint(ropts)
+	if o.since != "" {
+		since, sinceFiles, serr := o.sinceLastReview(res)
+		if serr != nil {
+			return serr
+		}
+		ropts.SinceReview, ropts.SinceFiles = since, sinceFiles
+	}
 	// The scout's spend is accumulated here so a cost paid inside the verify
 	// pass reaches the ledger and not only its own log line.
 	tally := scoutTally{known: true}
@@ -604,6 +612,61 @@ func (o opts) scoutSettings() scoutSettings {
 		s.Effort = o.effort
 	}
 	return s
+}
+
+// sinceLastReview resolves --since and works out which files have moved
+// between it and the head under review.
+//
+// Both are resolved here rather than in the library for the reason every other
+// git question is: the library is handed a session and does not open a
+// repository. A commit this checkout cannot find is refused rather than passed
+// through, because the alternative is a describing call told a commit it
+// cannot check and a recap written about a comparison nobody made.
+//
+// The head is the target's when it has one and the working tree otherwise,
+// which is the same pair ReviewIdentity distinguishes.
+func (o opts) sinceLastReview(res *run.Result) (string, []string, error) {
+	// The checkout under review, not o.root. o.root is the session directory,
+	// which is .redline inside the checkout by default and so happens to
+	// resolve, but --out and --session can put it anywhere: a session cache
+	// outside the repository would resolve --since against the wrong
+	// repository or none at all. The target's own directory is what the panes
+	// observe, and the working directory is the fallback the other commands
+	// use when there is no target.
+	dir := ""
+	if res != nil && res.Change != nil && res.Change.Target != nil {
+		dir = res.Change.Target.Dir
+	}
+	if dir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", nil, fmt.Errorf("--since: %w", err)
+		}
+		dir = cwd
+	}
+	repo, err := gitx.Open(dir)
+	if err != nil {
+		return "", nil, fmt.Errorf("--since: %w", err)
+	}
+	since, err := repo.Resolve(o.since)
+	if err != nil {
+		return "", nil, fmt.Errorf("--since %s: %w; the previous review's commit has to be in this checkout, "+
+			"which on a pull request means fetching it first", o.since, err)
+	}
+	head := ""
+	if res != nil && res.Change != nil && res.Change.Target != nil {
+		head = res.Change.Target.Head
+	}
+	var files []string
+	if head == "" {
+		files, err = repo.ChangedPaths(since)
+	} else {
+		files, err = repo.ChangedPathsBetween(since, head)
+	}
+	if err != nil {
+		return "", nil, fmt.Errorf("--since %s: %w", o.since, err)
+	}
+	return since, files, nil
 }
 
 // describingEndpoint resolves where the describing call goes, from the

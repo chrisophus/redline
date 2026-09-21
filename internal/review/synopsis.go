@@ -83,7 +83,7 @@ func (r *Result) synopsisRequest(opts Options, in Input) *Result {
 	// The describing half and nothing else. This call is not judging the
 	// change, so the judging tail would be two thousand tokens telling it what
 	// to do with findings it has been told not to write.
-	out.Tail = describingTail + synopsisTail(in)
+	out.Tail = describingTail + synopsisTail(opts, in)
 	// r.InputEstimate prices the judging call's catalogue, and the line above
 	// widened this one. Where the two differ the difference has to be added
 	// back: this call sends the wide array, so an estimate carrying the narrow
@@ -92,8 +92,8 @@ func (r *Result) synopsisRequest(opts Options, in Input) *Result {
 	// cancel wherever the catalogues agree, which is every run sharing a
 	// prefix.
 	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail) +
-		toolsTokens(out.describes(), out.pulls(), out.looks()) -
-		toolsTokens(r.describes(), r.pulls(), r.looks())
+		toolsTokens(out.describes(), out.recaps(), out.pulls(), out.looks()) -
+		toolsTokens(r.describes(), r.recaps(), r.pulls(), r.looks())
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedSynopsisTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)
 	return out
@@ -280,6 +280,7 @@ func applySynopsis(res *Result, model string, d described) {
 	}
 	res.Synopsis = true
 	res.Review.Overview = d.Walkthrough.Overview
+	res.Review.Recap = d.Walkthrough.Recap
 	res.Review.Files = d.Walkthrough.Files
 }
 

@@ -108,8 +108,40 @@ var synopsisPrompt string
 // built from the same predicate the score reads, so a change to what the
 // prompt holds back moves the instruction, the diff and the measurement
 // together.
-func synopsisTail(in Input) string {
-	return withRoster(synopsisPrompt, in)
+func synopsisTail(opts Options, in Input) string {
+	return withRoster(synopsisPrompt, in) + recapSection(opts)
+}
+
+// recapSection asks for the paragraph a reader of the last review wants, and
+// is empty on a run that was not told there was one.
+//
+// The files are named rather than left to the model to work out. It is
+// looking at the whole change's diff and nothing in it says which parts
+// arrived since a particular commit, so without this the recap would be a
+// guess dressed as a fact. Sorted, because a section whose order moved
+// between two runs of one change would be a different request for no reason.
+func recapSection(opts Options) string {
+	if opts.SinceReview == "" {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n\n### What is new since the last review\n\n"+
+		"This pull request was reviewed before, at commit `%s`. "+
+		"Call set_recap once with one short paragraph on what has changed since then, "+
+		"for a reader who has already read that review.\n\n", opts.SinceReview)
+	files := append([]string(nil), opts.SinceFiles...)
+	sort.Strings(files)
+	if len(files) == 0 {
+		b.WriteString("No file has changed since that commit. Say so in one sentence.\n")
+		return b.String()
+	}
+	b.WriteString("These are the files that have changed since it:\n\n")
+	for _, path := range files {
+		b.WriteString("- " + path + "\n")
+	}
+	b.WriteString("\nEverything else in the diff below was already in that review. " +
+		"Write the overview and the file lines for the whole change as usual.\n")
+	return b.String()
 }
 
 // withRoster appends the files a describing instruction may write a line for.
@@ -155,9 +187,9 @@ func (in Input) noteTail() string {
 // The bound is stated rather than left to judgement because the tripwire
 // priced the run at it. A stage one free to return nine cohorts would commit
 // the run to nine calls it refused to pay for.
-func cohortsTail(in Input, bound int) string {
+func cohortsTail(opts Options, in Input, bound int) string {
 	var b strings.Builder
-	b.WriteString(synopsisTail(in))
+	b.WriteString(synopsisTail(opts, in))
 	fmt.Fprintf(&b, `
 
 ### The cohorts

@@ -300,7 +300,7 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	}
 	// Which calls answer this pass, after the cached prompt so every pass of a
 	// run reads the same entry, and ahead of the pass's own instruction.
-	blocks = append(blocks, prefix, anthropic.NewTextBlock(callsBlock(res.stage(), res.pulls(), res.looks())))
+	blocks = append(blocks, prefix, anthropic.NewTextBlock(callsBlock(res.stage(), res.recaps(), res.pulls(), res.looks())))
 	if res.Tail != "" {
 		blocks = append(blocks, anthropic.NewTextBlock(res.Tail))
 	}
@@ -315,7 +315,7 @@ func anthropicParams(opts Options, res *Result) anthropic.MessageNewParams {
 	// this API, and a call left to choose still calls the tool the calls
 	// block says answers it, with the loop's nudge-then-parse fallback behind
 	// it if it does not. See loop.go.
-	params.Tools = anthropicTools(res.describes(), res.pulls(), res.looks())
+	params.Tools = anthropicTools(res.describes(), res.recaps(), res.pulls(), res.looks())
 	params.ToolChoice = anthropic.ToolChoiceUnionParam{OfAuto: &anthropic.ToolChoiceAutoParam{}}
 	// Every call asks for adaptive thinking with a summarized display. Sonnet 5
 	// thinks by default now that the choice is never pinned, and asking for the

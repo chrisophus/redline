@@ -131,6 +131,23 @@ Releases whose tag carries only a subject line are listed as that subject.
   run's cost read as unknown rather than as the judging call's alone. On one
   model nothing moves: the tokens join `Usage` and are priced with everything
   else, exactly as before.
+- **The scout runs on `gpt-5.6-luna` over the OpenAI wire in this
+  repository's own `.redline.yml`, and `redline run` here now calls a model.**
+  The scout is the shape a cheap input rate pays off in most: it resends a
+  growing conversation on every turn, where the review sends its prompt once
+  and reads it back from cache after that. Luna's input is a tenth of
+  `claude-sonnet-5`'s, so the turns are where the saving lands. Pricing it
+  also makes `--max-cost` work for it at all: `overBudgetOpenAI` leaves an
+  unpriced model ungoverned by cost and bounded only by turns. The cap stays
+  at the $0.25 default, which a full eight turns comes in well under. Without
+  `OPENAI_API_KEY` the provider fails, the report names it under what could
+  not be determined, and the run continues.
+- **`redline-scout` reads `OPENAI_BASE_URL` and `OPENAI_USER`** when
+  `--base-url` and `--api-user` do not carry them, the same two `redline
+  review` already read for its own wire. A scout configured in `.redline.yml`
+  has its arguments in git, and a gateway's address does not belong in a
+  committed file. The flag still wins, and the Anthropic wire is left alone so
+  its SDK's own credential chain is not shadowed.
 
 ### Fixed
 - **The input estimate counts the tool array.** `ruleRequest` had always
@@ -166,6 +183,27 @@ Releases whose tag carries only a subject line are listed as that subject.
   to prevent. The review now files findings alone and the report says the
   walkthrough is missing and why. The fallback is unchanged where the two
   calls do share a prefix, including the staged path.
+- **A second review of a pull request can say what is new instead of
+  repeating itself.** `redline review --since COMMIT` names the commit the
+  previous review ran against; the describing call is told which files have
+  moved since then and calls `set_recap` with one paragraph on what is new.
+  `redline post --recap` opens the body with that paragraph and leaves out the
+  overview and the per-file table, which a pull request reviewed four times
+  was carrying four copies of. The walkthrough itself is unchanged and still
+  describes the whole change: the report keeps it, the body still links there,
+  and a reader arriving for the first time needs it, since GitHub is not
+  somewhere the last review's file lines can be read back from.
+
+  The commit comes off the marker each posted review already carries, so
+  `--recap` usually needs no argument; `post --since` names it for a first
+  recap post or a body whose marker was edited away. `set_recap` is on the
+  catalogue only for a run that was given a commit, and the files that moved
+  are named in the instruction rather than left to the model, because the diff
+  it is shown is against the merge base and nothing in it records when any of
+  it landed. `--since` is resolved against the checkout and a commit it cannot
+  find is refused, and `--recap` is refused when the session carries no such
+  paragraph rather than posting the walkthrough again under a heading that
+  promises otherwise.
 
 ### Note
 - A prompt cache entry belongs to the model that wrote it, so a describing

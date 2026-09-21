@@ -50,6 +50,7 @@ const (
 // Tool names.
 const (
 	CallOverview = "set_overview"
+	CallRecap    = "set_recap"
 	CallFile     = "describe_file"
 	CallCohort   = "add_cohort"
 	CallComment  = "add_comment"
@@ -102,6 +103,12 @@ type callTool struct {
 // nothing was held back, and ended without a comment. Whether it is there is
 // fixed for the whole run, so every call of a run still sends the same bytes.
 //
+// recaps is offered only to a run that was told which commit the previous
+// review ran against. A pass with no earlier review to compare against has
+// nothing to put in it, and a tool on the catalogue that cannot be answered
+// costs a turn to discover, which is the same reason get_context is
+// conditional.
+//
 // describes is the same shape of decision for the three calls that write a
 // walkthrough. It is false only where no call sharing this catalogue writes
 // one, which needs the describing call to be on another model; see
@@ -111,12 +118,20 @@ type callTool struct {
 // twelve file lines and had every one of those calls refused. Showing it the
 // finished walkthrough is an argument against a catalogue; taking the tools
 // away is not an argument.
-func callTools(describes, pulls bool, looks []string) []callTool {
+func callTools(describes, recaps, pulls bool, looks []string) []callTool {
 	all := []callTool{
 		{CallOverview, "Set the overview: one or two paragraphs on what this change does and why it exists, " +
 			"written for a reviewer about to read the diff. Say what the change is for, not whether it is correct. " +
 			"Calling it again replaces the earlier overview.",
 			flatObject(map[string]any{"overview": overviewSchema()}, "overview")},
+		{CallRecap, "Record what has changed since the previous review of this pull request, in one short paragraph, " +
+			"for a reader who has already read that review and wants to know what is new. Say what moved and what it " +
+			"means for the change, not what the whole change does; the overview already says that. Where the files " +
+			"that moved answer something the earlier review raised, say so.",
+			flatObject(map[string]any{"recap": map[string]any{
+				"type":        "string",
+				"description": "one short paragraph on what changed since the previous review",
+			}}, "recap")},
 		{CallFile, "Record one line on what one file's change does and why, using the path exactly as it appears in the change. " +
 			"Call it once for each file the pass asks you to describe; a second call for the same path replaces the first. " +
 			"Describe the change, not its quality.",
@@ -197,6 +212,13 @@ func callTools(describes, pulls bool, looks []string) []callTool {
 	if !describes {
 		drop[CallOverview], drop[CallFile], drop[CallCohort] = true, true, true
 	}
+	// A describing tool that additionally needs an earlier review to compare
+	// against, so it goes when either is missing: the judging call drops it
+	// with the rest of the walkthrough tools, and a first review of a pull
+	// request drops it because there is nothing to recap.
+	if !describes || !recaps {
+		drop[CallRecap] = true
+	}
 	for _, name := range LookCalls {
 		if !slices.Contains(looks, name) {
 			drop[name] = true
@@ -261,11 +283,21 @@ func flatObject(props map[string]any, required ...string) map[string]any {
 // was assembled around. The catalogue still carries them on every call of the
 // run, since a tool list that changed between calls would throw away the
 // prefix they share; this is what a pass is permitted to call.
-func callsFor(stage string, pulls bool, looks []string) []string {
+func callsFor(stage string, recaps, pulls bool, looks []string) []string {
 	var calls []string
 	switch stage {
 	case StageSynopsis:
 		calls = []string{CallOverview, CallFile, CallCohort}
+		// set_recap goes on the describing pass, and only where the run was
+		// given a previous review to compare against. It has to be named here
+		// as well as put on the catalogue: take() gates every call against
+		// this list before check() ever sees its schema, so a tool offered on
+		// the wire and left out here is refused with "this pass does not take
+		// set_recap" and the pass is told not to send it again. The recap
+		// feature shipped that way and could not produce a recap at all.
+		if recaps {
+			calls = append(calls, CallRecap)
+		}
 	case StageFindings:
 		calls = []string{CallComment}
 	case StageRuling:
@@ -292,7 +324,7 @@ func callsFor(stage string, pulls bool, looks []string) []string {
 // decide it, one asking for every call in one reply and one asking for one
 // area at a time, each moved the reasoning around less than they moved the
 // calls. It goes after the cached prompt, so every pass reads the same entry.
-func callsBlock(stage string, deferred bool, looks []string) string {
+func callsBlock(stage string, recaps, deferred bool, looks []string) string {
 	var takes string
 	switch stage {
 	case StageSynopsis:
@@ -399,6 +431,7 @@ type passExpect struct {
 type collector struct {
 	stage    string
 	overview string
+	recap    string
 	files    []map[string]any
 	cohorts  []map[string]any
 	comments []map[string]any
@@ -432,16 +465,21 @@ type collector struct {
 	// so the catalogue a call is checked against is the catalogue that went
 	// out with it.
 	lookCalls []string
+	// recaps is whether this pass may call set_recap, which needs the run to
+	// have been given a previous review. It rides here for the reason
+	// lookCalls does: take() decides what a pass may call, and it has to
+	// decide it the same way the catalogue that went out was built.
+	recaps bool
 }
 
-func newCollector(stage string, expect passExpect, deferred []deferredEntry, look Looker) *collector {
+func newCollector(stage string, expect passExpect, deferred []deferredEntry, look Looker, recaps bool) *collector {
 	looks := lookCallsFor(look)
 	schemas := map[string]map[string]any{}
-	for _, t := range callTools(true, len(deferred) > 0, looks) {
+	for _, t := range callTools(true, true, len(deferred) > 0, looks) {
 		schemas[t.Name] = t.Schema
 	}
 	return &collector{stage: stage, schemas: schemas, expect: expect,
-		deferred: deferred, look: look, lookCalls: looks}
+		deferred: deferred, look: look, lookCalls: looks, recaps: recaps}
 }
 
 // complete reports whether the pass has recorded everything its expectation
@@ -500,12 +538,12 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 	sawDone := false
 	var doneIDs []string
 	for _, call := range calls {
-		if call.Name != CallDone && !contains(callsFor(c.stage, len(c.deferred) > 0, c.lookCalls), call.Name) {
+		if call.Name != CallDone && !contains(callsFor(c.stage, c.recaps, len(c.deferred) > 0, c.lookCalls), call.Name) {
 			// Not a malformed call but one this pass has no use for, so it is
 			// not to be sent again.
 			rejected++
 			why := fmt.Sprintf("this pass does not take %s; it takes %s",
-				call.Name, strings.Join(callsFor(c.stage, len(c.deferred) > 0, c.lookCalls), ", "))
+				call.Name, strings.Join(callsFor(c.stage, c.recaps, len(c.deferred) > 0, c.lookCalls), ", "))
 			c.refuse(call, why)
 			results = append(results, callResult{id: call.ID, isError: true,
 				content: "Not recorded: " + why + ". Do not send it again."})
@@ -751,6 +789,8 @@ func (c *collector) record(call toolCall) {
 	switch call.Name {
 	case CallOverview:
 		c.overview, _ = in["overview"].(string)
+	case CallRecap:
+		c.recap, _ = in["recap"].(string)
 	case CallFile:
 		c.files = upsert(c.files, in, "path")
 	case CallCohort:
@@ -796,7 +836,7 @@ func (c *collector) body() string {
 	var v map[string]any
 	switch c.stage {
 	case StageSynopsis:
-		v = map[string]any{"overview": c.overview, "files": list(c.files), "cohorts": list(c.cohorts)}
+		v = map[string]any{"overview": c.overview, "recap": c.recap, "files": list(c.files), "cohorts": list(c.cohorts)}
 	case StageFindings:
 		v = map[string]any{"comments": list(c.comments)}
 	case StageRuling:

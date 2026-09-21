@@ -24,7 +24,7 @@ func promptParts(in Input, opts Options, system string, budget envelope.Budgeted
 	}
 	return []PromptPart{
 		{"system", envelope.EstimateTokens(system)},
-		{"tools", toolsTokens(opts.judgingCatalogueDescribes(), opts.DeferContext, lookCallsFor(opts.Look))},
+		{"tools", toolsTokens(opts.judgingCatalogueDescribes(), opts.recapable(), opts.DeferContext, lookCallsFor(opts.Look))},
 		{"description", envelope.EstimateTokens(in.changeSection())},
 		// Not the findings: those are not sent. This is which linters ran and
 		// what no check determined.
@@ -38,7 +38,7 @@ func promptParts(in Input, opts Options, system string, budget envelope.Budgeted
 		// is sized apart because it is the part a reader can change: the
 		// describing call and the judging call send the same packet and differ
 		// only here.
-		{"this pass", envelope.EstimateTokens(judgingTail + describingTail + callsBlock(StageReview, opts.DeferContext, lookCallsFor(opts.Look)))},
+		{"this pass", envelope.EstimateTokens(judgingTail + describingTail + callsBlock(StageReview, opts.SinceReview != "", opts.DeferContext, lookCallsFor(opts.Look)))},
 		{"note", envelope.EstimateTokens(in.noteTail())},
 	}
 }

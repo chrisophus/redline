@@ -70,7 +70,7 @@ func (f *fakeLooker) ReadLines(path string, start, end int) (string, error) {
 func TestTheLookupToolsAreOffWithoutALooker(t *testing.T) {
 	names := func(looks []string) string {
 		var out []string
-		for _, tl := range callTools(true, false, looks) {
+		for _, tl := range callTools(true, false, false, looks) {
 			out = append(out, tl.Name)
 		}
 		return strings.Join(out, ",")
@@ -95,7 +95,7 @@ func TestTheLookupToolsAreOffWithoutALooker(t *testing.T) {
 func TestACatalogueOffersOnlyWhatTheLookerCanServe(t *testing.T) {
 	look := &fakeLooker{calls: []string{CallGrep, CallRead, CallDocs, CallHistory}}
 	var names []string
-	for _, tl := range callTools(true, false, lookCallsFor(look)) {
+	for _, tl := range callTools(true, false, false, lookCallsFor(look)) {
 		names = append(names, tl.Name)
 	}
 	got := strings.Join(names, ",")
@@ -147,7 +147,7 @@ func TestTheNewLookupsReachTheTree(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			look := &fakeLooker{answer: "what the tree said"}
-			c := newCollector(StageFindings, passExpect{}, nil, look)
+			c := newCollector(StageFindings, passExpect{}, nil, look, false)
 			input, err := json.Marshal(tc.input)
 			if err != nil {
 				t.Fatal(err)
@@ -183,7 +183,7 @@ func TestOnlyTheJudgingPassesMayLookThingsUp(t *testing.T) {
 		{StageSynopsis, false},
 		{StageRuling, false},
 	} {
-		got := strings.Join(callsFor(tc.stage, false, LookCalls), ",")
+		got := strings.Join(callsFor(tc.stage, false, false, LookCalls), ",")
 		if has := strings.Contains(got, CallGrep); has != tc.want {
 			t.Errorf("%s may call %s: got %v, want %v (calls = %s)", tc.stage, CallGrep, has, tc.want, got)
 		}
@@ -194,7 +194,7 @@ func TestOnlyTheJudgingPassesMayLookThingsUp(t *testing.T) {
 // completes a pass nor counts toward one -- the same bargain get_context makes.
 func TestALookupAnswersWithTheTreeAndRecordsNothing(t *testing.T) {
 	look := &fakeLooker{answer: "store.go:3-5\n3\tfunc Insert() error {\n"}
-	c := newCollector(StageFindings, passExpect{}, nil, look)
+	c := newCollector(StageFindings, passExpect{}, nil, look, false)
 	input, err := json.Marshal(map[string]any{"path": "store.go", "start_line": 3, "end_line": 5})
 	if err != nil {
 		t.Fatal(err)
@@ -221,7 +221,7 @@ func TestALookupAnswersWithTheTreeAndRecordsNothing(t *testing.T) {
 // this pass may not make, which is a different and wrong correction.
 func TestAFailedLookupComesBackAsTheAnswer(t *testing.T) {
 	look := &fakeLooker{err: errBadPattern{}}
-	c := newCollector(StageFindings, passExpect{}, nil, look)
+	c := newCollector(StageFindings, passExpect{}, nil, look, false)
 	input, err := json.Marshal(map[string]any{"pattern": "("})
 	if err != nil {
 		t.Fatal(err)
@@ -245,7 +245,7 @@ func (errBadPattern) Error() string { return "bad pattern: missing closing )" }
 // A search that matched nothing says so. A pass handed an empty string cannot
 // tell "nothing matches" -- which is an answer -- from a search that failed.
 func TestAnEmptySearchSaysSo(t *testing.T) {
-	c := newCollector(StageFindings, passExpect{}, nil, &fakeLooker{answer: ""})
+	c := newCollector(StageFindings, passExpect{}, nil, &fakeLooker{answer: ""}, false)
 	input, err := json.Marshal(map[string]any{"pattern": "nothing"})
 	if err != nil {
 		t.Fatal(err)
@@ -262,7 +262,7 @@ func TestAnEmptySearchSaysSo(t *testing.T) {
 // rewritten a walkthrough that already existed. The instruction has to say the
 // work is done, since the catalogue cannot say it.
 func TestTheFindingsPassIsToldTheWalkthroughIsWritten(t *testing.T) {
-	block := callsBlock(StageFindings, false, nil)
+	block := callsBlock(StageFindings, false, false, nil)
 	if !strings.Contains(block, "already written") {
 		t.Errorf("the findings pass is not told the walkthrough exists:\n%s", block)
 	}
@@ -272,7 +272,7 @@ func TestTheFindingsPassIsToldTheWalkthroughIsWritten(t *testing.T) {
 		}
 	}
 	// The describing pass must not be told its own work is already done.
-	if syn := callsBlock(StageSynopsis, false, nil); strings.Contains(syn, "already written") {
+	if syn := callsBlock(StageSynopsis, false, false, nil); strings.Contains(syn, "already written") {
 		t.Errorf("the describing pass is told its work is done:\n%s", syn)
 	}
 }
@@ -357,7 +357,7 @@ func TestTheLedgerRecordsTheResolvedEffort(t *testing.T) {
 // was in when a pass on PR #1462 had thirteen calls refused.
 func TestThePassRecordsWhatItLookedUpAndWhatWasRefused(t *testing.T) {
 	look := &fakeLooker{answer: "store.go:3: func Insert() error {"}
-	c := newCollector(StageFindings, passExpect{}, nil, look)
+	c := newCollector(StageFindings, passExpect{}, nil, look, false)
 
 	grep, err := json.Marshal(map[string]any{"pattern": "func Insert", "glob": ".go"})
 	if err != nil {
@@ -377,7 +377,7 @@ func TestThePassRecordsWhatItLookedUpAndWhatWasRefused(t *testing.T) {
 	}
 
 	// A search that found nothing is an answer, and is worth telling apart.
-	c2 := newCollector(StageFindings, passExpect{}, nil, &fakeLooker{answer: ""})
+	c2 := newCollector(StageFindings, passExpect{}, nil, &fakeLooker{answer: ""}, false)
 	c2.take([]toolCall{{ID: "t1", Name: CallGrep, Input: grep}})
 	if len(c2.lookups) != 1 || !c2.lookups[0].Empty {
 		t.Errorf("lookups = %+v, want the empty answer marked", c2.lookups)
@@ -434,7 +434,7 @@ func TestEveryNothingFoundMessageCountsAsEmpty(t *testing.T) {
 // whole call with "None is not of type 'array'", so a tool with no required
 // field went out broken on the wire nothing here is usually pointed at.
 func TestEveryToolSchemaHasAnArrayOfRequiredFields(t *testing.T) {
-	raw, err := json.Marshal(callTools(true, true, LookCalls))
+	raw, err := json.Marshal(callTools(true, true, true, LookCalls))
 	if err != nil {
 		t.Fatal(err)
 	}
