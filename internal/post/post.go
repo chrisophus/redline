@@ -128,10 +128,10 @@ type Payload struct {
 	// large change they outnumber the review: the evidence table says the
 	// pane ran and how many it found, and the report carries them.
 	lint int
-	// changed is every path in the change, for the walkthrough table. Kept so
-	// the body can list files the agent did not summarize; empty in evidence
-	// mode, where the walkthrough is not rendered.
-	changed []string
+	// files is every file in the change, with the language and line counts the
+	// composition table reads. Kept so the body can list files the agent did
+	// not summarize, and so both layouts can say what the change is made of.
+	files []change.File
 	// intent and reviewedBy are the PR metadata the walkthrough body opens
 	// with, set by the command from gh once it is known. Empty renders nothing.
 	intent     string
@@ -210,10 +210,12 @@ func Build(rep *findings.Report, tgt *target.Target, reportURL string, commentab
 	return BuildAttest(rep, tgt, reportURL, commentable, nil, nil)
 }
 
-// BuildAttest is Build with a merge-gate profile. A nil profile is identical
-// to Build. When set, the body and blocking comments carry the profile's
-// hidden markers, and GateVerdict is pass or fail.
-func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, commentable map[string]map[int]bool, prof *Profile, changed []string) Payload {
+// BuildAttest is Build with a merge-gate profile and the change's files. A nil
+// profile is identical to Build. When set, the body and blocking comments carry
+// the profile's hidden markers, and GateVerdict is pass or fail. files is what
+// the composition table and the walkthrough are drawn from; without it both
+// bodies simply leave them out.
+func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, commentable map[string]map[int]bool, prof *Profile, files []change.File) Payload {
 	head := ""
 	if tgt != nil {
 		head = tgt.Head
@@ -276,7 +278,7 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 	p.rep = rep
 	p.reportURL = reportURL
 	p.bodyFindings = inBody
-	p.changed = changed
+	p.files = files
 	p.Body = p.renderBody()
 	return p
 }
@@ -503,35 +505,91 @@ func fpMarker(head, fingerprint string) string {
 // written first and kept whole; the not-shown list is what grows without
 // bound with the findings, so it is the part that truncates when the body
 // would otherwise be rejected.
-func buildBody(rep *findings.Report, head, reportURL string, inBody, lowConf []findings.Finding, prof *Profile, gateVerdict string, withheld, hedged, lint int) string {
+func buildBody(p Payload) string {
 	var head0 strings.Builder
-	fmt.Fprintf(&head0, "### %s\n\n", verdictFor(rep))
+	fmt.Fprintf(&head0, "### %s\n\n", verdictFor(p.rep))
 	// The agent's own account of the change, when there is one. Redline never
 	// writes prose: an overview is present only because a review was run or a
 	// human wrote one into review.json, so it is attributed rather than shown
 	// as the tool's own conclusion.
-	if s := overviewSection(rep); s != "" {
+	if s := overviewSection(p.rep); s != "" {
 		head0.WriteString(s)
 	}
-	if table := evidenceTable(rep); table != "" {
+	if table := evidenceTable(p.rep); table != "" {
 		head0.WriteString(table)
 		head0.WriteString("\n")
+	}
+	if s := compositionSection(p.files); s != "" {
+		head0.WriteString(s)
 	}
 	// One row per file the agent described. Deliberately not a list of every
 	// changed path with its line counts: GitHub's own Files tab already says
 	// that, and repeating it would pad the review with what the reader can
 	// see. A file reaches this table because someone wrote a sentence about
 	// it.
-	if s := fileSummarySection(rep); s != "" {
+	if s := fileSummarySection(p.rep); s != "" {
 		head0.WriteString(s)
 	}
 
-	tail := bodyTail(reportURL, head, prof, gateVerdict, withheld, hedged, lint)
+	tail := bodyTail(p.reportURL, p.CommitID, p.profile, p.attestedVerdict(), p.withheld, p.hedged, p.lint)
 	budget := maxBody - head0.Len() - len(tail)
-	middle := notShownSection(inBody, head, prof, budget)
-	low := lowConfidenceSection(lowConf, head, prof, budget-len(middle))
+	middle := notShownSection(p.bodyFindings, p.CommitID, p.profile, budget)
+	low := lowConfidenceSection(p.lowConf, p.CommitID, p.profile, budget-len(middle))
 	return head0.String() + middle + low + tail
 }
+
+// compositionSection is what the change is made of: its lines grouped by
+// language and by the role the file plays, so a reviewer can see that a
+// thousand added lines are mostly tests before opening the diff. It calls
+// change.Composition, which is what the HTML report groups its sections with,
+// so the page and the pull request cannot disagree about what counts as a
+// test.
+//
+// GitHub shows none of this. Its Files tab gives paths and line counts and
+// leaves the reader to add them up, which is why this is the one thing about
+// the change the body does repeat.
+//
+// Bounded by row count rather than by the body budget: the table is written
+// into the part of the body that is kept whole, and a change touching many
+// languages must not push a finding off the end. The rest is counted in a
+// line under the table.
+func compositionSection(files []change.File) string {
+	rows := change.Composition(files)
+	if len(rows) == 0 {
+		return ""
+	}
+	shown := rows
+	var restFiles, restAdded, restRemoved int
+	if len(rows) > maxCompositionRows {
+		shown = rows[:maxCompositionRows]
+		for _, r := range rows[maxCompositionRows:] {
+			restFiles += r.Files
+			restAdded += r.Added
+			restRemoved += r.Removed
+		}
+	}
+	var b strings.Builder
+	// Captioned, where the evidence table above it is not: two tables in a row
+	// with nothing between them read as one, and "Language" in a header cell
+	// does not say whose lines these are.
+	b.WriteString("**Lines by language and type.**\n\n")
+	b.WriteString("| Language | Type | Files | + | − |\n|---|---|---:|---:|---:|\n")
+	for _, r := range shown {
+		fmt.Fprintf(&b, "| %s | %s | %d | %d | %d |\n",
+			escapeCell(r.Language), escapeCell(r.Kind), r.Files, r.Added, r.Removed)
+	}
+	if n := len(rows) - len(shown); n > 0 {
+		fmt.Fprintf(&b, "| %d more | | %d | %d | %d |\n", n, restFiles, restAdded, restRemoved)
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// maxCompositionRows is how many language and type pairs the table lists
+// before the rest is summed into one row. Twelve is past what a normal change
+// reaches, so the cap is a guard against a repository-wide diff rather than
+// something a reviewer runs into.
+const maxCompositionRows = 12
 
 // lowConfidenceSection folds the info findings the reviewer was unsure of into
 // a collapsed block, for a profile that would rather see a guess behind a
@@ -607,8 +665,7 @@ func (p Payload) renderBody() string {
 	if p.profile != nil && p.profile.BodyStyle == BodyWalkthrough {
 		return p.staleNotice() + buildBodyWalkthrough(p)
 	}
-	return p.staleNotice() + buildBody(p.rep, p.CommitID, p.reportURL, p.bodyFindings, p.lowConf,
-		p.profile, p.attestedVerdict(), p.withheld, p.hedged, p.lint)
+	return p.staleNotice() + buildBody(p)
 }
 
 // WithMeta stamps the PR metadata the walkthrough body opens with and
@@ -622,11 +679,11 @@ func (p Payload) WithMeta(intent, reviewedBy string) Payload {
 }
 
 // buildBodyWalkthrough is the Copilot-style body: who reviewed and which
-// commit, the author's stated intent, what the change does, a collapsible
-// walkthrough of every changed file, then evidence folded away and the
-// findings that could not be anchored to a line. body_include decides how much
-// of the report rides along, and every part of it comes from the session the
-// run already wrote, so this observes nothing.
+// commit, the author's stated intent, what the change does, what the change is
+// made of, a collapsible walkthrough of every changed file, then evidence
+// folded away and the findings that could not be anchored to a line.
+// body_include decides how much of the report rides along, and every part of
+// it comes from the session the run already wrote, so this observes nothing.
 func buildBodyWalkthrough(p Payload) string {
 	var head0 strings.Builder
 	fmt.Fprintf(&head0, "### %s\n\n", walkthroughHeading(p.GateVerdict))
@@ -643,6 +700,9 @@ func buildBodyWalkthrough(p Payload) string {
 			}
 			fmt.Fprintf(&head0, "**What it does.** %s\n\n", ov)
 		}
+	}
+	if s := compositionSection(p.files); s != "" {
+		head0.WriteString(s)
 	}
 	perFile, leftover := splitBodyFindingsByFile(p)
 	if s := walkthroughSection(p, perFile, maxNarrative); s != "" {
@@ -672,9 +732,9 @@ func buildBodyWalkthrough(p Payload) string {
 // file the walkthrough omits, has no row to ride with and stays in the list.
 func splitBodyFindingsByFile(p Payload) (map[string][]findings.Finding, []findings.Finding) {
 	shown := map[string]bool{}
-	for _, path := range p.changed {
-		if !change.IsTestCode(path) {
-			shown[path] = true
+	for _, f := range p.files {
+		if !change.IsTestCode(f.Path) {
+			shown[f.Path] = true
 		}
 	}
 	perFile := map[string][]findings.Finding{}
@@ -698,13 +758,13 @@ func walkthroughHeading(gateVerdict string) string {
 	return "Review complete"
 }
 
-// walkthroughSection is the collapsible per-file table: every changed file that
-// is not test code, the agent's one-line summary or "No notes.", and the
-// columns body_include turns
-// on. coverage names the added lines a profile shows unexecuted; lint counts
-// what landed on the file by severity. Both read the report the run wrote.
+// walkthroughSection is the collapsible per-file table: every changed file
+// that is not test code, how many lines it moved, the agent's one-line summary
+// or "No notes.", and the columns body_include turns on. coverage names the
+// added lines a profile shows unexecuted; lint counts what landed on the file
+// by severity. Both read the report the run wrote.
 func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget int) string {
-	if len(p.changed) == 0 {
+	if len(p.files) == 0 {
 		return ""
 	}
 	withCoverage := p.profile.includes("coverage") && p.rep != nil && p.rep.Coverage.Diff != nil
@@ -721,23 +781,25 @@ func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget
 	if p.rep != nil && p.rep.Agent != nil {
 		summaries = p.rep.Agent.Files
 	}
-	paths := make([]string, 0, len(p.changed))
+	paths := make([]string, 0, len(p.files))
+	lines := make(map[string]string, len(p.files))
 	testOmitted := 0
-	for _, path := range p.changed {
+	for _, f := range p.files {
 		// Test files are left out of the walkthrough on purpose. Whether the
 		// tests assert enough is a coverage and mutation question, answered as
 		// findings, not a walkthrough row; a testdata doc is prose and stays.
-		if change.IsTestCode(path) {
+		if change.IsTestCode(f.Path) {
 			testOmitted++
 			continue
 		}
-		paths = append(paths, path)
+		paths = append(paths, f.Path)
+		lines[f.Path] = fmt.Sprintf("+%d −%d", f.Added, f.Removed)
 	}
 	sort.Strings(paths)
 
 	var b strings.Builder
 	b.WriteString("<details>\n<summary>Walkthrough</summary>\n\n")
-	header, sep := "| File | What changed |", "|---|---|"
+	header, sep := "| File | Lines | What changed |", "|---|---:|---|"
 	if withCoverage {
 		header += " Coverage |"
 		sep += "---|"
@@ -753,7 +815,7 @@ func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget
 		if s := strings.TrimSpace(summaries[path]); s != "" {
 			note = s
 		}
-		row := fmt.Sprintf("| `%s` | %s |", escapeCell(path), escapeCell(note))
+		row := fmt.Sprintf("| `%s` | %s | %s |", escapeCell(path), lines[path], escapeCell(note))
 		if withCoverage {
 			cell := "—"
 			if n := uncovered[path]; n > 0 {

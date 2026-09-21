@@ -12,6 +12,17 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Added
+- **The posted review says what the change is made of.** The HTML report has
+  always grouped a change by language and by the role each file plays, test
+  against source against config against prose; the review `post` puts on the
+  pull request now carries that grouping as a small table under the evidence,
+  in both body styles. It comes from `change.Composition`, the same function
+  the page groups its sections with, so the two cannot disagree about what
+  counts as a test. The walkthrough body also says how many lines each file
+  moved, beside the file. The table runs about 130 bytes for a change in one
+  language and 30 more per further language-and-role pair, and past twelve
+  pairs the rest is summed into one row, so a wide change cannot push a
+  finding off the end of the body.
 - **The describing call can go out on a model of its own**, through
   `--synopsis-model`, with `--synopsis-api`, `--synopsis-base-url` and
   `--synopsis-effort` beside it. It writes the walkthrough by reading the diff
