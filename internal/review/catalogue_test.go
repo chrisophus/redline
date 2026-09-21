@@ -310,3 +310,35 @@ func TestAPassWithNoPreviousReviewRefusesARecap(t *testing.T) {
 		}
 	}
 }
+
+// The describing call sends the wide catalogue whatever the judging call
+// narrowed to, and its estimate is built from the judging call's, which
+// prices the judging call's own array. That is the array that narrows, so
+// without the difference added back this call quotes a price for a request
+// smaller than the one it sends: the same fault counting the tool array
+// exists to stop, in the one place the two arrays are allowed to differ.
+func TestTheDescribingCallsEstimateCountsTheCatalogueItSends(t *testing.T) {
+	in := deferredInput()
+	estimate := func(apart bool) int {
+		opts := Options{
+			API: APIAnthropic, Model: "claude-sonnet-5", Synopsis: true,
+			Cache: true, CacheTTL: CacheTTL5m, Cohorts: 1, MaxTokens: 1000,
+		}
+		if apart {
+			opts.Describing = Endpoint{API: APIOpenAI, Model: "gpt-5.6-luna"}
+		}
+		opts = opts.withDefaults()
+		res, err := Assemble(in, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.synopsisRequest(opts.describing(), in).InputEstimate
+	}
+	// Same prefix, same tail and the same tool array either way. The only
+	// thing that moved is the judging call's catalogue, which this call does
+	// not send, so its estimate must not move with it.
+	if apart, together := estimate(true), estimate(false); apart != together {
+		t.Errorf("the describing call is estimated at %d tokens where it runs elsewhere and %d where it does not, though it sends the same request",
+			apart, together)
+	}
+}
