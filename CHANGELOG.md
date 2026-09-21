@@ -47,12 +47,20 @@ Releases whose tag carries only a subject line are listed as that subject.
   were low by the same amount.
 
 ### Note
-- The OpenAI wire marks no cache breakpoint, so a describing call sent there
-  writes no prefix for the judging call to read back and the judging call pays
-  that write instead. On a 250k prefix at Sonnet 5's rates that trades a
-  $0.05 cache read for the describing call's own price, and what is actually
-  saved is the walkthrough's output tokens. Measure it from
-  `.redline/reviews.jsonl` before assuming the move pays.
+- A prompt cache entry belongs to the model that wrote it, so a describing
+  call on a second model shares no prefix with the judging call: it pays for
+  the prefix itself, and the judging call pays the cache write the describing
+  call used to pay. The write moves rather than disappearing, so what a move
+  can save is the walkthrough's output tokens and nothing else.
+  Worked at Sonnet 5 and `gpt-5.6-luna`, whose input happens to be exactly
+  Sonnet's cache-read rate, which zeroes the prefix term: the saving is
+  $0.0088 per 1k of walkthrough whatever the prefix, so about 3 cents on a
+  typical walkthrough and 9 cents on a long one. As a share of the review it
+  is 7% on a 50k prefix and 3% on a 250k one, because the prefix is most of
+  the bill and this does not touch it. A model whose input is above the
+  judging model's cache-read rate loses money at any walkthrough size.
+  What the walkthrough costs this installation is in `.redline/reviews.jsonl`
+  as `synopsisOutputTokens`; measure there before moving anything.
 
 ## [0.14.1] - 2026-09-21
 
