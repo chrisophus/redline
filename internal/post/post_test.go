@@ -889,24 +889,40 @@ func TestEvidenceBodyIsUnchangedByWalkthroughCode(t *testing.T) {
 	}
 }
 
-// Test files are left out of the walkthrough: their rows are noise there, and
-// whether the tests assert enough is a coverage/mutation question answered as
-// findings. A testdata doc is prose and stays.
-func TestWalkthroughOmitsTestFiles(t *testing.T) {
+// Test files have a section of their own rather than being left out. Grouped
+// under a heading they answer the question a reviewer opens the walkthrough
+// with, which is how much of the change is test; it was interleaving them with
+// the code they test that made them noise.
+func TestWalkthroughGroupsTestFilesOfTheirOwn(t *testing.T) {
 	rep := &findings.Report{Agent: &findings.AgentReview{Files: map[string]string{"a.go": "real"}}}
 	rep.Finalize()
-	changed := changedFiles("a.go", "a_test.go", "ui/x.test.tsx", "internal/data/foo_integration_test.go")
-	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changed)
-	if !strings.Contains(p.Body, "| `a.go` |") {
-		t.Fatalf("the non-test file must be in the walkthrough:\n%s", p.Body)
+	changed := []change.File{
+		{Path: "a.go", Language: "go", Added: 30, Removed: 4},
+		{Path: "a_test.go", Language: "go", Added: 80, Removed: 1},
+		{Path: "ui/x.test.tsx", Language: "tsx", Added: 12, Removed: 0},
 	}
-	for _, f := range []string{"a_test.go", "x.test.tsx", "foo_integration_test.go"} {
-		if strings.Contains(p.Body, f) {
-			t.Fatalf("test file %q must not be in the walkthrough:\n%s", f, p.Body)
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changed)
+	for _, want := range []string{
+		"**go test** (1 file(s), +80 −1)",
+		"| `a_test.go` | +80 −1 | No notes. |",
+		"**go source** (1 file(s), +30 −4)",
+		"| `a.go` | +30 −4 | real |",
+		"**tsx test** (1 file(s), +12 −0)",
+	} {
+		if !strings.Contains(p.Body, want) {
+			t.Fatalf("walkthrough missing %q:\n%s", want, p.Body)
 		}
 	}
-	if !strings.Contains(p.Body, "3 test file(s) omitted") {
-		t.Fatalf("the omitted test-file count should be noted:\n%s", p.Body)
+	// The test group's files sit under the test heading, not under the source
+	// one, so a reader can stop at the section they care about.
+	src := strings.Index(p.Body, "**go source**")
+	tst := strings.Index(p.Body, "**go test**")
+	if src < 0 || tst < 0 || strings.Index(p.Body, "`a_test.go`") < tst {
+		t.Fatalf("a test file belongs under the test heading:\n%s", p.Body)
+	}
+	// Most added lines first, which is the order the HTML report draws.
+	if tst > src {
+		t.Fatalf("the dominant group leads:\n%s", p.Body)
 	}
 }
 
@@ -1056,13 +1072,20 @@ func TestBodyCarriesTheComposition(t *testing.T) {
 			t.Fatalf("composition row %q missing from the body:\n%s", want, p.Body)
 		}
 	}
-	// The same grouping in the walkthrough layout, where it sits above the
-	// per-file table rather than replacing it.
+	// The walkthrough layout says the same thing in its own headings, so it
+	// does not also carry the table.
 	w := BuildAttest(sampleReport(), prTarget(), "", nil, walkthroughProfile(), files)
-	comp := strings.Index(w.Body, "| Language | Type | Files | + | − |")
-	walk := strings.Index(w.Body, "<summary>Walkthrough</summary>")
-	if comp < 0 || walk < 0 || comp > walk {
-		t.Fatalf("the composition table belongs above the walkthrough:\n%s", w.Body)
+	if strings.Contains(w.Body, "**Lines by language and type.**") {
+		t.Fatalf("the walkthrough headings replace the table, not sit under it:\n%s", w.Body)
+	}
+	for _, want := range []string{
+		"**go test** (1 file(s), +200 −0)",
+		"**go source** (1 file(s), +120 −8)",
+		"**markdown docs** (1 file(s), +4 −2)",
+	} {
+		if !strings.Contains(w.Body, want) {
+			t.Fatalf("walkthrough heading %q missing:\n%s", want, w.Body)
+		}
 	}
 }
 

@@ -679,9 +679,11 @@ func (p Payload) WithMeta(intent, reviewedBy string) Payload {
 }
 
 // buildBodyWalkthrough is the Copilot-style body: who reviewed and which
-// commit, the author's stated intent, what the change does, what the change is
-// made of, a collapsible walkthrough of every changed file, then evidence
-// folded away and the findings that could not be anchored to a line.
+// commit, the author's stated intent, what the change does, a collapsible
+// walkthrough of every changed file grouped by language and role, then
+// evidence folded away and the findings that could not be anchored to a line.
+// The walkthrough's own headings carry the line counts the evidence body gets
+// from its composition table, so that table is not repeated here.
 // body_include decides how much of the report rides along, and every part of
 // it comes from the session the run already wrote, so this observes nothing.
 func buildBodyWalkthrough(p Payload) string {
@@ -700,9 +702,6 @@ func buildBodyWalkthrough(p Payload) string {
 			}
 			fmt.Fprintf(&head0, "**What it does.** %s\n\n", ov)
 		}
-	}
-	if s := compositionSection(p.files); s != "" {
-		head0.WriteString(s)
 	}
 	perFile, leftover := splitBodyFindingsByFile(p)
 	if s := walkthroughSection(p, perFile, maxNarrative); s != "" {
@@ -728,14 +727,12 @@ func buildBodyWalkthrough(p Payload) string {
 
 // splitBodyFindingsByFile groups the body findings that name a file the
 // walkthrough shows, so they render with that file instead of in a flat list
-// after it, and returns the rest. A finding with no file, or one on a test
-// file the walkthrough omits, has no row to ride with and stays in the list.
+// after it, and returns the rest. A finding with no file, or one on a file
+// this change did not touch, has no row to ride with and stays in the list.
 func splitBodyFindingsByFile(p Payload) (map[string][]findings.Finding, []findings.Finding) {
 	shown := map[string]bool{}
 	for _, f := range p.files {
-		if !change.IsTestCode(f.Path) {
-			shown[f.Path] = true
-		}
+		shown[f.Path] = true
 	}
 	perFile := map[string][]findings.Finding{}
 	var leftover []findings.Finding
@@ -758,11 +755,23 @@ func walkthroughHeading(gateVerdict string) string {
 	return "Review complete"
 }
 
-// walkthroughSection is the collapsible per-file table: every changed file
-// that is not test code, how many lines it moved, the agent's one-line summary
-// or "No notes.", and the columns body_include turns on. coverage names the
-// added lines a profile shows unexecuted; lint counts what landed on the file
-// by severity. Both read the report the run wrote.
+// walkthroughSection is the collapsible account of every changed file, in the
+// same sections the HTML report drills into: one heading per language and role
+// pair, the files of that group under it, and how many lines each one moved.
+// The heading carries the group's own totals, so the shape of the change is
+// readable without adding the rows up. Grouping is change.CompositionGroups,
+// which is what the report groups by, and the dominant part of the change
+// comes first.
+//
+// Each file also gets the agent's one-line summary or "No notes.", and the
+// columns body_include turns on: coverage names the added lines a profile
+// shows unexecuted, lint counts what landed on the file by severity. Both read
+// the report the run wrote.
+//
+// Test files are in their own group rather than left out. They used to be
+// dropped, because a flat table interleaved them with the code they test and
+// the rows read as noise; under a heading of their own they are the thing a
+// reviewer wanted to see, which is how much of the change is test.
 func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget int) string {
 	if len(p.files) == 0 {
 		return ""
@@ -781,24 +790,6 @@ func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget
 	if p.rep != nil && p.rep.Agent != nil {
 		summaries = p.rep.Agent.Files
 	}
-	paths := make([]string, 0, len(p.files))
-	lines := make(map[string]string, len(p.files))
-	testOmitted := 0
-	for _, f := range p.files {
-		// Test files are left out of the walkthrough on purpose. Whether the
-		// tests assert enough is a coverage and mutation question, answered as
-		// findings, not a walkthrough row; a testdata doc is prose and stays.
-		if change.IsTestCode(f.Path) {
-			testOmitted++
-			continue
-		}
-		paths = append(paths, f.Path)
-		lines[f.Path] = fmt.Sprintf("+%d −%d", f.Added, f.Removed)
-	}
-	sort.Strings(paths)
-
-	var b strings.Builder
-	b.WriteString("<details>\n<summary>Walkthrough</summary>\n\n")
 	header, sep := "| File | Lines | What changed |", "|---|---:|---|"
 	if withCoverage {
 		header += " Coverage |"
@@ -808,40 +799,61 @@ func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget
 		header += " Findings |"
 		sep += "---|"
 	}
-	b.WriteString(header + "\n" + sep + "\n")
+
+	var b strings.Builder
+	b.WriteString("<details>\n<summary>Walkthrough</summary>\n\n")
+	var paths []string
 	var omitted int
-	for _, path := range paths {
-		note := "No notes."
-		if s := strings.TrimSpace(summaries[path]); s != "" {
-			note = s
-		}
-		row := fmt.Sprintf("| `%s` | %s | %s |", escapeCell(path), lines[path], escapeCell(note))
-		if withCoverage {
-			cell := "—"
-			if n := uncovered[path]; n > 0 {
-				cell = fmt.Sprintf("%d line(s) uncovered", n)
+	for _, g := range change.CompositionGroups(p.files) {
+		files := make([]change.File, len(g.Files))
+		copy(files, g.Files)
+		sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+
+		var sec strings.Builder
+		fmt.Fprintf(&sec, "**%s %s** (%d file(s), +%d −%d)\n\n",
+			escapeCell(g.Language), escapeCell(g.Kind), len(g.Files), g.Added, g.Removed)
+		sec.WriteString(header + "\n" + sep + "\n")
+		shown := 0
+		for _, f := range files {
+			note := "No notes."
+			if s := strings.TrimSpace(summaries[f.Path]); s != "" {
+				note = s
 			}
-			row += " " + cell + " |"
-		}
-		if withLint {
-			cell := "—"
-			if s := counts[path]; s != "" {
-				cell = escapeCell(s)
+			row := fmt.Sprintf("| `%s` | +%d −%d | %s |",
+				escapeCell(f.Path), f.Added, f.Removed, escapeCell(note))
+			if withCoverage {
+				cell := "—"
+				if n := uncovered[f.Path]; n > 0 {
+					cell = fmt.Sprintf("%d line(s) uncovered", n)
+				}
+				row += " " + cell + " |"
 			}
-			row += " " + cell + " |"
+			if withLint {
+				cell := "—"
+				if s := counts[f.Path]; s != "" {
+					cell = escapeCell(s)
+				}
+				row += " " + cell + " |"
+			}
+			row += "\n"
+			if b.Len()+sec.Len()+len(row) > budget {
+				omitted++
+				continue
+			}
+			sec.WriteString(row)
+			shown++
+			paths = append(paths, f.Path)
 		}
-		row += "\n"
-		if b.Len()+len(row) > budget {
-			omitted++
+		if shown == 0 {
+			// A heading over an empty table says less than nothing. The files
+			// it would have listed are already counted as omitted.
 			continue
 		}
-		b.WriteString(row)
+		sec.WriteString("\n")
+		b.WriteString(sec.String())
 	}
 	if omitted > 0 {
-		fmt.Fprintf(&b, "\n_%d more file(s) on the full report._\n", omitted)
-	}
-	if testOmitted > 0 {
-		fmt.Fprintf(&b, "\n_%d test file(s) omitted from the walkthrough._\n", testOmitted)
+		fmt.Fprintf(&b, "_%d more file(s) on the full report._\n", omitted)
 	}
 	grpOmitted := 0
 	for _, path := range paths {
@@ -851,7 +863,7 @@ func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget
 		}
 		// The file's own findings, each still carrying its fingerprint marker
 		// so a re-post skips it, listed under the file rather than in the flat
-		// section after the table.
+		// section after the walkthrough.
 		var block strings.Builder
 		fmt.Fprintf(&block, "\n**`%s`**\n", path)
 		for _, f := range group {
@@ -866,8 +878,10 @@ func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget
 	if grpOmitted > 0 {
 		fmt.Fprintf(&b, "\n_%d more finding(s) on the full report._\n", grpOmitted)
 	}
-	b.WriteString("\n</details>\n\n")
-	return b.String()
+	// Each section ends with a blank line, and so does whatever followed it, so
+	// the trailing ones are trimmed rather than left to stack up before the
+	// closing tag.
+	return strings.TrimRight(b.String(), "\n") + "\n\n</details>\n\n"
 }
 
 // uncoveredByFile counts, per file, the added lines a coverage profile shows

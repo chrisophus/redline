@@ -15,14 +15,23 @@ Releases whose tag carries only a subject line are listed as that subject.
 - **The posted review says what the change is made of.** The HTML report has
   always grouped a change by language and by the role each file plays, test
   against source against config against prose; the review `post` puts on the
-  pull request now carries that grouping as a small table under the evidence,
-  in both body styles. It comes from `change.Composition`, the same function
+  pull request now carries that grouping as a small table under the evidence.
+  It comes from `change.Composition`, the same function
   the page groups its sections with, so the two cannot disagree about what
-  counts as a test. The walkthrough body also says how many lines each file
-  moved, beside the file. The table runs about 130 bytes for a change in one
+  counts as a test. The table runs about 130 bytes for a change in one
   language and 30 more per further language-and-role pair, and past twelve
   pairs the rest is summed into one row, so a wide change cannot push a
   finding off the end of the body.
+- **The walkthrough body is sectioned by group.** It was one flat table of
+  every changed file. It is now one section per language and role pair, the
+  heading carrying that group's file count and lines, the files under it with
+  how many lines each one moved. Test files have a section of their own
+  instead of being dropped with a count: interleaved with the code they test
+  their rows read as noise, and under a heading of their own they are what a
+  reviewer opened the walkthrough to see. The sectioned body carries the
+  composition table's numbers in its headings, so it does not also carry the
+  table. A section costs about 85 bytes over the rows in it, and each row
+  about 55.
 - **The describing call can go out on a model of its own**, through
   `--synopsis-model`, with `--synopsis-api`, `--synopsis-base-url` and
   `--synopsis-effort` beside it. It writes the walkthrough by reading the diff
