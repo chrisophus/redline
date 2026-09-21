@@ -51,7 +51,6 @@ Releases whose tag carries only a subject line are listed as that subject.
   has its arguments in git, and a gateway's address does not belong in a
   committed file. The flag still wins, and the Anthropic wire is left alone so
   its SDK's own credential chain is not shadowed.
-
 - **The judging call stops carrying the tools that write a walkthrough**, where
   the describing call ran somewhere its prefix cannot be read from. The
   catalogue drops from 2820 to 1965 tokens, or 4383 to 3528 with every lookup
@@ -75,6 +74,27 @@ Releases whose tag carries only a subject line are listed as that subject.
   to prevent. The review now files findings alone and the report says the
   walkthrough is missing and why. The fallback is unchanged where the two
   calls do share a prefix, including the staged path.
+- **A second review of a pull request can say what is new instead of
+  repeating itself.** `redline review --since COMMIT` names the commit the
+  previous review ran against; the describing call is told which files have
+  moved since then and calls `set_recap` with one paragraph on what is new.
+  `redline post --recap` opens the body with that paragraph and leaves out the
+  overview and the per-file table, which a pull request reviewed four times
+  was carrying four copies of. The walkthrough itself is unchanged and still
+  describes the whole change: the report keeps it, the body still links there,
+  and a reader arriving for the first time needs it, since GitHub is not
+  somewhere the last review's file lines can be read back from.
+
+  The commit comes off the marker each posted review already carries, so
+  `--recap` usually needs no argument; `post --since` names it for a first
+  recap post or a body whose marker was edited away. `set_recap` is on the
+  catalogue only for a run that was given a commit, and the files that moved
+  are named in the instruction rather than left to the model, because the diff
+  it is shown is against the merge base and nothing in it records when any of
+  it landed. `--since` is resolved against the checkout and a commit it cannot
+  find is refused, and `--recap` is refused when the session carries no such
+  paragraph rather than posting the walkthrough again under a heading that
+  promises otherwise.
 
 ### Fixed
 - **The input estimate counts the tool array.** `ruleRequest` had always

@@ -83,7 +83,7 @@ func (r *Result) synopsisRequest(opts Options, in Input) *Result {
 	// The describing half and nothing else. This call is not judging the
 	// change, so the judging tail would be two thousand tokens telling it what
 	// to do with findings it has been told not to write.
-	out.Tail = describingTail + synopsisTail(in)
+	out.Tail = describingTail + synopsisTail(opts, in)
 	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
 	out.CostUSD, out.CostKnown = EstimateCost(opts.Model, out.InputEstimate, ExpectedSynopsisTokens)
 	out.CostCeilingUSD, _ = CeilingCost(opts.Model, out.InputEstimate, opts.MaxTokens)
@@ -271,6 +271,7 @@ func applySynopsis(res *Result, model string, d described) {
 	}
 	res.Synopsis = true
 	res.Review.Overview = d.Walkthrough.Overview
+	res.Review.Recap = d.Walkthrough.Recap
 	res.Review.Files = d.Walkthrough.Files
 }
 

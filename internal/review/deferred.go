@@ -96,6 +96,12 @@ func (r *Result) describes() bool {
 	return r.catalogueDescribes
 }
 
+// recaps is whether set_recap is on this request's catalogue, which needs an
+// earlier review to compare against. Fixed for the run, like the two above.
+func (r *Result) recaps() bool {
+	return r.catalogueRecaps
+}
+
 // lookCallsFor is the catalogue a Looker can serve, filtered to the calls this
 // package defines and put in catalogue order.
 //

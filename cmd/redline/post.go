@@ -140,6 +140,28 @@ func cmdPost(o opts) error {
 	// the comment bodies would offer it again on every re-post.
 	posted := post.Fingerprints(append(append([]string{}, commentBodies...), reviewBodies...))
 	payload = payload.Unposted(posted)
+	if o.recap {
+		// The commit the previous review ran against comes off the marker that
+		// review already carries, so the common case needs no argument. --since
+		// overrides it for a first --recap post, or a body someone edited.
+		since := o.since
+		if since == "" {
+			for _, h := range post.ReviewedHeads(reviewBodies) {
+				if h != tgt.Head {
+					since = h
+				}
+			}
+		}
+		switch {
+		case since == "":
+			return fmt.Errorf("--recap replaces the walkthrough with what changed since the previous review, " +
+				"and no earlier Redline review was found on this pull request; drop --recap, or pass --since COMMIT")
+		case res.Report.Agent == nil || res.Report.Agent.Recap == "":
+			return fmt.Errorf("--recap needs the paragraph the describing call writes, and this session has none; "+
+				"re-run `redline review --since %s` first", since[:min(8, len(since))])
+		}
+		payload = payload.WithRecap(res.Report.Agent.Recap, since)
+	}
 	alreadyReviewed := post.ReviewedAt(reviewBodies, tgt.Head)
 	attestSame := true
 	if payload.Attested() {

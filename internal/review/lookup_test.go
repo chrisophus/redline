@@ -63,7 +63,7 @@ func (f *fakeLooker) ReadLines(path string, start, end int) (string, error) {
 func TestTheLookupToolsAreOffWithoutALooker(t *testing.T) {
 	names := func(looks []string) string {
 		var out []string
-		for _, tl := range callTools(true, false, looks) {
+		for _, tl := range callTools(true, false, false, looks) {
 			out = append(out, tl.Name)
 		}
 		return strings.Join(out, ",")
@@ -88,7 +88,7 @@ func TestTheLookupToolsAreOffWithoutALooker(t *testing.T) {
 func TestACatalogueOffersOnlyWhatTheLookerCanServe(t *testing.T) {
 	look := &fakeLooker{calls: []string{CallGrep, CallRead, CallDocs, CallHistory}}
 	var names []string
-	for _, tl := range callTools(true, false, lookCallsFor(look)) {
+	for _, tl := range callTools(true, false, false, lookCallsFor(look)) {
 		names = append(names, tl.Name)
 	}
 	got := strings.Join(names, ",")

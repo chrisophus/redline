@@ -49,6 +49,7 @@ const (
 // Tool names.
 const (
 	CallOverview = "set_overview"
+	CallRecap    = "set_recap"
 	CallFile     = "describe_file"
 	CallCohort   = "add_cohort"
 	CallComment  = "add_comment"
@@ -101,6 +102,12 @@ type callTool struct {
 // nothing was held back, and ended without a comment. Whether it is there is
 // fixed for the whole run, so every call of a run still sends the same bytes.
 //
+// recaps is offered only to a run that was told which commit the previous
+// review ran against. A pass with no earlier review to compare against has
+// nothing to put in it, and a tool on the catalogue that cannot be answered
+// costs a turn to discover, which is the same reason get_context is
+// conditional.
+//
 // describes is the same shape of decision for the three calls that write a
 // walkthrough. It is false only where no call sharing this catalogue writes
 // one, which needs the describing call to be on another model; see
@@ -110,12 +117,20 @@ type callTool struct {
 // twelve file lines and had every one of those calls refused. Showing it the
 // finished walkthrough is an argument against a catalogue; taking the tools
 // away is not an argument.
-func callTools(describes, pulls bool, looks []string) []callTool {
+func callTools(describes, recaps, pulls bool, looks []string) []callTool {
 	all := []callTool{
 		{CallOverview, "Set the overview: one or two paragraphs on what this change does and why it exists, " +
 			"written for a reviewer about to read the diff. Say what the change is for, not whether it is correct. " +
 			"Calling it again replaces the earlier overview.",
 			flatObject(map[string]any{"overview": overviewSchema()}, "overview")},
+		{CallRecap, "Record what has changed since the previous review of this pull request, in one short paragraph, " +
+			"for a reader who has already read that review and wants to know what is new. Say what moved and what it " +
+			"means for the change, not what the whole change does; the overview already says that. Where the files " +
+			"that moved answer something the earlier review raised, say so.",
+			flatObject(map[string]any{"recap": map[string]any{
+				"type":        "string",
+				"description": "one short paragraph on what changed since the previous review",
+			}}, "recap")},
 		{CallFile, "Record one line on what one file's change does and why, using the path exactly as it appears in the change. " +
 			"Call it once for each file the pass asks you to describe; a second call for the same path replaces the first. " +
 			"Describe the change, not its quality.",
@@ -195,6 +210,13 @@ func callTools(describes, pulls bool, looks []string) []callTool {
 	}
 	if !describes {
 		drop[CallOverview], drop[CallFile], drop[CallCohort] = true, true, true
+	}
+	// A describing tool that additionally needs an earlier review to compare
+	// against, so it goes when either is missing: the judging call drops it
+	// with the rest of the walkthrough tools, and a first review of a pull
+	// request drops it because there is nothing to recap.
+	if !describes || !recaps {
+		drop[CallRecap] = true
 	}
 	for _, name := range LookCalls {
 		if !slices.Contains(looks, name) {
@@ -389,6 +411,7 @@ type passExpect struct {
 type collector struct {
 	stage    string
 	overview string
+	recap    string
 	files    []map[string]any
 	cohorts  []map[string]any
 	comments []map[string]any
@@ -427,7 +450,7 @@ type collector struct {
 func newCollector(stage string, expect passExpect, deferred []deferredEntry, look Looker) *collector {
 	looks := lookCallsFor(look)
 	schemas := map[string]map[string]any{}
-	for _, t := range callTools(true, len(deferred) > 0, looks) {
+	for _, t := range callTools(true, true, len(deferred) > 0, looks) {
 		schemas[t.Name] = t.Schema
 	}
 	return &collector{stage: stage, schemas: schemas, expect: expect,
@@ -665,6 +688,8 @@ func (c *collector) record(call toolCall) {
 	switch call.Name {
 	case CallOverview:
 		c.overview, _ = in["overview"].(string)
+	case CallRecap:
+		c.recap, _ = in["recap"].(string)
 	case CallFile:
 		c.files = upsert(c.files, in, "path")
 	case CallCohort:
@@ -710,7 +735,7 @@ func (c *collector) body() string {
 	var v map[string]any
 	switch c.stage {
 	case StageSynopsis:
-		v = map[string]any{"overview": c.overview, "files": list(c.files), "cohorts": list(c.cohorts)}
+		v = map[string]any{"overview": c.overview, "recap": c.recap, "files": list(c.files), "cohorts": list(c.cohorts)}
 	case StageFindings:
 		v = map[string]any{"comments": list(c.comments)}
 	case StageRuling:
