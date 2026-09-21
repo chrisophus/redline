@@ -22,10 +22,26 @@ context:
            "--defer-callers", "**/*.go"]
     scope: ["**/*"]
 
-  # The scout is off. It calls a model on every `redline run`, which is money,
-  # and `run` costing nothing is a property worth keeping by default. Turn it
-  # on where the extra context is worth a few cents a review, and note that
-  # `redline run` then needs ANTHROPIC_API_KEY.
+  # The scout is on, and it is the one provider here that calls a model, so
+  # `redline run` in this repository costs money. That was a deliberate trade
+  # against `run` costing nothing: this checkout reviews from `review --run`
+  # rather than reading the report on its own, so the observation exists to be
+  # read by a model either way.
+  #
+  # It runs on gpt-5.6-luna over the OpenAI wire. The scout is the shape that
+  # rewards a cheap input rate more than anything else here, because it resends
+  # a growing conversation on every one of its turns while the review sends its
+  # prompt once. Luna's input is a tenth of claude-sonnet-5's, so the turns are
+  # where the saving lands.
+  #
+  # Needs OPENAI_API_KEY. OPENAI_BASE_URL and OPENAI_USER are read too, which
+  # is how a gateway is reached without its address being committed here. With
+  # no key the provider fails, the report names it under what could not be
+  # determined, and the run continues: this is not a gate.
+  #
+  # --max-cost stays at the default. A full eight turns at Luna's rates comes
+  # in well under it, and a tripwire set near what ordinary work costs teaches
+  # whoever trips it to raise the number without reading it.
   #
   # --covered is what keeps it from paying a model to arrive second. gorefactor
   # resolves those five roles for Go from a type checker; a scout that greps
@@ -33,13 +49,14 @@ context:
   # here spends its turns on what nothing above can see: the rule this
   # repository wrote down, the migration the code is coupled to, the history
   # behind a deleted guard.
-  #
-  # - name: scout
-  #   command: redline-scout
-  #   args: ["--changed", "{{base}}", "--max-cost", "0.25",
-  #          "--covered", "enclosing,caller,type,sibling,history",
-  #          "--covered-scope", "**/*.go"]
-  #   scope: ["**/*"]
+  - name: scout
+    command: redline-scout
+    args: ["--changed", "{{base}}",
+           "--api", "openai", "--model", "gpt-5.6-luna",
+           "--max-cost", "0.25",
+           "--covered", "enclosing,caller,type,sibling,history",
+           "--covered-scope", "**/*.go"]
+    scope: ["**/*"]
 
 # The coverage profile. Declared so `--prepare` regenerates it: without a
 # profile here there are no produce steps, `--prepare` does nothing at all,
