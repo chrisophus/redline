@@ -763,10 +763,15 @@ func walkthroughHeading(gateVerdict string) string {
 // which is what the report groups by, and the dominant part of the change
 // comes first.
 //
-// Each file also gets the agent's one-line summary or "No notes.", and the
-// columns body_include turns on: coverage names the added lines a profile
-// shows unexecuted, lint counts what landed on the file by severity. Both read
-// the report the run wrote.
+// A file is one list item rather than a table row. A table made GitHub divide
+// the width between the columns, and the summary column, which is prose and
+// the longest, took it: a path wrapped in the middle and the two line counts
+// landed on separate lines. A list has one column and nothing to divide.
+//
+// Each file also gets the agent's one-line summary when it wrote one, and what
+// body_include turns on: coverage names the added lines a profile shows
+// unexecuted, lint counts what landed on the file by severity. Both read the
+// report the run wrote.
 //
 // Test files are in their own group rather than left out. They used to be
 // dropped, because a flat table interleaved them with the code they test and
@@ -790,15 +795,6 @@ func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget
 	if p.rep != nil && p.rep.Agent != nil {
 		summaries = p.rep.Agent.Files
 	}
-	header, sep := "| File | Lines | What changed |", "|---|---:|---|"
-	if withCoverage {
-		header += " Coverage |"
-		sep += "---|"
-	}
-	if withLint {
-		header += " Findings |"
-		sep += "---|"
-	}
 
 	var b strings.Builder
 	b.WriteString("<details>\n<summary>Walkthrough</summary>\n\n")
@@ -810,42 +806,31 @@ func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget
 		sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 
 		var sec strings.Builder
-		fmt.Fprintf(&sec, "**%s %s** (%d file(s), +%d −%d)\n\n",
-			escapeCell(g.Language), escapeCell(g.Kind), len(g.Files), g.Added, g.Removed)
-		sec.WriteString(header + "\n" + sep + "\n")
+		fmt.Fprintf(&sec, "**%s %s** (%d file(s), +%d%s−%d)\n\n",
+			escapeLine(g.Language), escapeLine(g.Kind), len(g.Files), g.Added, nbsp, g.Removed)
 		shown := 0
 		for _, f := range files {
-			note := "No notes."
+			item := fmt.Sprintf("- `%s` +%d%s−%d", escapeLine(f.Path), f.Added, nbsp, f.Removed)
+			if n := uncovered[f.Path]; n > 0 {
+				item += fmt.Sprintf(", %d line(s) uncovered", n)
+			}
+			if s := counts[f.Path]; s != "" {
+				item += ", " + escapeLine(s)
+			}
 			if s := strings.TrimSpace(summaries[f.Path]); s != "" {
-				note = s
+				item += ": " + escapeLine(s)
 			}
-			row := fmt.Sprintf("| `%s` | +%d −%d | %s |",
-				escapeCell(f.Path), f.Added, f.Removed, escapeCell(note))
-			if withCoverage {
-				cell := "—"
-				if n := uncovered[f.Path]; n > 0 {
-					cell = fmt.Sprintf("%d line(s) uncovered", n)
-				}
-				row += " " + cell + " |"
-			}
-			if withLint {
-				cell := "—"
-				if s := counts[f.Path]; s != "" {
-					cell = escapeCell(s)
-				}
-				row += " " + cell + " |"
-			}
-			row += "\n"
-			if b.Len()+sec.Len()+len(row) > budget {
+			item += "\n"
+			if b.Len()+sec.Len()+len(item) > budget {
 				omitted++
 				continue
 			}
-			sec.WriteString(row)
+			sec.WriteString(item)
 			shown++
 			paths = append(paths, f.Path)
 		}
 		if shown == 0 {
-			// A heading over an empty table says less than nothing. The files
+			// A heading over an empty list says less than nothing. The files
 			// it would have listed are already counted as omitted.
 			continue
 		}
@@ -1163,6 +1148,18 @@ func escapeCell(s string) string {
 	s = strings.ReplaceAll(s, "|", "\\|")
 	return strings.Join(strings.Fields(s), " ")
 }
+
+// escapeLine flattens a value onto one line, for a list item, where a pipe
+// needs no escaping and a newline would end the item early.
+func escapeLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// nbsp sits between a file's two line counts. A plain space there lets GitHub
+// wrap the added count and the removed count onto separate lines when the
+// window is narrow, and the two read as one number, so they are written as one
+// word.
+const nbsp = "\u00a0"
 
 // Unposted drops every finding Redline has already said on this pull request,
 // both the line comments and the findings that ride in the body. posted comes

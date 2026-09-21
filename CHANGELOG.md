@@ -12,6 +12,15 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Fixed
+- **The walkthrough's file lines stop wrapping.** Each changed file was a row
+  in a table of File, Lines and What changed. GitHub divides a table's width
+  between its columns and the prose column is the longest, so it took the
+  space: paths wrapped in the middle of a directory name and a file's added
+  and removed counts landed on separate lines. A file is now one list item,
+  which has no columns to divide, and the two counts are joined by a
+  non-breaking space so nothing can split them. A section is about 40 bytes
+  cheaper than the table it replaces, since there is no header row to repeat
+  per group.
 - **A tool with no required field no longer breaks every OpenAI call.**
   `flatObject` takes its required fields variadically, and a call with none
   left a nil `[]string`, which marshals to `null`. The Anthropic wire tolerates
