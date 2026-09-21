@@ -249,8 +249,14 @@ func TestLunaResolvesToItsOwnRate(t *testing.T) {
 	if !ok {
 		t.Fatal("gpt-5.6-luna has no rate")
 	}
-	if p.InPerM != 1.20 || p.OutPerM != 0.20 {
+	if p.InPerM != 0.20 || p.OutPerM != 1.20 {
 		t.Errorf("gpt-5.6-luna priced at %+v, not the rate it was given", p)
+	}
+	// The direction is asserted as well as the pair, because the two numbers
+	// arrived transposed once and every cost line downstream rests on them
+	// being the right way round.
+	if p.OutPerM <= p.InPerM {
+		t.Errorf("gpt-5.6-luna's output is not above its input: %+v", p)
 	}
 	if base, _ := LookupPricing("gpt-5"); p == base {
 		t.Error("gpt-5.6-luna resolved to gpt-5's rate through the prefix match")
