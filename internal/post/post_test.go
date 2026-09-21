@@ -847,8 +847,8 @@ func TestWalkthroughBodyMatchesCopilotOrder(t *testing.T) {
 		"**Stated intent.** TICKET-1: do a thing",
 		"**What it does.** Adds a feed.",
 		"<summary>Walkthrough</summary>",
-		"| `a.go` | +10 −0 | Staging. |",
-		"| `b.go` | +11 −1 | No notes. |",
+		"- `a.go` +10\u00a0−0, 2 line(s) uncovered, 1 warning: Staging.",
+		"- `b.go` +11\u00a0−1\n",
 		"2 line(s) uncovered",
 		"1 warning",
 		"<summary>Evidence</summary>",
@@ -903,11 +903,11 @@ func TestWalkthroughGroupsTestFilesOfTheirOwn(t *testing.T) {
 	}
 	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changed)
 	for _, want := range []string{
-		"**go test** (1 file(s), +80 −1)",
-		"| `a_test.go` | +80 −1 | No notes. |",
-		"**go source** (1 file(s), +30 −4)",
-		"| `a.go` | +30 −4 | real |",
-		"**tsx test** (1 file(s), +12 −0)",
+		"**go test** (1 file(s), +80\u00a0−1)",
+		"- `a_test.go` +80\u00a0−1\n",
+		"**go source** (1 file(s), +30\u00a0−4)",
+		"- `a.go` +30\u00a0−4: real",
+		"**tsx test** (1 file(s), +12\u00a0−0)",
 	} {
 		if !strings.Contains(p.Body, want) {
 			t.Fatalf("walkthrough missing %q:\n%s", want, p.Body)
@@ -1079,9 +1079,9 @@ func TestBodyCarriesTheComposition(t *testing.T) {
 		t.Fatalf("the walkthrough headings replace the table, not sit under it:\n%s", w.Body)
 	}
 	for _, want := range []string{
-		"**go test** (1 file(s), +200 −0)",
-		"**go source** (1 file(s), +120 −8)",
-		"**markdown docs** (1 file(s), +4 −2)",
+		"**go test** (1 file(s), +200\u00a0−0)",
+		"**go source** (1 file(s), +120\u00a0−8)",
+		"**markdown docs** (1 file(s), +4\u00a0−2)",
 	} {
 		if !strings.Contains(w.Body, want) {
 			t.Fatalf("walkthrough heading %q missing:\n%s", want, w.Body)
@@ -1130,7 +1130,12 @@ func TestWalkthroughCarriesPerFileLines(t *testing.T) {
 	rep.Finalize()
 	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(),
 		[]change.File{{Path: "a.go", Language: "go", Added: 12, Removed: 3}})
-	if !strings.Contains(p.Body, "| `a.go` | +12 −3 | Staging. |") {
-		t.Fatalf("the walkthrough row must say how many lines moved:\n%s", p.Body)
+	if !strings.Contains(p.Body, "- `a.go` +12\u00a0−3: Staging.") {
+		t.Fatalf("the walkthrough item must say how many lines moved:\n%s", p.Body)
+	}
+	// The two counts are one word, so a narrow window cannot put them on
+	// separate lines.
+	if strings.Contains(p.Body, "+12 −3") {
+		t.Fatalf("the line counts must be joined by a non-breaking space:\n%s", p.Body)
 	}
 }

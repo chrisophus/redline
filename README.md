@@ -773,12 +773,15 @@ does, then a collapsible walkthrough of every changed file. The walkthrough is
 sectioned the way the report's drill-in is: one heading per language and role
 pair carrying that group's file count and lines, the files of the group listed
 under it with how many lines each one moved and the agent's one-line summary
-or "No notes." Test files have a section of their own rather than being left
-out, which is the question a reviewer opens the walkthrough with. A section
-costs about 85 bytes over the rows in it, and each row about 55. A finding
+when it wrote one. Test files have a section of their own rather than being
+left out, which is the question a reviewer opens the walkthrough with. A file
+is a list item and not a table row: a table made GitHub divide the width
+between its columns, the prose column took most of it, and paths wrapped in
+the middle while a file's two line counts landed on separate lines. A section
+costs about 40 bytes over the items in it, and each item about 55. A finding
 that names one of those files rides under it there; only a finding with no
 file lands in the list after. `body_include` decides how much of the report rides along:
-`coverage` and `lint` add per-file columns, `confirmations` and `unknowns`
+`coverage` and `lint` add to each file's line, `confirmations` and `unknowns`
 fold in the report sections the body otherwise drops, and `low-confidence`
 folds the reviewer's unsure findings behind a chevron rather than withholding
 them (the one add-on that also applies to the evidence body). All of it comes
