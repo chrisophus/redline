@@ -451,12 +451,12 @@ func TestEveryToolSchemaHasAnArrayOfRequiredFields(t *testing.T) {
 	}
 }
 
-// A describing call that fails is only fallen back on where it shared the
-// judging call's prefix: there the judging call already carries the tools to
-// write a walkthrough. Sent elsewhere, the judging catalogue has no
-// set_overview on it, so the run stays a findings call and the report records
-// the walkthrough as missing.
-func TestAFailedDescribingCallOnlyFallsBackWhereThePrefixIsShared(t *testing.T) {
+// The judging catalogue carries the three describing tools only where the two
+// calls share a prefix. Sent to another model or another wire, a cache entry
+// belongs to whoever wrote it, there is no prefix to match, and the tools come
+// off: which is why a findings pass cannot be asked to write a walkthrough
+// after the fact, and why a failed describing call stops the run.
+func TestTheJudgingCatalogueNarrowsWhenThePrefixIsNotShared(t *testing.T) {
 	shared := Options{Synopsis: true, Cache: true}.withDefaults()
 	if !shared.describingSharesPrefix() {
 		t.Fatal("the default shape shares a prefix")

@@ -1276,32 +1276,31 @@ func runJudged(ctx context.Context, in Input, opts Options, res *Result) (*Resul
 		res = res.judgingRequest(d.Walkthrough, false)
 	case opts.Synopsis:
 		d = describe(ctx, in, opts, res)
-		if d.Failed != "" && opts.Progress != nil {
-			// What happens next depends on the prefix, so the line has to as
-			// well. Only a describing call that shared the judging call's
-			// prefix can be fallen back on: the judging call already carries
-			// the tools to write a walkthrough and pays nothing extra to read
-			// the prompt. A describing call sent elsewhere leaves a judging
-			// call whose catalogue has no set_overview on it, so there is
-			// nothing to fall back to, and saying otherwise sent the reader
-			// looking for a walkthrough the report would go on to record as
-			// missing.
-			if opts.describingSharesPrefix() {
-				opts.Progress("the describing call did not produce a walkthrough (" + d.Failed +
-					"); this review writes its own")
-			} else {
-				opts.Progress("the describing call did not produce a walkthrough (" + d.Failed +
-					"); this review has none, and the report says so")
+		if d.Failed != "" {
+			// A describing call that failed stops the run rather than
+			// degrading it.
+			//
+			// It used to carry on and write the findings without a
+			// walkthrough, on the argument that a degraded review beats a
+			// lost one. That argument holds for a call nobody can retry. This
+			// one can: the reason is on the screen, whatever caused it is
+			// usually a flag or a schema away from fixed, and the session on
+			// disk makes the next attempt free to set up. What carrying on
+			// bought instead was the judging call's price - the larger of the
+			// two - spent on a review the caller did not ask for, in a shape
+			// they would have to run again anyway to get what they wanted.
+			//
+			// The describing call's own cost is returned with the error, so
+			// the ledger still records what was spent before the stop.
+			out := d.Result
+			if out == nil {
+				out = res
 			}
+			return out, fmt.Errorf("the describing call did not produce a walkthrough: %s; "+
+				"fix that and run again, or pass --no-synopsis to write the walkthrough "+
+				"and the findings in one call", d.Failed)
 		}
-		// A failed describing call falls back to one call doing both jobs only
-		// where it left a prefix this call can read. Where it ran on another
-		// model it left nothing here, so this call stays a findings call and
-		// the report says the walkthrough is missing, which applySynopsis
-		// writes from SynopsisFailed. Paying a second full-price call to put
-		// the two jobs back under one output cap is how a degraded run becomes
-		// a lost review.
-		res = res.judgingRequest(d.Walkthrough, d.Failed != "" && opts.describingSharesPrefix())
+		res = res.judgingRequest(d.Walkthrough, false)
 	}
 	var out *Result
 	var err error

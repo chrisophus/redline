@@ -22,13 +22,20 @@ Releases whose tag carries only a subject line are listed as that subject.
   builds its schema through the same constructor rather than a bare literal,
   so there is one path, and a test asserts no tool marshals a null `required`.
   Found by the first `--synopsis-api openai` run.
-- **A failed describing call says what actually happens next.** The line read
-  "this review writes its own" whatever the shape, but the fallback is gated
-  on the two calls sharing a prefix: only there does the judging call already
-  carry the tools to write a walkthrough. Sent to another model, its catalogue
-  has no `set_overview` on it, the run stays a findings call, and the report
-  records the walkthrough as missing - which is what the code comment said and
-  the message contradicted.
+### Changed
+- **A describing call that fails stops the run.** It used to carry on and write
+  the findings without a walkthrough, on the argument that a degraded review
+  beats a lost one. That argument is for a call nobody can retry. This one can:
+  the reason is on the screen, whatever caused it is usually a flag or a schema
+  away from fixed, and the session on disk makes the next attempt free to set
+  up. What carrying on bought instead was the judging call's price - the larger
+  of the two - spent on a review the caller did not ask for, in a shape they
+  would have to run again anyway. Measured on the run that prompted this: the
+  describing call was refused for a bad schema and the run spent $1.39 finding
+  nothing. The error names the cause and the two ways out, and the describing
+  call's own cost comes back with it so the ledger still records what was
+  spent. The fallback in a split run is untouched: there stage one shares the
+  judging call's prefix and its fallback writes a complete review.
 
 ### Fixed
 - **A pull request's base ref is fetched on every resolve, not only when it is
