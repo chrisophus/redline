@@ -597,19 +597,15 @@ func TestBuildWithholdsARefusedFindingAtEverySeverity(t *testing.T) {
 	}
 }
 
-// A finding whose author said nothing would settle it is speculation by its
-// own account, and that holds at every severity too.
-func TestBuildWithholdsAnUnfalsifiableFindingAtEverySeverity(t *testing.T) {
+// An error remains visible even when the reviewer did not name a way to settle
+// it. A suspected defect must not disappear from the pull request.
+func TestBuildPostsAnUnfalsifiableError(t *testing.T) {
 	rep := &findings.Report{
 		Findings: []findings.Finding{
 			{File: "a.go", Line: 3, Rule: "agent-comment", Substrate: "redline/review",
 				Severity: findings.SeverityError, Source: findings.SourceLLM,
 				Confidence: findings.ConfidenceHigh, Message: "this feels wrong somehow",
 				Question: findings.Question{Kind: findings.QuestionNone}},
-			{File: "a.go", Line: 4, Rule: "agent-comment", Substrate: "redline/review",
-				Severity: findings.SeverityError, Source: findings.SourceLLM,
-				Confidence: findings.ConfidenceHigh, Message: "this leaks a file handle",
-				Question: findings.Question{Kind: findings.QuestionDiff}},
 		},
 	}
 	rep.Finalize()
@@ -617,10 +613,31 @@ func TestBuildWithholdsAnUnfalsifiableFindingAtEverySeverity(t *testing.T) {
 	p := Build(rep, prTarget(), "", nil)
 
 	if len(p.Comments) != 1 {
-		t.Fatalf("only the falsifiable finding posts: %+v", p.Comments)
+		t.Fatalf("an error must remain visible on the diff: %+v", p.Comments)
 	}
-	if !strings.Contains(p.Comments[0].Body, "leaks a file handle") {
-		t.Fatalf("the wrong finding survived: %q", p.Comments[0].Body)
+	if !strings.Contains(p.Comments[0].Body, "this feels wrong somehow") {
+		t.Fatalf("the error did not reach the author: %q", p.Comments[0].Body)
+	}
+}
+
+// A high-confidence error on a line outside the diff is visible in the review
+// body, where GitHub can show it without rejecting the review comment payload.
+func TestBuildPostsHighConfidenceErrorOutsideDiffInBody(t *testing.T) {
+	rep := &findings.Report{Findings: []findings.Finding{
+		{File: "a.go", Line: 3, Rule: "agent-comment", Substrate: "redline/review",
+			Severity: findings.SeverityError, Source: findings.SourceLLM,
+			Confidence: findings.ConfidenceHigh, Message: "this drops the retry idempotency key",
+			Question: findings.Question{Kind: findings.QuestionDiff}},
+	}}
+	rep.Finalize()
+
+	p := Build(rep, prTarget(), "", map[string]map[int]bool{"a.go": {99: true}})
+	if len(p.Comments) != 0 {
+		t.Fatalf("an out-of-diff error must not become a line comment: %+v", p.Comments)
+	}
+	if !strings.Contains(p.Body, "### Findings not shown inline") ||
+		!strings.Contains(p.Body, "this drops the retry idempotency key") {
+		t.Fatalf("the out-of-diff error must be visible in the review body:\n%s", p.Body)
 	}
 }
 

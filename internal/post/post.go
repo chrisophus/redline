@@ -249,7 +249,15 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 			p.lint++
 			continue
 		}
-		if refused(f) || unfalsifiable(f) || withheldForConfidence(f) {
+		if refused(f) {
+			p.withheld++
+			continue
+		}
+		// An error is a claimed defect, so it must remain visible even when the
+		// reviewer's wording also carries uncertainty. Warning and info findings
+		// keep the report-only policy for genuinely uncertain claims.
+		if f.Severity != findings.SeverityError &&
+			(unfalsifiable(f) || withheldForConfidence(f)) {
 			if !refused(f) && prof.includes("low-confidence") {
 				// Shown behind a chevron instead of withheld: a guess the
 				// reader can open, never a line comment and never a gate. This
@@ -261,7 +269,7 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 			}
 			continue
 		}
-		if hedged(f) {
+		if f.Severity != findings.SeverityError && hedged(f) {
 			p.hedged++
 			continue
 		}
@@ -305,7 +313,8 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 // inbox, and a scoring function with its own copy of these rules would report
 // whichever of the two it happened to implement.
 func Reaches(f findings.Finding) bool {
-	return !refused(f) && !unfalsifiable(f) && !withheldForConfidence(f) && !hedged(f)
+	return !refused(f) && (f.Severity == findings.SeverityError ||
+		(!unfalsifiable(f) && !withheldForConfidence(f) && !hedged(f)))
 }
 
 // Interrupts reports whether a finding would open a thread on the diff. A
