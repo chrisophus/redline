@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -141,7 +143,7 @@ func TestAStreamingCallReportsWhileItRuns(t *testing.T) {
 	}
 	var progress []string
 	for _, line := range b.all() {
-		if strings.HasPrefix(line, "review: ") && strings.Contains(line, "reasoning ~") {
+		if strings.HasPrefix(line, "review turn 1: ") && strings.Contains(line, "reasoning ~") {
 			progress = append(progress, line)
 		}
 	}
@@ -195,7 +197,7 @@ func TestAStreamWithNoProgressFuncStillWorks(t *testing.T) {
 // The report is about the wait a person is sitting through, so the elapsed
 // time has to come from when the stream opened.
 func TestTheHeartbeatReportsElapsedFromTheStart(t *testing.T) {
-	h := newHeartbeat(Options{Progress: func(string) {}, MaxTokens: 4096}, "review")
+	h := newHeartbeat(Options{Progress: func(string) {}, MaxTokens: 4096}, "review turn 1", time.Time{})
 	h.start = time.Now().Add(-90 * time.Second)
 	if got := h.line(time.Now()); !strings.Contains(got, "1m30s elapsed") {
 		t.Errorf("line = %q, want it to report 1m30s elapsed", got)
@@ -247,4 +249,61 @@ func everyEvent(t *testing.T) {
 	prev := heartbeatInterval
 	heartbeatInterval = 0
 	t.Cleanup(func() { heartbeatInterval = prev })
+}
+
+// The OpenAI wire answers in one piece, so a turn on it streamed nothing to
+// count and printed nothing for as long as the model thought. It still has to
+// say that it is waiting, and for how long.
+func TestAWaitOnTheOpenAIWireReportsWhileItWaits(t *testing.T) {
+	prev := heartbeatInterval
+	heartbeatInterval = 2 * time.Millisecond
+	t.Cleanup(func() { heartbeatInterval = prev })
+	srv, _, _, _ := openAIServer(t, func(w http.ResponseWriter, _ openAIRequest) {
+		time.Sleep(40 * time.Millisecond)
+		_, _ = io.WriteString(w, toolReply(t, reviewBody, "tool_calls",
+			`{"prompt_tokens":1000,"completion_tokens":50}`))
+	})
+	var b beats
+	_, err := Run(context.Background(), smallInput(), Options{
+		API: APIOpenAI, BaseURL: srv.URL, APIKey: "sk-test", Progress: b.record,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var waited, turned bool
+	for _, line := range b.all() {
+		if strings.HasPrefix(line, "review turn 1: ") && strings.Contains(line, "waiting for the reply") {
+			waited = true
+		}
+		// The line that closes the turn says what the pass has cost and how
+		// long it has run, beside what it recorded.
+		if strings.Contains(line, "so far, $") {
+			turned = true
+		}
+	}
+	if !waited {
+		t.Errorf("a turn that waited 40ms at a 2ms interval reported nothing while it waited: %q", b.all())
+	}
+	if !turned {
+		t.Errorf("the turn line must carry the cost so far: %q", b.all())
+	}
+}
+
+// A pass is several turns and each one is its own stream, so a line that
+// said only "review:" could not say which of the waits it was, and an elapsed
+// time that restarted at each turn would read as a pass that had barely
+// started ten minutes in.
+func TestTheHeartbeatNamesTheTurnAndKeepsThePassClock(t *testing.T) {
+	passStart := time.Now().Add(-2 * time.Minute)
+	h := newHeartbeat(Options{Progress: func(string) {}, MaxTokens: 4096}, "findings turn 3", passStart)
+	h.turnStart = time.Now().Add(-10 * time.Second)
+	got := h.line(time.Now())
+	if !strings.HasPrefix(got, "findings turn 3: 2m0s elapsed (10s this turn)") {
+		t.Errorf("line = %q, want the pass clock and this turn's beside it", got)
+	}
+	// On the first turn the two clocks are one, and saying so twice is noise.
+	first := newHeartbeat(Options{Progress: func(string) {}}, "review turn 1", time.Time{})
+	if got := first.line(time.Now()); strings.Contains(got, "this turn") {
+		t.Errorf("a first turn must not report a second clock: %q", got)
+	}
 }

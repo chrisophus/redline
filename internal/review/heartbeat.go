@@ -2,6 +2,7 @@ package review
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/chrisophus/redline/internal/envelope"
@@ -43,14 +44,19 @@ const (
 // reasoning" and "nearly out of room", which is all it is asked for.
 type heartbeat struct {
 	report func(string)
-	stage  string
+	// label names the pass and the turn the line is about, "findings turn
+	// 3". A pass is several turns and each turn is its own stream, so a line
+	// that named only the pass could not say which of its waits this is.
+	label string
 	// cap is the output ceiling the call was sent with, and what the
 	// reasoning is measured against.
 	cap int64
-	// start is when the stream opened, so elapsed is the wait a person is
-	// actually sitting through.
-	start time.Time
-	last  time.Time
+	// start is when the pass began, so elapsed is the wait a person is
+	// actually sitting through. turnStart is when this turn's stream opened;
+	// the two are the same on the first turn.
+	start     time.Time
+	turnStart time.Time
+	last      time.Time
 	// reasoned and written are characters, not tokens: the conversion is
 	// done once, at the moment a line is rendered.
 	reasoned int
@@ -62,18 +68,23 @@ type heartbeat struct {
 
 // newHeartbeat returns nil when there is nowhere to report, and every method
 // tolerates that: a caller with no Progress func should not have to say so at
-// each call site.
-func newHeartbeat(opts Options, stage string) *heartbeat {
+// each call site. since is when the pass began; zero means this stream is the
+// whole wait.
+func newHeartbeat(opts Options, label string, since time.Time) *heartbeat {
 	if opts.Progress == nil {
 		return nil
 	}
 	now := time.Now()
+	if since.IsZero() {
+		since = now
+	}
 	return &heartbeat{
-		report: opts.Progress,
-		stage:  stage,
-		cap:    opts.MaxTokens,
-		start:  now,
-		last:   now,
+		report:    opts.Progress,
+		label:     label,
+		cap:       opts.MaxTokens,
+		start:     since,
+		turnStart: now,
+		last:      now,
 	}
 }
 
@@ -105,20 +116,60 @@ func (h *heartbeat) observe(kind, text, thinking, partialJSON string) {
 		h.report(fmt.Sprintf(
 			"%s: reasoning has used ~%s of the %d-token output cap without starting the answer; "+
 				"if it does not stop soon the call will hit the cap and return nothing",
-			h.stage, formatTokens(h.reasoningTokens()), h.cap))
+			h.label, formatTokens(h.reasoningTokens()), h.cap))
 	}
 }
 
 // line is one progress report: how long it has been, and where the output
 // budget went.
 func (h *heartbeat) line(now time.Time) string {
-	elapsed := now.Sub(h.start).Round(time.Second)
 	answer := "answer not started"
 	if h.written > 0 {
 		answer = "answer ~" + formatTokens(envelope.EstimateTokensLen(h.written)) + " tokens"
 	}
-	return fmt.Sprintf("%s: %s elapsed, reasoning ~%s tokens, %s",
-		h.stage, elapsed, formatTokens(h.reasoningTokens()), answer)
+	return fmt.Sprintf("%s: %s, reasoning ~%s tokens, %s",
+		h.label, h.elapsed(now), formatTokens(h.reasoningTokens()), answer)
+}
+
+// elapsed is the wait so far: the pass's, and this turn's when the pass has
+// had more than one, since a reader wants to know both that the pass is
+// twelve minutes in and that this turn has only just started.
+func (h *heartbeat) elapsed(now time.Time) string {
+	total := now.Sub(h.start).Round(time.Second)
+	s := fmt.Sprintf("%s elapsed", total)
+	if turn := now.Sub(h.turnStart).Round(time.Second); !h.turnStart.IsZero() && h.turnStart.After(h.start.Add(time.Second)) {
+		s += fmt.Sprintf(" (%s this turn)", turn)
+	}
+	return s
+}
+
+// waitHeartbeat reports at each interval while a call that streams nothing
+// back is in flight, and stops when the returned func is called. The
+// OpenAI wire answers in one piece, so there is no delta to count and the
+// only thing worth saying is that the wait is still on and how long it has
+// been. The stop func is safe to call more than once.
+func waitHeartbeat(opts Options, label string, since time.Time) func() {
+	if opts.Progress == nil {
+		return func() {}
+	}
+	h := newHeartbeat(opts, label, since)
+	done := make(chan struct{})
+	var once sync.Once
+	go func() {
+		// The tests drive the interval to zero to see every stream event;
+		// a ticker will not take that, so this one ticks as fast as it can.
+		t := time.NewTicker(max(heartbeatInterval, time.Millisecond))
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case now := <-t.C:
+				h.report(fmt.Sprintf("%s: %s, waiting for the reply", h.label, h.elapsed(now)))
+			}
+		}
+	}()
+	return func() { once.Do(func() { close(done) }) }
 }
 
 func (h *heartbeat) reasoningTokens() int {

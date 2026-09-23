@@ -158,6 +158,7 @@ func completeAnthropic(ctx context.Context, opts Options, res *Result) (completi
 		opts:   opts,
 		stage:  res.stage(),
 		params: anthropicParams(opts, res),
+		began:  time.Now(),
 	}
 	return converse(ctx, opts, res, conv)
 }
@@ -178,9 +179,12 @@ type anthropicConversation struct {
 	// rolling is where the moving breakpoint sits, so the next turn can take
 	// it off before placing its own.
 	rolling *anthropic.CacheControlEphemeralParam
+	// began is when the pass started, so the heartbeat can say how long the
+	// whole wait has been and not only this turn's.
+	began time.Time
 }
 
-func (a *anthropicConversation) send(ctx context.Context, maxTokens int64) (turnReply, error) {
+func (a *anthropicConversation) send(ctx context.Context, maxTokens int64, turn int) (turnReply, error) {
 	a.params.MaxTokens = maxTokens
 	stream := a.client.Messages.NewStreaming(ctx, a.params)
 	// Next returning false at the end of the stream does not close the
@@ -202,7 +206,7 @@ func (a *anthropicConversation) send(ctx context.Context, maxTokens int64) (turn
 			model:    string(msg.Model),
 		}
 	}
-	hb := newHeartbeat(a.opts, a.stage)
+	hb := newHeartbeat(a.opts, fmt.Sprintf("%s turn %d", a.stage, turn), a.began)
 	for stream.Next() {
 		ev := stream.Current()
 		if err := msg.Accumulate(ev); err != nil {

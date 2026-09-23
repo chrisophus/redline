@@ -437,15 +437,27 @@ it is not set), `--scout-model` and `--scout-effort` (the checking pass
 alone, when it should differ from the review), `--ceiling`
 (default 250000 tokens, bounding the whole request), `--max-tokens`,
 `--max-cost` (a tripwire checked against the worst-case cost before anything
-is sent), `--stats`, `--dry-run`, `--api`, `--base-url`, `--debug`.
+is sent), `--stats`, `--dry-run`, `--api`, `--base-url`, `--verbose`,
+`--debug`.
 
-`--debug` (or `REDLINE_DEBUG`) puts every model call on stderr: the wire,
-model, stage, input tokens, cap, and effort going out; the stop reason and
-token counts coming back; the body the parser was handed; and each scout
-tool call with its result size. The full requests and responses are written
-under `--out/debug`, which is how a gateway that answers in a shape the
-schema forbids is diagnosed rather than guessed at. Those files carry the
-whole prompt, so they carry the diff.
+While it runs, `review` says on stderr what is about to be sent and what it
+should cost, then one line per stage as each starts and finishes: the
+describing call, each cohort or sample as it lands with its findings, cost
+and time, and the lookups and the ruling under `--verify`. Inside a call it
+reports every fifteen seconds how long the pass has been running, how much
+of the output cap the reasoning has used and whether the answer has begun,
+labelled with the pass and the turn; on a wire that streams nothing back it
+says it is still waiting. Each turn that records something closes with what
+the pass has recorded, what it has cost so far and how long it has taken.
+
+`--verbose` (or `REDLINE_VERBOSE`) adds every model call: the wire, model,
+stage, input tokens, cap and effort going out; the stop reason and token
+counts coming back; the summary the endpoint showed of each turn's
+reasoning; the body the parser was handed; and each scout tool call with
+its result size. `--debug` (or `REDLINE_DEBUG`) writes the full requests
+and responses under `--out/debug`, which is how a gateway that answers in
+a shape the schema forbids is diagnosed rather than guessed at. Those files
+carry the whole prompt, so they carry the diff.
 
 Credentials come from `ANTHROPIC_API_KEY` or an `ant auth login` profile.
 Without one, every other command still works.
@@ -786,6 +798,21 @@ fold in the report sections the body otherwise drops, and `low-confidence`
 folds the reviewer's unsure findings behind a chevron rather than withholding
 them (the one add-on that also applies to the evidence body). All of it comes
 from the session `run` already wrote, so posting still observes nothing.
+
+## What a run prints
+
+`run` says on stderr which change it is observing and in which tree, then
+the panes it is about to run over how many files, each context provider as
+it starts and as it finishes with what it resolved and how long it took,
+anything that did not run with the reason, and one line on what the run came
+to: files, findings, confirmations and unknowns. The unknowns count is the
+one to watch; it is where a linter that would not start or a provider that
+was not on PATH ends up, and `review --run` goes straight on to the model
+without printing the report. `--verbose` (or `REDLINE_VERBOSE`) adds each
+pane as it starts and finishes, with what it found and how long it took, and
+the command line each provider ran, which is what a person told a provider
+did not run needs in order to run it by hand. A `--prepare` step's own
+output goes to stderr too, so `--format json` on stdout stays JSON.
 
 ## The report server
 

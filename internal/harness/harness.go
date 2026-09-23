@@ -218,7 +218,10 @@ func runProduce(produceRoot, configRoot, envFrom string, prod ProduceConfig) err
 
 	cmd := exec.CommandContext(ctx, "bash", "-lc", script.String())
 	cmd.Dir = produceRoot
-	cmd.Stdout = os.Stdout
+	// Both to stderr. Stdout is the report, or with --format json the
+	// report as JSON, and a `go test` transcript in front of it is what
+	// broke `redline run --prepare --format json | jq`.
+	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s %s: %w", prod.Command, strings.Join(prod.Args, " "), err)

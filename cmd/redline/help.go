@@ -138,6 +138,7 @@ func runFlags(fs *flag.FlagSet, o *opts) {
 	browseFlags(fs, o)
 	fs.StringVar(&o.format, "format", "report", "report|json")
 	fs.BoolVar(&o.file, "file", false, "print the report as a file:// path, no server")
+	fs.BoolVar(&o.verbose, "verbose", false, "log each pane and context provider as it runs to stderr")
 }
 
 func reviewFlags(fs *flag.FlagSet, o *opts) {
@@ -179,7 +180,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.BoolVar(&o.cohortContext, "cohort-context", false, "with --cohorts above 1: keep the resolved context out of the describing call and give each cohort only the context that belongs to its own files")
 	fs.BoolVar(&o.planOnly, "plan", false, "with --cohorts above 1: describe and partition, then stop before judging any cohort")
 	fs.StringVar(&o.onlyCohorts, "only-cohorts", "", "with --cohorts above 1: comma-separated cohort names or 1-based indices to judge, skipping the rest")
-	fs.BoolVar(&o.verbose, "verbose", false, "log each model request, response, and scout tool call to stderr")
+	fs.BoolVar(&o.verbose, "verbose", false, "log each model request, response, and scout tool call to stderr, and with --run each pane and provider")
 	fs.BoolVar(&o.debug, "debug", false, "write the full requests and responses under --out/debug/<run timestamp>/")
 	fs.IntVar(&o.ceiling, "ceiling", 0, "token ceiling for the whole request")
 	fs.IntVar(&o.maxTokens, "max-tokens", 0, "cap on the response")
@@ -252,6 +253,12 @@ flags:
   --file            print the report as a file:// path, no server
   --port N          loopback port for the report server (default 8765; the
                     next free port is used if it is taken)
+  --verbose         log each pane as it starts and finishes, with what it
+                    found and how long it took, and the command line each
+                    context provider ran. Without it a run prints the panes
+                    it is about to run, each provider as it starts and
+                    finishes, anything that did not run, and one line on
+                    what it came to. REDLINE_VERBOSE does the same.
 `
 
 const reviewHelp = `redline review — review a saved session with a model and merge the result
@@ -537,9 +544,11 @@ output:
                     --out and exit. The target is an average, so this is the
                     number to read, not any single run.
   --verbose         log every model request, its stop reason and token
-                    counts, the body the parser was handed, and each scout
-                    tool call to stderr - what a person watching the run
-                    sees. REDLINE_VERBOSE does the same.
+                    counts, the reasoning summary each turn showed, the
+                    body the parser was handed, and each scout tool call
+                    to stderr - what a person watching the run sees. With
+                    --run it also logs the observing wave the way run
+                    --verbose does. REDLINE_VERBOSE does the same.
   --debug           write the full requests and responses, with the
                     model's thinking summary and the exact instructions
                     sent with each call, under --out/debug/<run

@@ -236,9 +236,7 @@ func cmdReview(o opts) error {
 		// on purpose: a CI run wants --debug on (the artifact is the only
 		// record once the job ends) and --verbose off (its own log already
 		// has stdout/stderr, so the same lines twice would just be noise).
-		if o.verbose || os.Getenv("REDLINE_VERBOSE") != "" {
-			ropts.Debug = func(msg string) { fmt.Fprintln(os.Stderr, "redline verbose:", msg) }
-		}
+		ropts.Debug = o.verboseSink()
 		if o.debug || os.Getenv("REDLINE_DEBUG") != "" {
 			// Its own subdirectory per run, named by when the run started, so
 			// a rerun against the same --out never destroys what the last one

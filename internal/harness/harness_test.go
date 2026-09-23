@@ -1,8 +1,10 @@
 package harness
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -167,4 +169,60 @@ func TestLoadMissingFile(t *testing.T) {
 	if err != nil || cfg != nil {
 		t.Fatalf("missing config: cfg=%v err=%v", cfg, err)
 	}
+}
+
+// A produce step's own output goes to stderr with everything else the run
+// says. Stdout is the report, or with --format json the report as JSON, and
+// a test transcript in front of it is what broke piping that JSON to jq.
+func TestProduceOutputStaysOffStdout(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{
+		Profiles: []Profile{{
+			ID:      "out",
+			Path:    "out.txt",
+			When:    "missing",
+			Produce: ProduceConfig{Command: "sh", Args: []string{"-c", "echo produced-on-stdout; echo produced-on-stderr >&2; echo ok > out.txt"}},
+		}},
+	}
+	stdout, stderr := capture(t, func() {
+		if _, err := Prepare(dir, dir, []string{"a.go"}, cfg); err != nil {
+			t.Error(err)
+		}
+	})
+	if strings.Contains(stdout, "produced-on-stdout") {
+		t.Errorf("the produce step's stdout reached the report's stdout: %q", stdout)
+	}
+	for _, want := range []string{"produced-on-stdout", "produced-on-stderr"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr must carry the produce step's %s, got %q", want, stderr)
+		}
+	}
+}
+
+// capture runs fn with os.Stdout and os.Stderr replaced and returns what
+// each received.
+func capture(t *testing.T, fn func()) (stdout, stderr string) {
+	t.Helper()
+	read := func(f **os.File) func() string {
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		orig := *f
+		*f = w
+		done := make(chan string)
+		go func() {
+			b, _ := io.ReadAll(r)
+			done <- string(b)
+		}()
+		return func() string {
+			_ = w.Close()
+			*f = orig
+			return <-done
+		}
+	}
+	outDone := read(&os.Stdout)
+	errDone := read(&os.Stderr)
+	fn()
+	return outDone(), errDone()
 }

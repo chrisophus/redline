@@ -191,7 +191,7 @@ func runExplore(ctx context.Context, in Input, opts Options, res *Result) (*Resu
 		var streamErr error
 		// A turn of this loop is as silent as the one-shot call was, and for
 		// longer: the per-turn line below cannot print until the turn ends.
-		hb := newHeartbeat(opts, fmt.Sprintf("turn %d", turn))
+		hb := newHeartbeat(opts, fmt.Sprintf("turn %d", turn), start)
 		for stream.Next() {
 			ev := stream.Current()
 			if err := acc.Accumulate(ev); err != nil {

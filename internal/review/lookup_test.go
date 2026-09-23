@@ -495,7 +495,7 @@ type stallingConv struct {
 	last turnReply
 }
 
-func (c *stallingConv) send(_ context.Context, _ int64) (turnReply, error) {
+func (c *stallingConv) send(_ context.Context, _ int64, _ int) (turnReply, error) {
 	c.sent++
 	if c.sent <= c.fail {
 		// A stream that dies partway still reports what it read: message_start

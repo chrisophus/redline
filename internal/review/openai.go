@@ -135,8 +135,10 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 	// the Anthropic API a proxy may be forwarding this to, and the calls
 	// block already says which calls answer the pass either way.
 	conv := &openAIConversation{
-		opts: opts,
-		url:  base + "/chat/completions",
+		opts:  opts,
+		url:   base + "/chat/completions",
+		stage: res.stage(),
+		began: time.Now(),
 		req: openAIRequest{
 			Model: opts.Model,
 			Messages: []openAIMessage{
@@ -155,13 +157,16 @@ func completeOpenAI(ctx context.Context, opts Options, res *Result) (completion,
 
 // openAIConversation is one pass's conversation over chat completions.
 type openAIConversation struct {
-	opts Options
-	url  string
-	req  openAIRequest
-	last openAIMessage
+	opts  Options
+	url   string
+	stage string
+	req   openAIRequest
+	last  openAIMessage
+	// began is when the pass started, for the heartbeat.
+	began time.Time
 }
 
-func (o *openAIConversation) send(ctx context.Context, maxTokens int64) (turnReply, error) {
+func (o *openAIConversation) send(ctx context.Context, maxTokens int64, turn int) (turnReply, error) {
 	o.req.MaxCompletionTokens = maxTokens
 	buf, err := json.Marshal(o.req)
 	if err != nil {
@@ -176,7 +181,12 @@ func (o *openAIConversation) send(ctx context.Context, maxTokens int64) (turnRep
 	if token := bearerToken(o.opts); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	// Nothing comes back until the whole reply is ready, which on a
+	// reasoning model is minutes. The streaming wire narrates its deltas;
+	// this one can only say that it is still waiting, and does.
+	stop := waitHeartbeat(o.opts, fmt.Sprintf("%s turn %d", o.stage, turn), o.began)
 	resp, err := openAIHTTPClient.Do(req)
+	stop()
 	if err != nil {
 		return turnReply{}, err
 	}

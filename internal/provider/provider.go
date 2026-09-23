@@ -27,6 +27,25 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// args is the argument list as it goes out, with the base token filled in.
+func (c Config) args(baseSHA string) []string {
+	args := make([]string, len(c.Args))
+	for i, a := range c.Args {
+		if a == baseToken {
+			args[i] = baseSHA
+			continue
+		}
+		args[i] = a
+	}
+	return args
+}
+
+// CommandLine is the command Run would execute, as one line for a log. It is
+// what a person told a provider did not run needs in order to run it by hand.
+func (c Config) CommandLine(baseSHA string) string {
+	return strings.Join(append([]string{c.Command}, c.args(baseSHA)...), " ")
+}
+
 // runTimeout bounds one provider. A provider that hangs must fail the
 // context layer with a message rather than hang the review.
 const runTimeout = 5 * time.Minute
@@ -170,14 +189,7 @@ func (c Config) Run(dir, baseSHA string) (*envelope.Envelope, error) {
 	if _, err := exec.LookPath(c.Command); err != nil {
 		return nil, fmt.Errorf("%s is configured for this repository but not on PATH", c.Command)
 	}
-	args := make([]string, len(c.Args))
-	for i, a := range c.Args {
-		if a == baseToken {
-			args[i] = baseSHA
-			continue
-		}
-		args[i] = a
-	}
+	args := c.args(baseSHA)
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, c.Command, args...)
