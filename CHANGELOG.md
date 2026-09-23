@@ -45,6 +45,16 @@ Releases whose tag carries only a subject line are listed as that subject.
   put a `go test` transcript in front of the JSON. It goes to stderr with
   everything else the run says.
 
+## [0.15.2] - 2026-09-23
+
+### Fixed
+- **The OpenAI review heartbeat covers delayed response bodies.** The wait
+  heartbeat used to stop when response headers arrived, even though reading
+  the response body could still wait on a proxy. It now stays active through
+  the body read, with a regression test for headers arriving before a delayed
+  body.
+
+
 ## [0.15.0] - 2026-09-21
 
 ### Added
