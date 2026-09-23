@@ -185,8 +185,8 @@ func (o *openAIConversation) send(ctx context.Context, maxTokens int64, turn int
 	// reasoning model is minutes. The streaming wire narrates its deltas;
 	// this one can only say that it is still waiting, and does.
 	stop := waitHeartbeat(o.opts, fmt.Sprintf("%s turn %d", o.stage, turn), o.began)
+	defer stop()
 	resp, err := openAIHTTPClient.Do(req)
-	stop()
 	if err != nil {
 		return turnReply{}, err
 	}

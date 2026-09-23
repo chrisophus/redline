@@ -289,6 +289,34 @@ func TestAWaitOnTheOpenAIWireReportsWhileItWaits(t *testing.T) {
 	}
 }
 
+// Do returns after response headers arrive, but the body can still be
+// pending. The heartbeat must cover that read too, not only the header wait.
+func TestAWaitOnTheOpenAIWireReportsWhileTheBodyWaits(t *testing.T) {
+	prev := heartbeatInterval
+	heartbeatInterval = 2 * time.Millisecond
+	t.Cleanup(func() { heartbeatInterval = prev })
+	srv, _, _, _ := openAIServer(t, func(w http.ResponseWriter, _ openAIRequest) {
+		w.Header().Set("Content-Type", "application/json")
+		w.(http.Flusher).Flush()
+		time.Sleep(40 * time.Millisecond)
+		_, _ = io.WriteString(w, toolReply(t, reviewBody, "tool_calls",
+			`{"prompt_tokens":1000,"completion_tokens":50}`))
+	})
+	var b beats
+	_, err := Run(context.Background(), smallInput(), Options{
+		API: APIOpenAI, BaseURL: srv.URL, APIKey: "sk-test", Progress: b.record,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range b.all() {
+		if strings.HasPrefix(line, "review turn 1: ") && strings.Contains(line, "waiting for the reply") {
+			return
+		}
+	}
+	t.Errorf("a turn that waited for the response body reported nothing while it waited: %q", b.all())
+}
+
 // A pass is several turns and each one is its own stream, so a line that
 // said only "review:" could not say which of the waits it was, and an elapsed
 // time that restarted at each turn would read as a pass that had barely
