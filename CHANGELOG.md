@@ -11,6 +11,40 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Added
+- **A run says what it is running and what did not run.** Between the
+  observing line and the report's address a run printed nothing, and a lint
+  pane that would not start or a context provider that was not on PATH was
+  on the report and nowhere else, which `review --run` never prints. A run
+  now names the panes it is about to run over how many files, prints each
+  context provider as it starts and as it finishes with what it resolved and
+  how long it took, says what did not run and why as it happens, and closes
+  with one line on what it came to: files, findings, confirmations and
+  unknowns. `run --verbose` (or `REDLINE_VERBOSE`) adds each pane as it
+  starts and finishes, with what it found and how long it took, and the
+  command line each provider ran. `review --run --verbose` prints the same.
+- **The heartbeat names the turn and keeps the pass clock.** The line a
+  streaming call prints every fifteen seconds said `review:` and an elapsed
+  time that restarted with every turn, so twelve minutes into a pass it read
+  as one that had barely begun. It now says which pass and which turn it is
+  about, `findings turn 3: 2m10s elapsed (45s this turn)`, and a turn on the
+  OpenAI wire, which streams nothing back until the reply is whole, says it is
+  still waiting instead of printing nothing for as long as the model thinks.
+- **Each turn's line says what the pass has cost.** The line a turn closes
+  with carries the cost so far and how long the pass has run beside what it
+  has recorded, so a person deciding whether to let it run on has the two
+  numbers together. The cohort and sample lines carry how long each took
+  beside its findings and its cost.
+- **`--verbose` shows what the model was weighing.** Under `--verbose` each
+  turn also prints the reasoning summary the endpoint showed, bounded to a
+  line, where before it printed only how many characters of it there were.
+
+### Fixed
+- **A `--prepare` step's output stays off stdout.** The produce command's
+  stdout was the report's stdout, so `redline run --prepare --format json`
+  put a `go test` transcript in front of the JSON. It goes to stderr with
+  everything else the run says.
+
 ## [0.15.0] - 2026-09-21
 
 ### Added

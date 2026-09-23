@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/cover"
@@ -59,6 +60,41 @@ type Options struct {
 	// working. Nil keeps the library silent, which is what the tests and any
 	// embedding caller want; the command wires it to stderr.
 	Progress func(string)
+	// Debug is called with what --verbose adds: each pane as it starts and
+	// finishes, and the command line each context provider ran. Nil prints
+	// none of it.
+	Debug func(string)
+}
+
+// say prints a line every run prints.
+func (o Options) say(format string, args ...any) {
+	if o.Progress != nil {
+		o.Progress(fmt.Sprintf(format, args...))
+	}
+}
+
+// verbose prints a line only --verbose prints.
+func (o Options) verbose(format string, args ...any) {
+	if o.Debug != nil {
+		o.Debug(fmt.Sprintf(format, args...))
+	}
+}
+
+// took renders how long a step ran, for the end of a progress line. Empty
+// under a second: "in 0s" beside a pane that read one file says nothing.
+func took(since time.Time) string {
+	d := time.Since(since).Round(time.Second)
+	if d < time.Second {
+		return ""
+	}
+	return " in " + d.String()
+}
+
+// paneLabel is a pane's name as a progress line says it. Every pane is
+// "redline/<something>" on the report, where the prefix says whose finding
+// it is; on the terminal every line is already Redline's.
+func paneLabel(name string) string {
+	return strings.TrimPrefix(name, "redline/")
 }
 
 // Result is a report plus the per-pane renders backing section 1 and the
@@ -99,6 +135,7 @@ type Result struct {
 // never chosen by a caller: if the caller decides which checks to run, coverage
 // becomes a sample from a distribution and a check can be silently skipped.
 func Run(opts Options) (*Result, error) {
+	began := time.Now()
 	tgt, err := target.Resolve(target.Options{
 		Dir: opts.Dir, PR: opts.PR, Branch: opts.Branch,
 		Commit: opts.Commit, Range: opts.Range, Base: opts.Base,
@@ -229,10 +266,26 @@ func Run(opts Options) (*Result, error) {
 		return allPaths
 	}
 
+	// Scoped before any pane runs, so the line naming what is about to run
+	// can be printed before the wait it explains. Lint shells out to a linter
+	// at base and at head, which is a minute of silence on a large tree, and
+	// a person watching should know that is what the silence is.
+	scopes := make([][]string, len(panes))
+	var running []string
+	for i, p := range panes {
+		scopes[i] = p.Scope(changed)
+		if len(scopes[i]) > 0 {
+			running = append(running, paneLabel(p.Name()))
+		}
+	}
+	if len(running) > 0 {
+		opts.say("running %d pane(s) over %d file(s): %s", len(running), len(changed), strings.Join(running, ", "))
+	}
 	examined := map[string]bool{}
-	for _, p := range panes {
+	for i, p := range panes {
+		name := paneLabel(p.Name())
 		status := findings.SubstrateStatus{Name: p.Name()}
-		scope := p.Scope(changed)
+		scope := scopes[i]
 		for _, path := range scope {
 			examined[path] = true
 		}
@@ -247,12 +300,19 @@ func Run(opts Options) (*Result, error) {
 				status.Detail = "this change touches none of the files this pane reads"
 			}
 			res.Report.Substrates = append(res.Report.Substrates, status)
+			opts.verbose("%s: skipped, %s", name, status.Detail)
 			continue
 		}
+		opts.verbose("%s: observing %d file(s)", name, len(scope))
+		start := time.Now()
 		out, err := runPane(p, baseSHA)
 		if err != nil {
 			// A pane that applied but did not run is recorded as failed and
-			// as an unknown; it never reads as a pass.
+			// as an unknown; it never reads as a pass. Said here as well as
+			// on the report: `review --run` never prints the report, and a
+			// lint pane that broke is the kind of thing a person would fix
+			// before paying for the review that follows.
+			opts.say("%s did not run: %v", name, err)
 			status.State = findings.SubstrateFailed
 			status.Detail = err.Error()
 			res.Report.Substrates = append(res.Report.Substrates, status)
@@ -264,6 +324,8 @@ func Run(opts Options) (*Result, error) {
 			continue
 		}
 		status.State = findings.SubstrateRan
+		opts.verbose("%s: %d finding(s), %d confirmation(s), %d unknown(s)%s",
+			name, len(out.Findings), len(out.Confirmations), len(out.Unknowns), took(start))
 		res.Report.Substrates = append(res.Report.Substrates, status)
 		res.Report.Findings = append(res.Report.Findings, out.Findings...)
 		res.Report.Confirmations = append(res.Report.Confirmations, out.Confirmations...)
@@ -383,7 +445,7 @@ func Run(opts Options) (*Result, error) {
 			Reason:    "skipped on request, to compare a review with context against one without",
 		})
 	} else {
-		res.Envelopes, res.ContextAbsent = resolveContext(&res.Report, configRoot, tgt.Dir, baseSHA, changed)
+		res.Envelopes, res.ContextAbsent = resolveContext(&res.Report, opts, configRoot, tgt.Dir, baseSHA, changed)
 	}
 	// What this pull request already heard, and what people said back. Read
 	// in the observing wave, not by `review`, for the reason every other input
@@ -401,6 +463,17 @@ func Run(opts Options) (*Result, error) {
 		mergeMutationVerdicts(res.Report.Mutation, review.MutationVerdicts)
 	}
 	recordMutationSubstrate(&res.Report, res.Change, cfg)
+	// One line on what the run came to, for the reader who is not about to
+	// read the report: `review --run` goes straight on to the model, and
+	// --format json prints nothing a person reads. The unknowns count is the
+	// one to look at, because it is where a pane or a provider that did not
+	// run ends up.
+	summary := fmt.Sprintf("observed %d file(s)%s: %d finding(s), %d confirmation(s), %d unknown(s)",
+		len(changed), took(began), len(res.Report.Findings), len(res.Report.Confirmations), len(res.Report.Unknowns))
+	if len(generated) > 0 {
+		summary += fmt.Sprintf("; %d generated file(s) left out", len(generated))
+	}
+	opts.say("%s", summary)
 	return res, nil
 }
 
@@ -425,7 +498,7 @@ func describeTree(tgt *target.Target) string {
 // so a later empty review can be told apart from one that had nothing to work
 // with. Redline links no provider and knows none by name: the registry finds
 // them by config file and by .redline.yml.
-func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA string, changed []string) ([]*envelope.Envelope, []string) {
+func resolveContext(rep *findings.Report, opts Options, configRoot, observeRoot, baseSHA string, changed []string) ([]*envelope.Envelope, []string) {
 	providers, err := provider.Detect(configRoot)
 	if err != nil {
 		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
@@ -445,8 +518,15 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 		if len(claimed) == 0 {
 			continue
 		}
+		// Said before and after. A provider is an external program with a
+		// five-minute allowance, and one of them may be calling a model, so
+		// this is the other place a run goes quiet.
+		opts.say("%s: resolving context for %d file(s)", p.Name, len(claimed))
+		opts.verbose("%s: running %s", p.Name, p.CommandLine(baseSHA))
+		start := time.Now()
 		env, runErr := p.Run(observeRoot, baseSHA)
 		if runErr != nil {
+			opts.say("%s did not run: %v", p.Name, runErr)
 			absent = append(absent, fmt.Sprintf("%s (context): %v", p.Name, runErr))
 			rep.Unknowns = append(rep.Unknowns, findings.Unknown{
 				Substrate: "redline/context",
@@ -465,6 +545,7 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 				Reason:    "they are ranked last rather than dropped; a newer provider may want a newer Redline",
 			})
 		}
+		opts.say("%s: %d expansion(s), %d note(s)%s", p.Name, len(env.Expansions), len(env.Notes), took(start))
 		envs = append(envs, env)
 	}
 	// The repository's own rules, read from where GitHub's convention puts
@@ -472,6 +553,7 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 	// location is fixed, so resolving them needs no tool, no subprocess and
 	// no model, which is what lets every run carry them.
 	if env, err := houserules.Resolve(observeRoot, changed); err != nil {
+		opts.say("%s did not run: %v", houserules.ProviderName, err)
 		absent = append(absent, fmt.Sprintf("%s (context): %v", houserules.ProviderName, err))
 		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
 			Substrate: "redline/context",
@@ -479,6 +561,7 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 			Reason:    err.Error(),
 		})
 	} else if env != nil {
+		opts.verbose("%s: %d expansion(s)", houserules.ProviderName, len(env.Expansions))
 		envs = append(envs, env)
 	}
 	// What the repository told its reviewer in its own configuration: the
@@ -486,6 +569,7 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 	// having findings dismissed. Free, like the two above, and read from a
 	// file the team commits and reviews.
 	if env, err := instructions.Resolve(configRoot, changed); err != nil {
+		opts.say("%s did not run: %v", instructions.ProviderName, err)
 		absent = append(absent, fmt.Sprintf("%s (context): %v", instructions.ProviderName, err))
 		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
 			Substrate: "redline/context",
@@ -493,6 +577,7 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 			Reason:    err.Error(),
 		})
 	} else if env != nil {
+		opts.verbose("%s: %d expansion(s)", instructions.ProviderName, len(env.Expansions))
 		envs = append(envs, env)
 	}
 	// The file beside a changed one, matched by name. A convention a team
@@ -500,6 +585,7 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 	// rather than in any rules file: the directory listing is where it can be
 	// read, and reading one costs nothing.
 	if env, err := precedent.Resolve(observeRoot, changed); err != nil {
+		opts.say("%s did not run: %v", precedent.ProviderName, err)
 		absent = append(absent, fmt.Sprintf("%s (context): %v", precedent.ProviderName, err))
 		rep.Unknowns = append(rep.Unknowns, findings.Unknown{
 			Substrate: "redline/context",
@@ -507,6 +593,7 @@ func resolveContext(rep *findings.Report, configRoot, observeRoot, baseSHA strin
 			Reason:    err.Error(),
 		})
 	} else if env != nil {
+		opts.verbose("%s: %d expansion(s)", precedent.ProviderName, len(env.Expansions))
 		envs = append(envs, env)
 	}
 	// The union above is what the context block actually speaks for. A change

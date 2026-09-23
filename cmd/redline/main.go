@@ -156,7 +156,18 @@ func (o opts) toRun(dir string) run.Options {
 		// is said out loud rather than left to be inferred from a coverage
 		// number that came back missing.
 		Progress: func(msg string) { fmt.Fprintln(os.Stderr, "redline:", msg) },
+		Debug:    o.verboseSink(),
 	}
+}
+
+// verboseSink is where --verbose lines go: stderr under the flag or
+// REDLINE_VERBOSE, nowhere otherwise. One function so `run` and `review
+// --run` print the observing wave the same way.
+func (o opts) verboseSink() func(string) {
+	if !o.verbose && os.Getenv("REDLINE_VERBOSE") == "" {
+		return nil
+	}
+	return func(msg string) { fmt.Fprintln(os.Stderr, "redline verbose:", msg) }
 }
 
 func cmdRun(o opts) error {

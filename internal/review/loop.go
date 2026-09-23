@@ -93,7 +93,10 @@ type turnReply struct {
 // conversation is one wire's side of the loop: send the conversation as it
 // stands, then extend it with the reply and the answers to its calls.
 type conversation interface {
-	send(ctx context.Context, maxTokens int64) (turnReply, error)
+	// send sends the conversation as it stands. turn is which turn of the
+	// pass this is, counted from 1, and is only for what the wire says while
+	// it waits.
+	send(ctx context.Context, maxTokens int64, turn int) (turnReply, error)
 	answer(reply turnReply, results []callResult)
 	nudge(reply turnReply, text string)
 }
@@ -112,6 +115,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 	var thinking strings.Builder
 	nudged := false
 	gov := newGovernor(opts, res)
+	began := time.Now()
 	for turn := 1; ; turn++ {
 		if turn > opts.callTurns() {
 			c.stopped = StoppedTurnCap
@@ -164,6 +168,13 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 		if opts.Debug != nil {
 			opts.Debug(fmt.Sprintf("%s turn %d: %d call(s), %d output token(s) of which %d thinking, %d thinking char(s) shown",
 				stage, turn, len(r.calls), r.usage.OutputTokens, r.usage.ThinkingTokens, len(r.thinking)))
+			// The summary the endpoint showed of the reasoning, bounded. A
+			// person watching a pass spend a minute on a turn wants to know
+			// what it was weighing, and the count above says only that it
+			// was weighing something.
+			if t := oneLine(r.thinking); t != "" {
+				opts.Debug(fmt.Sprintf("%s turn %d thinking: %s", stage, turn, truncateForDebug(t)))
+			}
 		}
 		if opts.Debug != nil {
 			// Which calls were sent back and why, with the input as sent: the
@@ -195,10 +206,15 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 			}
 		}
 		if opts.Progress != nil && len(r.calls) > 0 {
+			// What the pass has recorded, then what it has cost and how long
+			// it has been: the two numbers a person deciding whether to let
+			// it run on wants beside each other.
 			line := fmt.Sprintf("%s turn %d: %d call(s), %s so far", stage, turn, len(r.calls), col.progress())
 			if rejected > 0 {
 				line += fmt.Sprintf(", %d rejected this turn", rejected)
 			}
+			cost, known := total.Cost(opts.Model)
+			line += fmt.Sprintf(", %s, %s", FormatCost(cost, known), time.Since(began).Round(time.Second))
 			opts.Progress(line)
 		}
 		if r.truncated {
@@ -277,7 +293,7 @@ func sendTurn(ctx context.Context, opts Options, conv conversation, remaining in
 	var r turnReply
 	var err error
 	for attempt := 1; ; attempt++ {
-		r, err = conv.send(ctx, remaining)
+		r, err = conv.send(ctx, remaining, turn)
 		if err == nil || attempt >= sendAttempts || !connectionBroke(err) {
 			return r, err
 		}

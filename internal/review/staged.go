@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/findings"
@@ -396,9 +397,9 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 					landed, len(cohorts), cohort.Name, err))
 				return
 			}
-			opts.Progress(fmt.Sprintf("cohort %d of %d (%s): %d finding(s), %s",
+			opts.Progress(fmt.Sprintf("cohort %d of %d (%s): %d finding(s), %s, %s",
 				landed, len(cohorts), cohort.Name, len(got.Review.Comments),
-				FormatCost(got.CostUSD, got.CostKnown)))
+				FormatCost(got.CostUSD, got.CostKnown), got.Duration.Round(time.Second)))
 		}(i, cohort)
 	}
 	wg.Wait()

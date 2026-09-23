@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chrisophus/redline/internal/findings"
 )
@@ -87,9 +88,9 @@ func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Re
 				opts.Progress(fmt.Sprintf("sample %d of %d failed: %v", landed, opts.Samples, err))
 				return
 			}
-			opts.Progress(fmt.Sprintf("sample %d of %d: %d finding(s), %s",
+			opts.Progress(fmt.Sprintf("sample %d of %d: %d finding(s), %s, %s",
 				landed, opts.Samples, len(res.Review.Comments),
-				FormatCost(res.CostUSD, res.CostKnown)))
+				FormatCost(res.CostUSD, res.CostKnown), res.Duration.Round(time.Second)))
 		}()
 	}
 	if opts.cacheOn() {
