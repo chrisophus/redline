@@ -112,6 +112,30 @@ type File struct {
 	Areas []string `json:"areas,omitempty"`
 }
 
+// LineTotals sums the lines added and removed across paths between base and
+// head, for files that are counted but not part of the change, such as
+// generated output. An empty head means the working tree.
+func LineTotals(repo *gitx.Repo, baseSHA, head string, paths []string) (added, removed int) {
+	if len(paths) == 0 {
+		return 0, 0
+	}
+	want := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		want[p] = true
+	}
+	st, err := repo.Stat(baseSHA, head)
+	if err != nil {
+		return 0, 0
+	}
+	for _, d := range st {
+		if want[d.Path] {
+			added += d.Added
+			removed += d.Removed
+		}
+	}
+	return added, removed
+}
+
 // Build assembles the change from an already-resolved target.
 func Build(repo *gitx.Repo, tgt *target.Target, baseSHA string, changed []string) *Set {
 	s := &Set{Target: tgt, BaseSHA: baseSHA}

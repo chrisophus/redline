@@ -11,6 +11,17 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+### Added
+- **The walkthrough can show tests and generated files as totals only.**
+  `body_include: test-totals` turns each test group into its heading and
+  line totals, with no row per file. `generated-totals` adds one heading
+  with how many generated files run left out of the change and how many
+  lines they moved, which the session now records.
+
+### Changed
+- **`line-counts` puts the counts beside each path.** They were a Lines
+  column, which took width from the summary.
+
 ## [0.16.0] - 2026-09-24
 
 ### Added

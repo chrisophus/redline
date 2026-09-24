@@ -789,7 +789,8 @@ drill-in is: one heading per language and role pair, and under it a table of
 the group's files with the agent's one-line summary when it wrote one. Test
 files have a section of their own rather than being left out, which is the
 question a reviewer opens the walkthrough with. The table has only a File and
-a What changed column unless `body_include` adds more. Each extra column takes
+a What changed column unless `body_include` adds more; line counts go beside
+the path, not in a column. Each extra column takes
 width from the summary, and with enough of them GitHub wraps paths in the
 middle, which is why this was a list for a while. A finding that names one of
 the listed files rides under its table; any other finding lands in the list
@@ -811,7 +812,9 @@ one is refused instead of falling back to the overview.
 |---|---|
 | `intent` | the pull request's title and description, as "Stated intent" |
 | `composition` | the lines-by-language-and-type table from the evidence body |
-| `line-counts` | a Lines column, and each group's totals on its heading |
+| `line-counts` | lines added and removed beside each file's path, and each group's totals on its heading |
+| `test-totals` | test files as one heading per group with its totals, and no row per file |
+| `generated-totals` | one heading with the count and totals of the generated files run left out |
 | `evidence` | the one-line-per-pane evidence table, folded |
 | `coverage` | an Uncovered column: added lines no test executed |
 | `lint` | a Findings column: counts by severity, and the note that lint findings are on the report |

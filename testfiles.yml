@@ -10,12 +10,11 @@ finding_marker: redline-finding:v1
 body_style: walkthrough
 
 # Optional extras in the walkthrough. Drop the ones you don't want.
-# intent, evidence and line-counts are left out: the pull request already
-# shows its description and each file's line counts. coverage and lint are
-# left out too, which drops the Uncovered and Findings columns and the note
-# that lint findings are on the report. confirmations and unknowns would add
-# "Checks that passed" and "Could not determine".
+# intent and evidence are left out: the pull request already shows its
+# description. coverage, lint, confirmations and unknowns are left out too.
 body_include:
-  - composition     # the lines-by-language-and-type table
-  - low-confidence  # unsure and hedged findings, folded instead of withheld
-  - diff-links      # each file links to its diff, except tests
+  - line-counts       # +/- beside each file and on each group heading
+  - test-totals       # test files as a heading with totals, no rows
+  - generated-totals  # one heading with the generated files' totals
+  - low-confidence    # unsure and hedged findings, folded instead of withheld
+  - diff-links        # each file links to its diff, except tests

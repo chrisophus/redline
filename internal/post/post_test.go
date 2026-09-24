@@ -883,9 +883,9 @@ func TestWalkthroughBodyMatchesCopilotOrder(t *testing.T) {
 		"**Stated intent.** TICKET-1: do a thing",
 		"### What this change does\n\nAdds a feed.",
 		"<summary>Walkthrough</summary>",
-		"| `a.go` | +10\u00a0−0 | 2 | 1 warning | Staging. |",
-		"| `b.go` | +11\u00a0−1 | — | — | — |\n",
-		"| File | Lines | Uncovered | Findings | What changed |",
+		"| `a.go` +10\u00a0−0 | 2 | 1 warning | Staging. |",
+		"| `b.go` +11\u00a0−1 | — | — | — |\n",
+		"| File | Uncovered | Findings | What changed |",
 		"<summary>Evidence</summary>",
 		"Checks that passed (1)",
 		"Could not determine (1)",
@@ -939,9 +939,9 @@ func TestWalkthroughGroupsTestFilesOfTheirOwn(t *testing.T) {
 	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile("line-counts"), changed)
 	for _, want := range []string{
 		"**go test** (1 file(s), +80\u00a0−1)",
-		"| `a_test.go` | +80\u00a0−1 | — |\n",
+		"| `a_test.go` +80\u00a0−1 | — |\n",
 		"**go source** (1 file(s), +30\u00a0−4)",
-		"| `a.go` | +30\u00a0−4 | real |",
+		"| `a.go` +30\u00a0−4 | real |",
 		"**tsx test** (1 file(s), +12\u00a0−0)",
 	} {
 		if !strings.Contains(p.Body, want) {
@@ -1165,7 +1165,7 @@ func TestWalkthroughCarriesPerFileLines(t *testing.T) {
 	rep.Finalize()
 	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile("line-counts"),
 		[]change.File{{Path: "a.go", Language: "go", Added: 12, Removed: 3}})
-	if !strings.Contains(p.Body, "| `a.go` | +12\u00a0−3 | Staging. |") {
+	if !strings.Contains(p.Body, "| `a.go` +12\u00a0−3 | Staging. |") {
 		t.Fatalf("the walkthrough item must say how many lines moved:\n%s", p.Body)
 	}
 	// The two counts are one word, so a narrow window cannot put them on
@@ -1249,5 +1249,46 @@ func TestWalkthroughLintNoteNeedsTheLintKey(t *testing.T) {
 	}
 	if p := Build(rep, prTarget(), "", nil); !strings.Contains(p.Body, note) {
 		t.Errorf("the evidence body should still say where the lint findings are:\n%s", p.Body)
+	}
+}
+
+// test-totals keeps test files out of the walkthrough: each test group is its
+// heading and totals, with no row per file. generated-totals adds one heading
+// for the generated files run left out of the change.
+func TestWalkthroughTestAndGeneratedTotals(t *testing.T) {
+	rep := &findings.Report{
+		Agent: &findings.AgentReview{Files: map[string]string{"a.go": "real", "a_test.go": "tests it"}},
+		Coverage: findings.Coverage{Generated: []string{"gen/a.pb.go", "gen/b.pb.go"},
+			GeneratedAdded: 500, GeneratedRemoved: 20},
+		Findings: []findings.Finding{
+			// No line, so it rides in the body rather than as a comment.
+			{File: "a_test.go", Rule: "skip-added", Substrate: "migrations",
+				Severity: findings.SeverityWarning, Message: "the test never fails"},
+		},
+	}
+	rep.Finalize()
+	changed := []change.File{
+		{Path: "a.go", Language: "go", Added: 30, Removed: 4},
+		{Path: "a_test.go", Language: "go", Added: 80, Removed: 1},
+	}
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile("test-totals", "generated-totals"), changed)
+	for _, want := range []string{
+		"**go test** (1 file(s), +80\u00a0−1)",
+		"**generated** (2 file(s), +500\u00a0−20)",
+		"| `a.go` | real |",
+		// The test file's finding is not lost with its row.
+		"the test never fails",
+	} {
+		if !strings.Contains(p.Body, want) {
+			t.Errorf("walkthrough missing %q:\n%s", want, p.Body)
+		}
+	}
+	if strings.Contains(p.Body, "tests it") || strings.Contains(p.Body, "| `a_test.go`") {
+		t.Errorf("test-totals should not list test files:\n%s", p.Body)
+	}
+
+	plain := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changed)
+	if !strings.Contains(plain.Body, "| `a_test.go` | tests it |") || strings.Contains(plain.Body, "**generated**") {
+		t.Errorf("without the keys test files are listed and generated ones are not:\n%s", plain.Body)
 	}
 }
