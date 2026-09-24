@@ -11,6 +11,8 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-24
+
 ### Added
 - **The walkthrough can link each file to its diff.** A profile with
   `body_include: diff-links` makes each path in the walkthrough a link to that
@@ -18,31 +20,6 @@ Releases whose tag carries only a subject line are listed as that subject.
   generated files were already left out of the walkthrough.
 - **The walkthrough can carry the lines-by-language table.** `body_include:
   composition` adds the table the evidence body already had.
-
-### Changed
-- **The walkthrough lists files in a table again.** One table per language
-  and type group, with File and What changed columns. `line-counts`,
-  `coverage` and `lint` each add a column. It was a list because a table
-  with four columns made GitHub wrap paths in the middle; with only the
-  columns a profile asks for, the summary keeps most of the width.
-- **The walkthrough mentions lint findings only under `lint`.** The
-  "N lint finding(s) are on the report" line needs the key now. The
-  evidence body still always carries it.
-- **The walkthrough is lean unless a profile asks for more.** The stated
-  intent, the folded evidence table and the per-file line counts are now the
-  `body_include` keys `intent`, `evidence` and `line-counts`. The pull request
-  already shows its own description and GitHub's Files tab its own counts. A
-  profile that wants the old body adds all three.
-- **The recap applies without `--recap`.** When `redline review --since` wrote
-  a recap, a walkthrough post puts it in place of "What this change does", measured from
-  the commit the session now stores with it, and the walkthrough lists only the
-  files that changed since that commit. `--recap` now only makes it required.
-- **A finding the checking pass ruled out leaves no trace on the pull
-  request.** It was counted in the "further finding(s)... said they were
-  uncertain" note, which was wrong about why it was held back. It stays on the
-  report with the reason.
-- **`low-confidence` folds hedged findings too.** They were counted as
-  withheld even with the key set.
 - **A run says what it is running and what did not run.** Between the
   observing line and the report's address a run printed nothing, and a lint
   pane that would not start or a context provider that was not on PATH was
@@ -70,6 +47,30 @@ Releases whose tag carries only a subject line are listed as that subject.
   turn also prints the reasoning summary the endpoint showed, bounded to a
   line, where before it printed only how many characters of it there were.
 
+### Changed
+- **The walkthrough lists files in a table again.** One table per language
+  and type group, with File and What changed columns. `line-counts`,
+  `coverage` and `lint` each add a column. It was a list because a table
+  with four columns made GitHub wrap paths in the middle; with only the
+  columns a profile asks for, the summary keeps most of the width.
+- **The walkthrough mentions lint findings only under `lint`.** The
+  "N lint finding(s) are on the report" line needs the key now. The
+  evidence body still always carries it.
+- **The walkthrough is lean unless a profile asks for more.** The stated
+  intent, the folded evidence table and the per-file line counts are now the
+  `body_include` keys `intent`, `evidence` and `line-counts`. The pull request
+  already shows its own description and GitHub's Files tab its own counts. A
+  profile that wants the old body adds all three.
+- **The recap applies without `--recap`.** When `redline review --since` wrote
+  a recap, a walkthrough post puts it in place of "What this change does", measured from
+  the commit the session now stores with it, and the walkthrough lists only the
+  files that changed since that commit. `--recap` now only makes it required.
+- **A finding the checking pass ruled out leaves no trace on the pull
+  request.** It was counted in the "further finding(s)... said they were
+  uncertain" note, which was wrong about why it was held back. It stays on the
+  report with the reason.
+- **`low-confidence` folds hedged findings too.** They were counted as
+  withheld even with the key set.
 ### Fixed
 - **A `--prepare` step's output stays off stdout.** The produce command's
   stdout was the report's stdout, so `redline run --prepare --format json`
