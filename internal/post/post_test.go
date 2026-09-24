@@ -8,6 +8,7 @@ import (
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/cover"
 	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/pane/lint"
 	"github.com/chrisophus/redline/internal/target"
 )
 
@@ -1228,5 +1229,25 @@ func TestWalkthroughLeavesOutWhatItWasNotAskedFor(t *testing.T) {
 	c := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile("composition"), changedFiles("a.go"))
 	if !strings.Contains(c.Body, "| go | source | 1 | 10 | 0 |") {
 		t.Errorf("composition should add the lines-by-language table:\n%s", c.Body)
+	}
+}
+
+// The walkthrough says lint findings are on the report only when the profile
+// lists lint. The evidence body always says it, beside its evidence table.
+func TestWalkthroughLintNoteNeedsTheLintKey(t *testing.T) {
+	rep := &findings.Report{Findings: []findings.Finding{
+		{File: "a.go", Line: 3, Rule: "errcheck", Substrate: lint.DeltaSubstrate,
+			Severity: findings.SeverityWarning, Message: "unchecked error"},
+	}}
+	rep.Finalize()
+	const note = "lint finding(s) are on the report"
+	if p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changedFiles("a.go")); strings.Contains(p.Body, note) {
+		t.Errorf("without lint the walkthrough should not mention lint findings:\n%s", p.Body)
+	}
+	if p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile("lint"), changedFiles("a.go")); !strings.Contains(p.Body, note) {
+		t.Errorf("with lint the walkthrough should say where the lint findings are:\n%s", p.Body)
+	}
+	if p := Build(rep, prTarget(), "", nil); !strings.Contains(p.Body, note) {
+		t.Errorf("the evidence body should still say where the lint findings are:\n%s", p.Body)
 	}
 }

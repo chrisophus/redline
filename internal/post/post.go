@@ -796,7 +796,14 @@ func buildBodyWalkthrough(p Payload) string {
 	if p.profile.includes("unknowns") {
 		head0.WriteString(unknownsSection(p.rep))
 	}
-	tail := bodyTail(p.reportURL, p.CommitID, p.profile, p.attestedVerdict(), p.withheld, p.hedged, p.lint)
+	// The lint note rides with the lint key. The walkthrough has no evidence
+	// table unless asked for one, and a line about findings kept off the pull
+	// request is noise to a reader who did not ask about lint.
+	lintNote := 0
+	if p.profile.includes("lint") {
+		lintNote = p.lint
+	}
+	tail := bodyTail(p.reportURL, p.CommitID, p.profile, p.attestedVerdict(), p.withheld, p.hedged, lintNote)
 	budget := maxBody - head0.Len() - len(tail)
 	middle := notShownSection(leftover, p.CommitID, p.profile, budget)
 	low := lowConfidenceSection(p.lowConf, p.CommitID, p.profile, budget-len(middle))

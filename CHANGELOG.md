@@ -25,6 +25,9 @@ Releases whose tag carries only a subject line are listed as that subject.
   `coverage` and `lint` each add a column. It was a list because a table
   with four columns made GitHub wrap paths in the middle; with only the
   columns a profile asks for, the summary keeps most of the width.
+- **The walkthrough mentions lint findings only under `lint`.** The
+  "N lint finding(s) are on the report" line needs the key now. The
+  evidence body still always carries it.
 - **The walkthrough is lean unless a profile asks for more.** The stated
   intent, the folded evidence table and the per-file line counts are now the
   `body_include` keys `intent`, `evidence` and `line-counts`. The pull request

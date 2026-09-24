@@ -813,7 +813,7 @@ one is refused instead of falling back to the overview.
 | `line-counts` | a Lines column, and each group's totals on its heading |
 | `evidence` | the one-line-per-pane evidence table, folded |
 | `coverage` | an Uncovered column: added lines no test executed |
-| `lint` | a Findings column: counts by severity |
+| `lint` | a Findings column: counts by severity, and the note that lint findings are on the report |
 | `confirmations` | the checks that ran clean, folded |
 | `unknowns` | what could not be determined, folded |
 | `diff-links` | a link from each file to its diff on the Files tab, except test files |
