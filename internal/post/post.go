@@ -848,20 +848,14 @@ func walkthroughHeading(gateVerdict string) string {
 
 // walkthroughSection is the collapsible account of every changed file, in the
 // same sections the HTML report drills into: one heading per language and role
-// pair, the files of that group under it, and how many lines each one moved.
-// The heading carries the group's own totals, so the shape of the change is
-// readable without adding the rows up. Grouping is change.CompositionGroups,
-// which is what the report groups by, and the dominant part of the change
-// comes first.
+// pair, and a table of that group's files under it. Grouping is
+// change.CompositionGroups, which is what the report groups by, and the
+// dominant part of the change comes first.
 //
-// A file is one list item rather than a table row. A table made GitHub divide
-// the width between the columns, and the summary column, which is prose and
-// the longest, took it: a path wrapped in the middle and the two line counts
-// landed on separate lines. A list has one column and nothing to divide.
-//
-// Each file also gets the agent's one-line summary when it wrote one, and what
-// body_include turns on: coverage names the added lines a profile shows
-// unexecuted, lint counts what landed on the file by severity. Both read the
+// Each row is the file and the agent's one-line summary, plus what
+// body_include turns on: line-counts adds the lines moved (and the group's
+// totals to its heading), coverage the added lines a profile shows
+// unexecuted, lint what landed on the file by severity. All of it reads the
 // report the run wrote.
 //
 // Test files are in their own group rather than left out. They used to be
@@ -906,29 +900,46 @@ func walkthroughSection(p Payload, files []change.File, title string, perFile ma
 			fmt.Fprintf(&sec, "**%s %s** (%d file(s))\n\n",
 				escapeLine(g.Language), escapeLine(g.Kind), len(g.Files))
 		}
+		// One table per group. The columns other than the file and its
+		// summary are only there when the profile asks for them, which keeps
+		// the prose column wide enough that a path does not wrap in the
+		// middle; that wrapping is why this was once a list instead.
+		header, rule := "| File |", "|---|"
+		if withCounts {
+			header, rule = header+" Lines |", rule+"---:|"
+		}
+		if withCoverage {
+			header, rule = header+" Uncovered |", rule+"---:|"
+		}
+		if withLint {
+			header, rule = header+" Findings |", rule+"---|"
+		}
+		header, rule = header+" What changed |\n", rule+"---|\n"
+		sec.WriteString(header)
+		sec.WriteString(rule)
 		shown := 0
 		for _, f := range group {
-			name := fmt.Sprintf("`%s`", escapeLine(f.Path))
+			name := fmt.Sprintf("`%s`", escapeCell(f.Path))
 			// Tests are left unlinked: the reader goes to the code under
 			// review, and a link on every row costs walkthrough budget.
 			// Generated files never get here, run drops them first.
 			if withLinks && g.Kind != change.KindTest {
 				name = fmt.Sprintf("[%s](%s)", name, diffLink(p.prURL, f.Path))
 			}
-			item := "- " + name
+			item := "| " + name + " |"
 			if withCounts {
-				item += fmt.Sprintf(" +%d%s−%d", f.Added, nbsp, f.Removed)
+				// Joined by a non-breaking space so a narrow column cannot
+				// put the two counts on separate lines.
+				item += fmt.Sprintf(" +%d%s−%d |", f.Added, nbsp, f.Removed)
 			}
-			if n := uncovered[f.Path]; n > 0 {
-				item += fmt.Sprintf(", %d line(s) uncovered", n)
+			if withCoverage {
+				item += " " + orDash(fmt.Sprint(uncovered[f.Path]), uncovered[f.Path] > 0) + " |"
 			}
-			if s := counts[f.Path]; s != "" {
-				item += ", " + escapeLine(s)
+			if withLint {
+				item += " " + orDash(escapeCell(counts[f.Path]), counts[f.Path] != "") + " |"
 			}
-			if s := strings.TrimSpace(summaries[f.Path]); s != "" {
-				item += ": " + escapeLine(s)
-			}
-			item += "\n"
+			summary := strings.TrimSpace(summaries[f.Path])
+			item += " " + orDash(escapeCell(summary), summary != "") + " |\n"
 			if b.Len()+sec.Len()+len(item) > budget {
 				omitted++
 				continue
@@ -938,7 +949,7 @@ func walkthroughSection(p Payload, files []change.File, title string, perFile ma
 			paths = append(paths, f.Path)
 		}
 		if shown == 0 {
-			// A heading over an empty list says less than nothing. The files
+			// A heading over an empty table says less than nothing. The files
 			// it would have listed are already counted as omitted.
 			continue
 		}
@@ -1457,4 +1468,13 @@ func StripMarkers(body string) string {
 func diffLink(prURL, path string) string {
 	sum := sha256.Sum256([]byte(path))
 	return prURL + "/files#diff-" + hex.EncodeToString(sum[:])
+}
+
+// orDash is s when ok, and a dash otherwise, so an empty table cell reads as
+// "nothing here" rather than as a cell that failed to render.
+func orDash(s string, ok bool) string {
+	if ok {
+		return s
+	}
+	return "—"
 }

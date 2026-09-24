@@ -20,6 +20,11 @@ Releases whose tag carries only a subject line are listed as that subject.
   composition` adds the table the evidence body already had.
 
 ### Changed
+- **The walkthrough lists files in a table again.** One table per language
+  and type group, with File and What changed columns. `line-counts`,
+  `coverage` and `lint` each add a column. It was a list because a table
+  with four columns made GitHub wrap paths in the middle; with only the
+  columns a profile asks for, the summary keeps most of the width.
 - **The walkthrough is lean unless a profile asks for more.** The stated
   intent, the folded evidence table and the per-file line counts are now the
   `body_include` keys `intent`, `evidence` and `line-counts`. The pull request

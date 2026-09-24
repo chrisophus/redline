@@ -785,14 +785,15 @@ not get the gate's finding marker. See `redline-review.yml.example`.
 `walkthrough` reads like the author-published Copilot and Bugbot reviews:
 reviewed-by and commit, what the change does, then a collapsible walkthrough
 of every changed file. The walkthrough is sectioned the way the report's
-drill-in is: one heading per language and role pair, the files of the group
-listed under it with the agent's one-line summary when it wrote one. Test
+drill-in is: one heading per language and role pair, and under it a table of
+the group's files with the agent's one-line summary when it wrote one. Test
 files have a section of their own rather than being left out, which is the
-question a reviewer opens the walkthrough with. A file is a list item and not
-a table row: a table made GitHub divide the width between its columns, the
-prose column took most of it, and paths wrapped in the middle. A finding that
-names one of the listed files rides under it there; any other finding lands in
-the list after.
+question a reviewer opens the walkthrough with. The table has only a File and
+a What changed column unless `body_include` adds more. Each extra column takes
+width from the summary, and with enough of them GitHub wraps paths in the
+middle, which is why this was a list for a while. A finding that names one of
+the listed files rides under its table; any other finding lands in the list
+after.
 
 On a pull request Redline has reviewed before, run `redline review --since
 COMMIT` with the commit the last review covered. The describing call then
@@ -809,10 +810,10 @@ one is refused instead of falling back to the overview.
 |---|---|
 | `intent` | the pull request's title and description, as "Stated intent" |
 | `composition` | the lines-by-language-and-type table from the evidence body |
-| `line-counts` | lines added and removed, on each file and each group heading |
+| `line-counts` | a Lines column, and each group's totals on its heading |
 | `evidence` | the one-line-per-pane evidence table, folded |
-| `coverage` | uncovered added lines on each file |
-| `lint` | finding counts by severity on each file |
+| `coverage` | an Uncovered column: added lines no test executed |
+| `lint` | a Findings column: counts by severity |
 | `confirmations` | the checks that ran clean, folded |
 | `unknowns` | what could not be determined, folded |
 | `diff-links` | a link from each file to its diff on the Files tab, except test files |
