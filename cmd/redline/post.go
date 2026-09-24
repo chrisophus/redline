@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/post"
 	"github.com/chrisophus/redline/internal/run"
 	"github.com/chrisophus/redline/internal/target"
@@ -78,12 +79,18 @@ func cmdPost(o opts) error {
 		}
 	}
 	payload := post.BuildAttest(&res.Report, tgt, o.reportURL, commentable, prof, changedFiles(res.Change))
-	if prof != nil && prof.BodyStyle == post.BodyWalkthrough {
-		// The walkthrough body opens with who reviewed and the author's stated
-		// intent, both from gh. Each degrades to empty offline, where the body
-		// simply omits the line rather than rendering a broken one.
+	walkthrough := prof != nil && prof.BodyStyle == post.BodyWalkthrough
+	if walkthrough {
+		// The walkthrough body opens with who reviewed and, when the profile
+		// asks for it, the author's stated intent, both from gh. Each degrades
+		// to empty offline, where the body simply omits the line rather than
+		// rendering a broken one.
 		reviewedBy, _ := ghLogin()
-		payload = payload.WithMeta(statedIntent(owner, repo, num), reviewedBy)
+		intent := ""
+		if prof.Includes("intent") {
+			intent = statedIntent(owner, repo, num)
+		}
+		payload = payload.WithMeta(intent, reviewedBy)
 	}
 
 	// A session outlives the head it observed, so a review can be posted
@@ -113,6 +120,12 @@ func cmdPost(o opts) error {
 	}
 
 	if o.dryRun {
+		// No earlier reviews offline, so a recap needs its commit from the
+		// session or from --since.
+		payload, err = withRecap(o, payload, res.Report.Agent, walkthrough, nil, "", tgt.Head)
+		if err != nil {
+			return err
+		}
 		return emitJSON(reviewRequest(payload))
 	}
 
@@ -141,31 +154,9 @@ func cmdPost(o opts) error {
 	// the comment bodies would offer it again on every re-post.
 	posted := post.Fingerprints(append(append([]string{}, commentBodies...), reviewBodies...))
 	payload = payload.Unposted(posted)
-	if o.recap {
-		// The commit the previous review ran against comes off the marker that
-		// review already carries, so the common case needs no argument. --since
-		// overrides it for a first --recap post, or a body someone edited.
-		since := o.since
-		if since == "" {
-			since = latestReviewedHead(reviews, me, tgt.Head)
-		}
-		switch {
-		case prof == nil || prof.BodyStyle != post.BodyWalkthrough:
-			// WithRecap only reaches the body buildBodyWalkthrough writes, so
-			// on the evidence body the flag passes every check above and then
-			// changes nothing. Refused rather than ignored: a recap that was
-			// asked for and is not there reads as the review having nothing
-			// to say about what moved.
-			return fmt.Errorf("--recap replaces the walkthrough, and this post writes the evidence body, "+
-				"which has none; post with a profile whose body_style is %s", post.BodyWalkthrough)
-		case since == "":
-			return fmt.Errorf("--recap replaces the walkthrough with what changed since the previous review, " +
-				"and no earlier Redline review was found on this pull request; drop --recap, or pass --since COMMIT")
-		case res.Report.Agent == nil || res.Report.Agent.Recap == "":
-			return fmt.Errorf("--recap needs the paragraph the describing call writes, and this session has none; "+
-				"re-run `redline review --since %s` first", since[:min(8, len(since))])
-		}
-		payload = payload.WithRecap(res.Report.Agent.Recap, since)
+	payload, err = withRecap(o, payload, res.Report.Agent, walkthrough, reviews, me, tgt.Head)
+	if err != nil {
+		return err
 	}
 	alreadyReviewed := post.ReviewedAt(reviewBodies, tgt.Head)
 	attestSame := true
@@ -195,6 +186,56 @@ func cmdPost(o opts) error {
 	}
 	fmt.Fprintln(os.Stderr)
 	return nil
+}
+
+// withRecap opens the body with what changed since the previous review in
+// place of the overview, when the session has that paragraph.
+//
+// It happens without --recap on a walkthrough body whenever it can, because
+// the paragraph exists only when `redline review --since` was asked for it.
+// --recap makes it required: every reason it cannot happen is then an error
+// rather than a quiet fall back to the overview, since a recap that was asked
+// for and is not there reads as the review having nothing to say about what
+// moved.
+//
+// The commit comes from the session first, since that is the one the
+// paragraph was written against; then --since, for a session from before the
+// commit was stored; then the marker on the latest earlier review.
+func withRecap(o opts, payload post.Payload, agent *findings.AgentReview, walkthrough bool,
+	reviews []ghAuthoredBody, me, head string) (post.Payload, error) {
+	recap, stored := "", ""
+	var files []string
+	if agent != nil {
+		recap, stored, files = agent.Recap, agent.RecapSince, agent.RecapFiles
+	}
+	if o.since != "" && stored != "" && !strings.HasPrefix(stored, o.since) {
+		return payload, fmt.Errorf("--since %s: this session's recap was written against %s; "+
+			"drop --since, or re-run `redline review --since %s`", o.since, shortSHA(stored), o.since)
+	}
+	since := cmp.Or(stored, o.since)
+	if since == "" {
+		since = latestReviewedHead(reviews, me, head)
+	}
+	if !o.recap {
+		if !walkthrough || recap == "" || since == "" {
+			return payload, nil
+		}
+		return payload.WithRecap(recap, since, files), nil
+	}
+	switch {
+	case !walkthrough:
+		// WithRecap only reaches the body buildBodyWalkthrough writes, so on
+		// the evidence body the flag would change nothing.
+		return payload, fmt.Errorf("--recap replaces the overview, and this post writes the evidence body, "+
+			"which has none; post with a profile whose body_style is %s", post.BodyWalkthrough)
+	case since == "":
+		return payload, fmt.Errorf("--recap replaces the overview with what changed since the previous review, " +
+			"and no earlier Redline review was found on this pull request; drop --recap, or pass --since COMMIT")
+	case recap == "":
+		return payload, fmt.Errorf("--recap needs the paragraph the describing call writes, and this session has none; "+
+			"re-run `redline review --since %s` first", shortSHA(since))
+	}
+	return payload.WithRecap(recap, since, files), nil
 }
 
 // enforceProfile applies author-only. HEAD freshness is not a refusal: a

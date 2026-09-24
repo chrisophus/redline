@@ -27,34 +27,46 @@ func recapPayload(t *testing.T) Payload {
 	}
 }
 
-// The recap replaces the overview and the per-file table rather than joining
-// them. Rendering both would leave the body longer than the one it exists to
-// shorten.
+// The recap replaces the overview, and the per-file list under it keeps only
+// the files that moved since the last review. Repeating the whole walkthrough
+// would leave the body longer than the one it exists to shorten.
 func TestTheRecapReplacesTheWalkthrough(t *testing.T) {
 	p := recapPayload(t)
 	before := p.renderBody()
-	for _, want := range []string{"What it does", "batches the recompute"} {
+	for _, want := range []string{"What this change does", "batches the recompute", "first file"} {
 		if !strings.Contains(before, want) {
 			t.Fatalf("the ordinary body is missing %q, so this test is not comparing what it thinks", want)
 		}
 	}
-	after := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678").Body
-	if !strings.Contains(after, "Since the last review") {
+	after := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678", []string{"b.go"}).Body
+	if !strings.Contains(after, "### Since the last review (`abc1234def56`)") {
 		t.Error("the recap body does not say what it is")
 	}
 	if !strings.Contains(after, "transaction boundary moved") {
 		t.Error("the recap paragraph is missing")
 	}
-	for _, gone := range []string{"What it does", "batches the recompute", "first file", "second file"} {
+	for _, gone := range []string{"What this change does", "batches the recompute", "first file"} {
 		if strings.Contains(after, gone) {
 			t.Errorf("the recap body still repeats %q", gone)
 		}
 	}
+	if !strings.Contains(after, "Files changed since `abc1234def56`") || !strings.Contains(after, "second file") {
+		t.Errorf("the recap body should list the file that moved since the last review:\n%s", after)
+	}
 	if !strings.Contains(after, "abc1234def56") {
 		t.Error("the recap body does not name the commit it is measured against")
 	}
-	if len(after) >= len(before) {
-		t.Errorf("the recap body is %d bytes against the walkthrough's %d", len(after), len(before))
+
+	// A session from before the moved files were stored cannot say which
+	// files the recap covers. It gets the whole walkthrough under its usual
+	// title, since an empty list would read as nothing having changed. So
+	// does a list whose files are none of this change's.
+	for _, files := range [][]string{nil, {"elsewhere.go"}} {
+		all := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678", files).Body
+		if !strings.Contains(all, "<summary>Walkthrough</summary>") ||
+			!strings.Contains(all, "first file") || !strings.Contains(all, "second file") {
+			t.Errorf("with moved files %v the recap body should list every file:\n%s", files, all)
+		}
 	}
 }
 
@@ -69,7 +81,7 @@ func TestARecapWithoutItsCommitChangesNothing(t *testing.T) {
 		{"something changed", ""},
 		{"   ", "abc1234"},
 	} {
-		if got := p.WithRecap(tc.recap, tc.since).renderBody(); got != want {
+		if got := p.WithRecap(tc.recap, tc.since, []string{"a.go"}).renderBody(); got != want {
 			t.Errorf("WithRecap(%q, %q) changed the body", tc.recap, tc.since)
 		}
 	}
@@ -90,7 +102,7 @@ func TestTheHeadsOfEarlierReviewsComeOffTheirMarkers(t *testing.T) {
 }
 
 // A finding on a file the walkthrough would have shown rides in the per-file
-// table, and the recap replaces that table. It has to fall back to the flat
+// table, and the recap leaves unmoved files out of that table. It has to fall back to the flat
 // list, or posting with --recap drops it from the body without saying so.
 //
 // This is the one thing the recap must not do: it exists to stop a walkthrough
@@ -109,7 +121,9 @@ func TestTheRecapBodyStillCarriesAFindingOnAShownFile(t *testing.T) {
 	if !strings.Contains(before, "this rides in the per-file table") {
 		t.Fatal("the ordinary body does not carry the per-file finding, so this test is not comparing what it thinks")
 	}
-	after := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678").Body
+	// a.go did not move since the last review, so it is not listed and its
+	// finding has no row to ride under.
+	after := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678", []string{"b.go"}).Body
 	if !strings.Contains(after, "this was always in the flat list") {
 		t.Error("the recap body dropped a finding that never depended on the table")
 	}
@@ -125,7 +139,7 @@ func TestTheRecapBodyStillCarriesAFindingOnAShownFile(t *testing.T) {
 func TestARecapDoesNothingToTheEvidenceBody(t *testing.T) {
 	p := recapPayload(t)
 	p.profile = &Profile{BodyStyle: BodyEvidence}
-	after := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678").Body
+	after := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678", nil).Body
 	if strings.Contains(after, "transaction boundary moved") || strings.Contains(after, "Since the last review") {
 		t.Error("the evidence body rendered a recap, so cmdPost need not refuse one")
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/cover"
 	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/pane/lint"
 	"github.com/chrisophus/redline/internal/target"
 )
 
@@ -595,6 +596,11 @@ func TestBuildWithholdsARefusedFindingAtEverySeverity(t *testing.T) {
 	if strings.Contains(p.Body, "drops the second write") {
 		t.Error("a withdrawn finding must not fall through into the body either")
 	}
+	// Not even as a count. "1 said they were uncertain" was the note it got,
+	// which was wrong about why and gave the reader nothing to act on.
+	if strings.Contains(p.Body, "further finding(s)") {
+		t.Errorf("a ruled-out finding must leave no note in the body:\n%s", p.Body)
+	}
 }
 
 // An error remains visible even when the reviewer did not name a way to settle
@@ -730,6 +736,19 @@ func TestAHedgedFindingDoesNotPost(t *testing.T) {
 	if !strings.Contains(p.Body, "1 hedged") {
 		t.Fatalf("what was withheld has to be counted: %s", p.Body)
 	}
+
+	// With body_include: low-confidence a hedge folds with the other unsure
+	// findings instead, and is then not counted as withheld.
+	on := BuildAttest(rep, prTarget(), "", nil, &Profile{BodyInclude: map[string]bool{"low-confidence": true}}, nil)
+	if len(on.Comments) != 0 {
+		t.Fatalf("a folded hedge is still not a line comment: %+v", on.Comments)
+	}
+	if !strings.Contains(on.Body, "Low confidence (1)") || !strings.Contains(on.Body, "second-resolution") {
+		t.Fatalf("the hedge should fold into the low-confidence section:\n%s", on.Body)
+	}
+	if strings.Contains(on.Body, "hedged") {
+		t.Fatalf("a folded hedge must not also be counted as withheld:\n%s", on.Body)
+	}
 }
 
 // A pane's message is fixed text written by whoever wrote the pane, so reading
@@ -855,19 +874,18 @@ func TestWalkthroughBodyMatchesCopilotOrder(t *testing.T) {
 		Agent: &findings.AgentReview{Overview: "Adds a feed.", Files: map[string]string{"a.go": "Staging."}},
 	}
 	rep.Finalize()
-	prof := walkthroughProfile("coverage", "lint", "confirmations", "unknowns")
+	prof := walkthroughProfile("coverage", "lint", "confirmations", "unknowns", "intent", "evidence", "line-counts")
 	p := BuildAttest(rep, prTarget(), "", nil, prof, changedFiles("a.go", "b.go")).
 		WithMeta("TICKET-1: do a thing", "bot[bot]")
 	for _, want := range []string{
 		"### Review findings",
 		"**Reviewed by.** bot[bot] on `deadbeef`.",
 		"**Stated intent.** TICKET-1: do a thing",
-		"**What it does.** Adds a feed.",
+		"### What this change does\n\nAdds a feed.",
 		"<summary>Walkthrough</summary>",
-		"- `a.go` +10\u00a0−0, 2 line(s) uncovered, 1 warning: Staging.",
-		"- `b.go` +11\u00a0−1\n",
-		"2 line(s) uncovered",
-		"1 warning",
+		"| `a.go` | +10\u00a0−0 | 2 | 1 warning | Staging. |",
+		"| `b.go` | +11\u00a0−1 | — | — | — |\n",
+		"| File | Lines | Uncovered | Findings | What changed |",
 		"<summary>Evidence</summary>",
 		"Checks that passed (1)",
 		"Could not determine (1)",
@@ -918,12 +936,12 @@ func TestWalkthroughGroupsTestFilesOfTheirOwn(t *testing.T) {
 		{Path: "a_test.go", Language: "go", Added: 80, Removed: 1},
 		{Path: "ui/x.test.tsx", Language: "tsx", Added: 12, Removed: 0},
 	}
-	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changed)
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile("line-counts"), changed)
 	for _, want := range []string{
 		"**go test** (1 file(s), +80\u00a0−1)",
-		"- `a_test.go` +80\u00a0−1\n",
+		"| `a_test.go` | +80\u00a0−1 | — |\n",
 		"**go source** (1 file(s), +30\u00a0−4)",
-		"- `a.go` +30\u00a0−4: real",
+		"| `a.go` | +30\u00a0−4 | real |",
 		"**tsx test** (1 file(s), +12\u00a0−0)",
 	} {
 		if !strings.Contains(p.Body, want) {
@@ -1091,7 +1109,7 @@ func TestBodyCarriesTheComposition(t *testing.T) {
 	}
 	// The walkthrough layout says the same thing in its own headings, so it
 	// does not also carry the table.
-	w := BuildAttest(sampleReport(), prTarget(), "", nil, walkthroughProfile(), files)
+	w := BuildAttest(sampleReport(), prTarget(), "", nil, walkthroughProfile("line-counts"), files)
 	if strings.Contains(w.Body, "**Lines by language and type.**") {
 		t.Fatalf("the walkthrough headings replace the table, not sit under it:\n%s", w.Body)
 	}
@@ -1140,19 +1158,96 @@ func TestCompositionCapsItsRows(t *testing.T) {
 	}
 }
 
-// How many lines each file moved rides in the walkthrough table, beside the
-// file it is about.
+// With line-counts, how many lines each file moved rides in the walkthrough
+// table, beside the file it is about.
 func TestWalkthroughCarriesPerFileLines(t *testing.T) {
 	rep := &findings.Report{Agent: &findings.AgentReview{Files: map[string]string{"a.go": "Staging."}}}
 	rep.Finalize()
-	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(),
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile("line-counts"),
 		[]change.File{{Path: "a.go", Language: "go", Added: 12, Removed: 3}})
-	if !strings.Contains(p.Body, "- `a.go` +12\u00a0−3: Staging.") {
+	if !strings.Contains(p.Body, "| `a.go` | +12\u00a0−3 | Staging. |") {
 		t.Fatalf("the walkthrough item must say how many lines moved:\n%s", p.Body)
 	}
 	// The two counts are one word, so a narrow window cannot put them on
 	// separate lines.
 	if strings.Contains(p.Body, "+12 −3") {
 		t.Fatalf("the line counts must be joined by a non-breaking space:\n%s", p.Body)
+	}
+}
+
+// With body_include: diff-links, a walkthrough row links to its file on the
+// pull request's Files tab, anchored by the SHA-256 of the path. Test files
+// stay unlinked, and without the key no row is linked.
+func TestWalkthroughDiffLinks(t *testing.T) {
+	rep := &findings.Report{}
+	rep.Finalize()
+	files := changedFiles("a.go", "a_test.go")
+
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile("diff-links"), files)
+	// The anchor is the hex SHA-256 of "a.go".
+	want := "| [`a.go`](https://github.com/o/r/pull/7/files#diff-" +
+		"ffc4fd9bc24722ba464194a85b255d4b50945f3e68a120122e11f6cdae4a8c19) |"
+	if !strings.Contains(p.Body, want) {
+		t.Fatalf("a.go should link to its diff, want %q:\n%s", want, p.Body)
+	}
+	if !strings.Contains(p.Body, "| `a_test.go` | — |") {
+		t.Fatalf("a test file should stay unlinked:\n%s", p.Body)
+	}
+
+	plain := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), files)
+	if strings.Contains(plain.Body, "/files#diff-") {
+		t.Fatalf("without diff-links no row should link:\n%s", plain.Body)
+	}
+}
+
+// A walkthrough with no body_include is the lean one. The stated intent, the
+// evidence table and the line counts used to be written every time; the pull
+// request already shows its own description, and GitHub's Files tab already
+// gives each file's counts, so they are opt-in.
+func TestWalkthroughLeavesOutWhatItWasNotAskedFor(t *testing.T) {
+	rep := sampleReport()
+	rep.Agent = &findings.AgentReview{Overview: "Adds a feed.", Files: map[string]string{"a.go": "Staging."}}
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changedFiles("a.go")).
+		WithMeta("TICKET-1: do a thing", "bot[bot]")
+	for _, gone := range []string{
+		"Stated intent", "TICKET-1",
+		"<summary>Evidence</summary>",
+		"Lines by language and type",
+		"+10",
+	} {
+		if strings.Contains(p.Body, gone) {
+			t.Errorf("the lean walkthrough should not carry %q:\n%s", gone, p.Body)
+		}
+	}
+	for _, want := range []string{"### What this change does\n\nAdds a feed.", "**go source** (1 file(s))", "| `a.go` | Staging. |"} {
+		if !strings.Contains(p.Body, want) {
+			t.Errorf("the lean walkthrough is missing %q:\n%s", want, p.Body)
+		}
+	}
+
+	// composition puts the evidence body's table into the walkthrough.
+	c := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile("composition"), changedFiles("a.go"))
+	if !strings.Contains(c.Body, "| go | source | 1 | 10 | 0 |") {
+		t.Errorf("composition should add the lines-by-language table:\n%s", c.Body)
+	}
+}
+
+// The walkthrough says lint findings are on the report only when the profile
+// lists lint. The evidence body always says it, beside its evidence table.
+func TestWalkthroughLintNoteNeedsTheLintKey(t *testing.T) {
+	rep := &findings.Report{Findings: []findings.Finding{
+		{File: "a.go", Line: 3, Rule: "errcheck", Substrate: lint.DeltaSubstrate,
+			Severity: findings.SeverityWarning, Message: "unchecked error"},
+	}}
+	rep.Finalize()
+	const note = "lint finding(s) are on the report"
+	if p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changedFiles("a.go")); strings.Contains(p.Body, note) {
+		t.Errorf("without lint the walkthrough should not mention lint findings:\n%s", p.Body)
+	}
+	if p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile("lint"), changedFiles("a.go")); !strings.Contains(p.Body, note) {
+		t.Errorf("with lint the walkthrough should say where the lint findings are:\n%s", p.Body)
+	}
+	if p := Build(rep, prTarget(), "", nil); !strings.Contains(p.Body, note) {
+		t.Errorf("the evidence body should still say where the lint findings are:\n%s", p.Body)
 	}
 }

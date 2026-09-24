@@ -117,7 +117,8 @@ func TestReviewKeepsTheNoteItWasGiven(t *testing.T) {
 func TestRecapSurvivesAReviewFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "review.json")
-	body := `{"overview":"what it does","recap":"  what moved since  ","files":{"a.go":"first"}}`
+	body := `{"overview":"what it does","recap":"  what moved since  ","recapSince":"abc123",` +
+		`"recapFiles":["a.go"],"files":{"a.go":"first"}}`
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -127,5 +128,10 @@ func TestRecapSurvivesAReviewFile(t *testing.T) {
 	}
 	if got.Recap != "what moved since" {
 		t.Errorf("Recap read back as %q", got.Recap)
+	}
+	// The commit and files travel with it, or post cannot say what the recap
+	// measures from.
+	if got.RecapSince != "abc123" || len(got.RecapFiles) != 1 || got.RecapFiles[0] != "a.go" {
+		t.Errorf("RecapSince=%q RecapFiles=%v, want abc123 and [a.go]", got.RecapSince, got.RecapFiles)
 	}
 }

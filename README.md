@@ -715,8 +715,8 @@ paths and line counts and leaves the reader to add them up. The table costs
 about 130 bytes for a change in one language and 30 more for each further
 language-and-role pair, and a change touching more than twelve pairs has the
 rest summed into one row, so it cannot push a finding off the end of the body.
-The walkthrough body says the same thing in the headings of its own sections,
-so it does not carry this table as well.
+The walkthrough body leaves the table out unless its profile lists
+`composition` under `body_include`.
 
 When a review has been written — by `redline review` or by hand into
 `review.json` — the body also carries the agent's account of the change: what
@@ -751,8 +751,11 @@ reviewer's own findings: a pane's finding carries no confidence at all, so
 this can never withhold something that was measured.
 A repository that would rather see them can set `body_include: low-confidence`,
 which folds them into a collapsed block on the pull request instead of holding
-them back. This includes findings whose question says nothing would settle them;
-they still never open a line comment and never gate.
+them back. This includes findings whose question says nothing would settle them
+and hedged findings; they still never open a line comment and never gate.
+A finding the checking pass ruled out is different. It stays on the report
+with the reason and does not reach the pull request at all, not even as a
+count.
 
 A finding becomes a line-anchored comment only when its `file:line` is on a
 changed line in the PR's diff; findings off the diff (or with no line) go in
@@ -780,24 +783,50 @@ not get the gate's finding marker. See `redline-review.yml.example`.
 
 `body_style` chooses the layout. `evidence` (the default) is the body above.
 `walkthrough` reads like the author-published Copilot and Bugbot reviews:
-reviewed-by and commit, the pull request's stated intent, what the change
-does, then a collapsible walkthrough of every changed file. The walkthrough is
-sectioned the way the report's drill-in is: one heading per language and role
-pair carrying that group's file count and lines, the files of the group listed
-under it with how many lines each one moved and the agent's one-line summary
-when it wrote one. Test files have a section of their own rather than being
-left out, which is the question a reviewer opens the walkthrough with. A file
-is a list item and not a table row: a table made GitHub divide the width
-between its columns, the prose column took most of it, and paths wrapped in
-the middle while a file's two line counts landed on separate lines. A section
-costs about 40 bytes over the items in it, and each item about 55. A finding
-that names one of those files rides under it there; only a finding with no
-file lands in the list after. `body_include` decides how much of the report rides along:
-`coverage` and `lint` add to each file's line, `confirmations` and `unknowns`
-fold in the report sections the body otherwise drops, and `low-confidence`
-folds the reviewer's unsure findings behind a chevron rather than withholding
-them (the one add-on that also applies to the evidence body). All of it comes
-from the session `run` already wrote, so posting still observes nothing.
+reviewed-by and commit, a "What this change does" section, then a collapsible walkthrough
+of every changed file. The walkthrough is sectioned the way the report's
+drill-in is: one heading per language and role pair, and under it a table of
+the group's files with the agent's one-line summary when it wrote one. Test
+files have a section of their own rather than being left out, which is the
+question a reviewer opens the walkthrough with. The table has only a File and
+a What changed column unless `body_include` adds more. Each extra column takes
+width from the summary, and with enough of them GitHub wraps paths in the
+middle, which is why this was a list for a while. A finding that names one of
+the listed files rides under its table; any other finding lands in the list
+after.
+
+On a pull request Redline has reviewed before, run `redline review --since
+COMMIT` with the commit the last review covered. The describing call then
+writes a paragraph on what moved since then, and the session keeps it with
+that commit and the files that changed. `post` puts it under a "Since the last
+review" heading in place of "What this change does", and the walkthrough lists only the files
+that changed since that commit. A session written before the moved files were
+stored gets the whole walkthrough instead. This happens on its own whenever the session
+has the paragraph; `--recap` makes it required, so a post that cannot carry
+one is refused instead of falling back to the overview.
+
+`body_include` decides how much of the report rides along:
+
+| Key | What it adds to the walkthrough |
+|---|---|
+| `intent` | the pull request's title and description, as "Stated intent" |
+| `composition` | the lines-by-language-and-type table from the evidence body |
+| `line-counts` | a Lines column, and each group's totals on its heading |
+| `evidence` | the one-line-per-pane evidence table, folded |
+| `coverage` | an Uncovered column: added lines no test executed |
+| `lint` | a Findings column: counts by severity, and the note that lint findings are on the report |
+| `confirmations` | the checks that ran clean, folded |
+| `unknowns` | what could not be determined, folded |
+| `diff-links` | a link from each file to its diff on the Files tab, except test files |
+| `low-confidence` | the reviewer's unsure and hedged findings, folded instead of withheld |
+
+`low-confidence` is the one key that also applies to the evidence body.
+`intent`, `evidence` and `line-counts` used to be written on every walkthrough;
+the pull request already shows its own description and GitHub's Files tab its
+own line counts, so a profile now asks for them. The Files tab shows the pull
+request as it is now, so after a later push a diff link opens a newer diff than
+the one the review read. All of it comes from the session `run` already wrote,
+so posting still observes nothing.
 
 ## What a run prints
 

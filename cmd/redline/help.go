@@ -195,8 +195,8 @@ func postFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.reportURL, "report-url", "", "link to the full report in the review body (e.g. a CI artifact URL)")
 	fs.StringVar(&o.profile, "profile", "", "YAML profile for merge-gate pass/fail markers")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "print the review payload as JSON instead of posting")
-	fs.BoolVar(&o.recap, "recap", false, "open the body with what changed since the previous review instead of repeating the walkthrough")
-	fs.StringVar(&o.since, "since", "", "with --recap: the previous review's commit, when it cannot be read off that review's own marker")
+	fs.BoolVar(&o.recap, "recap", false, "refuse to post without the recap of what changed since the previous review")
+	fs.StringVar(&o.since, "since", "", "the previous review's commit, when neither the session nor that review's marker names it")
 }
 
 func postmortemFlags(fs *flag.FlagSet, o *opts) {
@@ -593,20 +593,16 @@ flags:
   --profile PATH    YAML that stamps pass/fail markers a merge gate can read
                     (error and warning fail unless the file says otherwise).
                     Without it, post still comments and never approves.
-  --recap           open the body with what changed since the previous
-                    review instead of repeating the walkthrough. A pull
-                    request reviewed four times carried four copies of a
-                    walkthrough that had not changed; this replaces the
-                    overview and the per-file table with the paragraph
-                    redline review --since asked the describing call for.
-                    The report still has all of it and the body still links
-                    there. The previous review's commit is read off the
-                    marker that review already carries, so it usually needs
-                    no argument. Refused when this session has no such
-                    paragraph, rather than posting the walkthrough again
-                    under a heading that promises otherwise.
-  --since COMMIT    with --recap: name the previous review's commit, for a
-                    first recap post or a body whose marker was edited away
+  --recap           require the recap. A walkthrough post already opens
+                    with what changed since the previous review, and lists
+                    only the files that moved, whenever the session has the
+                    paragraph redline review --since asked the describing
+                    call for. With --recap a post that cannot carry one is
+                    refused, rather than posting the overview under a
+                    heading that promises otherwise.
+  --since COMMIT    the previous review's commit, for a session from before
+                    review stored it and no marker on the pull request
+                    names it
   --dry-run         print the review payload instead of posting
 `
 
