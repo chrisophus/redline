@@ -761,7 +761,9 @@ func buildBodyWalkthrough(p Payload) string {
 		if len(recap) > maxNarrative {
 			recap = recap[:maxNarrative] + "\n\n_(truncated; the full walkthrough is on the report)_"
 		}
-		fmt.Fprintf(&head0, "**Since the last review** (`%s`). %s\n\n", shortSHA12(p.recapSince), recap)
+		// A heading of its own, the same level as the evidence body's "What
+		// this change does", because it is the part a reader came for.
+		fmt.Fprintf(&head0, "### Since the last review (`%s`)\n\n%s\n\n", shortSHA12(p.recapSince), recap)
 		files = filesIn(p.files, p.recapFiles)
 		title = fmt.Sprintf("Files changed since `%s`", shortSHA12(p.recapSince))
 	} else if p.rep != nil && p.rep.Agent != nil {
@@ -769,7 +771,7 @@ func buildBodyWalkthrough(p Payload) string {
 			if len(ov) > maxNarrative {
 				ov = ov[:maxNarrative] + "\n\n_(truncated; the full overview is on the report)_"
 			}
-			fmt.Fprintf(&head0, "**What it does.** %s\n\n", ov)
+			fmt.Fprintf(&head0, "### What this change does\n\n%s\n\n", ov)
 		}
 	}
 	if p.profile.includes("composition") {

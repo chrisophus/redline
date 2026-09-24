@@ -33,19 +33,19 @@ func recapPayload(t *testing.T) Payload {
 func TestTheRecapReplacesTheWalkthrough(t *testing.T) {
 	p := recapPayload(t)
 	before := p.renderBody()
-	for _, want := range []string{"What it does", "batches the recompute", "first file"} {
+	for _, want := range []string{"What this change does", "batches the recompute", "first file"} {
 		if !strings.Contains(before, want) {
 			t.Fatalf("the ordinary body is missing %q, so this test is not comparing what it thinks", want)
 		}
 	}
 	after := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678", []string{"b.go"}).Body
-	if !strings.Contains(after, "Since the last review") {
+	if !strings.Contains(after, "### Since the last review (`abc1234def56`)") {
 		t.Error("the recap body does not say what it is")
 	}
 	if !strings.Contains(after, "transaction boundary moved") {
 		t.Error("the recap paragraph is missing")
 	}
-	for _, gone := range []string{"What it does", "batches the recompute", "first file"} {
+	for _, gone := range []string{"What this change does", "batches the recompute", "first file"} {
 		if strings.Contains(after, gone) {
 			t.Errorf("the recap body still repeats %q", gone)
 		}

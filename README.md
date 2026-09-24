@@ -783,7 +783,7 @@ not get the gate's finding marker. See `redline-review.yml.example`.
 
 `body_style` chooses the layout. `evidence` (the default) is the body above.
 `walkthrough` reads like the author-published Copilot and Bugbot reviews:
-reviewed-by and commit, what the change does, then a collapsible walkthrough
+reviewed-by and commit, a "What this change does" section, then a collapsible walkthrough
 of every changed file. The walkthrough is sectioned the way the report's
 drill-in is: one heading per language and role pair, and under it a table of
 the group's files with the agent's one-line summary when it wrote one. Test
@@ -798,8 +798,8 @@ after.
 On a pull request Redline has reviewed before, run `redline review --since
 COMMIT` with the commit the last review covered. The describing call then
 writes a paragraph on what moved since then, and the session keeps it with
-that commit and the files that changed. `post` puts it in place of "What it
-does" under "Since the last review", and the walkthrough lists only the files
+that commit and the files that changed. `post` puts it under a "Since the last
+review" heading in place of "What this change does", and the walkthrough lists only the files
 that changed since that commit. This happens on its own whenever the session
 has the paragraph; `--recap` makes it required, so a post that cannot carry
 one is refused instead of falling back to the overview.

@@ -880,7 +880,7 @@ func TestWalkthroughBodyMatchesCopilotOrder(t *testing.T) {
 		"### Review findings",
 		"**Reviewed by.** bot[bot] on `deadbeef`.",
 		"**Stated intent.** TICKET-1: do a thing",
-		"**What it does.** Adds a feed.",
+		"### What this change does\n\nAdds a feed.",
 		"<summary>Walkthrough</summary>",
 		"| `a.go` | +10\u00a0−0 | 2 | 1 warning | Staging. |",
 		"| `b.go` | +11\u00a0−1 | — | — | — |\n",
@@ -1218,7 +1218,7 @@ func TestWalkthroughLeavesOutWhatItWasNotAskedFor(t *testing.T) {
 			t.Errorf("the lean walkthrough should not carry %q:\n%s", gone, p.Body)
 		}
 	}
-	for _, want := range []string{"**What it does.** Adds a feed.", "**go source** (1 file(s))", "| `a.go` | Staging. |"} {
+	for _, want := range []string{"### What this change does\n\nAdds a feed.", "**go source** (1 file(s))", "| `a.go` | Staging. |"} {
 		if !strings.Contains(p.Body, want) {
 			t.Errorf("the lean walkthrough is missing %q:\n%s", want, p.Body)
 		}

@@ -31,7 +31,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   already shows its own description and GitHub's Files tab its own counts. A
   profile that wants the old body adds all three.
 - **The recap applies without `--recap`.** When `redline review --since` wrote
-  a recap, a walkthrough post puts it in place of "What it does", measured from
+  a recap, a walkthrough post puts it in place of "What this change does", measured from
   the commit the session now stores with it, and the walkthrough lists only the
   files that changed since that commit. `--recap` now only makes it required.
 - **A finding the checking pass ruled out leaves no trace on the pull
