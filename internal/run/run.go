@@ -401,7 +401,8 @@ func Run(opts Options) (*Result, error) {
 	if review != nil {
 		res.Report.Findings = append(res.Report.Findings, review.CommentFindings()...)
 		if review.Overview != "" || len(review.Files) > 0 {
-			res.Report.Agent = &findings.AgentReview{Overview: review.Overview, Recap: review.Recap, Files: review.Files, Note: review.Note}
+			res.Report.Agent = &findings.AgentReview{Overview: review.Overview, Recap: review.Recap,
+				RecapSince: review.RecapSince, RecapFiles: review.RecapFiles, Files: review.Files, Note: review.Note}
 		}
 		if u, ok := reviewVerifyUnknown(review); ok {
 			res.Report.Unknowns = append(res.Report.Unknowns, u)
@@ -1087,7 +1088,8 @@ func ReapplyReview(res *Result, rev *findings.Review) {
 	if rev != nil {
 		res.Report.Findings = append(res.Report.Findings, rev.CommentFindings()...)
 		if rev.Overview != "" || len(rev.Files) > 0 {
-			res.Report.Agent = &findings.AgentReview{Overview: rev.Overview, Recap: rev.Recap, Files: rev.Files, Note: rev.Note}
+			res.Report.Agent = &findings.AgentReview{Overview: rev.Overview, Recap: rev.Recap,
+				RecapSince: rev.RecapSince, RecapFiles: rev.RecapFiles, Files: rev.Files, Note: rev.Note}
 		}
 		if u, ok := reviewVerifyUnknown(rev); ok {
 			res.Report.Unknowns = append(res.Report.Unknowns, u)

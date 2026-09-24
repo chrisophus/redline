@@ -333,6 +333,10 @@ type AgentReview struct {
 	// rather than replacing it: the overview describes the whole change and a
 	// reader arriving for the first time needs it.
 	Recap string `json:"recap,omitempty"`
+	// RecapSince and RecapFiles are the commit the recap measures from and
+	// the paths that moved since it. See findings.Review.
+	RecapSince string   `json:"recapSince,omitempty"`
+	RecapFiles []string `json:"recapFiles,omitempty"`
 	// Note is what the person asking for the review told the reviewer.
 	Note string `json:"note,omitempty"`
 }

@@ -29,16 +29,23 @@ fail_closed_pane: true
 body_style: evidence
 
 # Walkthrough add-ons, all opt-in, so you decide how much of the report reaches
-# the pull request. coverage, lint, confirmations, unknowns and diff-links are
-# ignored in evidence mode; low-confidence applies in both.
+# the pull request. Only low-confidence applies to the evidence body as well.
+#   intent         the pull request's title and description, as "Stated intent"
+#   composition    the lines-by-language-and-type table
+#   line-counts    lines added and removed on each file and group heading
+#   evidence       the one-line-per-pane evidence table, folded
 #   coverage       per-file uncovered-added-lines column
 #   lint           per-file finding counts by severity
 #   confirmations  the checks that ran clean, folded in collapsed
 #   unknowns       what could not be determined, folded in collapsed
-#   low-confidence the reviewer's unsure findings, folded behind a chevron
-#                  instead of withheld from the pull request
+#   low-confidence the reviewer's unsure and hedged findings, folded behind a
+#                  chevron instead of withheld from the pull request
 #   diff-links     links each file to its diff on the Files tab, except tests
 # body_include:
+#   - intent
+#   - composition
+#   - line-counts
+#   - evidence
 #   - coverage
 #   - lint
 #   - confirmations

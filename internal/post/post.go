@@ -145,12 +145,13 @@ type Payload struct {
 	// Set by WithRecap, and both empty on a body that repeats the walkthrough
 	// as it always did.
 	//
-	// When they are set the body opens with that paragraph and leaves out the
-	// overview and the per-file table, because a pull request reviewed four
-	// times carried four copies of a walkthrough that had not changed. The
-	// report still has all of it, and the body still links to the report.
+	// When they are set the body opens with that paragraph in place of the
+	// overview, and the per-file list shows only recapFiles, because a pull
+	// request reviewed four times carried four copies of a walkthrough that
+	// had not changed. The report still has all of it.
 	recap      string
 	recapSince string
+	recapFiles []string
 	// staleHead is the pull request's head when it is no longer the commit
 	// this review is of, and empty otherwise. unattested withholds the gate
 	// verdict marker, for a profile that wants its verdict to cover the
@@ -254,7 +255,10 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 			continue
 		}
 		if refused(f) {
-			p.withheld++
+			// The verifying pass ruled it out. It stays on the report with
+			// the reason and goes nowhere near the pull request, not even
+			// as a count: a note saying something was held back tells the
+			// reader nothing they can act on.
 			continue
 		}
 		// An error is a claimed defect, so it must remain visible even when the
@@ -262,7 +266,7 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 		// keep the report-only policy for genuinely uncertain claims.
 		if f.Severity != findings.SeverityError &&
 			(unfalsifiable(f) || withheldForConfidence(f)) {
-			if !refused(f) && prof.includes("low-confidence") {
+			if prof.includes("low-confidence") {
 				// Shown behind a chevron instead of withheld: a guess the
 				// reader can open, never a line comment and never a gate. This
 				// also covers findings whose question says nothing would settle
@@ -274,7 +278,13 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 			continue
 		}
 		if f.Severity != findings.SeverityError && hedged(f) {
-			p.hedged++
+			if prof.includes("low-confidence") {
+				// A hedge is the reviewer saying it is unsure the finding
+				// matters, so it folds with the other unsure ones.
+				p.lowConf = append(p.lowConf, f)
+			} else {
+				p.hedged++
+			}
 			continue
 		}
 		if f.File != "" && f.Line > 0 && lineOnDiff(f) &&
@@ -701,11 +711,16 @@ func (p Payload) renderBody() string {
 // Both arguments are required: a paragraph with no commit beside it cannot be
 // read, because "since the last review" means nothing without saying which
 // one. Given neither, the body is unchanged.
-func (p Payload) WithRecap(recap, since string) Payload {
+//
+// files are the paths that moved since that commit. The per-file list shows
+// only those; nil shows none, since the list cannot say which files the recap
+// covers.
+func (p Payload) WithRecap(recap, since string, files []string) Payload {
 	if strings.TrimSpace(recap) == "" || strings.TrimSpace(since) == "" {
 		return p
 	}
 	p.recap, p.recapSince = strings.TrimSpace(recap), since
+	p.recapFiles = files
 	p.Body = p.renderBody()
 	return p
 }
@@ -721,59 +736,57 @@ func (p Payload) WithMeta(intent, reviewedBy string) Payload {
 }
 
 // buildBodyWalkthrough is the Copilot-style body: who reviewed and which
-// commit, the author's stated intent, what the change does, a collapsible
-// walkthrough of every changed file grouped by language and role, then
-// evidence folded away and the findings that could not be anchored to a line.
-// The walkthrough's own headings carry the line counts the evidence body gets
-// from its composition table, so that table is not repeated here.
-// body_include decides how much of the report rides along, and every part of
-// it comes from the session the run already wrote, so this observes nothing.
+// commit, what the change does or what moved since the last review, a
+// collapsible walkthrough of the changed files grouped by language and role,
+// then the findings that could not be anchored to a line. body_include adds
+// the author's stated intent, the lines-by-language table, the evidence table
+// and the rest, and every part of it comes from the session the run already
+// wrote, so this observes nothing.
 func buildBodyWalkthrough(p Payload) string {
 	var head0 strings.Builder
 	fmt.Fprintf(&head0, "### %s\n\n", walkthroughHeading(p.GateVerdict))
 	if p.reviewedBy != "" {
 		fmt.Fprintf(&head0, "**Reviewed by.** %s on `%s`.\n\n", p.reviewedBy, shortSHA12(p.CommitID))
 	}
-	if p.intent != "" {
+	if p.intent != "" && p.profile.includes("intent") {
 		fmt.Fprintf(&head0, "**Stated intent.** %s\n\n", p.intent)
 	}
-	// The recap replaces the overview and the per-file table rather than
-	// joining them. Repeating a walkthrough that has not changed is what it
-	// exists to stop, so rendering both would leave the body longer than
-	// before.
-	// A finding grouped under a file rides in the per-file table, so the split
-	// only happens where that table does. Under a recap the table is gone and
-	// a grouped finding would have nowhere to ride, which dropped it from the
-	// body without a word; every body finding goes in the flat list instead,
-	// in the order the report gave them.
-	var perFile map[string][]findings.Finding
-	leftover := p.bodyFindings
-	if p.recap == "" {
-		perFile, leftover = splitBodyFindingsByFile(p)
-	}
+	// The recap replaces the overview rather than joining it, and the file
+	// list under it is only the files that moved since that review. Repeating
+	// a walkthrough that has not changed is what it exists to stop.
+	files := p.files
+	title := "Walkthrough"
 	if p.recap != "" {
 		recap := p.recap
 		if len(recap) > maxNarrative {
 			recap = recap[:maxNarrative] + "\n\n_(truncated; the full walkthrough is on the report)_"
 		}
 		fmt.Fprintf(&head0, "**Since the last review** (`%s`). %s\n\n", shortSHA12(p.recapSince), recap)
-	} else {
-		if p.rep != nil && p.rep.Agent != nil {
-			if ov := strings.TrimSpace(p.rep.Agent.Overview); ov != "" {
-				if len(ov) > maxNarrative {
-					ov = ov[:maxNarrative] + "\n\n_(truncated; the full overview is on the report)_"
-				}
-				fmt.Fprintf(&head0, "**What it does.** %s\n\n", ov)
+		files = filesIn(p.files, p.recapFiles)
+		title = fmt.Sprintf("Files changed since `%s`", shortSHA12(p.recapSince))
+	} else if p.rep != nil && p.rep.Agent != nil {
+		if ov := strings.TrimSpace(p.rep.Agent.Overview); ov != "" {
+			if len(ov) > maxNarrative {
+				ov = ov[:maxNarrative] + "\n\n_(truncated; the full overview is on the report)_"
 			}
-		}
-		if s := walkthroughSection(p, perFile, maxNarrative); s != "" {
-			head0.WriteString(s)
+			fmt.Fprintf(&head0, "**What it does.** %s\n\n", ov)
 		}
 	}
-	if table := evidenceTable(p.rep); table != "" {
-		head0.WriteString("<details>\n<summary>Evidence</summary>\n\n")
-		head0.WriteString(table)
-		head0.WriteString("\n</details>\n\n")
+	if p.profile.includes("composition") {
+		head0.WriteString(compositionSection(p.files))
+	}
+	// A finding on a listed file rides under it; the rest, including one on
+	// a file a recap leaves out of the list, go in the flat list after.
+	perFile, leftover := splitBodyFindingsByFile(files, p.bodyFindings)
+	if s := walkthroughSection(p, files, title, perFile, maxNarrative); s != "" {
+		head0.WriteString(s)
+	}
+	if p.profile.includes("evidence") {
+		if table := evidenceTable(p.rep); table != "" {
+			head0.WriteString("<details>\n<summary>Evidence</summary>\n\n")
+			head0.WriteString(table)
+			head0.WriteString("\n</details>\n\n")
+		}
 	}
 	if p.profile.includes("confirmations") {
 		head0.WriteString(confirmationsSection(p.rep))
@@ -788,18 +801,33 @@ func buildBodyWalkthrough(p Payload) string {
 	return head0.String() + middle + low + tail
 }
 
+// filesIn keeps the files whose path is in paths, in their original order.
+func filesIn(files []change.File, paths []string) []change.File {
+	keep := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		keep[path] = true
+	}
+	var out []change.File
+	for _, f := range files {
+		if keep[f.Path] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // splitBodyFindingsByFile groups the body findings that name a file the
 // walkthrough shows, so they render with that file instead of in a flat list
 // after it, and returns the rest. A finding with no file, or one on a file
-// this change did not touch, has no row to ride with and stays in the list.
-func splitBodyFindingsByFile(p Payload) (map[string][]findings.Finding, []findings.Finding) {
+// the walkthrough does not list, has no row to ride with and stays in the list.
+func splitBodyFindingsByFile(files []change.File, bodyFindings []findings.Finding) (map[string][]findings.Finding, []findings.Finding) {
 	shown := map[string]bool{}
-	for _, f := range p.files {
+	for _, f := range files {
 		shown[f.Path] = true
 	}
 	perFile := map[string][]findings.Finding{}
 	var leftover []findings.Finding
-	for _, f := range p.bodyFindings {
+	for _, f := range bodyFindings {
 		if f.File != "" && shown[f.File] {
 			perFile[f.File] = append(perFile[f.File], f)
 		} else {
@@ -840,13 +868,14 @@ func walkthroughHeading(gateVerdict string) string {
 // dropped, because a flat table interleaved them with the code they test and
 // the rows read as noise; under a heading of their own they are the thing a
 // reviewer wanted to see, which is how much of the change is test.
-func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget int) string {
-	if len(p.files) == 0 {
+func walkthroughSection(p Payload, files []change.File, title string, perFile map[string][]findings.Finding, budget int) string {
+	if len(files) == 0 {
 		return ""
 	}
 	withCoverage := p.profile.includes("coverage") && p.rep != nil && p.rep.Coverage.Diff != nil
 	withLint := p.profile.includes("lint")
 	withLinks := p.profile.includes("diff-links") && p.prURL != ""
+	withCounts := p.profile.includes("line-counts")
 	var uncovered map[string]int
 	if withCoverage {
 		uncovered = uncoveredByFile(p.rep)
@@ -861,19 +890,24 @@ func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget
 	}
 
 	var b strings.Builder
-	b.WriteString("<details>\n<summary>Walkthrough</summary>\n\n")
+	fmt.Fprintf(&b, "<details>\n<summary>%s</summary>\n\n", title)
 	var paths []string
 	var omitted int
-	for _, g := range change.CompositionGroups(p.files) {
-		files := make([]change.File, len(g.Files))
-		copy(files, g.Files)
-		sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	for _, g := range change.CompositionGroups(files) {
+		group := make([]change.File, len(g.Files))
+		copy(group, g.Files)
+		sort.Slice(group, func(i, j int) bool { return group[i].Path < group[j].Path })
 
 		var sec strings.Builder
-		fmt.Fprintf(&sec, "**%s %s** (%d file(s), +%d%s−%d)\n\n",
-			escapeLine(g.Language), escapeLine(g.Kind), len(g.Files), g.Added, nbsp, g.Removed)
+		if withCounts {
+			fmt.Fprintf(&sec, "**%s %s** (%d file(s), +%d%s−%d)\n\n",
+				escapeLine(g.Language), escapeLine(g.Kind), len(g.Files), g.Added, nbsp, g.Removed)
+		} else {
+			fmt.Fprintf(&sec, "**%s %s** (%d file(s))\n\n",
+				escapeLine(g.Language), escapeLine(g.Kind), len(g.Files))
+		}
 		shown := 0
-		for _, f := range files {
+		for _, f := range group {
 			name := fmt.Sprintf("`%s`", escapeLine(f.Path))
 			// Tests are left unlinked: the reader goes to the code under
 			// review, and a link on every row costs walkthrough budget.
@@ -881,7 +915,10 @@ func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget
 			if withLinks && g.Kind != change.KindTest {
 				name = fmt.Sprintf("[%s](%s)", name, diffLink(p.prURL, f.Path))
 			}
-			item := fmt.Sprintf("- %s +%d%s−%d", name, f.Added, nbsp, f.Removed)
+			item := "- " + name
+			if withCounts {
+				item += fmt.Sprintf(" +%d%s−%d", f.Added, nbsp, f.Removed)
+			}
 			if n := uncovered[f.Path]; n > 0 {
 				item += fmt.Sprintf(", %d line(s) uncovered", n)
 			}

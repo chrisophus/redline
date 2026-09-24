@@ -436,6 +436,11 @@ func cmdReview(o opts) error {
 	// report can tell a finding the reviewer arrived at from one it was
 	// pointed to.
 	reviewed.Note = note
+	// The recap is only readable beside the commit it measures from, and post
+	// lists only the files that moved since then, so both travel with it.
+	if reviewed.Recap != "" {
+		reviewed.RecapSince, reviewed.RecapFiles = ropts.SinceReview, ropts.SinceFiles
+	}
 	// Carried into the file so a later `run`, `report`, or `post` that renders
 	// review.json without this command's Result can still say the ruling broke
 	// rather than merging the unchecked findings as if the pass had run.

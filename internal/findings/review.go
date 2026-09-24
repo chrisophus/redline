@@ -35,10 +35,15 @@ type Review struct {
 	// It is beside Overview rather than replacing it. The overview describes
 	// the whole change and stays correct across reviews; this is what a
 	// reader who has already read the last one needs instead.
-	Recap    string             `json:"recap,omitempty"`
-	Files    map[string]string  `json:"files,omitempty"`
-	Comments []ReviewComment    `json:"comments,omitempty"`
-	Verdicts map[string]Verdict `json:"verdicts,omitempty"`
+	Recap string `json:"recap,omitempty"`
+	// RecapSince is the commit the recap measures from and RecapFiles the
+	// paths that moved between it and this review, so post can say which
+	// commit the recap means and list only the files it covers.
+	RecapSince string             `json:"recapSince,omitempty"`
+	RecapFiles []string           `json:"recapFiles,omitempty"`
+	Files      map[string]string  `json:"files,omitempty"`
+	Comments   []ReviewComment    `json:"comments,omitempty"`
+	Verdicts   map[string]Verdict `json:"verdicts,omitempty"`
 	// MutationVerdicts are judgments of surviving mutants, keyed by the
 	// survivor's key (mutation.survived[].key in findings.json). Source llm.
 	MutationVerdicts map[string]Verdict `json:"mutationVerdicts,omitempty"`
@@ -111,6 +116,8 @@ type ReviewComment struct {
 type reviewWire struct {
 	Overview         string             `json:"overview"`
 	Recap            string             `json:"recap,omitempty"`
+	RecapSince       string             `json:"recapSince,omitempty"`
+	RecapFiles       []string           `json:"recapFiles,omitempty"`
 	WhatItDoes       string             `json:"what_it_does"`
 	Files            json.RawMessage    `json:"files"`
 	Comments         json.RawMessage    `json:"comments"`
@@ -218,6 +225,8 @@ func LoadReview(path string) (*Review, error) {
 		r.Overview = strings.TrimSpace(wire.WhatItDoes)
 	}
 	r.Recap = strings.TrimSpace(wire.Recap)
+	r.RecapSince = strings.TrimSpace(wire.RecapSince)
+	r.RecapFiles = wire.RecapFiles
 	files, err := parseReviewFiles(wire.Files)
 	if err != nil {
 		return nil, fmt.Errorf("review files: %w", err)

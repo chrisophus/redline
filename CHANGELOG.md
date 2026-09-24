@@ -16,6 +16,25 @@ Releases whose tag carries only a subject line are listed as that subject.
   `body_include: diff-links` makes each path in the walkthrough a link to that
   file on the pull request's Files tab. Test files are not linked, and
   generated files were already left out of the walkthrough.
+- **The walkthrough can carry the lines-by-language table.** `body_include:
+  composition` adds the table the evidence body already had.
+
+### Changed
+- **The walkthrough is lean unless a profile asks for more.** The stated
+  intent, the folded evidence table and the per-file line counts are now the
+  `body_include` keys `intent`, `evidence` and `line-counts`. The pull request
+  already shows its own description and GitHub's Files tab its own counts. A
+  profile that wants the old body adds all three.
+- **The recap applies without `--recap`.** When `redline review --since` wrote
+  a recap, a walkthrough post puts it in place of "What it does", measured from
+  the commit the session now stores with it, and the walkthrough lists only the
+  files that changed since that commit. `--recap` now only makes it required.
+- **A finding the checking pass ruled out leaves no trace on the pull
+  request.** It was counted in the "further finding(s)... said they were
+  uncertain" note, which was wrong about why it was held back. It stays on the
+  report with the reason.
+- **`low-confidence` folds hedged findings too.** They were counted as
+  withheld even with the key set.
 - **A run says what it is running and what did not run.** Between the
   observing line and the report's address a run printed nothing, and a lint
   pane that would not start or a context provider that was not on PATH was

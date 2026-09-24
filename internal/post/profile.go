@@ -31,8 +31,7 @@ type Profile struct {
 	BodyStyle string
 	// BodyInclude names the optional walkthrough sections, so a repository
 	// decides how much of the report reaches the pull request. Empty is the
-	// lean walkthrough (file plus summary); the keys are coverage, lint,
-	// confirmations, unknowns, low-confidence, diff-links.
+	// lean walkthrough (file plus summary); the keys are in bodySections.
 	BodyInclude map[string]bool
 }
 
@@ -54,15 +53,28 @@ const (
 )
 
 // bodySections are the optional walkthrough add-ons body_include may name.
+//
+// intent, evidence and line-counts used to be written on every walkthrough.
+// They are opt-in because the pull request already shows its own description,
+// and GitHub's Files tab already gives each file's line counts.
 var bodySections = map[string]bool{
 	"coverage": true, "lint": true, "confirmations": true, "unknowns": true,
 	"low-confidence": true, "diff-links": true,
+	"intent": true, "evidence": true, "composition": true, "line-counts": true,
 }
+
+// bodySectionNames lists the keys for the error a bad key gets.
+const bodySectionNames = "coverage, lint, confirmations, unknowns, low-confidence, diff-links, " +
+	"intent, evidence, composition, line-counts"
 
 // includes reports whether a walkthrough body carries an optional section.
 func (p *Profile) includes(section string) bool {
 	return p != nil && p.BodyInclude[section]
 }
+
+// Includes is includes for the command, which skips the gh call for the
+// stated intent when the profile does not show it.
+func (p *Profile) Includes(section string) bool { return p.includes(section) }
 
 // LoadProfile reads a YAML profile. Missing optional fields default to the
 // strict merge-gate shape: error and warning block, author-only, HEAD must
@@ -118,7 +130,7 @@ func LoadProfile(path string) (*Profile, error) {
 		for _, s := range f.BodyInclude {
 			key := strings.ToLower(strings.TrimSpace(s))
 			if !bodySections[key] {
-				return nil, fmt.Errorf("profile %s: body_include %q is not one of coverage, lint, confirmations, unknowns, low-confidence, diff-links", path, s)
+				return nil, fmt.Errorf("profile %s: body_include %q is not one of %s", path, s, bodySectionNames)
 			}
 			p.BodyInclude[key] = true
 		}
