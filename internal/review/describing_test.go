@@ -262,3 +262,17 @@ func TestLunaResolvesToItsOwnRate(t *testing.T) {
 		t.Error("gpt-5.6-luna resolved to gpt-5's rate through the prefix match")
 	}
 }
+
+// A reused walkthrough keeps the commit and files its recap was written
+// against. Dropping them left review.json with the old paragraph and no
+// baseline, after a --reuse-synopsis run that could not pass --since.
+func TestAReusedRecapKeepsItsBaseline(t *testing.T) {
+	w := reviewWithOverview("what the change does")
+	w.Recap, w.RecapSince, w.RecapFiles = "the loop moved", "abc123", []string{"a.go"}
+	res := &Result{}
+	applySynopsis(res, "claude-sonnet-5", described{Walkthrough: w, Model: "claude-sonnet-5"})
+	if res.Review.Recap != "the loop moved" || res.Review.RecapSince != "abc123" ||
+		len(res.Review.RecapFiles) != 1 || res.Review.RecapFiles[0] != "a.go" {
+		t.Errorf("the reused recap lost its baseline: %+v", res.Review)
+	}
+}

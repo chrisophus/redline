@@ -281,6 +281,10 @@ func applySynopsis(res *Result, model string, d described) {
 	res.Synopsis = true
 	res.Review.Overview = d.Walkthrough.Overview
 	res.Review.Recap = d.Walkthrough.Recap
+	// A reused walkthrough carries the commit and files its recap was written
+	// against. A fresh one has neither yet; cmdReview stamps them from --since.
+	res.Review.RecapSince = d.Walkthrough.RecapSince
+	res.Review.RecapFiles = d.Walkthrough.RecapFiles
 	res.Review.Files = d.Walkthrough.Files
 }
 

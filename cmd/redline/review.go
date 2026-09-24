@@ -438,7 +438,12 @@ func cmdReview(o opts) error {
 	reviewed.Note = note
 	// The recap is only readable beside the commit it measures from, and post
 	// lists only the files that moved since then, so both travel with it.
-	if reviewed.Recap != "" {
+	// Stamped only when this run's describing call wrote the recap, which
+	// takes --since. A reused walkthrough keeps the commit and files it came
+	// with: review.Run refuses --since beside --reuse-synopsis, so the reused
+	// recap cannot be paired with this run's baseline, and without --since
+	// there is no baseline here to stamp.
+	if reviewed.Recap != "" && ropts.SinceReview != "" {
 		reviewed.RecapSince, reviewed.RecapFiles = ropts.SinceReview, ropts.SinceFiles
 	}
 	// Carried into the file so a later `run`, `report`, or `post` that renders
