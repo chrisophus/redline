@@ -796,7 +796,10 @@ file lands in the list after. `body_include` decides how much of the report ride
 `coverage` and `lint` add to each file's line, `confirmations` and `unknowns`
 fold in the report sections the body otherwise drops, and `low-confidence`
 folds the reviewer's unsure findings behind a chevron rather than withholding
-them (the one add-on that also applies to the evidence body). All of it comes
+them (the one add-on that also applies to the evidence body). `diff-links` turns
+each file's path into a link to that file's diff on the pull request's Files tab.
+Test files are left unlinked. The Files tab shows the pull request as it is now,
+so after a later push a link opens a newer diff than the one the review read. All of it comes
 from the session `run` already wrote, so posting still observes nothing.
 
 ## What a run prints

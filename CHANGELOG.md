@@ -12,6 +12,10 @@ Releases whose tag carries only a subject line are listed as that subject.
 ## [Unreleased]
 
 ### Added
+- **The walkthrough can link each file to its diff.** A profile with
+  `body_include: diff-links` makes each path in the walkthrough a link to that
+  file on the pull request's Files tab. Test files are not linked, and
+  generated files were already left out of the walkthrough.
 - **A run says what it is running and what did not run.** Between the
   observing line and the report's address a run printed nothing, and a lint
   pane that would not start or a context provider that was not on PATH was

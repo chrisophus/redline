@@ -15,6 +15,7 @@
 package post
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"regexp"
@@ -107,8 +108,11 @@ type Payload struct {
 	// What the body was rendered from, kept so Unposted can drop already-posted
 	// body findings and render it again. A body finding is tracked the same way
 	// a line comment is, and filtering it means rebuilding the string it sits in.
-	rep          *findings.Report
-	reportURL    string
+	rep       *findings.Report
+	reportURL string
+	// prURL is the pull request's own URL, which the walkthrough's diff links
+	// hang off. Empty when the target is not a pull request.
+	prURL        string
 	bodyFindings []findings.Finding
 	// lowConf are the reviewer's low-confidence info findings when a profile
 	// asked to see them folded rather than withheld. They render in a
@@ -296,6 +300,9 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 
 	p.rep = rep
 	p.reportURL = reportURL
+	if tgt != nil && tgt.PR != nil {
+		p.prURL = strings.TrimRight(tgt.PR.URL, "/")
+	}
 	p.bodyFindings = inBody
 	p.files = files
 	p.Body = p.renderBody()
@@ -839,6 +846,7 @@ func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget
 	}
 	withCoverage := p.profile.includes("coverage") && p.rep != nil && p.rep.Coverage.Diff != nil
 	withLint := p.profile.includes("lint")
+	withLinks := p.profile.includes("diff-links") && p.prURL != ""
 	var uncovered map[string]int
 	if withCoverage {
 		uncovered = uncoveredByFile(p.rep)
@@ -866,7 +874,14 @@ func walkthroughSection(p Payload, perFile map[string][]findings.Finding, budget
 			escapeLine(g.Language), escapeLine(g.Kind), len(g.Files), g.Added, nbsp, g.Removed)
 		shown := 0
 		for _, f := range files {
-			item := fmt.Sprintf("- `%s` +%d%s−%d", escapeLine(f.Path), f.Added, nbsp, f.Removed)
+			name := fmt.Sprintf("`%s`", escapeLine(f.Path))
+			// Tests are left unlinked: the reader goes to the code under
+			// review, and a link on every row costs walkthrough budget.
+			// Generated files never get here, run drops them first.
+			if withLinks && g.Kind != change.KindTest {
+				name = fmt.Sprintf("[%s](%s)", name, diffLink(p.prURL, f.Path))
+			}
+			item := fmt.Sprintf("- %s +%d%s−%d", name, f.Added, nbsp, f.Removed)
 			if n := uncovered[f.Path]; n > 0 {
 				item += fmt.Sprintf(", %d line(s) uncovered", n)
 			}
@@ -1396,4 +1411,13 @@ func StripMarkers(body string) string {
 		rest = rest[i+j+len("-->"):]
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// diffLink points at one file on the pull request's Files tab. GitHub anchors
+// each file there as diff- followed by the hex SHA-256 of its path. The tab
+// shows the pull request's current diff, so after a later push the link opens
+// a newer diff than the one this review read.
+func diffLink(prURL, path string) string {
+	sum := sha256.Sum256([]byte(path))
+	return prURL + "/files#diff-" + hex.EncodeToString(sum[:])
 }

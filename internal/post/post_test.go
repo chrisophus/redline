@@ -1156,3 +1156,28 @@ func TestWalkthroughCarriesPerFileLines(t *testing.T) {
 		t.Fatalf("the line counts must be joined by a non-breaking space:\n%s", p.Body)
 	}
 }
+
+// With body_include: diff-links, a walkthrough row links to its file on the
+// pull request's Files tab, anchored by the SHA-256 of the path. Test files
+// stay unlinked, and without the key no row is linked.
+func TestWalkthroughDiffLinks(t *testing.T) {
+	rep := &findings.Report{}
+	rep.Finalize()
+	files := changedFiles("a.go", "a_test.go")
+
+	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile("diff-links"), files)
+	// The anchor is the hex SHA-256 of "a.go".
+	want := "- [`a.go`](https://github.com/o/r/pull/7/files#diff-" +
+		"ffc4fd9bc24722ba464194a85b255d4b50945f3e68a120122e11f6cdae4a8c19) +10"
+	if !strings.Contains(p.Body, want) {
+		t.Fatalf("a.go should link to its diff, want %q:\n%s", want, p.Body)
+	}
+	if !strings.Contains(p.Body, "- `a_test.go` +11") {
+		t.Fatalf("a test file should stay unlinked:\n%s", p.Body)
+	}
+
+	plain := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), files)
+	if strings.Contains(plain.Body, "/files#diff-") {
+		t.Fatalf("without diff-links no row should link:\n%s", plain.Body)
+	}
+}

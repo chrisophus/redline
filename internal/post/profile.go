@@ -32,7 +32,7 @@ type Profile struct {
 	// BodyInclude names the optional walkthrough sections, so a repository
 	// decides how much of the report reaches the pull request. Empty is the
 	// lean walkthrough (file plus summary); the keys are coverage, lint,
-	// confirmations, unknowns.
+	// confirmations, unknowns, low-confidence, diff-links.
 	BodyInclude map[string]bool
 }
 
@@ -56,7 +56,7 @@ const (
 // bodySections are the optional walkthrough add-ons body_include may name.
 var bodySections = map[string]bool{
 	"coverage": true, "lint": true, "confirmations": true, "unknowns": true,
-	"low-confidence": true,
+	"low-confidence": true, "diff-links": true,
 }
 
 // includes reports whether a walkthrough body carries an optional section.
@@ -118,7 +118,7 @@ func LoadProfile(path string) (*Profile, error) {
 		for _, s := range f.BodyInclude {
 			key := strings.ToLower(strings.TrimSpace(s))
 			if !bodySections[key] {
-				return nil, fmt.Errorf("profile %s: body_include %q is not one of coverage, lint, confirmations, unknowns, low-confidence", path, s)
+				return nil, fmt.Errorf("profile %s: body_include %q is not one of coverage, lint, confirmations, unknowns, low-confidence, diff-links", path, s)
 			}
 			p.BodyInclude[key] = true
 		}
