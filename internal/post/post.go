@@ -713,8 +713,9 @@ func (p Payload) renderBody() string {
 // one. Given neither, the body is unchanged.
 //
 // files are the paths that moved since that commit. The per-file list shows
-// only those; nil shows none, since the list cannot say which files the recap
-// covers.
+// only those. With none known, from a session written before they were
+// stored, it shows the whole walkthrough under its usual title rather than
+// an empty one.
 func (p Payload) WithRecap(recap, since string, files []string) Payload {
 	if strings.TrimSpace(recap) == "" || strings.TrimSpace(since) == "" {
 		return p
@@ -764,8 +765,13 @@ func buildBodyWalkthrough(p Payload) string {
 		// A heading of its own, the same level as the evidence body's "What
 		// this change does", because it is the part a reader came for.
 		fmt.Fprintf(&head0, "### Since the last review (`%s`)\n\n%s\n\n", shortSHA12(p.recapSince), recap)
-		files = filesIn(p.files, p.recapFiles)
-		title = fmt.Sprintf("Files changed since `%s`", shortSHA12(p.recapSince))
+		// Only when the moved files are known and some are in this change.
+		// Otherwise the list would be empty, and an empty list reads as
+		// "nothing to show" when it means "not known".
+		if moved := filesIn(p.files, p.recapFiles); len(moved) > 0 {
+			files = moved
+			title = fmt.Sprintf("Files changed since `%s`", shortSHA12(p.recapSince))
+		}
 	} else if p.rep != nil && p.rep.Agent != nil {
 		if ov := strings.TrimSpace(p.rep.Agent.Overview); ov != "" {
 			if len(ov) > maxNarrative {

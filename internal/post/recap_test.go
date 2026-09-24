@@ -58,10 +58,15 @@ func TestTheRecapReplacesTheWalkthrough(t *testing.T) {
 	}
 
 	// A session from before the moved files were stored cannot say which
-	// files the recap covers, so it lists none rather than all of them.
-	none := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678", nil).Body
-	if strings.Contains(none, "first file") || strings.Contains(none, "second file") {
-		t.Errorf("with no moved files known the recap body should list no files:\n%s", none)
+	// files the recap covers. It gets the whole walkthrough under its usual
+	// title, since an empty list would read as nothing having changed. So
+	// does a list whose files are none of this change's.
+	for _, files := range [][]string{nil, {"elsewhere.go"}} {
+		all := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678", files).Body
+		if !strings.Contains(all, "<summary>Walkthrough</summary>") ||
+			!strings.Contains(all, "first file") || !strings.Contains(all, "second file") {
+			t.Errorf("with moved files %v the recap body should list every file:\n%s", files, all)
+		}
 	}
 }
 

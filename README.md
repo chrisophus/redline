@@ -800,7 +800,8 @@ COMMIT` with the commit the last review covered. The describing call then
 writes a paragraph on what moved since then, and the session keeps it with
 that commit and the files that changed. `post` puts it under a "Since the last
 review" heading in place of "What this change does", and the walkthrough lists only the files
-that changed since that commit. This happens on its own whenever the session
+that changed since that commit. A session written before the moved files were
+stored gets the whole walkthrough instead. This happens on its own whenever the session
 has the paragraph; `--recap` makes it required, so a post that cannot carry
 one is refused instead of falling back to the overview.
 
