@@ -30,7 +30,7 @@ import (
 // FileType is the half of the graph a node came from. Only "code" nodes come
 // out of tree-sitter; "document", "paper", "image", "rationale" and "concept"
 // are written by Graphify's semantic pass, which is a model call. That
-// distinction is load-bearing here and not decoration: see deterministic.
+// distinction is load-bearing here: see deterministic.
 type Node struct {
 	ID             string `json:"id"`
 	Label          string `json:"label"`
@@ -77,7 +77,7 @@ func (n Node) isFile() bool {
 // Edge is one connection, with Graphify's own account of how sure it is.
 // Confidence is EXTRACTED (the source says so), INFERRED (a second pass
 // deduced it) or AMBIGUOUS. Redline never presents an INFERRED edge as a
-// resolved fact, so the tag rides into the envelope's details.
+// resolved fact, so the tag is carried into the envelope's details.
 type Edge struct {
 	Source     string `json:"source"`
 	Target     string `json:"target"`
