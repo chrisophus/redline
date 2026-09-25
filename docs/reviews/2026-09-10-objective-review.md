@@ -19,7 +19,7 @@ were established by reading the code at the lines cited.
 
 Redline is a well-built instrument with a good idea at its centre, and a
 model-review layer on top of it that has grown faster than anything
-measures it.
+that measures it.
 
 The good idea is the framing: a gate compresses what it saw into one bit, and
 a reviewer needs the detail behind the bit, plus an explicit statement of
