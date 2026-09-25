@@ -114,8 +114,8 @@ becomes "introduced", every existing suppression is re-reported, and every
 line counts as added; the README's "moved code does not read as new
 violations" holds only inside one file. A file's `Head` is carried whole
 into the session on a newline count alone (`change.go:210`), so a multi-MB
-binary with few newlines ends up whole in `session.json` and the prompt. `Repo.File`
-turns every git failure into "absent" (`git.go:509`), which the OpenAPI,
+binary with few newlines ends up whole in `session.json` and the prompt.
+`Repo.File` turns every git failure into "absent" (`git.go:509`), which the OpenAPI,
 lint-config and migration panes read as "added". `MergeBase` silently falls
 back to the ref itself on a shallow clone (`git.go:69`). `ls-tree --format`
 needs git 2.36, undocumented.
@@ -351,8 +351,8 @@ page is fully self-contained, works from `file://`, has a complete dark
 theme, and is responsive. The `gh` boundary passes nothing untrusted as an
 argument; the review JSON goes over stdin. Idempotency per head SHA and
 fingerprint is tested. The gate treats a pane that applied and did not run
-as a failure, not a silent pass. `post_test.go` exercises the real predicates and is the best test
-file in the repository.
+as a failure, not a silent pass. `post_test.go` exercises the real
+predicates and is the best test file in the repository.
 
 Gaps beyond finding 4: line anchoring is validated against the current head's
 diff while the review is anchored to the session's head

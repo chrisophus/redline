@@ -1,6 +1,6 @@
 ---
 name: redline
-description: Observe a change with Redline — the working tree, the latest commit, a commit range, a branch, or a GitHub PR — and fold its measured evidence into your review. Use when asked to review a commit, range, branch, or PR, before pushing, or whenever a change touches migrations, an API contract, or coverage-sensitive code.
+description: Observe a change with Redline: the working tree, the latest commit, a commit range, a branch, or a GitHub PR, and fold its measured evidence into your review. Use when asked to review a commit, range, branch, or PR, before pushing, or whenever a change touches migrations, an API contract, or coverage-sensitive code.
 ---
 
 # redline
@@ -113,12 +113,12 @@ preserved, so running it does not discard judgments you recorded.
   mutants could not be run. Those lines are unmeasured, not asserted.
 - Review with your own skills and tools: read the diff, follow the callers,
   weigh the change against the repo's rules. That reading is your half of
-  the report — write it to `review.json` (below) and Redline renders it
+  the report: write it to `review.json` (below) and Redline renders it
   beside its own findings.
 
 **3. Present it.**
 
-Lead with the `Report:` URL from stderr, exactly as printed — the port is
+Lead with the `Report:` URL from stderr, exactly as printed. The port is
 8765 only when 8765 was free. Then keep the terminal short: your review,
 the observed findings that matter, and what went unexamined. If
 `examinedFiles` is less than `changedFiles`, say which parts no check
@@ -127,7 +127,7 @@ pass, and the reviewer will read it as one unless you say otherwise.
 
 Two numbers on the report are absences rather than results, and both read
 as a pass if you let them. `diffCoverage` is null when no coverage profile
-was found — that is "nobody measured", not "nothing is tested". When
+was found: that is "nobody measured", not "nothing is tested". When
 `coverage.coverableFiles` is 0 the change has no file a profile could
 cover, and coverage is left off the report on purpose; do not raise it.
 Likewise a pane in `substrates[]` with state `not-applicable` means the
@@ -223,7 +223,7 @@ GitHub. Redline renders what you wrote, marked as yours.
 ## Judge the suppressions
 
 Redline extracts the facts; the reading is still yours. For a finding it
-cannot judge — a `//nolint` or `eslint-disable` the change adds — you can
+cannot judge, such as a `//nolint` or `eslint-disable` the change adds, you can
 record a verdict that rides on the same card, marked `source: llm`, beside
 Redline's deterministic fact.
 
