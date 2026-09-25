@@ -97,8 +97,8 @@ func cmdPost(o opts) error {
 	// A session outlives the head it observed, so a review can be posted
 	// against a commit that is no longer the tip. In CI that is a race: a
 	// push can happen between the review step and the post step, so this is
-	// not a mistake. The
-	// review still posts, with a notice in the body, because the body is what
+	// not a mistake. The review still posts, with a notice in the body,
+	// because the body is what
 	// stays on the pull request and the review is already paid for. What a
 	// profile's require_head withholds is the gate verdict, so a stale review
 	// cannot satisfy a gate that wants one covering the current commit. It
@@ -495,9 +495,10 @@ type ghAuthoredBody struct {
 	Body  string
 	// At is when the item was submitted or written, as GitHub's own RFC 3339
 	// string, which sorts correctly as text. Carried because the order the
-	// API returns reviews in is not something to rest a choice on: picking
-	// the previous review by position is right only while that order holds,
-	// and a recap measured from the wrong baseline says nothing about it.
+	// API returns reviews in is not something a choice should depend on:
+	// picking the previous review by position is right only while that
+	// order holds, and a recap measured from the wrong baseline says
+	// nothing about it.
 	At string
 }
 

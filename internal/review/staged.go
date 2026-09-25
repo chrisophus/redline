@@ -64,10 +64,11 @@ type Cohort struct {
 // prefix and tail, under the contract that also carries the partition.
 func (r *Result) cohortsRequest(opts Options, in Input) *Result {
 	out := r.synopsisRequest(opts, in)
-	// The bound the rest of the run enforces, not the raw flag. The tripwire
-	// prices cohortBound, the progress line prints it and repairPartition
-	// folds anything above it, so a stage one told a larger number spends
-	// output on a partition that is then silently collapsed.
+	// This passes cohortBound, the bound the rest of the run enforces, in
+	// place of the raw opts.Cohorts flag. The tripwire prices cohortBound, the
+	// progress line prints it and repairPartition folds anything above it, so
+	// a stage one told a larger number spends output on a partition that is
+	// then silently collapsed.
 	out.Tail = describingTail + cohortsTail(opts, in, cohortBound(opts, in))
 	out.expect.cohorts = true
 	out.InputEstimate = r.InputEstimate + envelope.EstimateTokens(out.Tail)
@@ -119,9 +120,10 @@ func otherCohortFiles(all []Cohort, mineIdx int) []string {
 // that decides whether to send anything at all: stage one plus a call per
 // cohort, at the upper bound the run is allowed to draw.
 //
-// The bound rather than the count, because the count is stage one's to choose
-// and the tripwire refuses before stage one runs. A guard that priced one
-// review and then paid for six is the failure it exists to prevent.
+// This prices against the bound rather than the count, because the count is
+// stage one's to choose and the tripwire refuses before stage one runs. A
+// guard that priced one review and then paid for six is the failure it
+// exists to prevent.
 func stagedCeilingCost(opts Options, in Input, res *Result) float64 {
 	if opts.Shape() != PipelineStaged || res == nil {
 		return 0

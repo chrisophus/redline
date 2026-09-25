@@ -243,8 +243,8 @@ func TestChangedFilesAreNotResentAsContext(t *testing.T) {
 
 // A hop into a node with no source file is what an incremental `graphify
 // update` leaves behind when the real definition sits outside the batch it
-// re-extracted. Following it lands nowhere, and silence there reads as
-// "nothing to say" rather than "not resolved".
+// re-extracted. Following it finds nothing on the other end, and silence
+// there reads as "nothing to say" rather than "not resolved".
 func TestBareNodeIsReportedRatherThanFollowed(t *testing.T) {
 	env := expand(t, Options{})
 	for _, x := range env.Expansions {
