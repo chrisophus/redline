@@ -22,8 +22,9 @@ const SuppressSubstrate = "redline/suppressions"
 // Only directives on lines the diff adds are reported. A directive that
 // merely moved keeps its old justification; one the change introduces is the
 // one that needs a fresh look. Findings are info severity: many silencings
-// are legitimate, and the point is visibility, not a gate — a repository that
-// wants them to block can list info in its profile.
+// are legitimate; the finding's job is to make the suppression visible, not
+// to gate the change on it. A repository that wants them to block can list
+// info in its profile.
 type Suppressions struct {
 	Repo *gitx.Repo
 

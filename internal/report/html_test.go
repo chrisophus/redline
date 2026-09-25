@@ -40,8 +40,8 @@ func TestHighlightDiffForUsesSourceLineNumbers(t *testing.T) {
 }
 
 // The HTML report dropped pane.Render (the lint delta's "N introduced, M
-// resolved", a suppression's added-directive list) on the floor entirely —
-// markdown has rendered it since section1 existed. A report with a real
+// resolved", a suppression's added-directive list) on the floor entirely.
+// Markdown has rendered it since section1 existed. A report with a real
 // lint delta and nothing under a "Lint" heading anywhere on the page is
 // this bug; this is the regression test for it.
 func TestWhatChangedSectionRendersPaneSummaries(t *testing.T) {

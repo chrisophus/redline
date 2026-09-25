@@ -36,7 +36,7 @@ const SchemaVersion = 1
 type Role string
 
 const (
-	// RoleEnclosing is the full declaration a changed hunk sits inside —
+	// RoleEnclosing is the full declaration a changed hunk sits inside,
 	// the whole function, not the hunk. Always the most valuable expansion:
 	// a hunk without its enclosing declaration cannot be judged at all.
 	RoleEnclosing Role = "enclosing"
@@ -54,7 +54,7 @@ const (
 	// RoleType is the definition of a type named in a changed signature.
 	RoleType Role = "type"
 	// RoleSibling is another implementation of an interface the change
-	// touches — the other half of "you changed one of these".
+	// touches, the other half of "you changed one of these".
 	RoleSibling Role = "sibling"
 	// RoleTest is a test that covers a changed symbol.
 	RoleTest Role = "test"
@@ -205,7 +205,7 @@ type File struct {
 type Expansion struct {
 	Role Role `json:"role"`
 	// Priority is the provider's hint, higher meaning more valuable. It
-	// orders expansions within a role and nothing else — a provider cannot
+	// orders expansions within a role and nothing else: a provider cannot
 	// promote a test above an enclosing declaration by scoring it 1000.
 	Priority int    `json:"priority,omitempty"`
 	Symbol   string `json:"symbol,omitempty"`

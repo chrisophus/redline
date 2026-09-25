@@ -792,7 +792,7 @@ question a reviewer opens the walkthrough with. The table has only a File and
 a What changed column unless `body_include` adds more. Each extra column takes
 width from the summary, and with enough of them GitHub wraps paths in the
 middle, which is why this was a list for a while. A finding that names one of
-the listed files rides under its table; any other finding lands in the list
+the listed files appears under its table; any other finding goes in the list
 after.
 
 On a pull request Redline has reviewed before, run `redline review --since
@@ -805,7 +805,7 @@ stored gets the whole walkthrough instead. This happens on its own whenever the 
 has the paragraph; `--recap` makes it required, so a post that cannot carry
 one is refused instead of falling back to the overview.
 
-`body_include` decides how much of the report rides along:
+`body_include` decides how much of the report is included:
 
 | Key | What it adds to the walkthrough |
 |---|---|
@@ -899,7 +899,7 @@ reading it knows which panes exist.
 ## What use taught it
 
 Dogfooding rung 1 on its own repository changed three things, all the same
-mistake in different clothes - a report that reads better than the facts
+mistake in different forms - a report that reads better than the facts
 support:
 
 - A change no pane covered rendered as `Findings: None` with "every applicable
@@ -915,7 +915,7 @@ A fourth lesson reshaped the tool itself. Redline once ran the agent's
 review: reviewer adapters, a packet of facts for the agent to judge, a
 context brief, a Copilot-shaped posted review built from agent prose. None
 of it made reviews better than the agents produce on their own, and it was
-cut. The agent came back on the other side of the line, as a reviewer that
+cut. The agent came back in a different role, as a reviewer that
 reads `findings.json` and writes `review.json`, which Redline renders beside
 its own facts. The reasoning and the removal inventory are in
 `redline-design.md`.

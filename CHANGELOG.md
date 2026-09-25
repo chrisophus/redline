@@ -125,7 +125,7 @@ Releases whose tag carries only a subject line are listed as that subject.
 - **What that call cost is priced where it ran.** `Usage` is a token count
   with no model attached and one record cannot carry two rate cards, so a
   describing call on a second model keeps its tokens out of `Usage` and its
-  cost lands in `Result.SynopsisCostUSD`, the shape `ScoutCostUSD` already
+  cost goes into `Result.SynopsisCostUSD`, the shape `ScoutCostUSD` already
   had. `Result.SynopsisModel` records what wrote the walkthrough on every run
   that had one, and the ledger row carries both, the model only where it
   differs. A describing model with no entry in the price table makes the whole
@@ -461,7 +461,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   review.
 - **The judging prompt asks for what the reviewer is unsure of, and names
   warning and error as where that matters most.** The reason it gives no
-  longer rests on a filter running behind it, since `--verify` is off by
+  longer depends on a filter running behind it, since `--verify` is off by
   default.
 - **The system prompt no longer says linters have run over the change.** That
   is `priorsSection`'s sentence, which names the tools that actually ran and
@@ -775,7 +775,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   since shipped, and several of their measurements were overturned by later
   runs (the prompt ladder, which turned out to be measuring a proxy that
   rewrote the system prompt). `docs/plans/roadmap.md` carries what is still
-  open, with the evidence each item rests on and the numbers that still hold.
+  open, with the evidence each item depends on and the numbers that still hold.
   What shipped is in this file, the README status table and the doc comments
   beside the code; the arguments are in `git log --follow -- docs/plans`.
 - **`tool_choice` is never pinned, on either wire.** It used to be pinned
@@ -999,7 +999,7 @@ per-command help, `--no-context`.
   no tool grammar, and the review arriving as JSON in a text reply. On the two
   fixtures carrying 31 of the 38 annotated expectations, that caught 5 at $0.13
   a review against the old default's 4 at $0.10.
-- Thinking is off on that call — it bought two catches out of 31 for 3.6x the
+- Thinking is off on that call: it bought two catches out of 31 for 3.6x the
   money and twelve times the wall time. `--verify` is off too: it had run by
   default for most of the tool's life, no eval arm had ever scored it, and the
   one trace showed it suppressing nine of the ten findings that never reached
@@ -1105,8 +1105,8 @@ See the `v0.3.0` tag.
 - `--api openai`, speaking to any endpoint using the chat completions protocol.
 - `--mode explore`, handing the reviewer a catalogue of the resolved context and
   a tool to fetch from it, capped in dollars.
-- `--samples`, taking several independent reviews and unioning them —
-  measurement found the samples disjoint: across forty-odd samples in eleven
+- `--samples`, taking several independent reviews and unioning them.
+  Measurement found the samples disjoint: across forty-odd samples in eleven
   configurations of one fixture, no finding was ever produced by two samples.
 
 ### Changed

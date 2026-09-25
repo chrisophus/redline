@@ -114,7 +114,7 @@ type BaselineConfig struct {
 	Mode string `yaml:"mode"`
 	// File is the baseline artifact's path, relative to the repository
 	// root, read at head. Required when Mode is "file". It is parsed with
-	// this same tool's Format/ResultsPath/Fields — a baseline is a
+	// this same tool's Format/ResultsPath/Fields: a baseline is a
 	// snapshot of the same shape the tool always produces.
 	File string `yaml:"file"`
 }
@@ -134,10 +134,10 @@ func isRedlineConfig(path string) bool {
 	return false
 }
 
-// loadConfig reads .redline.yml from root. A missing file is not an error —
-// no repository is required to have one — and returns (nil, nil). A file
-// that exists but fails to parse is: a misconfigured tool must be visible as
-// broken, not silently absent from the review.
+// loadConfig reads .redline.yml from root. A missing file is not an error,
+// since no repository is required to have one, and returns (nil, nil). A file
+// that exists but fails to parse is an error: a misconfigured tool must be
+// visible as broken, not silently absent from the review.
 func loadConfig(root string) (*redlineConfig, error) {
 	for _, name := range configNames {
 		data, err := os.ReadFile(filepath.Join(root, name))

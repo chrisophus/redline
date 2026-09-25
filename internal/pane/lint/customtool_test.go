@@ -268,7 +268,7 @@ func TestConfiguredDifferTool(t *testing.T) {
 `)
 	r.write("openapi.yaml", "openapi: 3.0.0\npaths:\n  /a: {get: {responses: {200: {}}}}\n")
 	base := r.commit("base")
-	// Head drops the 200 response — the files now differ.
+	// Head drops the 200 response, so the files now differ.
 	r.write("openapi.yaml", "openapi: 3.0.0\npaths:\n  /a: {get: {responses: {404: {}}}}\n")
 
 	p := &Delta{Repo: r.open()}

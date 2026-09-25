@@ -58,8 +58,8 @@ type Expectation struct {
 	// RelatesToRules names the wave-one rules the correlation should
 	// reference. Checked against the fixture's own findings: the comment's
 	// references are resolved the way the report resolves them, and a
-	// reference that lands nowhere, or lands on some other rule, is not a
-	// correlation caught.
+	// reference that resolves to nothing, or resolves to a different rule, is
+	// not a correlation caught.
 	RelatesToRules []string `json:"relates_to_rules"`
 	// Optional expectations are worth having and are not scored as misses.
 	Optional bool `json:"optional"`
@@ -475,10 +475,11 @@ var denialPhrases = []string{
 // round at effort=medium lost fourteen of twenty-eight the same way. A catch
 // has to be a claim, so a denial satisfies no expectation.
 //
-// Only the last sentence is read, because that is where the verdict lands; a
-// denial phrase earlier in the body is usually a concern set aside on the way
-// to one that is kept. A contrast after the phrase keeps the comment a claim:
-// "this is fine, but the map is never checked" raises the second half.
+// Only the last sentence is read, because that is where the verdict is
+// stated; a denial phrase earlier in the body is usually a concern set aside
+// on the way to one that is kept. A contrast after the phrase keeps the
+// comment a claim: "this is fine, but the map is never checked" raises the
+// second half.
 func deniesDefect(body string) bool {
 	last := lastSentence(strings.ToLower(body))
 	end := -1
