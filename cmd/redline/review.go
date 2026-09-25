@@ -274,8 +274,8 @@ func cmdReview(o opts) error {
 	//
 	// It costs turns: three runs on one pull request put the inline shape at
 	// 4.7x a plain review (see Result.Looked, printed as looked=N). That is
-	// price rather than doubt about the shape, and --max-cost is the control
-	// for price. --no-look is there for a review that has to cost what a
+	// a matter of price, not a sign the shape doesn't work, and --max-cost is
+	// the control for price. --no-look is there for a review that has to cost what a
 	// plain one costs, and for measuring against the shape without them.
 	if !o.noLook {
 		ropts.Look = lookerFor(res)
@@ -287,8 +287,8 @@ func cmdReview(o opts) error {
 		// identical. Assemble is what --dry-run does and calls nothing, so
 		// the price quoted here is the price about to be paid.
 		if est, aerr := review.Assemble(in, ropts); aerr == nil {
-			// est carries the resolved model and wire, since the defaults are
-			// applied inside Assemble rather than out here.
+			// est carries the resolved model and wire, since Assemble is what
+			// applies the defaults; this function only reports them.
 			fmt.Fprintf(os.Stderr, "redline: reviewing %s with %s (%s), %d input tokens, expect %s, at most %s\n",
 				describeSession(res), est.Model, est.API, est.InputEstimate,
 				review.FormatCost(est.CostUSD, est.CostKnown),

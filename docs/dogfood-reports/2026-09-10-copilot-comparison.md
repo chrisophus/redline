@@ -10,7 +10,7 @@
 PR #1360 states one load-bearing invariant in its own description: "shared
 evaluation timestamp so expansion counts and destination lists agree." The
 whole feature is that a buyer Attention count and the drill-through list you
-land on are the same set, evaluated at one `asOf`. That is a checkable claim,
+reach are the same set, evaluated at one `asOf`. That is a checkable claim,
 and it is exactly where the real bugs turned out to be. So the PR doubles as a
 test of whether each reviewer can hold an invariant and trace it across the
 code.
@@ -58,7 +58,7 @@ low.
   `entitlementListNoUsageWithinDaysPredicate` and
   `entitlementListUsageWithinDaysPredicate`, which hardcode `CURRENT_DATE - days`
   (lines 304, 313, 329). Reopening a saved drill-through on a later UTC day
-  shifts membership. This is the PR's stated invariant, broken.
+  shifts membership. This breaks the PR's stated invariant.
 - Copilot #2 (`api/openapi.yaml:7449`): member-ID arrays are required and
   unbounded by buyer size, while the UI reads only each group's `count`.
 - Copilot #4/#5 (`CustomerFocusBuyerExpansionPanel.tsx:325,341`): the attention
@@ -81,7 +81,7 @@ but did not route to the agent reviewer.
   `IncludeTestProducts=true` when rebuilding the rule WHERE. Redline raised a
   possible test/dev leak, then ruled both "kept" after concluding there is no
   leak because the outer caller-scoped test predicate is ANDed separately.
-  Raised, investigated, self-resolved to a non-issue.
+  It was raised, investigated, and resolved as a non-issue.
 - c5 (info, unverifiable): exported `BuyerAttentionRuleIDs` is dead production
   code, test-only. Overlaps its own deterministic `test-only-live` lint.
 - c4 (info, unverifiable): two extra repository round trips per request on an
@@ -106,10 +106,10 @@ came back unverifiable because no lookup evidence was gathered. It reasons
 locally and defensively rather than testing the PR's declared invariant.
 
 Redline's deterministic half is a real moat Copilot has nothing for: lint delta,
-coverage on added lines, structural parity, assertion drop. The conclusion is
-not that one tool wins. It is that Redline's agent reviewer needs to reason
-about invariants and trace values across call seams, because that is the class
-of bug it lost on here.
+coverage on added lines, structural parity, assertion drop. The gap is
+narrower than one tool beating the other: Redline's agent reviewer needs to
+reason about invariants and trace values across call seams, because that is
+the class of bug it lost on here.
 
 ## Lessons
 
