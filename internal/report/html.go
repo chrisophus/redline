@@ -482,7 +482,7 @@ func highlightDiffFor(path, diff string, cov map[int]bool) string {
 }
 
 // coverAttr is the coverage stripe for one diff line. Only head (new) lines
-// carry it — coverage is a fact about the head file: hit ran, miss did not, and
+// carry it. Coverage is a fact about the head file: hit ran, miss did not, and
 // a line the profile does not mention is not coverable and gets nothing.
 func coverAttr(side string, src int, cov map[int]bool) string {
 	if side != "new" || cov == nil {
@@ -500,7 +500,7 @@ func coverAttr(side string, src int, cov map[int]bool) string {
 
 // expandForFindings appends a small context window around each finding line the
 // file's diff does not already show, read from the head tree. A lint finding
-// often sits on an unchanged line the default 3-line diff context never reaches;
+// is often on an unchanged line the default 3-line diff context never reaches;
 // without this it cannot be located or highlighted in the drawer. Best effort:
 // a file it cannot read, or a finding already in the diff, adds nothing.
 func expandForFindings(headDir, path, diff string, lines []int) string {
@@ -598,8 +598,8 @@ func headFileLines(headDir, path string) []string {
 }
 
 // diffCursor walks a unified diff, tracking old and new file line numbers.
-// inHunk separates the header region of a file — where "--- a/x" is a header
-// — from its body, where a line starting "---" is deleted content.
+// inHunk separates the header region of a file, where "--- a/x" is a header,
+// from its body, where a line starting "---" is deleted content.
 type diffCursor struct {
 	old, new int
 	inHunk   bool

@@ -17,7 +17,7 @@ var severityCycle = [...]findings.Severity{
 
 // genReport builds a report with n findings spread over 20 files, four in
 // five of them located on a changed line and the rest unlocated (riding in
-// the body) — the shape BuildAttest actually walks on a large pull request.
+// the body): the shape BuildAttest actually walks on a large pull request.
 func genReport(n int) *findings.Report {
 	rep := &findings.Report{
 		Coverage: findings.Coverage{ChangedFiles: 20, ExaminedFiles: 20},

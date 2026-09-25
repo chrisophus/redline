@@ -40,10 +40,10 @@ type Result struct {
 	// into Report.Tools so findings.json states which linters ran.
 	Tools []findings.ToolStatus
 
-	// Evidence maps an observation ID to the artifact backing it — the SQL a
+	// Evidence maps an observation ID to the artifact backing it: the SQL a
 	// migration edit actually changed, a schema dump, a captured response.
 	// Findings reference these by ID. A finding a reviewer cannot check for
-	// themselves is inference wearing evidence's clothes.
+	// themselves is an inference presented as evidence.
 	Evidence map[string]Artifact
 }
 
