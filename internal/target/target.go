@@ -1,6 +1,7 @@
-// Package target resolves what Redline is being pointed at — the working
-// tree, a commit, a commit range, a branch, or a GitHub pull request — into
-// a directory to observe and a base revision to observe it against.
+// Package target resolves what Redline is being pointed at, whether the
+// working tree, a commit, a commit range, a branch, or a GitHub pull
+// request. The result is a directory to observe and a base revision to
+// observe it against.
 //
 // Everything here is read-only with respect to GitHub. Redline fetches; it
 // never posts, approves, or blocks.
@@ -22,7 +23,7 @@ import (
 type Kind string
 
 const (
-	KindWorktree Kind = "worktree" // uncommitted local work — the pre-push case
+	KindWorktree Kind = "worktree" // uncommitted local work, the pre-push case
 	KindCommit   Kind = "commit"   // one commit against its parent
 	KindRange    Kind = "range"    // A..B
 	KindBranch   Kind = "branch"
@@ -40,10 +41,10 @@ type Target struct {
 	// rather than the caller's own checkout.
 	//
 	// It decides more than a log line. A detached worktree has none of the
-	// artifacts the harness reads -- no coverage profile, no mutants report,
-	// no graph -- so `--prepare` has to produce them there, and anything the
+	// artifacts the harness reads: no coverage profile, no mutants report,
+	// no graph. So `--prepare` has to produce them there, and anything the
 	// caller produced by hand in their own tree is invisible. When the
-	// checkout already sits on the revision under review, observing it
+	// checkout is already at the revision under review, observing it
 	// directly is both faster and the only way those artifacts are seen.
 	Detached bool `json:"detached,omitempty"`
 
@@ -119,14 +120,14 @@ func (o Options) exclusive() error {
 
 // resolveBranch reviews a branch's tip rather than the working tree. The
 // branch is observed in a detached worktree so the user's checkout is left
-// exactly as it was — Redline is a reviewing tool and must never move someone
+// exactly as it was. Redline is a reviewing tool and must never move someone
 // off their own branch.
 func resolveBranch(repo *gitx.Repo, opts Options) (*Target, error) {
 	return detach(repo, opts.Branch, opts.Base, KindBranch, opts.Branch, "branch")
 }
 
-// resolveCommit reviews the tree at REF against its first parent — the
-// change that commit introduced — not the whole branch vs origin/main.
+// resolveCommit reviews the tree at REF against its first parent: only the
+// change that commit introduced, rather than the whole branch vs origin/main.
 func resolveCommit(repo *gitx.Repo, opts Options) (*Target, error) {
 	head, err := repo.Resolve(opts.Commit)
 	if err != nil {
@@ -183,15 +184,15 @@ func parseRange(s string) (left, right string, err error) {
 
 // detach resolves headRev and returns the tree to observe it in.
 //
-// The caller's own checkout is used when it already sits on that revision
-// with nothing modified. Redline is a reviewing tool and must never move
-// someone off their branch, which is what the worktree was for -- but when
-// the checkout is already on the commit under review, copying it into a
-// throwaway worktree changes nothing about what is observed and loses
-// everything around it: the coverage profile, the mutants report and the
-// graph all live in the caller's tree, and a detached worktree has none of
-// them. `redline run --pr N` on the branch you are already on was reading a
-// bare checkout and reporting the artifacts as missing.
+// The caller's own checkout is used when it is already checked out at that
+// revision with nothing modified. Redline is a reviewing tool and must never
+// move someone off their branch, which is what the worktree was for. But
+// when the checkout is already on the commit under review, copying it into a
+// throwaway worktree does not change what gets observed. It does lose the
+// coverage profile, the mutants report, and the graph: those live in the
+// caller's tree, and a detached worktree has none of them. `redline run
+// --pr N` on the branch you are already on was reading a bare checkout and
+// reporting the artifacts as missing.
 //
 // Anything modified or untracked rules it out. The tree would then differ
 // from the
@@ -259,7 +260,7 @@ func prBaseRef(repo *gitx.Repo, opts Options, pr *PullRequest) (string, error) {
 		return base, nil
 	}
 	base = "origin/" + pr.BaseRefName
-	// Fetched every time, not only when the ref is missing.
+	// This fetches every time, even when the ref is already present.
 	//
 	// The head can check itself: prHeadRef compares what it resolves against
 	// the HeadRefOid gh reported and re-fetches when they disagree. The base

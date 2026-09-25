@@ -14,8 +14,9 @@ import (
 // legitimately needs to read to check a claim - on a repository that
 // gitignores generated SQL bindings, --look would no longer be able to
 // confirm the generated file matches the query that produced it.
-// .cursorindexingignore means precisely "automated reader, skip this," with
-// nothing to be wrong about the way .gitignore would be.
+// .cursorindexingignore means exactly "automated reader, skip this," and
+// treating it that way is never wrong, the way treating .gitignore that way
+// would be.
 const ignoreFile = ".cursorindexingignore"
 
 // loadIgnorePatterns reads ignoreFile at root and returns its patterns,

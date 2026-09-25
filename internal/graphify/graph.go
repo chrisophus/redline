@@ -272,14 +272,15 @@ type hop struct {
 // treeSitterRelations are the edge kinds Graphify's tree-sitter extractors
 // emit. Everything the adapter walks has to be in here.
 //
-// An allowlist and not a denylist, on purpose. Graphify's other half runs
-// subagents or calls a model to write semantic edges, and two fresh rebuilds
-// of the identical commit are not guaranteed to produce the same ones. An
-// envelope built from those is not reproducible, which makes the eval measure
-// noise rather than the reviewer. A denylist would admit every relation a
-// future model pass invents; this drops every relation a future grammar
-// invents instead, and that direction fails visibly: the expansion is missing,
-// and skippedRelations says which relation names were passed over.
+// This is an allowlist, chosen over a denylist on purpose. Graphify's other
+// half runs subagents or calls a model to write semantic edges, and two
+// fresh rebuilds of the identical commit are not guaranteed to produce the
+// same ones. An envelope built from those is not reproducible, which makes
+// the eval measure noise rather than the reviewer. A denylist would admit
+// every relation a future model pass invents; this drops every relation a
+// future grammar invents instead, and that direction fails visibly: the
+// expansion is missing, and skippedRelations says which relation names were
+// passed over.
 var treeSitterRelations = map[string]bool{
 	"accesses":            true,
 	"binds_method":        true,
