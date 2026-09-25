@@ -21,9 +21,9 @@ import (
 //
 // This is the one Redline command that writes to GitHub, and it is never a side
 // effect: `run` stays read-only, and posting happens only when the operator
-// types `redline post`. It refuses unless the session it loads is the PR named
-// — posting a review of one change onto another PR is exactly the mistake
-// worth a hard error.
+// types `redline post`. It refuses unless the session it loads is the PR
+// named: posting a review of one change onto another PR is exactly the
+// mistake worth a hard error.
 func cmdPost(o opts) error {
 	res, err := run.LoadSession(o.out)
 	if err != nil {
@@ -50,8 +50,9 @@ func cmdPost(o opts) error {
 	num := tgt.PR.Number
 
 	// A real post needs gh for its credentials, the pull request head and the
-	// review bodies it already left. Fail before opening a connection rather
-	// than part way through.
+	// review bodies it already left. This check happens before opening a
+	// connection, so a missing gh command fails immediately instead of
+	// partway through the post.
 	if !o.dryRun {
 		if _, err := exec.LookPath("gh"); err != nil {
 			return fmt.Errorf("posting a review needs the gh CLI on PATH: %w", err)
@@ -94,8 +95,9 @@ func cmdPost(o opts) error {
 	}
 
 	// A session outlives the head it observed, so a review can be posted
-	// against a commit that is no longer the tip. In CI that is a race, not a
-	// mistake: a push lands between the review step and the post step. The
+	// against a commit that is no longer the tip. In CI that is a race: a
+	// push can happen between the review step and the post step, so this is
+	// not a mistake. The
 	// review still posts, with a notice in the body, because the body is what
 	// stays on the pull request and the review is already paid for. What a
 	// profile's require_head withholds is the gate verdict, so a stale review

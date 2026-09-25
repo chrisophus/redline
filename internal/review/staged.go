@@ -16,13 +16,13 @@ import (
 // The staged pipeline: one call describes the change and partitions it, and
 // one call per part judges its own part.
 //
-// What the fan-out buys is not a smaller input per call - every call carries
-// the whole prefix, because that is what the cache is keyed on - but a smaller
-// task per call. The failure it is aimed at is measured: a reviewer with fifty
-// files in front of it spends its finding-count on the first few, and the
-// per-file summaries and the findings share one output cap. Whether a smaller
-// task raises recall is the question the arm exists to answer, not an
-// assumption this code makes.
+// The fan-out does not shrink the input each call carries: every call still
+// sends the whole prefix, because that is what the cache is keyed on. What it
+// shrinks is the task within that prefix. The failure it is aimed at is
+// measured: a reviewer with fifty files in front of it spends its
+// finding-count on the first few, and the per-file summaries and the findings
+// share one output cap. Whether a smaller task raises recall is the question
+// the arm exists to answer; this code does not assume the answer either way.
 //
 // Everything here degrades to the shape below it. A stage one that fails or
 // comes back without a usable partition leaves the run on the one-shot

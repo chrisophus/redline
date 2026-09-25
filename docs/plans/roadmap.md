@@ -207,7 +207,7 @@ What the research behind it said, and what was changed because of it:
 | **The providers reach further out** | Shipped in both, gorefactor 0.18.0 and tsrefactor 0.1.0. A caller carries its whole enclosing function instead of the use line plus two, keyed on the declaration so two uses in one function ship it once. A `callee` role says what the change calls, which is the other half of most contract defects and of the cache-key miss above. An `indirect-caller` role carries the second hop. The `type` role reaches past a signature to field types, body types and what a changed type refers to; the interface a changed type implements is sent rather than only named; a changed interface brings its implementations, matched on a shared member rather than on still satisfying it, because an interface that gains a method is exactly when its implementations stop satisfying it; tests that reach the change through a caller are emitted, which is the cross-package test the role never reported. History caps are flags. tsrefactor also resolves `.js`, makes the functions inside a function declarations, and reports the cache-key coverage question as an unknown rather than as a resolved role, since matching two key literals is a guess. | done |
 | **Speculative findings about unseen callers** | On the clean fixture both runs flagged a nil return for callers that might exist. A finding should rest on code the reviewer saw or read. Measure a sentence to that effect on the clean pair. | S |
 | **The describing pass reads context too** | It fetched the caller on both synthetic runs. Cheap here, but it is not the pass that needs it. | S |
-| **Try it on the cache-key PR** | The real miss this is aimed at, with tsrefactor's context and a large change, where the relevant entry is one of many. Unblocked: whole calling functions have landed, so the page's caller now carries the panel render four lines below the hook call, and the callee role carries both the hook and the panel when the page is what changed. Nothing has run it on the real change yet, and that is the next thing worth a model call. | S |
+| **Try it on the cache-key PR** | The real miss this is aimed at, with tsrefactor's context and a large change, where the relevant entry is one of many. Unblocked: whole calling functions have shipped, so the page's caller now carries the panel render four lines below the hook call, and the callee role carries both the hook and the panel when the page is what changed. Nothing has run it on the real change yet, and that is the next thing worth a model call. | S |
 | **Decide whether context defers by default** | Not before it has run on real changes with the extended providers. | S |
 
 ## Cohorts
@@ -274,8 +274,8 @@ document:
 
 Almost every awkward thing above exists to keep the prompt cache warm. The
 answer travels as tool calls because the normal way to ask for structured
-output sits in front of the prompt and changing it between calls throws the
-cache away. Model and effort are pinned for the whole run. The passes are
+output comes before the prompt in the request, and changing it between calls
+throws the cache away. Model and effort are pinned for the whole run. The passes are
 siblings rather than one conversation, each one re-sending the same material
 with a different instruction stuck on the end, though each pass is now a short
 conversation of its own.
@@ -396,7 +396,7 @@ themselves.
 | Catch model-written junk before it posts | A ruling once emitted `…the finding claims.dependencies.python.org.(placeholder)` into a verdict. It was in neither request nor the review response, so the model made it up, and it rendered into `report.md` and would have gone to a pull request. Bare domains and placeholder-shaped fragments in model text are cheap to catch. | S |
 | The report must not contradict itself | `report.md` said no agent review was merged while `review.json` recorded the change under review and the report printed its five comments. The staleness note and the merged findings cannot be allowed to disagree. | S |
 | Let the reviewer say a pane is wrong | Two `sibling-missing-file` findings claimed a capability was tested on one side only, and a test file in the same diff tested both. The reviewer can build on a pane's finding but has no way to contradict one. Wants a rebuttal in the output form, checked like any other finding, and never able to clear an error-level gate. | M |
-| Hand the unknowns to the reviewer | Two Copilot findings landed exactly in Redline's own list of what it could not determine. That list is printed for the person and never given to the reviewer as work. | S |
+| Hand the unknowns to the reviewer | Two Copilot findings matched entries already in Redline's own list of what it could not determine. That list is printed for the person and never given to the reviewer as work. | S |
 | Test the claims in the description | The pull request title, body and commit messages now render under `## The change`. What is left is asking the reviewer to check each claim against the code rather than read it as background. Copilot does this by default and caught two bugs that way. | S |
 | Click a line, see the tests that cover it | The coverage profile knows covered from uncovered but not which test ran a line. That needs per-test coverage, which means running the suite many times, so it cannot be part of `run`, which stays free. An opt-in command that writes a line-to-tests map the report reads. Mutation testing wants the same data, so build it once. | L |
 | Interface section | A placeholder that only ever renders a gap. Screenshots from an agent, a deterministic list of what UI moved, or drop the section. | M |

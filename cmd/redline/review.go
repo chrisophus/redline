@@ -638,12 +638,12 @@ func (o opts) scoutSettings() scoutSettings {
 // which is the same pair ReviewIdentity distinguishes.
 func (o opts) sinceLastReview(res *run.Result) (string, []string, error) {
 	// This is the checkout under review; it is not o.root. o.root is the
-	// session directory, which is .redline inside the checkout by default and so happens to
-	// resolve, but --out and --session can put it anywhere: a session cache
-	// outside the repository would resolve --since against the wrong
-	// repository or none at all. The target's own directory is what the panes
-	// observe, and the working directory is the fallback the other commands
-	// use when there is no target.
+	// session directory, which is .redline inside the checkout by default
+	// and so happens to resolve, but --out and --session can put it
+	// anywhere: a session cache outside the repository would resolve
+	// --since against the wrong repository or none at all. The target's
+	// own directory is what the panes observe, and the working directory is
+	// the fallback the other commands use when there is no target.
 	dir := ""
 	if res != nil && res.Change != nil && res.Change.Target != nil {
 		dir = res.Change.Target.Dir
@@ -799,8 +799,9 @@ func reviewNote(o opts) (string, error) {
 // The guard is scoutAnswerer's, for scoutAnswerer's reason: a session outlives
 // the tree it was written from, and a fixture copied elsewhere or a worktree
 // since reclaimed has no repository to look anything up in. Looking it up in
-// the wrong one would be worse than not looking, and nil is how a pass is told
-// the tools are not there rather than being handed a wrong answer.
+// the wrong one would be worse than not looking, and nil is how a pass is
+// told plainly that the tools are not there; the alternative would be
+// handing it a wrong answer instead.
 func lookerFor(res *run.Result) review.Looker {
 	root := ""
 	if res.Target != nil {

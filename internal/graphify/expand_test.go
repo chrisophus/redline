@@ -208,8 +208,8 @@ func TestCallersAreLeftToTheExactProvider(t *testing.T) {
 	if x := find(env, envelope.RoleCaller, "Handle()"); x != nil {
 		t.Error("a name-resolved caller was sent for a file an exact resolver covers")
 	}
-	// Everything else still comes through: deferring callers is not deferring
-	// the provider.
+	// Everything else still comes through: deferring callers only turns off
+	// the caller role for that file.
 	if find(env, RoleNeighbor, "users") == nil {
 		t.Error("deferring callers dropped the cross-kind neighbor too")
 	}

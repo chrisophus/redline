@@ -530,10 +530,10 @@ func (r *Result) ruleRequest(in Input, opts Options, cands []Candidate, answers 
 	out := r.clone()
 	// The system block is left byte-identical to stage one and the ruling
 	// instruction goes at the tail of the user turn, beside the findings it
-	// refers to. Two reasons, and both hold. A judge of these findings works
-	// under the rules the review was given. And everything ahead of that tail
-	// is the same bytes the review sent, tools included, so the breakpoint at
-	// the end of the shared prompt is read back here rather than rewritten.
+	// refers to. A judge of these findings works under the rules the review
+	// was given, and everything ahead of that tail is the same bytes the
+	// review sent, tools included, so the breakpoint at the end of the shared
+	// prompt is read back here rather than rewritten.
 	//
 	// The tail is a second block rather than more of the first. Appending it
 	// to Prompt would move the breakpoint's own block and the review's entry
@@ -609,7 +609,7 @@ func combineRulings(cands, pending []Candidate, settled, model map[string]findin
 //     of another finding that asks the same question, which the prompt asks it
 //     to collapse. Anything else suppresses a finding on a thread nobody can
 //     find.
-//   - withdrawn and justified rest on a quoted line. If no run of that quote
+//   - withdrawn and justified depend on a quoted line. If no run of that quote
 //     is in what the ruling was shown, the quote was invented, and a finding
 //     withdrawn or excused on invented evidence is the exact failure this pass
 //     exists to prevent.
@@ -770,10 +770,10 @@ func findingID(s string) string {
 // decodeRulingShapes reads the shapes that are still well-formed JSON. When
 // none of them parse, a gateway that returned the whole object as a JSON string
 // and escaped it only once is the remaining case: the decoded value is not
-// valid JSON, because a quote inside a field's text sits raw where the wire
-// should carry an escaped one. relaxUnescapedQuotes re-escapes those and the
-// shapes are tried one more time. It runs only after the strict read has
-// failed, so a well-formed response never reaches it.
+// valid JSON, because a quote inside a field's text is left unescaped where
+// the wire should carry an escaped one. relaxUnescapedQuotes re-escapes those
+// and the shapes are tried one more time. It runs only after the strict read
+// has failed, so a well-formed response never reaches it.
 func decodeRulingItems(raw json.RawMessage) ([]rulingItem, error) {
 	items, err := decodeRulingShapes(raw)
 	if err == nil {
@@ -795,7 +795,7 @@ func decodeRulingItems(raw json.RawMessage) ([]rulingItem, error) {
 // the schema has been seen to stringify the whole value, and to return an
 // object instead of an array: one ruling on its own, or a map keyed by the
 // finding id. Each of those carries the same rulings, so they are read out
-// rather than failing the pass open.
+// instead of letting a parse failure post every finding unchecked.
 func decodeRulingShapes(raw json.RawMessage) ([]rulingItem, error) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 {
@@ -833,8 +833,8 @@ func decodeRulingShapes(raw json.RawMessage) ([]rulingItem, error) {
 // stringified ruling's own text. A gateway that returns the whole object as a
 // JSON string and escapes it only once produces valid outer JSON whose decoded
 // value is not valid JSON: every structural quote is intact, but a quote inside
-// a field (a snippet like == "") sits raw where the wire should carry an
-// escaped one, and the strict shapes stop at it. This walks the bytes and
+// a field (a snippet like == "") is left unescaped where the wire should carry
+// an escaped one, and the strict shapes stop at it. This walks the bytes and
 // escapes any in-string quote that is not a real terminator, judged by whether
 // the next non-space byte continues the structure (':', ',', '}', ']', or the
 // end). Reported false when nothing was re-escaped, so a payload it cannot help

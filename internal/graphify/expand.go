@@ -305,10 +305,11 @@ func (w *walk) offer(peer Node, role envelope.Role, priority int, details map[st
 }
 
 func (w *walk) envelope() *envelope.Envelope {
-	// Ordered, not folded into the literal below: reading the expansions is
-	// what discovers a file the graph names and the worktree does not have,
-	// and the notes have to be written after that discovery rather than
-	// depending on the order Go evaluates struct fields in.
+	// These run in order rather than folding into the literal below: reading
+	// the expansions is what discovers a file the graph names and the
+	// worktree does not have, and the notes have to be written after that
+	// discovery rather than depending on the order Go evaluates struct
+	// fields in.
 	manifest := w.manifest()
 	expansions := w.expansions()
 	notes := w.notes()
