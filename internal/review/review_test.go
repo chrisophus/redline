@@ -848,8 +848,8 @@ func TestTheTripwirePricesTheCheckingPassItIsAboutToRun(t *testing.T) {
 		t.Errorf("a run that will not check anything was charged %v for it", got)
 	}
 
-	// A cap between the two: enough for stage one, not enough for the pass
-	// that follows it.
+	// A cap set high enough to cover stage one but too low for the pass that
+	// follows it.
 	opts.MaxCostUSD = one.CostCeilingUSD + extra/2
 	opts.Verify = true
 	if _, err := Run(context.Background(), in, opts); err == nil ||
@@ -883,9 +883,9 @@ func TestBriefReplyNarrowsToTheObject(t *testing.T) {
 }
 
 // Every stage gets the same harness half. The short prompt this used to pick
-// between is gone, and with it the stage test that kept it off the ruling, the
-// synopsis and the cohort partition -- each defined by a tool contract it did
-// not describe.
+// between is gone, and with it the stage test that kept it off the ruling,
+// the synopsis, and the cohort partition, each defined by a tool contract it
+// did not describe.
 func TestEveryStageGetsTheShippedPrompt(t *testing.T) {
 	for _, stage := range []string{StageReview, StageRuling, StageSynopsis, StageFindings} {
 		if got := systemFor(Options{}, stage); got != systemPrompt {

@@ -62,13 +62,15 @@ func (idleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-// idleReader races each Read against idleTimeout, not the whole response: a
-// stream that keeps producing bytes, however slowly overall, never trips it.
+// idleReader races each Read against idleTimeout rather than against the
+// whole response: a stream that keeps producing bytes, however slowly
+// overall, never trips it.
 //
-// The underlying Read runs in its own goroutine reading into a private
-// buffer, not the caller's: a Read that times out has already handed the
-// caller's buffer back for other use, and a late-arriving Read into it would
-// race whatever reused it. The buffer, and the goroutine reading into it, are
+// The underlying Read runs in its own goroutine, reading into a private
+// buffer of its own rather than the caller's: a Read that times out has
+// already handed the caller's buffer back for other use, and a late-arriving
+// Read into it would race whatever reused it. The buffer, and the goroutine
+// reading into it, are
 // abandoned on a timeout; both are freed once the real Read finally returns,
 // which Close (via the deferred stream.Close in send) forces by closing the
 // underlying connection.
