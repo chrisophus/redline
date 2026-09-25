@@ -5,7 +5,7 @@
 //
 // The review a reviewer reads has two parts. Findings that carry a file and a
 // line become line-anchored comments; the body opens with a one-line-per-pane
-// account of the evidence — what ran, what it found, what did not run — then
+// account of the evidence (what ran, what it found, what did not run), then
 // any finding that could not be anchored to a line, and a link to the full
 // report.
 //
@@ -89,8 +89,8 @@ type Comment struct {
 	StartLine int // zero means Line alone; otherwise the range start
 	// Side is the diff side the comment anchors to: "LEFT" for a removed line
 	// on the old file, "RIGHT" (or empty) for the new file. Carried from the
-	// finding so a comment on a deleted line posts LEFT rather than landing on
-	// the new-file line of the same number.
+	// finding so a comment on a deleted line posts LEFT rather than ending up
+	// on the new-file line of the same number.
 	Side        string
 	Body        string
 	Fingerprint string
@@ -217,11 +217,11 @@ func (p Payload) NothingNew() bool {
 // from the body when empty rather than rendered as a dead link.
 //
 // commentable is the set of line numbers per file that a review comment may
-// anchor to — GitHub's diff, from CommentableLines. A finding becomes a line
+// anchor to: GitHub's diff, from CommentableLines. A finding becomes a line
 // comment only when its line is in that set; every other finding rides in the
 // body, so one finding pointing off the diff can never 422 the whole review. A
-// nil commentable means "do not filter" — used offline, where there is no diff
-// to check against and the payload is only being previewed.
+// nil commentable means "do not filter." This is used offline, where there is
+// no diff to check against and the payload is only being previewed.
 func Build(rep *findings.Report, tgt *target.Target, reportURL string, commentable map[string]map[int]bool) Payload {
 	return BuildAttest(rep, tgt, reportURL, commentable, nil, nil)
 }
@@ -386,12 +386,13 @@ func unfalsifiable(f findings.Finding) bool {
 
 // lineOnDiff reports whether a finding has earned a line comment.
 //
-// A line comment is an interruption. It lands in an inbox, it opens a thread
-// somebody has to close, and it sits on the code until they do. A measurement
-// earns that at any severity, because it is a fact about the change and the
-// line is where the fact is. A reviewer's info does not: the second field
-// round posted fifteen comments of which eight were info, and every one of
-// them was a thread the team had to triage to learn that nothing was wrong.
+// A line comment is an interruption. It shows up in the author's inbox, opens
+// a thread somebody has to close, and stays on the code until they do. A
+// measurement earns that at any severity, because it is a fact about the
+// change, and that fact belongs to a specific line. A reviewer's info does
+// not: the second field round posted fifteen comments of which eight were
+// info, and every one of them was a thread the team had to triage to learn
+// that nothing was wrong.
 //
 // Nothing is lost. An info finding rides in the review body, where it is read
 // once by whoever is reading the review, and it is on the report in full.
@@ -534,8 +535,8 @@ func fpMarker(head, fingerprint string) string {
 }
 
 // buildBody is the review body a reviewer reads first: the verdict, the
-// evidence table — one line per pane, plus the coverage rows — then any finding
-// that could not be anchored to a line, and the report link.
+// evidence table (one line per pane, plus the coverage rows), then any
+// finding that could not be anchored to a line, and the report link.
 //
 // The whole assembled body is bounded against GitHub's limit, not just the
 // agent's prose. The verdict, the evidence table and the file summary are
@@ -870,8 +871,8 @@ func walkthroughHeading(gateVerdict string) string {
 // Each row is the file and the agent's one-line summary, plus what
 // body_include turns on: line-counts adds the lines moved (and the group's
 // totals to its heading), coverage the added lines a profile shows
-// unexecuted, lint what landed on the file by severity. All of it reads the
-// report the run wrote.
+// unexecuted, lint the count of findings on the file by severity. All of it
+// reads the report the run wrote.
 //
 // Test files are in their own group rather than left out. They used to be
 // dropped, because a flat table interleaved them with the code they test and
@@ -1016,7 +1017,7 @@ func uncoveredByFile(rep *findings.Report) map[string]int {
 	return out
 }
 
-// findingCountsByFile summarises, per file, how many findings landed on it by
+// findingCountsByFile summarises, per file, how many findings it has by
 // severity, so the walkthrough shows where the issues are without repeating the
 // message each inline comment already carries.
 func findingCountsByFile(rep *findings.Report) map[string]string {
@@ -1168,9 +1169,9 @@ func truncatedNote(n int) string {
 }
 
 // maxNarrative bounds what the agent's prose may take of the review body.
-// GitHub rejects a body over 65536 characters, and the parts that carry the
-// tool's own evidence -- the verdict, the pane table, the findings that could
-// not be anchored, the markers a merge gate reads -- are written after this
+// GitHub rejects a body over 65536 characters. The parts that carry the
+// tool's own evidence, the verdict, the pane table, the findings that could
+// not be anchored, and the markers a merge gate reads, are written after this
 // one and must not be the thing that gets cut. A change with a hundred file
 // summaries is exactly when the findings matter most.
 const maxNarrative = 20_000

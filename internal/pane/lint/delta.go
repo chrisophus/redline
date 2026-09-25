@@ -244,8 +244,8 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 	for _, hr := range head.Runs {
 		toolNames = append(toolNames, hr.Tool)
 
-		// The "already existed" set is either the base run, or — for a
-		// baseline-file tool — the committed baseline artifact.
+		// The "already existed" set is either the base run or, for a
+		// baseline-file tool, the committed baseline artifact.
 		var baseIssues []Issue
 		degraded, degradeMsg, reason := false, "", ""
 		if cfg := customByName[hr.Tool]; cfg != nil && cfg.Baseline.Mode == "file" {
@@ -348,9 +348,9 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 		})
 	}
 	// The clean confirmation asserts a comparison happened for every tool.
-	// A degraded tool — base run failed, baseline unreadable, a differ file
-	// it could not compare — already stated an unknown, and a confirmation
-	// beside it would claim the comparison that never ran.
+	// A degraded tool (base run failed, baseline unreadable, or a differ file
+	// it could not compare) already stated an unknown, and a confirmation
+	// beside it would claim a comparison that never ran.
 	if len(introduced) == 0 && !anyDegraded && ranComparisons > 0 && allBaseRan(base) {
 		res.Confirmations = append(res.Confirmations, findings.Confirmation{
 			Substrate: DeltaSubstrate,
@@ -387,8 +387,8 @@ func (p *Delta) issuesOnAddedLines(baseRev string, issues []Issue) []Issue {
 	return out
 }
 
-// baselineIssues parses a baseline-file tool's committed artifact — the same
-// output shape the tool always produces — into the issue set treated as
+// baselineIssues parses a baseline-file tool's committed artifact, in the
+// same output shape the tool always produces, into the issue set treated as
 // already present.
 func (p *Delta) baselineIssues(cfg ToolConfig) ([]Issue, error) {
 	raw, err := p.Repo.File("", cfg.Baseline.File)

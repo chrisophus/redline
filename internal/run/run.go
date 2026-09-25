@@ -372,7 +372,7 @@ func Run(opts Options) (*Result, error) {
 			// change it is about. Taking it at its word once is right: it is
 			// sitting in this run's own directory. Stamping it is what stops
 			// the next run of a different change from doing the same, which
-			// is the hole this guard had — every hand-written review was
+			// is the hole this guard had: every hand-written review was
 			// exempt from it, and a review of one change rendered onto every
 			// later one with nothing said.
 			path := filepath.Join(opts.Out, "review.json")
@@ -428,10 +428,11 @@ func Run(opts Options) (*Result, error) {
 	res.Report.Finalize()
 	if review != nil {
 		// A review file a skill wrote can still carry verdicts, and merging
-		// them is the agent boundary: packet in, review JSON out, Redline
-		// renders. What changed is that the model this command calls is no
-		// longer shown the checks' findings and so is not asked to rule on
-		// them; a verdict that arrives anyway is still the reader's.
+		// them is the agent boundary: the packet is what goes into the model,
+		// review JSON is what comes back, and Redline renders it. What
+		// changed is that the model this command calls is no longer shown
+		// the checks' findings and so is not asked to rule on them; a
+		// verdict that arrives anyway is still the reader's.
 		res.Report.MergeVerdicts(review.Verdicts)
 	}
 	findings.Sort(res.Report.Findings)
@@ -902,7 +903,7 @@ func originCoverageDir(dir string, tgt *target.Target) string {
 
 // lineCoverageOverlay reads per-line coverage for the changed Go files from the
 // same profile the coverage pane used: the worktree first, then the origin
-// checkout when reviewing its HEAD. Empty when there is no profile — the diff
+// checkout when reviewing its HEAD. Empty when there is no profile. The diff
 // then renders with no coverage stripe, which is the honest "nobody measured".
 func lineCoverageOverlay(dir, originDir string, ch *change.Set) map[string]map[int]bool {
 	if ch == nil {
@@ -943,7 +944,7 @@ func runPane(p pane.Pane, baseSHA string) (pane.Result, error) {
 }
 
 // resolveRef returns the first ref that resolves: an explicit request, then
-// each fallback, then the usual upstream names — so rung 1 needs no config
+// each fallback, then the usual upstream names, so rung 1 needs no config
 // file. An explicit ref is returned even if it does not resolve, so the caller
 // reports the real failure instead of silently checking something else. When
 // nothing resolves the result is empty, and the pane reports the check as
@@ -1024,7 +1025,7 @@ var unbuilt = []struct{ Area, Detail string }{
 // unbuiltPanes reports, per area, that a part of this change falls under a
 // check family Redline has specified but not yet shipped. Without this a
 // reviewer cannot distinguish "the API pane found nothing" from "there is no
-// API pane" — and will assume the first.
+// API pane", and will assume the first.
 func unbuiltPanes(changed []string, examined map[string]bool) []findings.Unknown {
 	byArea := map[string]int{}
 	for _, path := range changed {

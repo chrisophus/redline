@@ -200,7 +200,7 @@ func coverageSection(b *strings.Builder, rep *findings.Report) {
 }
 
 // fileSection is the walkthrough: every changed file, with its finding count.
-// Shown even when no pane ran — that is when a reviewer most needs a
+// Shown even when no pane ran, since that is when a reviewer most needs a
 // file-by-file account of what moved.
 func fileSection(b *strings.Builder, ch *change.Set, rep *findings.Report) {
 	if ch == nil || len(ch.Files) == 0 {
@@ -222,9 +222,9 @@ func fileSection(b *strings.Builder, ch *change.Set, rep *findings.Report) {
 	fmt.Fprintln(b)
 }
 
-// compositionSection is the diff's lines grouped by language and kind — test
-// versus behavior versus config versus prose — so a reviewer knows the shape
-// of the change before reading a single line of it.
+// compositionSection is the diff's lines grouped by language and kind: test,
+// behavior, config, or prose, so a reviewer knows the shape of the change
+// before reading a single line of it.
 func compositionSection(b *strings.Builder, ch *change.Set) {
 	if ch == nil {
 		return

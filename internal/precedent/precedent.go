@@ -1,4 +1,4 @@
-// Package precedent puts the file next door in front of the reviewer.
+// Package precedent shows the reviewer the file next door.
 //
 // The failure it is built for: a review flagged a hard-coded column list, an
 // idempotency check outside its transaction, and a zero-based row index in a
@@ -12,8 +12,8 @@
 // implementation of a declared interface, and two staging files that share no
 // interface are not siblings to a type checker. The parity pane compares
 // filenames across parallel directories, which is the other axis: it answers
-// "gcp has this and azure does not", not "the file next to this one solved
-// the same problem already".
+// "gcp has this and azure does not". It does not answer "the file next to
+// this one solved the same problem already".
 //
 // So this reads the directory. Two files whose names share enough of their
 // parts are doing the same kind of work, and the older one is the precedent

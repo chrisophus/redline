@@ -219,10 +219,11 @@ func disabledRules(path, baseRaw, headRaw string) ([]string, bool) {
 }
 
 // golangciConfig is the slice of golangci's config this pane reads: what is
-// disabled and what is excluded. It carries both schemas — v1's
-// issues.exclude-rules/exclude and v2's linters.exclusions — because a v2
-// config parses cleanly into a v1-only struct (unknown YAML keys are ignored)
-// and its exclusions would then read as a clean edit.
+// disabled and what is excluded. It carries both schemas: v1's
+// issues.exclude-rules/exclude and v2's linters.exclusions. It needs both
+// because a v2 config parses cleanly into a v1-only struct (unknown YAML keys
+// are ignored), so without the v2 fields its exclusions would read as a clean
+// edit.
 type golangciConfig struct {
 	Linters struct {
 		Disable    []string `yaml:"disable"`

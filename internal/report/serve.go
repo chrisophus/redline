@@ -34,7 +34,7 @@ const idPath = "/.redline-id"
 const idleTimeout = 30 * time.Minute
 
 // pidFile records the running server inside the evidence directory so a later
-// run — or `redline serve --stop` — can find and stop it.
+// run, or `redline serve --stop`, can find and stop it.
 const pidFile = "serve.json"
 
 // serverInfo is both the pidFile payload and the idPath response body.
@@ -366,7 +366,7 @@ func waitServing(port int, abs string, d time.Duration) error {
 
 // ErrNoReport means there is nothing to serve: the evidence directory holds
 // no report.html. Callers must tell this apart from a report that exists but
-// could not be served — the first is a run that produced nothing, the second
+// could not be served: the first is a run that produced nothing, the second
 // is a finished review whose URL is merely unavailable.
 var ErrNoReport = errors.New("no report to serve")
 
@@ -388,7 +388,7 @@ func startServe(outDir string, port int) error {
 	}
 	// Re-execing a test binary as `serve` is a fork bomb: Go's flag parser
 	// stops at the positional argument, ignores our flags, and runs the
-	// suite again — every announce spawning more children. No opt-out.
+	// suite again, every announce spawning more children. No opt-out.
 	// cmd/redline's TestMain is a second lock if a child is invoked anyway.
 	if underGoTest() {
 		return fmt.Errorf("refusing to re-exec test binary %s as serve", filepath.Base(exe))
