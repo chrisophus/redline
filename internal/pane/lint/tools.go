@@ -21,13 +21,14 @@ const toolTimeout = 5 * time.Minute
 // tool's own config file: a repository that configured a linter has opted in,
 // and its output format is the JSON the tool documents. The Makefile `lint`
 // target was considered as the interface and rejected: its output has no
-// structure to fingerprint, and a delta needs identity, not text.
+// structure to fingerprint, and computing a delta needs each issue's
+// identity, which plain text output doesn't give it.
 type tool struct {
 	name string
 	// config is the config file that detected a built-in tool, relative to
 	// the root; empty for a tool declared in .redline.yml.
 	config string
-	// custom is non-nil for a tool declared in .redline.yml — the built-in
+	// custom is non-nil for a tool declared in .redline.yml: the built-in
 	// name/config/covers/run paths are bypassed for it.
 	custom *ToolConfig
 }
@@ -36,9 +37,10 @@ type tool struct {
 // whose presence at the repository root opts the repo into each tool.
 //
 // gorefactor (github.com/chrisophus/gorefactor) is a separate project's
-// structural linter, not a Redline dependency — the same optional-tool
-// shape as golangci-lint and eslint: a repository that carries its config
-// opted in, and a missing binary degrades the pane rather than erasing it.
+// structural linter, not a Redline dependency. It follows the same
+// optional-tool shape as golangci-lint and eslint: a repository that carries
+// its config opted in, and a missing binary degrades the pane rather than
+// erasing it.
 var golangciConfigs = []string{".golangci.yml", ".golangci.yaml", ".golangci.toml", ".golangci.json"}
 var eslintConfigs = []string{
 	".eslintrc", ".eslintrc.json", ".eslintrc.yaml", ".eslintrc.yml",
@@ -49,7 +51,7 @@ var gorefactorConfigs = []string{".gorefactor.yaml", ".gorefactor.yml"}
 
 // detect returns the tools the tree at root is configured for: the built-in
 // three by config-file presence, plus every tool declared in .redline.yml.
-// A .redline.yml that exists but does not parse is an error — a misconfigured
+// A .redline.yml that exists but does not parse is an error: a misconfigured
 // tool must fail the pane visibly, not vanish from it.
 func detect(root string) ([]tool, error) {
 	var out []tool
@@ -108,7 +110,7 @@ func (t tool) covers(path string) bool {
 }
 
 // run executes a linter-kind tool in dir and returns its issues. Differ-kind
-// tools do not run here — they need both revisions at once and are run from
+// tools do not run here: they need both revisions at once and are run from
 // Diff instead.
 func (t tool) run(dir string) ([]Issue, error) {
 	if t.custom != nil {
@@ -189,7 +191,7 @@ func runGolangci(dir string) ([]Issue, error) {
 	}
 	// golangci-lint v2 writes its JSON payload to stdout and then, with no
 	// flag combination that turns it off, an unconditional "N issues."
-	// summary line after it — a Decoder reads the one JSON value at the
+	// summary line after it. A Decoder reads the one JSON value at the
 	// start and ignores what follows, where Unmarshal would reject the
 	// whole stdout as malformed.
 	if jsonErr := json.NewDecoder(strings.NewReader(stdout)).Decode(&parsed); jsonErr != nil {
@@ -257,7 +259,7 @@ func runESLint(dir string) ([]Issue, error) {
 }
 
 // runGorefactor runs gorefactor's own structural lint (a separate project,
-// github.com/chrisophus/gorefactor — not a Redline dependency) with JSON
+// github.com/chrisophus/gorefactor, not a Redline dependency) with JSON
 // output. Exit 0 is clean, exit 1 is an issue at or above its fail-on
 // threshold; either way stdout is the JSON to parse. Anything else is the
 // tool failing.
@@ -288,7 +290,7 @@ func runGorefactor(dir string) ([]Issue, error) {
 		// untested-function names the module-qualified one instead
 		// ("github.com/x/y/internal/a/b.go:12"). Strip it so this issue's
 		// File matches the repo-relative paths every other pane and the
-		// walkthrough use — otherwise it can never be attributed to a
+		// walkthrough use. Otherwise it can never be attributed to a
 		// changed file or anchored to a PR line.
 		if mod != "" {
 			if rest, ok := strings.CutPrefix(file, mod+"/"); ok {
@@ -323,7 +325,7 @@ func moduleImportPath(dir string) string {
 // splitGorefactorLocation splits gorefactor's "file" field: a bare path for a
 // whole-file or whole-function finding (file-size, complexity, dead-code),
 // "path:line:col" or "path:line" for one anchored to a location. The column,
-// when present, is discarded — Redline findings carry no column.
+// when present, is discarded, because Redline findings carry no column.
 func splitGorefactorLocation(s string) (string, int) {
 	parts := strings.Split(s, ":")
 	if len(parts) >= 3 {

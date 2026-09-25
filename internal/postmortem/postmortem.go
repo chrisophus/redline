@@ -18,9 +18,9 @@
 //
 // So `review` writes this file beside the report and `redline postmortem`
 // renders it. It is written on every review rather than under a flag: the
-// interesting run is always the one that already happened, and a debug switch
-// you have to have set in advance is a switch you set after the run you
-// needed it for.
+// run worth investigating is always the one that already happened, and by
+// then it is too late to turn on a flag that had to be set before that run
+// started.
 package postmortem
 
 import (
@@ -82,16 +82,17 @@ type Trace struct {
 	// model's own reasoning summary may narrate what it searched or read;
 	// this is the count that says so independent of whether it did.
 	Looked int `json:"looked,omitempty"`
-	// Lookups is what those calls asked and whether they landed, and Refusals
-	// is every call that was not taken with the reason. The counts above say
-	// how many; these say which. Without them the saved artifact records that
-	// something went wrong a given number of times and nothing about what,
-	// which is only readable off a terminal that is no longer there.
+	// Lookups is what those calls asked and whether they were answered, and
+	// Refusals is every call that was not taken with the reason. The counts
+	// above say how many; these say which. Without them the saved artifact
+	// records that something went wrong a given number of times and nothing
+	// about what, which is only readable off a terminal that is no longer
+	// there.
 	Lookups  []review.Lookup  `json:"lookups,omitempty"`
 	Refusals []review.Refusal `json:"refusals,omitempty"`
 	// Thinking is each pass's reasoning summary, when the model was allowed
-	// to think. It is the one record of why the reviewer proposed what it did
-	// and why the ruling decided what it decided.
+	// to think. It is the one record of why the reviewer proposed each
+	// finding and why the ruling reached its verdict.
 	Thinking []review.PassThinking `json:"thinking,omitempty"`
 
 	CostUSD   float64 `json:"costUSD,omitempty"`
@@ -274,7 +275,7 @@ func Of(res *review.Result, look Lookup) *Trace {
 	return t
 }
 
-// evidenceFrom says whether the line a ruling rested on was one the lookups
+// evidenceFrom says whether the line a ruling depended on was one the lookups
 // fetched. The content of a range is in the envelope and nowhere else, so this
 // is decided here, while the envelope is still in hand, and the answer is what
 // the file carries.

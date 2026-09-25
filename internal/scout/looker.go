@@ -39,7 +39,7 @@ type Looker struct {
 
 // NewLooker returns the lookups for one tree. root is the tree under review,
 // which is the caller's checkout when it is clean at the reviewed revision and
-// a detached worktree otherwise -- the same root the scout is given, because it
+// a detached worktree otherwise: the same root the scout is given, because it
 // is the same question being asked earlier.
 func NewLooker(root, base string) *Looker {
 	return &Looker{root: root, base: base, res: newResolver(root, Limits{}), ignore: loadIgnorePatterns(root)}

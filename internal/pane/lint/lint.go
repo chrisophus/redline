@@ -36,7 +36,8 @@ var digits = regexp.MustCompile(`\d+`)
 
 // fingerprint identifies an issue across the two runs: file, rule, and
 // digit-normalized message, with no line number. Code that merely moved keeps
-// its findings' identity; the line is presentation, not identity.
+// its findings' identity, because the line number only shows where the issue
+// currently appears in the file and plays no part in identifying it.
 func fingerprint(i Issue) string {
 	msg := digits.ReplaceAllString(i.Message, "#")
 	return i.Tool + "\x00" + i.File + "\x00" + i.Rule + "\x00" + msg

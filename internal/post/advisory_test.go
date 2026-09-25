@@ -14,8 +14,9 @@ func gateProfile() *Profile {
 	}
 }
 
-// Panes gate, reviewers advise. A reviewer's finding is nondeterministic and
-// costs money to reproduce, so a merge queue must never turn on one.
+// A pane's finding gates the merge; a reviewer's finding only advises. A
+// reviewer's finding is nondeterministic and costs money to reproduce, so a
+// merge queue must never turn on one.
 func TestAReviewersFindingNeverFailsTheGate(t *testing.T) {
 	rep := &findings.Report{Findings: []findings.Finding{{
 		Rule: "agent-comment", Substrate: "redline/review", File: "a.go", Line: 1,

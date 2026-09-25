@@ -104,8 +104,8 @@ func mutationSection(b *strings.Builder, rep *findings.Report) {
 }
 
 // banner states up front when Redline covered little or none of the change.
-// An empty report is ambiguous by nature — every check clean, or nothing
-// looked — and the reader will assume the flattering reading unless told
+// An empty report is ambiguous by nature: every check clean, or nothing
+// looked. The reader will assume the flattering reading unless told
 // otherwise, before they read anything else.
 func banner(b *strings.Builder, rep *findings.Report) {
 	if rep.Coverage.ChangedFiles == 0 {
@@ -200,7 +200,7 @@ func coverageSection(b *strings.Builder, rep *findings.Report) {
 }
 
 // fileSection is the walkthrough: every changed file, with its finding count.
-// Shown even when no pane ran — that is when a reviewer most needs a
+// Shown even when no pane ran, since that is when a reviewer most needs a
 // file-by-file account of what moved.
 func fileSection(b *strings.Builder, ch *change.Set, rep *findings.Report) {
 	if ch == nil || len(ch.Files) == 0 {
@@ -222,9 +222,9 @@ func fileSection(b *strings.Builder, ch *change.Set, rep *findings.Report) {
 	fmt.Fprintln(b)
 }
 
-// compositionSection is the diff's lines grouped by language and kind — test
-// versus behavior versus config versus prose — so a reviewer knows the shape
-// of the change before reading a single line of it.
+// compositionSection is the diff's lines grouped by language and kind: test,
+// behavior, config, or prose, so a reviewer knows the shape of the change
+// before reading a single line of it.
 func compositionSection(b *strings.Builder, ch *change.Set) {
 	if ch == nil {
 		return
@@ -388,7 +388,7 @@ func section4(b *strings.Builder, rep *findings.Report, evidence map[string]pane
 const maxInlineEvidence = 4000
 
 // emitEvidence shows the artifact behind a finding. The claim and the thing it
-// rests on belong in the same place; a reviewer who has to go find the
+// depends on belong in the same place; a reviewer who has to go find the
 // evidence is back to taking the tool's word for it.
 // emitRelated names the findings a correlation was built from, rather than
 // repeating what they said. The point of the reference is that the reader can

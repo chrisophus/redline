@@ -125,7 +125,7 @@ Releases whose tag carries only a subject line are listed as that subject.
 - **What that call cost is priced where it ran.** `Usage` is a token count
   with no model attached and one record cannot carry two rate cards, so a
   describing call on a second model keeps its tokens out of `Usage` and its
-  cost lands in `Result.SynopsisCostUSD`, the shape `ScoutCostUSD` already
+  cost goes into `Result.SynopsisCostUSD`, the shape `ScoutCostUSD` already
   had. `Result.SynopsisModel` records what wrote the walkthrough on every run
   that had one, and the ledger row carries both, the model only where it
   differs. A describing model with no entry in the price table makes the whole
@@ -137,7 +137,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   The scout is the shape a cheap input rate pays off in most: it resends a
   growing conversation on every turn, where the review sends its prompt once
   and reads it back from cache after that. Luna's input is a tenth of
-  `claude-sonnet-5`'s, so the turns are where the saving lands. Pricing it
+  `claude-sonnet-5`'s, so the turns are where the saving happens. Pricing it
   also makes `--max-cost` work for it at all: `overBudgetOpenAI` leaves an
   unpriced model ungoverned by cost and bounded only by turns. The cap stays
   at the $0.25 default, which a full eight turns comes in well under. Without
@@ -189,7 +189,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   in a table of File, Lines and What changed. GitHub divides a table's width
   between its columns and the prose column is the longest, so it took the
   space: paths wrapped in the middle of a directory name and a file's added
-  and removed counts landed on separate lines. A file is now one list item,
+  and removed counts ended up on separate lines. A file is now one list item,
   which has no columns to divide, and the two counts are joined by a
   non-breaking space so nothing can split them. A section is about 40 bytes
   cheaper than the table it replaces, since there is no header row to repeat
@@ -276,7 +276,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   catalogue only for a run that was given a commit, and the files that moved
   are named in the instruction rather than left to the model, because the diff
   it is shown is against the merge base and nothing in it records when any of
-  it landed. `--since` is resolved against the checkout and a commit it cannot
+  it was committed. `--since` is resolved against the checkout and a commit it cannot
   find is refused, and `--recap` is refused when the session carries no such
   paragraph rather than posting the walkthrough again under a heading that
   promises otherwise.
@@ -333,7 +333,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   where `gorefactor` is not on PATH: a tool the reviewer can see and cannot
   use costs it a turn to find that out. The catalogue is 2454 input tokens
   with no lookups, 3073 with `grep` and `read_lines` alone and 3888 with all
-  five, and it sits in the cached prefix, so only a run's first call pays
+  five, and it is part of the cached prefix, so only a run's first call pays
   full rate for the difference.
 - **`ruling` on a finding in `findings.json`.** The verifying pass's verdict
   rides on the finding itself, for `source: llm` only and empty when no pass
@@ -461,7 +461,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   review.
 - **The judging prompt asks for what the reviewer is unsure of, and names
   warning and error as where that matters most.** The reason it gives no
-  longer rests on a filter running behind it, since `--verify` is off by
+  longer depends on a filter running behind it, since `--verify` is off by
   default.
 - **The system prompt no longer says linters have run over the change.** That
   is `priorsSection`'s sentence, which names the tools that actually ran and
@@ -508,7 +508,7 @@ Releases whose tag carries only a subject line are listed as that subject.
 - **Every lookup answers within one byte bound, and a matched line is
   clipped.** A cap counted in matches, lines or documents does not bound
   bytes. Searching this repository for `BaseSHA` returned 76 matches, well
-  under the cap of 200, in **220,095 bytes — 94,000 tokens** from a lookup
+  under the cap of 200, in **220,095 bytes - 94,000 tokens** from a lookup
   priced at six thousand, because one matched line was 19,391 characters: a
   tree holds generated JSON and embedded templates beside its source. All five
   lookups now answer within 32 KiB, a matched line is clipped at 400
@@ -559,7 +559,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   tenfold internal duplication with no deduplication at all. What each
   expansion keeps is the part that differs, the commit header and the hunk git
   printed for that range; only the message body is replaced, by a line saying
-  where to read it, and the full copy lands in the highest-ranked expansion so
+  where to read it, and the full copy goes into the highest-ranked expansion so
   it is the one that survives a binding budget. On PR #83: history and removal
   429,314 to 64,593 tokens, the whole envelope 587,072 to 222,351, and nothing
   exceeds the ceiling any more - the 52 expansions it used to drop all fit,
@@ -577,8 +577,8 @@ Releases whose tag carries only a subject line are listed as that subject.
   cohort's list, written fresh into its own tail rather than the shared
   prefix. Excluding another cohort's files rather than keeping only this
   cohort's own is deliberate: an expansion's file is where the resolved
-  code lives, not the file the change is about — a caller's file is the
-  calling function's own path — so keeping only this cohort's own files
+  code lives, not the file the change is about - a caller's file is the
+  calling function's own path - so keeping only this cohort's own files
   would drop most caller and type context outright. The room each call
   fits into is the fan-out's own bound divided into what is left of the
   ceiling, since `fanOut` runs every cohort at once against one budget.
@@ -611,11 +611,11 @@ Releases whose tag carries only a subject line are listed as that subject.
   outside the diff was something the reviewer could only *name*, as a question
   for a later pass to answer and a third to rule on. With this it can check the
   claim while it is writing the finding. Off by default, and an experiment:
-  nothing has measured what searching buys, and it spends turns — the one
+  nothing has measured what searching buys, and it spends turns: the one
   published run of this shape went past $20 a review on a 43-file change, for
   two confident false positives against one real bug nothing else found.
   The lookups are the scout's own, so a path climbing out of the tree under
-  review is refused, an escaping symlink is skipped and a search is capped — one
+  review is refused, an escaping symlink is skipped and a search is capped: one
   implementation rather than a second copy of the hardened one. Measured on this
   repository: the two tools cost about 600 input tokens on the catalogue, 91 on
   the whole request, since the catalogue rides the cached prefix.
@@ -627,8 +627,8 @@ Releases whose tag carries only a subject line are listed as that subject.
   nine findings the ruling could not settle were of this kind, against a review
   that delivered five of fifteen, so the claim taken on trust cost about two
   thirds of a checked review. The claim is now checked against what the prompt
-  carried — through `Input.ShownFiles` and `Input.shownLines`, not a second copy
-  of what "shown" means — and a finding resting on material the reviewer was
+  carried - through `Input.ShownFiles` and `Input.shownLines`, not a second copy
+  of what "shown" means - and a finding resting on material the reviewer was
   never shown becomes a lookup. It keeps its kind, and `diff` now maps to the
   `enclosing` record role so the scout is not refused when it files what it
   found.
@@ -641,7 +641,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   168 calls where the long prompt did on none of 42, left about twice the
   unlabelled comments, and cost no more; recall never separated the two. It was
   also the last caller that turned thinking off, and it did so by sending
-  `thinking: {type: "disabled"}`, which Fable rejects with a 400 at any effort —
+  `thinking: {type: "disabled"}`, which Fable rejects with a 400 at any effort,
   so `--brief --model claude-fable-5-1` was a run that could not start. Every
   call now asks for adaptive thinking with a summarized display, on every model
   and every stage, which also removes the last place two calls sharing a cached
@@ -775,7 +775,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   since shipped, and several of their measurements were overturned by later
   runs (the prompt ladder, which turned out to be measuring a proxy that
   rewrote the system prompt). `docs/plans/roadmap.md` carries what is still
-  open, with the evidence each item rests on and the numbers that still hold.
+  open, with the evidence each item depends on and the numbers that still hold.
   What shipped is in this file, the README status table and the doc comments
   beside the code; the arguments are in `git log --follow -- docs/plans`.
 - **`tool_choice` is never pinned, on either wire.** It used to be pinned
@@ -856,11 +856,11 @@ Releases whose tag carries only a subject line are listed as that subject.
   back empty because nothing judged the change, not because it was clean, so
   Summary and the report say plan-only rather than a finding count. The cost
   tripwire prices stage one alone under it rather than the full fan-out, which
-  it was refusing at before this — a `--plan` run was priced as if it were
+  it was refusing at before this: a `--plan` run was priced as if it were
   about to send the cohort calls it never sends.
 - **`--only-cohorts` judges a subset of a staged partition.** Each
   comma-separated selector is a 1-based index into the partition as printed,
-  a substring of a cohort's name, or — only where no name matches — a
+  a substring of a cohort's name, or, only where no name matches, a
   substring of a file path inside one. The file-path fallback exists because
   the name is stage one's to word fresh on every run: two calls over the same
   change can describe it differently, so a selector kept from an earlier
@@ -872,8 +872,8 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ### Changed
 - **A review describes the change in its own call.** Across about 400 stored
-  samples, a reply that skipped the walkthrough — a junk overview, no file
-  lines, findings only — ran at 23% to 40% on every packet above 34k tokens,
+  samples, a reply that skipped the walkthrough - a junk overview, no file
+  lines, findings only - ran at 23% to 40% on every packet above 34k tokens,
   and at 0% to 7% on the six small ones. The sweep never showed it: it scores
   the union of three samples, and one sample writing the walkthrough hides two
   that did not. A default review takes one sample, so a reader of a large
@@ -888,7 +888,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   whether or not the model saw them. What stays is the two things that are
   about the checks rather than their output: which linters ran, so the
   reviewer leaves their ground to them, and what no check determined, so
-  silence is not read as a pass. The ruling pass is untouched — it builds its
+  silence is not read as a pass. The ruling pass is untouched: it builds its
   own contract and still rules on findings, because it is a separate call that
   exists to check the review rather than to write it.
 - **The review prompts are files rather than Go string constants.** Eleven
@@ -916,7 +916,7 @@ Releases whose tag carries only a subject line are listed as that subject.
 
 ### Added
 - **`.redline.yml` takes an `exclude` list.** Generated-file detection covers
-  generators that say what they are — the `linguist-generated` attribute, a
+  generators that say what they are: the `linguist-generated` attribute, a
   `DO NOT EDIT` or `@generated` header, filenames only a generator writes. A
   generator that does none of that had no way to be kept out of a review. The
   patterns read like `.gitignore`: a bare name matches at any depth, a trailing
@@ -999,7 +999,7 @@ per-command help, `--no-context`.
   no tool grammar, and the review arriving as JSON in a text reply. On the two
   fixtures carrying 31 of the 38 annotated expectations, that caught 5 at $0.13
   a review against the old default's 4 at $0.10.
-- Thinking is off on that call — it bought two catches out of 31 for 3.6x the
+- Thinking is off on that call: it bought two catches out of 31 for 3.6x the
   money and twelve times the wall time. `--verify` is off too: it had run by
   default for most of the tool's life, no eval arm had ever scored it, and the
   one trace showed it suppressing nine of the ten findings that never reached
@@ -1105,8 +1105,8 @@ See the `v0.3.0` tag.
 - `--api openai`, speaking to any endpoint using the chat completions protocol.
 - `--mode explore`, handing the reviewer a catalogue of the resolved context and
   a tool to fetch from it, capped in dollars.
-- `--samples`, taking several independent reviews and unioning them —
-  measurement found the samples disjoint: across forty-odd samples in eleven
+- `--samples`, taking several independent reviews and unioning them.
+  Measurement found the samples disjoint: across forty-odd samples in eleven
   configurations of one fixture, no finding was ever produced by two samples.
 
 ### Changed

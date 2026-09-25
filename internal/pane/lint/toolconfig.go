@@ -10,7 +10,7 @@ import (
 
 // redlineConfig is the parsed shape of .redline.yml: the external tools a
 // repository wants Redline to run, described declaratively so a new tool
-// needs no Go code — only a repository owner who can point Redline at a
+// needs no Go code: only a repository owner who can point Redline at a
 // command and say what its output looks like.
 type redlineConfig struct {
 	Tools []ToolConfig `yaml:"tools"`
@@ -26,7 +26,7 @@ type ToolConfig struct {
 	// and once at head, in the same detached-worktree model golangci-lint
 	// and eslint already use, and diff the two issue lists by fingerprint.
 	// "differ": run the command once, comparing the file's content at the
-	// base revision against its content at head directly — for a tool like
+	// base revision against its content at head directly, for a tool like
 	// oasdiff that computes its own delta rather than linting one snapshot.
 	// Every issue a differ tool reports is treated as introduced by this
 	// change; there is no separate resolved count, because the tool already
@@ -40,7 +40,7 @@ type ToolConfig struct {
 	// revision (materialized to a temp file) or at head (its real path in
 	// the tree under review), substituted once per scoped file.
 	//
-	// OKExitCodes are exit codes that mean "the tool ran" — whether or not it
+	// OKExitCodes are exit codes that mean "the tool ran", whether or not it
 	// found issues. Anything else means the tool failed. Empty defaults to
 	// {0, 1}, the convention every linter Redline already runs follows.
 	OKExitCodes []int `yaml:"okExitCodes"`
@@ -54,8 +54,8 @@ type ToolConfig struct {
 
 	// Format is how to parse the tool's stdout: "sarif" (the OASIS format
 	// many static-analysis tools emit directly, needing no field mapping),
-	// "spectral" (the JSON shape Spectral and Spectral-compatible OpenAPI
-	// linters — vacuum's spectral-report among them — use), or "json" (an
+	// "spectral" (the JSON shape used by Spectral and Spectral-compatible
+	// OpenAPI linters, including vacuum's spectral-report), or "json" (an
 	// arbitrary JSON shape, located with ResultsPath and Fields below).
 	// Empty defaults to "json".
 	Format string `yaml:"format"`
@@ -69,7 +69,7 @@ type ToolConfig struct {
 	// ResultsPath array is a group (one file, say) and ItemsPath is the dotted
 	// path to the array of results inside it (its violations). One Issue is
 	// emitted per inner item, and each Fields path is resolved against the inner
-	// item first, then the outer group — so a file path on the group and a line
+	// item first, then the outer group, so a file path on the group and a line
 	// and rule on each violation both map. This is the shape sqlfluff's default
 	// JSON and several per-file reporters use.
 	ItemsPath string `yaml:"itemsPath"`
@@ -114,7 +114,7 @@ type BaselineConfig struct {
 	Mode string `yaml:"mode"`
 	// File is the baseline artifact's path, relative to the repository
 	// root, read at head. Required when Mode is "file". It is parsed with
-	// this same tool's Format/ResultsPath/Fields — a baseline is a
+	// this same tool's Format/ResultsPath/Fields: a baseline is a
 	// snapshot of the same shape the tool always produces.
 	File string `yaml:"file"`
 }
@@ -134,10 +134,10 @@ func isRedlineConfig(path string) bool {
 	return false
 }
 
-// loadConfig reads .redline.yml from root. A missing file is not an error —
-// no repository is required to have one — and returns (nil, nil). A file
-// that exists but fails to parse is: a misconfigured tool must be visible as
-// broken, not silently absent from the review.
+// loadConfig reads .redline.yml from root. A missing file is not an error,
+// since no repository is required to have one, and returns (nil, nil). A file
+// that exists but fails to parse is an error: a misconfigured tool must be
+// visible as broken, not silently absent from the review.
 func loadConfig(root string) (*redlineConfig, error) {
 	for _, name := range configNames {
 		data, err := os.ReadFile(filepath.Join(root, name))

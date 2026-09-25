@@ -299,8 +299,8 @@ func TestChangedPathsDoesNotDeleteSubmodule(t *testing.T) {
 }
 
 // Two histories with no common ancestor, as on a shallow clone, have no merge
-// base. That is reported as an error, never as the ref itself, so a run does
-// not diff against a base that is not one.
+// base. That is reported as an error rather than falling back to the ref, so
+// a run does not diff against a base that is not one.
 func TestMergeBaseErrsWithoutCommonAncestor(t *testing.T) {
 	r := newRepo(t)
 	r.write("a.txt", "a\n")

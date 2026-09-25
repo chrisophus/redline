@@ -8,13 +8,13 @@ import (
 
 // genSpecYAML builds an OpenAPI document with nPaths paths. Even-indexed
 // paths get [get, post] (2 operations); odd-indexed paths get
-// [get, post, delete] (3 operations), so 80 paths land at exactly 200
-// operations, matching a realistic mid-size service contract.
+// [get, post, delete] (3 operations), so 80 paths produce exactly 200
+// operations total, matching a realistic mid-size service contract.
 //
 // mutate shapes the head side of a comparison: it adds a newly required
 // query parameter on some GET operations, makes some POST bodies mandatory,
 // adds a newly required schema field on others, and drops a "404" response
-// here and there — a realistic mix of breaking and non-breaking edits for
+// here and there: a realistic mix of breaking and non-breaking edits for
 // compare to have real work to do.
 func genSpecYAML(nPaths int, mutate bool) string {
 	var sb strings.Builder

@@ -201,9 +201,9 @@ func TestBuildBodyOmitsWhatDoesNotApply(t *testing.T) {
 
 // The posted review carries the agent's account of the change, which is what
 // makes the pull request readable without opening the report: what the change
-// does, then a line per file. Both are the agent's words, and the body says so
-// — a reader who cannot tell measured evidence from written prose cannot tell
-// which parts of the review are checkable.
+// does, then a line per file. Both are the agent's words, and the body says
+// so. A reader who cannot tell measured evidence from written prose cannot
+// tell which parts of the review are checkable.
 func TestBuildBodyCarriesTheAgentsOverviewAndFileSummaries(t *testing.T) {
 	rep := sampleReport()
 	rep.Agent = &findings.AgentReview{
@@ -560,8 +560,9 @@ func TestBuildPostsAnUnsureWarningAndWithholdsAnUnsureInfo(t *testing.T) {
 	if strings.Contains(p.Body, "reads oddly") {
 		t.Error("the withheld info remark must not fall through into the body either")
 	}
-	// Counted, not hidden. A reader who is not told it exists cannot tell a
-	// reviewer that held something back from one that had nothing to say.
+	// It is counted rather than hidden. A reader who is not told it exists
+	// cannot tell a reviewer that held something back from one that had
+	// nothing to say.
 	if !strings.Contains(p.Body, "1 further finding(s)") {
 		t.Errorf("the body should say what was withheld:\n%s", p.Body)
 	}
@@ -697,8 +698,8 @@ func TestReviewerInfoRidesInTheBodyNotOnTheDiff(t *testing.T) {
 	}
 }
 
-// A measurement earns a line at any severity: it is a fact about the change
-// and the line is where the fact is.
+// A measurement earns a line at any severity: it is a fact about the change,
+// and that fact belongs to a specific line.
 func TestAPanesInfoStillGetsItsLine(t *testing.T) {
 	rep := &findings.Report{
 		Findings: []findings.Finding{
@@ -800,7 +801,7 @@ func TestBuildBodyBoundsTheNotShownListSoTheReviewPosts(t *testing.T) {
 }
 
 // A reviewer's comment on a removed line carries side LEFT. It must reach the
-// payload as LEFT: posting it RIGHT lands the thread on the new-file line of
+// payload as LEFT: posting it RIGHT puts the thread on the new-file line of
 // the same number, which is different code.
 func TestBuildCarriesTheCommentSide(t *testing.T) {
 	rep := &findings.Report{Findings: []findings.Finding{{

@@ -4,7 +4,7 @@ package eval
 // one: an expectation whose file path has a typo, or whose any_of contains
 // nothing a reviewer would plausibly write, scores a correct review as a miss
 // and makes every configuration look worse than it is. The inverse matters
-// too — an any_of holding the change's own vocabulary rather than the defect's
+// too: an any_of holding the change's own vocabulary rather than the defect's
 // credits approving prose with a catch. Both directions are checked here
 // without spending anything, against a review written by hand.
 //

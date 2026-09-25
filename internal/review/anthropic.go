@@ -21,17 +21,17 @@ const (
 	APIOpenAI    = "openai"
 )
 
-// idleTimeout bounds the gap between bytes arriving on the wire, not the
-// call: a heavy-reasoning turn legitimately runs many minutes, and the API
-// sends something - a ping if nothing else - every few seconds while it is
-// really there.
+// idleTimeout bounds the gap between bytes arriving on the wire. It says
+// nothing about how long the call itself may run: a heavy-reasoning turn
+// legitimately runs many minutes, and the API sends something - a ping if
+// nothing else - every few seconds while it is really there.
 //
-// It has to sit below the SSE decoder, not in the turn loop: the decoder
-// discards ping frames before a caller ever sees them (anthropic-sdk-go's
-// packages/ssestream, `case "ping": continue`), so resetting a timer on
-// every stream.Next() starves on exactly the traffic that proves the
-// connection is alive - caught by a test written against that assumption,
-// which failed until the timeout moved here.
+// This has to run at the transport level, beneath the SSE decoder, rather
+// than in the turn loop: the decoder discards ping frames before a caller
+// ever sees them (anthropic-sdk-go's packages/ssestream, `case "ping":
+// continue`), so resetting a timer on every stream.Next() starves on exactly
+// the traffic that proves the connection is alive - caught by a test written
+// against that assumption, which failed until the timeout moved here.
 //
 // A gap this wide with no bytes at all, ping included, is a stalled
 // connection, and the failure this exists to name: a call that hung for
@@ -62,16 +62,17 @@ func (idleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-// idleReader races each Read against idleTimeout, not the whole response: a
-// stream that keeps producing bytes, however slowly overall, never trips it.
+// idleReader races each Read against idleTimeout rather than against the
+// whole response: a stream that keeps producing bytes, however slowly
+// overall, never trips it.
 //
-// The underlying Read runs in its own goroutine reading into a private
-// buffer, not the caller's: a Read that times out has already handed the
-// caller's buffer back for other use, and a late-arriving Read into it would
-// race whatever reused it. The buffer, and the goroutine reading into it, are
-// abandoned on a timeout; both are freed once the real Read finally returns,
-// which Close (via the deferred stream.Close in send) forces by closing the
-// underlying connection.
+// The underlying Read runs in its own goroutine, reading into a private
+// buffer of its own rather than the caller's: a Read that times out has
+// already handed the caller's buffer back for other use, and a late-arriving
+// Read into it would race whatever reused it. The buffer, and the goroutine
+// reading into it, are abandoned on a timeout; both are freed once the real
+// Read finally returns, which Close (via the deferred stream.Close in send)
+// forces by closing the underlying connection.
 type idleReader struct {
 	r io.ReadCloser
 }

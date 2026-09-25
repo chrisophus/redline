@@ -10,7 +10,7 @@ import (
 )
 
 // realisticFiles builds changed files with real unified diffs across the
-// report's drill-in areas — the shape of a real multi-package change.
+// report's drill-in areas, the shape of a real multi-package change.
 func realisticFiles(n int) []change.File {
 	areaCycle := [][]string{{"code"}, {"tests"}, {"ui"}, {"api"}, {"sql"}}
 	files := make([]change.File, 0, n)

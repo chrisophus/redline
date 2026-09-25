@@ -48,7 +48,7 @@ func TestReviewIdentitySeparatesTwoHeadsOnOneBase(t *testing.T) {
 
 // A committed change is identified by its SHAs alone. The files are not
 // hashed, so a review survives the session being rebuilt for the same
-// revision -- which is what makes the check a staleness test rather than a
+// revision, which is what makes the check a staleness test rather than a
 // re-run test.
 func TestReviewIdentityIgnoresFilesForACommittedChange(t *testing.T) {
 	base := "aaaaaaaaaaaaaaaa"

@@ -56,10 +56,10 @@ type Set struct {
 // ReviewIdentity names the revision a review was written against.
 //
 // It is one definition on purpose. Three places need to agree about whether a
-// review belongs to the change in front of them -- the report, which keys
+// review belongs to the change in front of them: the report, which keys
 // browser-local comments to it, `run`, which refuses to merge a review from
 // somewhere else, and `post`, which must not put one pull request's review on
-// another -- and three spellings of "the same change" would drift.
+// another. Three spellings of "the same change" would drift apart.
 //
 // Base and head SHAs identify a committed change. A working tree has no head
 // SHA and its content moves under an unchanged pair, so the diff is hashed
@@ -190,7 +190,7 @@ func status(diff string) string {
 
 // isBinary reports whether content is binary the way git decides it: a NUL
 // byte within the first block. A binary file is not carried whole into the
-// session, so a multi-megabyte blob with few newlines does not land in
+// session, so a multi-megabyte blob with few newlines does not end up in
 // session.json and the prompt on a newline count alone.
 func isBinary(content string) bool {
 	const block = 8000

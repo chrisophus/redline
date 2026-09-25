@@ -18,9 +18,9 @@ import (
 	"strings"
 )
 
-// reportNames are the conventional places a gomutants JSON report lands. There
-// is no standard, so this is a search rather than a lookup, the same as the
-// cover package's profile search.
+// reportNames are the conventional paths a gomutants JSON report is written
+// to. There is no standard, so this is a search rather than a lookup, the
+// same as the cover package's profile search.
 var reportNames = []string{"mutants.json", "mutation-report.json", ".mutants.json", "gomutants.json"}
 
 // IsReportPath reports whether rel is a conventional gomutants report path.

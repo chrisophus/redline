@@ -3,8 +3,8 @@
 The wire format between Redline and a language provider. Redline owns this
 schema; a provider fills it in.
 
-Redline links no language toolchain. Resolving what a change touched — which
-symbols moved, who calls them, which types a signature names — needs one, so
+Redline links no language toolchain. Resolving what a change touched - which
+symbols moved, who calls them, which types a signature names - needs one, so
 that work happens in a separate program that Redline runs as a subprocess and
 reads JSON from. This file is the whole interface.
 
@@ -19,8 +19,7 @@ only the selection is a judgement. It also quotes the repository's own rules
 under a `guideline` role, which is the case worth knowing about here: an
 expansion may carry text a repository wrote rather than code, and the
 reviewer is told it is content rather than instruction, for the same reason
-`promptFragment` is framed as advice. Two consequences are worth stating where a
-provider author will read them. Its envelope is not byte-identical between
+`promptFragment` is framed as advice. Its envelope is not byte-identical between
 runs, so `provider.version` carries the model and the effort rather than a
 release, and a fixture that freezes a scouted session freezes one run of it.
 And because `run` executes providers, a repository that configures a
@@ -109,7 +108,7 @@ Context beyond the diff. `role` is the vocabulary Redline ranks by:
 
 | Role | What it is |
 |---|---|
-| `enclosing` | The full declaration a changed hunk sits inside — the whole function, not the hunk |
+| `enclosing` | The full declaration a changed hunk sits inside: the whole function, not the hunk |
 | `caller` | A declaration outside the change that reaches a changed symbol, carried whole. `details.calls` names what it reaches |
 | `callee` | What a changed declaration calls: the other half of a contract defect, and the half no caller shows |
 | `removal` | History of lines the change deletes: the commits that added them |
@@ -145,7 +144,7 @@ language goes in `details`, a flat string map Redline passes through and
 renders generically.
 
 Emit expansions untruncated. Ranking and truncation are Redline's, against a
-fixed token ceiling, using role and priority alone — it never reads
+fixed token ceiling, using role and priority alone. It never reads
 `content`. That is what lets one budgeting implementation serve every
 language, so a provider that truncates to its own budget is throwing away
 context Redline may well have had room for.
@@ -154,9 +153,9 @@ context Redline may well have had room for.
 
 The language half of the review prompt: how this language's code is
 conventionally reviewed, what its error handling looks like, which of its
-idioms are load-bearing. Redline supplies the harness half — the output
+idioms are load-bearing. Redline supplies the harness half: the output
 schema, the instruction not to restate prior findings, that zero findings is
-a valid result — and concatenates this as opaque data.
+a valid result. It concatenates this as opaque data.
 
 Keeping the language half here is what stops Redline acquiring Go knowledge.
 The cost, worth naming: Go review knowledge ends up next to the provider's
@@ -203,8 +202,8 @@ must not rely on anything git does not track: a detached worktree has no
 `node_modules`, no build output, and none of the artifacts a harness produces
 unless `--prepare` builds them. The working directory is the top of the tree,
 not wherever a language keeps its project files. A provider whose language
-configures itself per directory — a `tsconfig.json` under `ui/`, a `go.mod` in
-a nested module — has to find that configuration, for instance by walking up
+configures itself per directory - a `tsconfig.json` under `ui/`, a `go.mod` in
+a nested module - has to find that configuration, for instance by walking up
 from each changed file; searching upward from the working directory finds
 nothing below it. `{{base}}` is replaced with the merge-base SHA. A provider
 still running after five minutes is stopped and reported as failed.

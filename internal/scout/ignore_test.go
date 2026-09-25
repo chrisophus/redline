@@ -11,7 +11,7 @@ import (
 
 // ignoreTree is lookerTree with a secret file and a build directory, both
 // named in .cursorindexingignore, plus a .gitignore that would also exclude
-// the secret file if this read it -- it must not.
+// the secret file if this read it. It must not.
 func ignoreTree(t *testing.T) string {
 	t.Helper()
 	dir := lookerTree(t)

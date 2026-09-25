@@ -73,7 +73,7 @@ func TestTheFanOutJudgesEachCohortAndMergesThem(t *testing.T) {
 	}
 	// Four calls: stage one and one per cohort. The fake replays its last
 	// script entry, so every cohort answers with the same finding, and the
-	// union is what a reader would be handed - one remark, not three.
+	// union collapses those three identical findings into one remark.
 	if got := len(api.seen()); got != 4 {
 		t.Errorf("a partition of three costs stage one plus three calls, got %d", got)
 	}
@@ -282,13 +282,13 @@ func TestASmallChangeIsOneCohort(t *testing.T) {
 	}
 }
 
-// A cohort that fails is counted, not fatal: a merge over two of three is
-// worth more than no review, and nothing downstream can tell it happened
-// unless the result says so.
+// A cohort that fails is counted, and the run keeps going rather than
+// failing outright: a merge over two of three is worth more than no review,
+// and nothing downstream can tell it happened unless the result says so.
 func TestAFailedCohortIsCountedAndTheRestAreKept(t *testing.T) {
-	// Which call fails is decided by what it asks for, not by arrival order:
-	// the cohort calls go out together and a script indexed by turn would
-	// fail whichever one happened to be third.
+	// Which call fails is decided by what it asks for. It has nothing to do
+	// with arrival order: the cohort calls go out together and a script
+	// indexed by turn would fail whichever one happened to be third.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -364,8 +364,9 @@ func TestTheLedgerNeverAveragesAcrossShapes(t *testing.T) {
 	}
 }
 
-// The shape is read off the options, not set: one cohort is the unsplit
-// review, and more is the split. The default is one.
+// The shape is computed from Cohorts rather than stored as its own setting:
+// one cohort is the unsplit review, and more is the split. The default is
+// one.
 func TestTheShapeIsReadOffCohorts(t *testing.T) {
 	for _, tc := range []struct {
 		o    Options
@@ -390,8 +391,8 @@ func TestTheShapeIsReadOffCohorts(t *testing.T) {
 // --plan sends one call, ever, and no later call reads its cache back: full
 // context would pay the cache-write premium on tokens nothing amortizes.
 // Deferred, it costs a rounding error, and it is the shape a --plan run is
-// usually planning a --defer-context run for anyway - one prompt shape, not
-// two.
+// usually planning a --defer-context run for anyway, so the two runs end up
+// sharing one prompt shape.
 func TestPlanDefersContextEvenWhenNotAsked(t *testing.T) {
 	if d := (Options{Cohorts: 3, PlanOnly: true}).withDefaults(); !d.DeferContext {
 		t.Error("--plan has no later call to read a written-in-full context back from cache, so it must defer")

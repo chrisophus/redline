@@ -128,7 +128,7 @@ matter when writing an entry:
 - Redline runs a `linter` entry at the merge base too, in a detached
   worktree with no build step. The command must work from a bare checkout.
   A tool that needs `node_modules` or a compiled binary from the tree
-  needs that noted in the entry's comment, and the owner told.
+  needs that noted in the entry's comment, and the owner needs to be told.
 
 Never guess a tool's output shape. Run it once on this repository with
 the flags you intend to use, read the output, and write the mapping from

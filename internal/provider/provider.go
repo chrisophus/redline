@@ -40,8 +40,9 @@ func (c Config) args(baseSHA string) []string {
 	return args
 }
 
-// CommandLine is the command Run would execute, as one line for a log. It is
-// what a person told a provider did not run needs in order to run it by hand.
+// CommandLine is the command Run would execute, as one line for a log. It
+// gives a person who was told a provider did not run what they need to run
+// it by hand.
 func (c Config) CommandLine(baseSHA string) string {
 	return strings.Join(append([]string{c.Command}, c.args(baseSHA)...), " ")
 }
@@ -197,8 +198,8 @@ func (c Config) Run(dir, baseSHA string) (*envelope.Envelope, error) {
 	// Stdout and Stderr here are not *os.File, so os/exec copies them
 	// through a pipe and cmd.Run blocks until every write end is closed.
 	// Killing the provider on the deadline does not close a pipe a
-	// grandchild still holds — and a context provider spawns exactly those
-	// (go list, git log -L) — so without a bound the DeadlineExceeded check
+	// grandchild still holds, and a context provider spawns exactly those
+	// (go list, git log -L), so without a bound the DeadlineExceeded check
 	// below is never reached and the review hangs. WaitDelay is what makes
 	// the deadline enforceable: after it, the copy is abandoned.
 	cmd.WaitDelay = 5 * time.Second

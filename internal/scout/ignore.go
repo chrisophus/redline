@@ -14,8 +14,9 @@ import (
 // legitimately needs to read to check a claim - on a repository that
 // gitignores generated SQL bindings, --look would no longer be able to
 // confirm the generated file matches the query that produced it.
-// .cursorindexingignore means precisely "automated reader, skip this," with
-// nothing to be wrong about the way .gitignore would be.
+// .cursorindexingignore means exactly "automated reader, skip this," and
+// treating it that way is never wrong, the way treating .gitignore that way
+// would be.
 const ignoreFile = ".cursorindexingignore"
 
 // loadIgnorePatterns reads ignoreFile at root and returns its patterns,
@@ -24,9 +25,9 @@ const ignoreFile = ".cursorindexingignore"
 //
 // Only the root-level file is read, not one per directory. --look's own
 // patterns (the glob a search is narrowed by) are root-relative for the same
-// reason, and a bare name folds into "wherever it sits" the way git does,
-// which covers the common case of a nested exclusion - re-stating a name at
-// the top - without a second walk to find one.
+// reason, and a bare name matches at any depth, the way it does in
+// .gitignore, which covers the common case of a nested exclusion - re-stating
+// a name at the top - without a second walk to find one.
 func loadIgnorePatterns(root string) []string {
 	data, err := os.ReadFile(filepath.Join(root, ignoreFile))
 	if err != nil {
@@ -76,8 +77,9 @@ func ignoredPath(patterns []string, path string) bool {
 // What is deliberately not here is build, out and coverage. Each names a
 // build directory often enough to be tempting and a real source directory
 // often enough that skipping it would hide code from a search that reported no
-// match. A slow search is a worse search; a search that quietly cannot see a
-// file is a wrong answer.
+// match. Skipping them would make the search faster, but a search that
+// quietly cannot see a file gives a wrong answer, which matters more than
+// speed.
 func skipDir(name string) bool {
 	switch name {
 	case ".git", ".hg", ".svn":

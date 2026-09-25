@@ -193,7 +193,7 @@ func (w *walk) hopsFrom(id string, changed map[string]bool) {
 			// unqualified node when the real target is defined outside that
 			// batch, rather than resolving to the node that already exists
 			// for it. On a large repository that is dozens of bare nodes
-			// sharing one label. Landing on one is a dead end that looks like
+			// sharing one label. Reaching one is a dead end that looks like
 			// "nothing here" rather than "this symbol lives outside the batch
 			// the update touched", so say which ones.
 			w.bare = appendUnique(w.bare, peer.Label)
@@ -267,16 +267,16 @@ func (w *walk) classify(owner, peer Node, h hop) (envelope.Role, int, map[string
 		return "", 0, nil
 	case h.edge.Relation == "calls" || h.edge.Relation == "indirect_call":
 		if h.outgoing {
-			// The callee, not the caller. No role in the vocabulary claims
-			// it, and inventing a second unknown role here would blur the
+			// This is the callee, so no role in the vocabulary claims it,
+			// and inventing a second unknown role here would blur the
 			// measurement `neighbor` exists to produce.
 			return "", 0, nil
 		}
 		if globmatch.MatchesAny(w.opts.DeferCallers, normPath(owner.SourceFile)) {
 			// An exact resolver covers this file. Its callers are resolved
-			// through type identity; these are resolved by name, and two
-			// answers to the same question where one is weaker is worse than
-			// one answer.
+			// through type identity; these are resolved by name, and having
+			// two answers to the same question, one of them weaker, is worse
+			// than having just one.
 			return "", 0, nil
 		}
 		return envelope.RoleCaller, priority, map[string]string{"resolution": "name"}
@@ -305,10 +305,11 @@ func (w *walk) offer(peer Node, role envelope.Role, priority int, details map[st
 }
 
 func (w *walk) envelope() *envelope.Envelope {
-	// Ordered, not folded into the literal below: reading the expansions is
-	// what discovers a file the graph names and the worktree does not have,
-	// and the notes have to be written after that discovery rather than
-	// depending on the order Go evaluates struct fields in.
+	// These run in order rather than folding into the literal below: reading
+	// the expansions is what discovers a file the graph names and the
+	// worktree does not have, and the notes have to be written after that
+	// discovery rather than depending on the order Go evaluates struct
+	// fields in.
 	manifest := w.manifest()
 	expansions := w.expansions()
 	notes := w.notes()

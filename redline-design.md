@@ -129,8 +129,8 @@ envelope; Redline ranks and truncates that envelope by role and priority hint
 without reading the code inside, which is what lets one budgeting
 implementation serve every language. The contract is in
 `docs/context-envelope.md`, and `internal/boundary` fails the build if this
-repository ever reaches for `go/ast`, `go/types`, or `x/tools`. The claim is
-worth exactly what its enforcement is worth.
+repository ever reaches for `go/ast`, `go/types`, or `x/tools`. The claim
+holds only because that check enforces it.
 
 The prompt is split along the same line. Redline supplies the harness half:
 the output schema, the instruction not to restate priors, that connecting two
@@ -156,8 +156,8 @@ claims. This was not hypothetical when it was written down. An agent comment
 with severity error in `review.json` already failed the gate, which means the
 invariant was being violated before it was stated.
 
-There will be a moment when a review finding seems important enough to block
-on. The answer is here, and it is no.
+At some point a review finding will seem important enough to block a merge
+on. This section is where that question gets settled, and the answer is no.
 
 ### The bar, and how cost is budgeted
 
@@ -185,8 +185,8 @@ that `--stats` reads back.
 The ceiling bounds the whole request rather than the context block alone. That
 is not a detail: the first time this was wired to a real provider, a ceiling
 that governed only the context let a large diff carry the total to 205k tokens
-against a nominal 120k budget. A bound that does not bound is worse than none,
-because it is quoted.
+against a nominal 120k budget. A ceiling that does not actually cap the total
+is worse than no ceiling at all, because people rely on the number it quotes.
 
 ### What Copilot actually does, and what that changed here
 
@@ -205,9 +205,10 @@ LLM detections with deterministic tools, CodeQL and ESLint among them.
 So the cost is not held down by avoiding turns. It is held down because the
 retrieval behind each tool call is a pre-built semantic index: repositories
 are indexed into embeddings in seconds, and a call returns a small relevant
-result instead of making the model grep and read. Cheap turns, not no turns.
+result instead of making the model grep and read. The turns are cheap. They
+have not gone away.
 
-Three things follow, and all three are now implemented.
+That correction produced three changes, and all three are now shipped.
 
 Every pass runs a tool loop with a turn cap (`--call-turns`), the reviewer
 pulls context with `get_context` under `--defer-context`, and `--look` gives

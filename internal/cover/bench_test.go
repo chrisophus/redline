@@ -65,7 +65,7 @@ func BenchmarkParseProfile(b *testing.B) {
 }
 
 // BenchmarkAddedLines exercises the unified-diff scanner on a diff touching
-// 200 files with 5000 total added lines — the shape of a large pull request,
+// 200 files with 5000 total added lines, the shape of a large pull request,
 // which Compute walks on every redline run to intersect against the coverage
 // profile.
 func BenchmarkAddedLines(b *testing.B) {

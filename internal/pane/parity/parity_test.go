@@ -9,7 +9,7 @@ import (
 
 // providerTree is the shape this pane exists for: three parallel
 // implementations with no interface between them, so nothing else in Redline
-// can say a capability landed in one and not the others.
+// can say a capability was added to one and not the others.
 var providerTree = []string{
 	"internal/provider/aws/offer.go",
 	"internal/provider/aws/client.go",

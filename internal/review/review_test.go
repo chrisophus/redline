@@ -332,8 +332,9 @@ func TestCeilingBoundsTheWholeRequestNotJustTheContext(t *testing.T) {
 	}
 }
 
-// A diff bigger than the whole ceiling is reported, not silently trimmed. A
-// review of a diff with the middle cut out is worse than an honest refusal.
+// A diff bigger than the whole ceiling is reported. It is not silently
+// trimmed. A review of a diff with the middle cut out is worse than an honest
+// refusal.
 func TestADiffLargerThanTheCeilingIsReported(t *testing.T) {
 	in := Input{
 		Change: &change.Set{Files: []change.File{{Path: "a.go", Diff: strings.Repeat("+line\n", 20000)}}},
@@ -430,8 +431,8 @@ func TestContextFitsWhenThereIsRoom(t *testing.T) {
 	}
 }
 
-// The target is an average across reviews, not a cap on each one. These pin
-// the arithmetic that claim rests on.
+// The target is an average across reviews. It is not a cap on each one.
+// These pin the arithmetic that claim depends on.
 func TestLedgerRecordsAndAverages(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range []float64{0.05, 0.10, 0.90, 0.20, 0.25} {
@@ -487,9 +488,10 @@ func TestLedgerRecordsSynopsisReused(t *testing.T) {
 	}
 }
 
-// The p90 has to be the tail, not the maximum. The old (n*9)/10 index sat one
-// rank too high, so with ten or fewer reviews p90 was always the single most
-// expensive one, and the tail statistic said nothing the max did not.
+// The p90 has to represent the tail. It must not equal the maximum. The old
+// (n*9)/10 index sat one rank too high, so with ten or fewer reviews p90 was
+// always the single most expensive one, and the tail statistic said nothing
+// the max did not.
 func TestP90IsTheTailAndNotTheMaximum(t *testing.T) {
 	var entries []Entry
 	for _, c := range []float64{
@@ -622,8 +624,9 @@ func TestFetchDeduplicatesRepeatedIds(t *testing.T) {
 	}
 }
 
-// The cap is a governor in explore mode, not a tripwire: the point of the mode
-// is to spend more, so what stops it has to be the limit itself.
+// In explore mode the cap acts as a governor rather than a tripwire: the
+// point of the mode is to spend more, so what stops it has to be the limit
+// itself.
 func TestExploreCapCountsTheResendThatHasNotHappenedYet(t *testing.T) {
 	res := &Result{CostUSD: 0.30, CostKnown: true}
 	msg := &anthropic.BetaMessage{}
@@ -653,8 +656,8 @@ func TestModeDefaultsToOneShot(t *testing.T) {
 	}
 }
 
-// Test code is measured, not read. The reviewer is told the tests moved and
-// how much, and the bodies stay out of the request.
+// Test code is measured rather than read. The reviewer is told the tests
+// moved and how much, and the bodies stay out of the request.
 func TestPromptNamesTestFilesInsteadOfSendingThem(t *testing.T) {
 	in := Input{Change: &change.Set{Files: []change.File{
 		{Path: "store.go", Status: "modified", Added: 3, Diff: "@@ -1,1 +1,3 @@\n+ok := insert()",
@@ -845,8 +848,8 @@ func TestTheTripwirePricesTheCheckingPassItIsAboutToRun(t *testing.T) {
 		t.Errorf("a run that will not check anything was charged %v for it", got)
 	}
 
-	// A cap between the two: enough for stage one, not enough for the pass
-	// that follows it.
+	// A cap set high enough to cover stage one but too low for the pass that
+	// follows it.
 	opts.MaxCostUSD = one.CostCeilingUSD + extra/2
 	opts.Verify = true
 	if _, err := Run(context.Background(), in, opts); err == nil ||
@@ -880,9 +883,9 @@ func TestBriefReplyNarrowsToTheObject(t *testing.T) {
 }
 
 // Every stage gets the same harness half. The short prompt this used to pick
-// between is gone, and with it the stage test that kept it off the ruling, the
-// synopsis and the cohort partition -- each defined by a tool contract it did
-// not describe.
+// between is gone, and with it the stage test that kept it off the ruling,
+// the synopsis, and the cohort partition, each defined by a tool contract it
+// did not describe.
 func TestEveryStageGetsTheShippedPrompt(t *testing.T) {
 	for _, stage := range []string{StageReview, StageRuling, StageSynopsis, StageFindings} {
 		if got := systemFor(Options{}, stage); got != systemPrompt {

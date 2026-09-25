@@ -28,7 +28,7 @@ func NormalizeMessage(msg string) string {
 	return b.String()
 }
 
-// Fingerprint identifies a finding independently of the exact line it sits on.
+// Fingerprint identifies a finding independently of the exact line number.
 // Doctor's scheme is file + rule + normalized message. Many Redline findings
 // have no file, so the pane's anchor identity substitutes in the file
 // position; where a file is known it is used, keeping the two schemes aligned.

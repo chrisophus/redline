@@ -1,6 +1,7 @@
 // Package findings is Redline's wire format. It is not a new schema: it is an
 // independent reimplementation of doctor's JSON shape (gorefactor/doctor,
-// SchemaVersion 1), extended additively. Shared contract, not shared internals.
+// SchemaVersion 1), extended additively. It reuses doctor's JSON contract
+// without sharing any of doctor's code.
 package findings
 
 import (
@@ -25,7 +26,7 @@ const (
 )
 
 // Category classifies a finding. Redline adds its own categories rather than
-// overloading doctor's — doctor's "api" means undeclared Go exported-API
+// overloading doctor's: doctor's "api" means undeclared Go exported-API
 // changes, which is a different thing from an HTTP contract change.
 type Category string
 
@@ -166,8 +167,8 @@ type Finding struct {
 	// than duplicating the text.
 	RelatedFindings []string `json:"relatedFindings,omitempty"`
 	// Question is what the reviewer said would settle this finding, for
-	// source "llm" only. It rides to the pull request in a hidden marker, so a
-	// later review can tell that a differently worded comment is the same
+	// source "llm" only. It is carried to the pull request in a hidden marker,
+	// so a later review can tell that a differently worded comment is the same
 	// claim: a fingerprint is file plus wording, and wording is exactly what
 	// moves between two runs.
 	Question Question `json:"question,omitempty"`
@@ -216,7 +217,7 @@ const (
 )
 
 // SubstrateStatus is the per-pane availability record. Redline is non-gating,
-// so Gating is always false and GateOK does not apply — but the rendering
+// so Gating is always false and GateOK does not apply. But the rendering
 // obligation is the same: a pane that did not run renders as "did not run".
 type SubstrateStatus struct {
 	Name   string         `json:"name"`
@@ -225,9 +226,10 @@ type SubstrateStatus struct {
 	Gating bool           `json:"gating"`
 }
 
-// Confirmation is a check that ran and came back clean. Confirmations are the
-// deliverable, not suppressed noise: each is a question the reviewer no longer
-// has to ask. They never emit findings and are rendered collapsed.
+// Confirmation is a check that ran and came back clean. Confirmations are part
+// of the deliverable rather than noise to suppress: each is a question the
+// reviewer no longer has to ask. They never emit findings and are rendered
+// collapsed.
 type Confirmation struct {
 	Substrate string  `json:"substrate"`
 	Rule      string  `json:"rule"`
@@ -268,7 +270,7 @@ type Coverage struct {
 
 	// Diff is the share of added lines a test profile shows executed. Nil when
 	// no profile was found, which must render as "nobody knows" rather than as
-	// zero per cent — those are very different claims. Only meaningful when
+	// zero per cent. Those are very different claims. Only meaningful when
 	// CoverableFiles is non-zero.
 	Diff *cover.Result `json:"diffCoverage,omitempty"`
 }
@@ -324,7 +326,7 @@ type ToolStatus struct {
 
 // AgentReview is the agent's prose layer over a change, ingested from
 // review.json. The comments in that file become findings; this holds the parts
-// that have no single line to sit on.
+// that have no single line to anchor to.
 type AgentReview struct {
 	Overview string            `json:"overview,omitempty"`
 	Files    map[string]string `json:"files,omitempty"`
@@ -342,7 +344,7 @@ type AgentReview struct {
 }
 
 // FailedSubstrates returns panes that applied but did not run. Redline is
-// non-gating, so this drives rendering, not exit status.
+// non-gating, so this drives rendering rather than exit status.
 func (r *Report) FailedSubstrates() []SubstrateStatus {
 	var out []SubstrateStatus
 	for _, s := range r.Substrates {
@@ -354,8 +356,8 @@ func (r *Report) FailedSubstrates() []SubstrateStatus {
 }
 
 // Finalize stamps fingerprints, fills defaults and recomputes NewCount.
-// Every Redline pane is diff-based by construction — its findings are relative
-// to the base — so New is always true and no baseline build is needed.
+// Every Redline pane is diff-based by construction: its findings are relative
+// to the base, so New is always true and no baseline build is needed.
 func (r *Report) Finalize() {
 	r.SchemaVersion = SchemaVersion
 	r.NewCount = map[Severity]int{}

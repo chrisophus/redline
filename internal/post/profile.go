@@ -171,9 +171,10 @@ func (p *Profile) Blocks(s findings.Severity) bool {
 // Only deterministic findings reach the gate. A reviewer's finding is
 // nondeterministic and costs money to reproduce, so gating on one gives a
 // merge queue a verdict the author cannot re-derive, and a gate that blocks
-// on something you cannot reproduce is bypassed within a month. Panes gate,
-// reviewers advise. There will be a reviewer finding that seems important
-// enough to block on; the answer is here, and it is no.
+// on something you cannot reproduce is bypassed within a month. A pane's
+// finding gates the merge; a reviewer's finding only advises. Some reviewer
+// finding will eventually seem important enough to block on anyway, and the
+// answer to that is no.
 func GateVerdict(rep *findings.Report, p *Profile) string {
 	if p == nil {
 		return ""

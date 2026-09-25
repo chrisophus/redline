@@ -9,7 +9,7 @@ import (
 
 // realisticChangedPaths builds a slice of plausible repo paths mixing
 // generated markers, test files, vendored dependencies, and hand-written
-// source — the shape of the file list Build hands to Generated and Areas on
+// source, the shape of the file list Build hands to Generated and Areas on
 // every invocation, over the whole diff.
 //
 // The 20-slot distribution is 55% hand-written, 15% test files, 15%

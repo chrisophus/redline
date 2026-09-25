@@ -132,8 +132,9 @@ func driveOpenAI(ctx context.Context, opts Options, ts *toolset) (Spend, error) 
 
 	var spend Spend
 	var cachedLast int64
-	// extra is the one turn a closing turn spent entirely on refusals buys
-	// back, so a correction the scout was told to make has somewhere to go.
+	// extra is the one extra turn granted back when a closing turn was spent
+	// entirely on refusals, so a correction the scout was told to make has
+	// somewhere to go.
 	extra := 0
 	for turn := 0; turn < opts.MaxTurns+extra; turn++ {
 		// The last turn of the budget files rather than searches. A loop that

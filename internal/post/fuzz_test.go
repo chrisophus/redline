@@ -9,7 +9,7 @@ import (
 // arbitrary bytes standing in for a GitHub "patch" field. This mapping is
 // load-bearing for safety, not just correctness: a wrong position puts a
 // review comment on the wrong line, and GitHub 422s the whole review if any
-// comment targets a line outside the diff — so a false-commentable position
+// comment targets a line outside the diff. So a false-commentable position
 // is exactly the failure CommentableLines exists to prevent.
 //
 // KNOWN BUG, deliberately not seeded here (a seed corpus entry is replayed as
@@ -57,7 +57,7 @@ func FuzzCommentableLines(f *testing.F) {
 
 		// commentableInPatch only ever marks a line commentable from a "+" or
 		// a literal " " (context) line. A patch with neither can never
-		// produce a commentable line — this is the general form of "never
+		// produce a commentable line: this is the general form of "never
 		// returns a position for an empty or header-only diff".
 		hasContentLine := false
 		for _, line := range strings.Split(patch, "\n") {

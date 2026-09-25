@@ -12,7 +12,7 @@ type fileWalkRow struct {
 	Added   int
 	Removed int
 
-	// Findings is how many findings landed on this file, and Severity the
+	// Findings is how many findings this file has, and Severity the
 	// worst of them.
 	Findings int
 	Severity string

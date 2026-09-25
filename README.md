@@ -6,7 +6,7 @@ measured.
 Two things make an agentic review expensive: tokens spent working out facts a
 program could have computed, and a reviewer guessing at code it was never
 shown. Redline removes both before the model is called. `redline run` invokes
-no model at all — it measures the change and writes the facts down: which added
+no model at all. It measures the change and writes the facts down: which added
 lines nothing executes, which lint findings this change introduced and which it
 inherited, where the author told the linter to be quiet, what the migrations
 and the `openapi.yaml` diff do. A context provider then resolves what the diff
@@ -32,7 +32,7 @@ repository's PR #46 an agent found eight real bugs and `redline review` found
 none of them; the gap, and what is being tried against it, is
 `docs/plans/roadmap.md`.
 
-Judging is not Redline's monopoly either. The facts are written for whoever is
+Redline is not the only one that judges, either. The facts are written for whoever is
 reading: a person in the browser, an agent reading `findings.json`, or
 `redline review`. All three write their decisions onto the same report, and
 every finding and every ruling says which of them produced it. It hides what
@@ -402,12 +402,12 @@ Then a second call rules on every finding with the answers in front of it, over
 the same prefix as the first, which prompt caching serves at a fraction of the
 input rate. Five verdicts:
 
-- **kept** — the evidence supports it, quoted. The only one that is posted.
-- **withdrawn** — the evidence refutes it, quoted.
-- **justified** — true, and this repository does it on purpose. Precedent in
+- **kept**: the evidence supports it, quoted. The only one that is posted.
+- **withdrawn**: the evidence refutes it, quoted.
+- **justified**: true, and this repository does it on purpose. Precedent in
   code counts, and so does the author saying so on an earlier review.
-- **unverifiable** — the lookup came back with nothing either way.
-- **already-raised** — this pull request has already heard it.
+- **unverifiable**: the lookup came back with nothing either way.
+- **already-raised**: this pull request has already heard it.
 
 The four that are not kept stay on the report with their reason, folded, and
 are not posted. Nothing is deleted: a reader can see what was raised and what
@@ -442,7 +442,7 @@ is sent), `--stats`, `--dry-run`, `--api`, `--base-url`, `--verbose`,
 
 While it runs, `review` says on stderr what is about to be sent and what it
 should cost, then one line per stage as each starts and finishes: the
-describing call, each cohort or sample as it lands with its findings, cost
+describing call, each cohort or sample as it completes, with its findings, cost
 and time, and the lookups and the ruling under `--verify`. Inside a call it
 reports every fifteen seconds how long the pass has been running, how much
 of the output cap the reasoning has used and whether the answer has begun,
@@ -718,8 +718,8 @@ rest summed into one row, so it cannot push a finding off the end of the body.
 The walkthrough body leaves the table out unless its profile lists
 `composition` under `body_include`.
 
-When a review has been written — by `redline review` or by hand into
-`review.json` — the body also carries the agent's account of the change: what
+When a review has been written - by `redline review` or by hand into
+`review.json` - the body also carries the agent's account of the change: what
 it does, and a collapsed table of one line per file. That is what makes the
 pull request readable without opening the report, and it is the part a
 reviewer orients on before reading a single finding.
@@ -727,12 +727,12 @@ reviewer orients on before reading a single finding.
 Both are labelled as the agent's words. Redline writes no prose itself, so a
 run with no review has no such section rather than a heading with nothing
 under it, and the file table lists only files someone actually wrote a
-sentence about — GitHub's own Files tab already lists the paths and their
+sentence about. GitHub's own Files tab already lists the paths and their
 line counts. The prose is bounded so that it can never be the reason a
 finding or a gate marker falls off the end of a body GitHub would reject.
 
 Line comments are for what interrupts somebody usefully. A finding opens a
-thread that has to be closed, so the reviewer's own `info` findings ride in
+thread that has to be closed, so the reviewer's own `info` findings go in
 the review body instead, and a pane's `info` still gets its line: a
 measurement is a fact about the change and the line is where the fact is. A
 finding whose own wording disqualifies it, "acceptable but worth noting" on a
@@ -792,7 +792,7 @@ question a reviewer opens the walkthrough with. The table has only a File and
 a What changed column unless `body_include` adds more. Each extra column takes
 width from the summary, and with enough of them GitHub wraps paths in the
 middle, which is why this was a list for a while. A finding that names one of
-the listed files rides under its table; any other finding lands in the list
+the listed files appears under its table; any other finding goes in the list
 after.
 
 On a pull request Redline has reviewed before, run `redline review --since
@@ -805,7 +805,7 @@ stored gets the whole walkthrough instead. This happens on its own whenever the 
 has the paragraph; `--recap` makes it required, so a post that cannot carry
 one is refused instead of falling back to the overview.
 
-`body_include` decides how much of the report rides along:
+`body_include` decides how much of the report is included:
 
 | Key | What it adds to the walkthrough |
 |---|---|
@@ -899,7 +899,7 @@ reading it knows which panes exist.
 ## What use taught it
 
 Dogfooding rung 1 on its own repository changed three things, all the same
-mistake in different clothes - a report that reads better than the facts
+mistake in different forms - a report that reads better than the facts
 support:
 
 - A change no pane covered rendered as `Findings: None` with "every applicable
@@ -915,7 +915,7 @@ A fourth lesson reshaped the tool itself. Redline once ran the agent's
 review: reviewer adapters, a packet of facts for the agent to judge, a
 context brief, a Copilot-shaped posted review built from agent prose. None
 of it made reviews better than the agents produce on their own, and it was
-cut. The agent came back on the other side of the line, as a reviewer that
+cut. The agent came back in a different role, as a reviewer that
 reads `findings.json` and writes `review.json`, which Redline renders beside
 its own facts. The reasoning and the removal inventory are in
 `redline-design.md`.

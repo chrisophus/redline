@@ -90,7 +90,7 @@ func newHeartbeat(opts Options, label string, since time.Time) *heartbeat {
 
 // observe takes one stream event's delta, in the flat form both the stable
 // and the beta unions expose it, and reports if the interval has elapsed.
-// Events that carry no content — ping, message_delta, the block boundaries —
+// Events that carry no content, ping, message_delta, the block boundaries,
 // still drive the clock, which is what keeps a stalled stream from looking
 // like a finished one.
 func (h *heartbeat) observe(kind, text, thinking, partialJSON string) {

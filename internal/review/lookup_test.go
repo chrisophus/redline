@@ -191,7 +191,8 @@ func TestOnlyTheJudgingPassesMayLookThingsUp(t *testing.T) {
 }
 
 // A lookup answers with what the tree said and records nothing, so it neither
-// completes a pass nor counts toward one -- the same bargain get_context makes.
+// completes a pass nor counts toward one. That is the same bargain
+// get_context makes.
 func TestALookupAnswersWithTheTreeAndRecordsNothing(t *testing.T) {
 	look := &fakeLooker{answer: "store.go:3-5\n3\tfunc Insert() error {\n"}
 	c := newCollector(StageFindings, passExpect{}, nil, look, false)
@@ -217,8 +218,9 @@ func TestALookupAnswersWithTheTreeAndRecordsNothing(t *testing.T) {
 	}
 }
 
-// A failed lookup is an answer, not a rejection. "Not recorded" reads as a call
-// this pass may not make, which is a different and wrong correction.
+// A failed lookup counts as an answer rather than a rejection. "Not recorded"
+// reads as a call this pass may not make, which is a different and wrong
+// correction.
 func TestAFailedLookupComesBackAsTheAnswer(t *testing.T) {
 	look := &fakeLooker{err: errBadPattern{}}
 	c := newCollector(StageFindings, passExpect{}, nil, look, false)
@@ -243,7 +245,7 @@ type errBadPattern struct{}
 func (errBadPattern) Error() string { return "bad pattern: missing closing )" }
 
 // A search that matched nothing says so. A pass handed an empty string cannot
-// tell "nothing matches" -- which is an answer -- from a search that failed.
+// tell "nothing matches", which is an answer, from a search that failed.
 func TestAnEmptySearchSaysSo(t *testing.T) {
 	c := newCollector(StageFindings, passExpect{}, nil, &fakeLooker{answer: ""}, false)
 	input, err := json.Marshal(map[string]any{"pattern": "nothing"})
@@ -317,10 +319,11 @@ func TestTheJudgingCallCarriesTheWalkthrough(t *testing.T) {
 	}
 }
 
-// The ledger records the effort the calls were made at, not the flag that was
-// typed. Those differ on every run that takes the default, which is the whole
-// population a default exists to describe: reading the flag wrote an empty
-// string for all of them and the ledger could not tell two efforts apart.
+// The ledger records the effort the calls were actually made at. It does not
+// record the flag that was typed. Those differ on every run that takes the
+// default, which is the whole population a default exists to describe:
+// reading the flag wrote an empty string for all of them and the ledger could
+// not tell two efforts apart.
 func TestTheLedgerRecordsTheResolvedEffort(t *testing.T) {
 	in := Input{Change: &change.Set{Files: []change.File{{Path: "a.go", Diff: "@@ -1 +1 @@\n+x\n"}}}}
 	res, err := Assemble(in, Options{})
@@ -619,8 +622,9 @@ func TestALineNumberWrittenAsAStringIsRead(t *testing.T) {
 			t.Errorf("start_line %s reached no lookup", tc.written)
 			continue
 		}
-		// The trace keeps what the model wrote, not what was read from it:
-		// a trace showing the coerced value hides that coercion happened.
+		// The trace keeps what the model actually wrote rather than what was
+		// read from it: a trace showing the coerced value hides that coercion
+		// happened.
 		if !strings.Contains(c.lookups[0].Input, strings.Trim(tc.written, `"`)[:2]) {
 			t.Errorf("the trace lost the written form %s: %s", tc.written, c.lookups[0].Input)
 		}

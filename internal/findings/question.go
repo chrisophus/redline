@@ -28,8 +28,8 @@ import "strings"
 type QuestionKind string
 
 const (
-	// QuestionDiff is a finding the material already in front of the reviewer
-	// settles: a swallowed error visible in the hunk, two lines of the diff
+	// QuestionDiff is a finding the reviewer can already settle from the diff
+	// itself: a swallowed error visible in the hunk, two lines of the diff
 	// that contradict each other. Nothing needs fetching, and this is the
 	// strongest kind rather than the weakest.
 	QuestionDiff QuestionKind = "diff"
@@ -67,7 +67,8 @@ type Question struct {
 
 // Answerable reports whether a lookup would settle this finding, which is
 // what decides if it is worth a scout turn. A finding the diff already
-// settles needs nothing, and one nothing can settle gets nothing.
+// settles needs no lookup, and a finding nothing can settle gets no scout
+// turn either.
 func (q Question) Answerable() bool {
 	switch q.Kind {
 	case QuestionPrecedent, QuestionCaller, QuestionRule, QuestionHistory, QuestionType:
@@ -121,8 +122,8 @@ func NormalizeQuestionKind(k QuestionKind) QuestionKind {
 
 // Verdict words the verifying pass uses. Distinct from the three the report
 // already has for ruling on a pane's finding, because these answer a different
-// question: not "is this check right about my code" but "should this claim
-// reach the author at all".
+// question. The report's three answer "is this check right about my code";
+// these answer "should this claim reach the author at all".
 const (
 	// VerifiedKept is a finding the evidence supports. The only one that is
 	// posted.
@@ -147,7 +148,7 @@ const (
 // Ruling is what the verifying pass decided about one comment.
 type Ruling struct {
 	Verdict string `json:"verdict"`
-	// Evidence is the line the decision rests on, quoted from the material.
+	// Evidence is the line the decision depends on, quoted from the material.
 	// A ruling with no evidence is an opinion about an opinion, which is what
 	// this stage exists to replace.
 	Evidence string `json:"evidence,omitempty"`

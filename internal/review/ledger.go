@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-// The cost target is an average, not a cap on every review.
+// The cost target is an average. It is not a cap that every review has to
+// come in under.
 //
 // This matters for what the ceiling is for. If every review had to come in
 // under the target, the ceiling would be a governor and it would trim context
@@ -22,7 +23,7 @@ import (
 // measured. So every review appends one line here, and the numbers are read
 // back rather than asserted.
 
-// ledgerFile is where per-review cost lands, beside the report it produced.
+// ledgerFile is where per-review cost is written, beside the report it produced.
 const ledgerFile = "reviews.jsonl"
 
 // Entry is one review's cost record.
@@ -124,9 +125,10 @@ type Entry struct {
 // fatal: a review that produced findings has done its job, and losing a cost
 // line is not worth failing the command over. The error is returned so the
 // caller can say so.
-// The effort is read off the result rather than taken as an argument, so it is
-// the value the calls were made at and not the flag the caller typed. Those
-// differ on every run that takes the default, which is most of them.
+// The effort is read off the result rather than taken as an argument, so it
+// reflects the value the calls were actually made at, which is not always
+// the flag the caller typed. Those differ on every run that takes the
+// default, which is most of them.
 func Record(dir string, r *Result) error {
 	if r == nil {
 		return nil
@@ -325,8 +327,8 @@ func Summarize(entries []Entry) Stats {
 // every size: at two reviews the "median" was the more expensive of the two,
 // and for any n up to ten the "p90" was the maximum, so the tail statistic
 // that exists to show one outlier beside the average was that outlier. The
-// clamp is for pct at the ends, not for the arithmetic; ceil(pct*n/100)-1 is
-// within range for every n >= 1.
+// clamp exists only to guard pct at the ends. The arithmetic itself,
+// ceil(pct*n/100)-1, is already within range for every n >= 1.
 func percentile(sorted []float64, pct int) float64 {
 	idx := (len(sorted)*pct+99)/100 - 1
 	if idx < 0 {
