@@ -17,7 +17,7 @@
 // A learned rule carries where it came from, and it ranks below a rule the
 // team wrote deliberately. That ordering is the guard. A file of learnings
 // grows from moments when somebody was defending their own change, so it can
-// acquire a line that is simply wrong, and it must never be able to overrule
+// acquire a line that is wrong, and it must never be able to overrule
 // what the team sat down and decided. It also cannot suppress a finding by
 // itself: it reaches the review as context, and the verifying pass has to say
 // out loud that it ruled on a finding because of it.

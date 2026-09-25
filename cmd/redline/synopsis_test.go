@@ -170,7 +170,8 @@ func TestReuseSynopsisIsRefusedWithNoReviewJSON(t *testing.T) {
 }
 
 // A review.json written against a different change is not reused: a stale
-// walkthrough on a new diff is a wrong report, not a saving.
+// walkthrough on a new diff produces a wrong report, so skipping the
+// describing call would not actually save anything.
 func TestReuseSynopsisIsRefusedAgainstAStaleReviewJSON(t *testing.T) {
 	dir := worktreeSession(t)
 	if err := review.Merge(dir+"/review.json", findings.Review{

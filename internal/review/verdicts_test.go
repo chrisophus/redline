@@ -131,8 +131,8 @@ func TestLineRanges(t *testing.T) {
 
 // The section is priced with the facts rather than the context, so it is never
 // truncated to fit. On a change that rewrites a package every added line is
-// uncovered until the tests land, and unbounded that takes the ceiling from
-// the context block.
+// uncovered until the tests are added, and unbounded that takes the ceiling
+// from the context block.
 func TestTheCoverageSectionIsBoundedAndSaysWhatItCut(t *testing.T) {
 	files := make([]change.File, 0, maxCoverageFiles+3)
 	lc := map[string]map[int]bool{}

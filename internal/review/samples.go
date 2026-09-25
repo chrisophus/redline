@@ -77,7 +77,7 @@ func runSamples(ctx context.Context, in Input, opts Options, first *Result) (*Re
 			if opts.Progress == nil {
 				return
 			}
-			// Reported in the order they land rather than by index, and
+			// Reported in the order they finish rather than by index, and
 			// serialised, because the point is only to say that something
 			// arrived: several minutes of silence for a run that is working
 			// looks the same as one that has hung.
@@ -174,7 +174,7 @@ func (r *Result) clone() *Result {
 // each remark and the longest prose.
 //
 // Two samples that found the same defect describe it differently, so identity
-// is the file plus the message with its digits collapsed -- the same normalise
+// is the file plus the message with its digits collapsed, the same normalise
 // the report's own fingerprint uses, for the same reason: "line 12" and "line
 // 947" are one remark, not two.
 func unionReviews(samples []*Result) findings.Review {

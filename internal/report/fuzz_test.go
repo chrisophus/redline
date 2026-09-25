@@ -11,11 +11,11 @@ import (
 // traversal sequences, absolute paths, embedded newlines, and unicode.
 //
 // Invariant chosen after reading walk.go: fileWalk never resolves, cleans,
-// or joins a change.File's Path against any base directory — it is pure
+// or joins a change.File's Path against any base directory. It is pure
 // data plumbing that copies Path into fileWalkRow.Path and correlates
 // findings by exact string equality. That is what keeps a path like
-// "../../../etc/passwd" or an absolute path inert on the report: since the
-// walkthrough never joins the string against the report's own output
+// "../../../etc/passwd" or an absolute path inert on the report: since
+// fileWalk never joins the string against the report's own output
 // directory, it can never be used to make the renderer address anything
 // outside that directory. So the property to hold is that fileWalk's output
 // path is byte-identical to its input, for any input, and that finding

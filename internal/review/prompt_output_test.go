@@ -8,10 +8,10 @@ import (
 )
 
 // The header introduces the context block by naming what is in it. A provider
-// is allowed to ship a role Redline does not rank — the graph adapter's
-// `neighbor` — and the sentence used to enumerate the six known roles
-// unconditionally, so such a block arrived under a sentence stating every
-// block was one of six other things it was not.
+// is allowed to ship a role Redline does not rank, such as the graph
+// adapter's `neighbor`, and the sentence used to enumerate the six known
+// roles unconditionally, so such a block arrived under a sentence stating
+// every block was one of six other things it was not.
 func TestTheContextHeaderNamesOnlyTheRolesPresent(t *testing.T) {
 	in := Input{}
 	got := in.contextHeader([]envelope.Role{envelope.RoleHistory})

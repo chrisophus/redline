@@ -1,7 +1,7 @@
 // HTML rendering. One self-contained file, no server, no network: the design
 // cut the web app, and this is what replaces it. If it turns out a static file
 // cannot shift a reviewer into review mode, an app can be built later over the
-// same JSON — but that is a decision to make from evidence, not in advance.
+// same JSON, but that is a decision to make from evidence, not in advance.
 package report
 
 import (
@@ -58,7 +58,7 @@ type view struct {
 	// Nil leaves the Mutation section and its nav entry off the page.
 	Mutation *mutation.Result
 
-	// Renders is what changed, in the domain where it lives — a pane's own
+	// Renders is what changed, in the domain where it lives: a pane's own
 	// account (e.g. the lint delta's introduced/resolved count, or a
 	// suppression's added-directive list), not a finding. Markdown has
 	// rendered this since section1 existed; HTML dropped it on the floor
@@ -97,16 +97,16 @@ type view struct {
 
 	Commits int
 	// Identity keys browser-local comments to this review, not to the
-	// report.html path — every run overwrites the same file.
+	// report.html path: every run overwrites the same file.
 	Identity string
 }
 
 // navLink is one sidebar entry.
 //
 // Count is shown when a section has a number worth knowing before you scroll to
-// it. Warn marks a section that is a gap rather than a result — no captures of a
-// UI that moved, no coverage profile, something undetermined — so the sidebar
-// answers "what is missing here" without reading the page.
+// it. Warn marks a section that is a gap rather than a result, such as no
+// captures of a UI that moved, no coverage profile, or something undetermined.
+// That way the sidebar answers "what is missing here" without reading the page.
 type navLink struct {
 	ID    string
 	Label string
@@ -137,11 +137,11 @@ type relatedRef struct {
 	ID       string
 }
 
-// headingMax is how long a message may be before the card splits it — about
-// one line of h3 at the report's width. Past that the heading sets as a block
-// of bold prose: on two real reports, 10 of 24 headings ran over 200
-// characters and the longest was 1023, eleven lines deep, which is the end of
-// the ten-second orientation the briefing exists for. A message this short
+// headingMax is how long a message may be before the card splits it, about
+// one line of h3 at the report's width. Past that, the heading sets as a
+// block of bold prose. On two real reports, 10 of 24 headings ran over 200
+// characters, and the longest was 1023, eleven lines deep, well past the
+// ten-second orientation the briefing exists for. A message this short
 // renders exactly as it always has.
 const headingMax = 120
 
@@ -305,8 +305,8 @@ func buildView(in HTMLInput) view {
 }
 
 // splitMessage cuts a long message into a heading and the rest. Two
-// candidates and the shorter wins: the first sentence, and the first line —
-// a remark that opens with a line of its own has already said where its
+// candidates and the shorter wins: the first sentence, and the first line.
+// A remark that opens with a line of its own has already said where its
 // title ends.
 func splitMessage(msg string) (head, rest string) {
 	msg = strings.TrimSpace(msg)
@@ -329,7 +329,7 @@ var sentenceEnd = regexp.MustCompile(`[.!?]["')\]]*(?:\s|$)`)
 
 // minHeading is the shortest heading a sentence cut may produce. The same
 // pattern matches the dot in "e.g." and "cf.", which agent prose is full of,
-// and a four-character heading is worse than no split at all — so a candidate
+// and a four-character heading is worse than no split at all. So a candidate
 // that short is read as an abbreviation and the scan carries on.
 const minHeading = 32
 
@@ -456,7 +456,7 @@ func highlightDiff(diff string) string { return highlightDiffFor("", diff, nil) 
 var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
 
 // highlightDiffFor marks up a diff and, when a path is given, makes each line
-// addressable so a reviewer can attach a comment to it — prequel's core
+// addressable so a reviewer can attach a comment to it: prequel's core
 // affordance, and the thing that turns reading a diff into reviewing one.
 //
 // data-line is the source line in the file, parsed from hunk headers: new-file

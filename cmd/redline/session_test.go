@@ -196,10 +196,10 @@ func TestReviewRunObservesThenReviews(t *testing.T) {
 // --since is resolved against the checkout under review, not against o.root.
 //
 // o.root is the session directory. It defaults to .redline inside the
-// checkout, so opening a repository there used to land on the right one by
-// accident, but --out and --session can put it anywhere, and a session cache
-// kept outside the repository resolved --since against the wrong repository
-// or against none at all.
+// checkout, so opening a repository there used to end up matching the right
+// one by accident, but --out and --session can put it anywhere, and a
+// session cache kept outside the repository resolved --since against the
+// wrong repository or against none at all.
 func TestSinceResolvesAgainstTheCheckoutNotTheSessionDirectory(t *testing.T) {
 	repo := t.TempDir()
 	git(t, repo, "init", "-q", "-b", "main")

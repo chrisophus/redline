@@ -51,7 +51,7 @@ func TestTheFirstSamplePrimesTheCacheForTheRest(t *testing.T) {
 		flusher := w.(http.Flusher)
 		reply := anthropicSSE("tool_use", 100, 10, flatCalls(StageReview, primeReviewJSON(n)))
 		if n == 0 {
-			// message_start alone, then a pause the rest would land in if they
+			// message_start alone, then a pause the rest would arrive in if they
 			// had not waited, then the content.
 			cut := strings.Index(reply, "event: content_block_start")
 			fmt.Fprint(w, reply[:cut])

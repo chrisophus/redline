@@ -46,7 +46,7 @@ func TestSamplesUnionAddsDisjointFindings(t *testing.T) {
 
 // Several minutes of silence for a run that is working looks the same as one
 // that has hung, and sampling multiplies the wait. Each sample says so as it
-// lands.
+// finishes.
 func TestSamplesReportEachOneAsItLands(t *testing.T) {
 	api := serveSSE(t,
 		anthropicSSE("tool_use", 100, 10, flatCalls(StageReview,

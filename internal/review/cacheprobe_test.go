@@ -89,8 +89,8 @@ func TestExploreCacheProbe(t *testing.T) {
 
 	if second.Usage.CacheReadInputTokens == 0 {
 		t.Errorf("turn 2 read nothing back from a %d-token entry turn 1 paid 1.25x to write. "+
-			"Explore mode's breakpoints are a surcharge, not a saving: remove them the way "+
-			"the one-shot path's were removed", cached)
+			"Explore mode's breakpoints only add a surcharge here and save nothing: remove them "+
+			"the way the one-shot path's were removed", cached)
 		return
 	}
 	t.Logf("explore's breakpoints work: turn 2 read %d tokens at 0.1x that turn 1 wrote at 1.25x",

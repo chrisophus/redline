@@ -9,8 +9,8 @@ import (
 // FuzzFingerprint asserts Fingerprint's two load-bearing properties: it is
 // stable for a given input (it is the join key for human comment state
 // across runs, so the same finding must always fingerprint the same way),
-// and it never panics on arbitrary bytes, including invalid UTF-8 — a
-// Message field is untrusted text that started life in a diff or a tool's
+// and it never panics on arbitrary bytes, including invalid UTF-8. A
+// Message field is untrusted text that comes from a diff or a tool's
 // stdout.
 //
 // It also checks NormalizeMessage's structural contract: after collapsing
