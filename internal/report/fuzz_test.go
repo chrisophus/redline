@@ -15,7 +15,7 @@ import (
 // data plumbing that copies Path into fileWalkRow.Path and correlates
 // findings by exact string equality. That is what keeps a path like
 // "../../../etc/passwd" or an absolute path inert on the report: since
-// fileWalk never joins the string against the report's own output
+// the walkthrough never joins the string against the report's own output
 // directory, it can never be used to make the renderer address anything
 // outside that directory. So the property to hold is that fileWalk's output
 // path is byte-identical to its input, for any input, and that finding

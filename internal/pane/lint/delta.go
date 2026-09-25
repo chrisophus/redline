@@ -64,10 +64,11 @@ func (p *Delta) detect() ([]tool, error) {
 // config. No configured tool means an empty scope: the pane then reads as
 // skipped, the honest state for a repository that has opted into no linter
 // Redline can run. A .redline.yml that fails to parse must fail the pane
-// visibly, not remove it: detection still returns the built-in tools, whose
-// coverage scopes files so Observe runs and reports the parse error; and if nothing
-// else lands in scope, the whole change does — an unreadable config means
-// nobody knows which files its tools cover.
+// visibly instead of disappearing from it: detection still returns the
+// built-in tools, whose coverage scopes files so Observe runs and reports the
+// parse error. And if nothing else falls in scope, the whole change does,
+// because an unreadable config means nobody knows which files its tools
+// cover.
 func (p *Delta) Scope(changed []string) []string {
 	tools, err := p.detect()
 	var out []string
@@ -112,7 +113,7 @@ func (s *snapshot) ID() string {
 	return "lint@" + rev
 }
 
-// Observe runs every detected tool at one revision. The head side is strict —
+// Observe runs every detected tool at one revision. The head side is strict:
 // a tool that fails there fails the pane, because no delta can be computed.
 // The base side records failures instead: an old revision that no longer
 // lints (a config newer than the code, missing dependencies in a bare

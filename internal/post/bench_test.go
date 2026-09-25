@@ -46,7 +46,7 @@ func genReport(n int) *findings.Report {
 
 // genCommentable builds the commentable-line sets for the same file names
 // genReport uses, as CommentableLines would derive from a fetched PR file
-// list, so most located findings land as line comments rather than the body.
+// list, so most located findings end up as line comments rather than the body.
 func genCommentable(nFiles int) map[string]map[int]bool {
 	out := make(map[string]map[int]bool, nFiles)
 	for i := range nFiles {
@@ -59,8 +59,8 @@ func genCommentable(nFiles int) map[string]map[int]bool {
 	return out
 }
 
-// BenchmarkBuildPayload exercises assembling the full review payload — the
-// per-finding comment/body split, comment bodies, and the evidence table —
+// BenchmarkBuildPayload exercises assembling the full review payload: the
+// per-finding comment/body split, comment bodies, and the evidence table,
 // from a report with 200 findings against a 20-file PR, sizes representative
 // of a real large pull request review.
 func BenchmarkBuildPayload(b *testing.B) {
@@ -74,7 +74,7 @@ func BenchmarkBuildPayload(b *testing.B) {
 }
 
 // genManyHunkPatch builds a single file's patch with nHunks hunks, each
-// touching a handful of lines further down the file — the shape of a patch
+// touching a handful of lines further down the file: the shape of a patch
 // GitHub returns for a file with many scattered changes.
 func genManyHunkPatch(nHunks int) string {
 	var b strings.Builder
@@ -93,7 +93,7 @@ func genManyHunkPatch(nHunks int) string {
 }
 
 // BenchmarkCommentableLines exercises the diff-position mapping in diff.go
-// over a many-hunk diff — the shape of a large, heavily-edited file, which a
+// over a many-hunk diff: the shape of a large, heavily-edited file, which a
 // review build must map before any finding on it can become a line comment.
 func BenchmarkCommentableLines(b *testing.B) {
 	patch := genManyHunkPatch(200)

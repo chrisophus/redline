@@ -104,8 +104,8 @@ func mutationSection(b *strings.Builder, rep *findings.Report) {
 }
 
 // banner states up front when Redline covered little or none of the change.
-// An empty report is ambiguous by nature — every check clean, or nothing
-// looked — and the reader will assume the flattering reading unless told
+// An empty report is ambiguous by nature: every check clean, or nothing
+// looked. The reader will assume the flattering reading unless told
 // otherwise, before they read anything else.
 func banner(b *strings.Builder, rep *findings.Report) {
 	if rep.Coverage.ChangedFiles == 0 {
@@ -388,7 +388,7 @@ func section4(b *strings.Builder, rep *findings.Report, evidence map[string]pane
 const maxInlineEvidence = 4000
 
 // emitEvidence shows the artifact behind a finding. The claim and the thing it
-// rests on belong in the same place; a reviewer who has to go find the
+// depends on belong in the same place; a reviewer who has to go find the
 // evidence is back to taking the tool's word for it.
 // emitRelated names the findings a correlation was built from, rather than
 // repeating what they said. The point of the reference is that the reader can

@@ -4,8 +4,8 @@
 // Redline runs it as a subprocess in the tree under review and reads one
 // context envelope from its stdout, the same contract every provider serves
 // (docs/context-envelope.md). Unlike the others it costs money: a cheap model
-// reads the diff, uses a handful of tools to find the few things that bear on
-// it, and records where they are. This program reads those bytes from the
+// reads the diff, uses a handful of tools to find the few things that matter
+// for it, and records where they are. This program reads those bytes from the
 // tree, so the reviewer gets real source under a selection a model made.
 //
 // It is the cheap half of a two-model split. The scout explores under a cost
@@ -158,9 +158,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	// The spend is stated on every run, not only when something goes wrong.
-	// This provider is the one that costs money, and a cost nobody sees is a
-	// cost nobody governs. The error is dropped because a diagnostic line that
-	// cannot be written is not worth failing a review that already succeeded.
+	// This provider is the one that costs money, and if nobody sees that cost,
+	// nobody keeps it under control. The error is dropped because a diagnostic
+	// line that cannot be written is not worth failing a review that already
+	// succeeded.
 	_, _ = fmt.Fprintf(stderr, "redline-scout: %d turn(s), %d record(s), %d in / %d out tokens, %s%s\n",
 		spend.Turns, spend.Records, spend.Usage.InputTokens, spend.Usage.OutputTokens,
 		review.FormatCost(spend.CostUSD, spend.CostKnown), capNote(spend))
