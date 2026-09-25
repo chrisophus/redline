@@ -62,7 +62,7 @@ low.
 - Copilot #2 (`api/openapi.yaml:7449`): member-ID arrays are required and
   unbounded by buyer size, while the UI reads only each group's `count`.
 - Copilot #4/#5 (`CustomerFocusBuyerExpansionPanel.tsx:325,341`): the attention
-  and summary React Query keys sit outside the `['buyers', organizationId]`
+  and summary React Query keys are not nested under the `['buyers', organizationId]`
   prefix the refresh button invalidates, so an expanded panel stays stale up to
   10 minutes after a view refresh.
 - Copilot #7 (`api/openapi.yaml:4241`): the spec promises 403 for any
@@ -72,7 +72,7 @@ low.
 Redline's own "what could not be determined" section names the blind spot for
 #7 (its api pane reads inline schemas only, follows no `$ref`) and for the UI
 cache behavior (ui pane checks 15-16 not built). So two of Copilot's findings
-landed exactly in gaps Redline already knew it had and printed for the human,
+matched exactly the gaps Redline already knew it had and printed for the human,
 but did not route to the agent reviewer.
 
 ## Findings Redline had that Copilot did not

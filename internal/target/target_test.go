@@ -38,8 +38,8 @@ func TestResolveWorktree(t *testing.T) {
 	}
 }
 
-// A clean checkout already sitting on the branch tip is the tree to observe:
-// it holds the coverage profile and the rest of the harness output, and a
+// A clean checkout already at the branch tip is the tree to observe: it
+// holds the coverage profile and the rest of the harness output, and a
 // detached worktree holds none of it.
 func TestResolveBranchUsesTheCheckoutWhenItIsAlreadyThere(t *testing.T) {
 	dir := initRepo(t)
@@ -313,7 +313,7 @@ func TestRequestedIsFalseForTheWorkingTree(t *testing.T) {
 	}
 }
 
-// The base ref is fetched on every resolve, not only when it is missing.
+// The base ref is fetched on every resolve, even when it is already present.
 //
 // The head checks itself: prHeadRef compares what it resolves against the
 // HeadRefOid gh reported. The base has no sha beside its name, so a stale

@@ -167,8 +167,8 @@ type Finding struct {
 	// than duplicating the text.
 	RelatedFindings []string `json:"relatedFindings,omitempty"`
 	// Question is what the reviewer said would settle this finding, for
-	// source "llm" only. It rides to the pull request in a hidden marker, so a
-	// later review can tell that a differently worded comment is the same
+	// source "llm" only. It is carried to the pull request in a hidden marker,
+	// so a later review can tell that a differently worded comment is the same
 	// claim: a fingerprint is file plus wording, and wording is exactly what
 	// moves between two runs.
 	Question Question `json:"question,omitempty"`

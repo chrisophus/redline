@@ -269,8 +269,8 @@ func prBaseRef(repo *gitx.Repo, opts Options, pr *PullRequest) (string, error) {
 	// were current. It is not a rare state: anyone who has not pulled since
 	// the last merge into the base branch has one.
 	//
-	// What that cost was a wrong diff, not a stale number. Redline takes the
-	// merge base against this ref, so a base behind by one merged pull
+	// The effect is not a cosmetic stale number, it is a wrong diff. Redline
+	// takes the merge base against this ref, so a base behind by one merged pull
 	// request produces a diff carrying that pull request's changes as though
 	// they belonged to the one under review: on PR #90 it added seven hunks
 	// to one file, the review spent its budget on code that was already
@@ -499,11 +499,11 @@ func (t *Target) describeSelf() string {
 
 // OwnerRepo reads the owner and repository out of the pull request's own URL.
 //
-// It lives here because two callers need it and the URL is the target's, not
-// either caller's: `post` addresses the GitHub API with it, and `run` reads
-// the pull request's own review threads back with it. A second copy of this
-// parse is a second thing to keep in step with whatever GitHub Enterprise
-// path a user turns out to have.
+// It lives here because two callers need it, and the URL belongs to the
+// target rather than to either caller: `post` addresses the GitHub API with
+// it, and `run` reads the pull request's own review threads back with it. A
+// second copy of this parse is a second thing to keep in step with whatever
+// GitHub Enterprise path a user turns out to have.
 func (p *PullRequest) OwnerRepo() (owner, repo string, err error) {
 	if p == nil {
 		return "", "", fmt.Errorf("no pull request metadata")

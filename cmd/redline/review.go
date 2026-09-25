@@ -126,8 +126,8 @@ func cmdReview(o opts) error {
 	// for nothing, and the measured saving on the pair is about a quarter of
 	// the input. --no-cache is there for a caller measuring against the
 	// uncached behaviour. The library refuses it where it cannot pay -
-	// the OpenAI wire, several samples, the batch tier - so this is only the
-	// policy, not the arithmetic.
+	// the OpenAI wire, several samples, the batch tier - so this flag only
+	// sets the policy; the library still works out the arithmetic on its own.
 	ropts.Cache = !o.noCache
 	switch o.cacheTTL {
 	case "", review.CacheTTL5m, review.CacheTTL1h:
@@ -198,7 +198,7 @@ func cmdReview(o opts) error {
 	// On unless the off flag is given, the way the cache is: the summaries
 	// are what a cohort call knows about its neighbours, and a fan-out with
 	// none of them gives up every cross-cohort correlation from the cohort
-	// side. Turning them off is an arm to measure, not a default.
+	// side. Turning them off is for measuring that arm; it is not the default.
 	ropts.CrossSummaries = !o.noCrossSummaries
 	// On the OpenAI wire the credentials are read here, in the vendor's own
 	// env names, before the checking pass is wired up: the scout that runs
