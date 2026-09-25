@@ -3,8 +3,8 @@
 The wire format between Redline and a language provider. Redline owns this
 schema; a provider fills it in.
 
-Redline links no language toolchain. Resolving what a change touched — which
-symbols moved, who calls them, which types a signature names — needs one, so
+Redline links no language toolchain. Resolving what a change touched - which
+symbols moved, who calls them, which types a signature names - needs one, so
 that work happens in a separate program that Redline runs as a subprocess and
 reads JSON from. This file is the whole interface.
 
@@ -19,8 +19,7 @@ only the selection is a judgement. It also quotes the repository's own rules
 under a `guideline` role, which is the case worth knowing about here: an
 expansion may carry text a repository wrote rather than code, and the
 reviewer is told it is content rather than instruction, for the same reason
-`promptFragment` is framed as advice. Two consequences are worth stating where a
-provider author will read them. Its envelope is not byte-identical between
+`promptFragment` is framed as advice. Its envelope is not byte-identical between
 runs, so `provider.version` carries the model and the effort rather than a
 release, and a fixture that freezes a scouted session freezes one run of it.
 And because `run` executes providers, a repository that configures a

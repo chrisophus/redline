@@ -281,9 +281,9 @@ func cmdReview(o opts) error {
 		ropts.Look = lookerFor(res)
 	}
 	if !o.dryRun {
-		// Said before the call, not after it. A review is one blocking
-		// request of two to five minutes and the command printed nothing
-		// until it returned, so a working run and a hung one looked
+		// This prints before the call goes out. A review is one blocking
+		// request of two to five minutes, and the command used to print
+		// nothing until it returned, so a working run and a hung one looked
 		// identical. Assemble is what --dry-run does and calls nothing, so
 		// the price quoted here is the price about to be paid.
 		if est, aerr := review.Assemble(in, ropts); aerr == nil {
@@ -318,9 +318,9 @@ func cmdReview(o opts) error {
 			fmt.Fprintln(os.Stderr, "redline:", s)
 		}
 		if out.OverCeiling {
-			// Said rather than silently absorbed. The context is what pays
-			// for correlation findings, and a review that got none of it is
-			// a different review from one that did.
+			// This is printed instead of letting the run absorb the drop in
+			// silence. The context is what pays for correlation findings, so
+			// a review that got none of it found less than one that did.
 			fmt.Fprintf(os.Stderr,
 				"redline: the diff and findings alone are %d tokens against a %d ceiling, "+
 					"so no context beyond the diff fits. Review a smaller range, or raise --ceiling.\n",
@@ -343,14 +343,15 @@ func cmdReview(o opts) error {
 					"and the --max-cost tripwire did not apply.\n", out.Model)
 		}
 	}
-	// Record before returning the error, not after the review succeeds.
-	// review.Run fills in Usage and CostUSD before it reports a truncated,
-	// refused, or unparseable response, so by the time those errors surface
-	// the money is already spent; returning here with no ledger line is how
-	// two paid calls left reviews.jsonl untouched and --stats claiming one
-	// review. The usage guard is what separates a request that was actually
-	// sent from one that never left — a dry run, or a refusal before the
-	// call — so those still write nothing.
+	// Record before returning the error, so a review that fails after
+	// spending money still leaves a ledger line. review.Run fills in Usage
+	// and CostUSD before it reports a truncated, refused, or unparseable
+	// response, so by the time those errors surface the money is already
+	// spent; returning here with no ledger line is how two paid calls left
+	// reviews.jsonl untouched and --stats claiming one review. The usage
+	// guard is what separates a request that was actually sent from one
+	// that never left, such as a dry run or a refusal before the call;
+	// those still write nothing.
 	if out != nil && !o.dryRun && out.Usage.InputTokens > 0 {
 		if rerr := review.Record(o.ledgerDir(), out); rerr != nil {
 			// Not fatal. A review that produced findings has done its job,
@@ -369,12 +370,13 @@ func cmdReview(o opts) error {
 		return err
 	}
 	if o.dryRun {
-		// Print the whole request rather than a summary of it, both halves
-		// of it. The system block carries every provider's promptFragment,
-		// which comes from another repository entirely and decides as much
-		// about the review as the user turn does; a dry run that showed only
-		// the user turn could not answer what would be sent. Then the
-		// estimated price of sending it.
+		// Prints the whole request, not a summary, and both halves of it:
+		// the system block and the prompt. The system block carries every
+		// provider's promptFragment, which comes from another repository
+		// entirely and decides as much about the review as the user turn
+		// does; a dry run that showed only the user turn could not answer
+		// what would be sent. Then it prints the estimated price of sending
+		// it.
 		fmt.Println("--- system ---")
 		fmt.Println(out.System)
 		fmt.Println("--- prompt ---")
@@ -398,9 +400,9 @@ func cmdReview(o opts) error {
 	}
 	fmt.Fprintln(os.Stderr, "redline: review", out.Summary())
 	if out.Verified {
-		// What was checked and what survived, because a reader told a review
-		// found nine things and shown two needs to know the other seven were
-		// ruled on rather than lost.
+		// What was checked and what survived is printed here, because a
+		// reader who is told a review found nine things but shown only two
+		// needs to know that the other seven were ruled on, not simply lost.
 		kept, ruled := review.Kept(out.Review)
 		fmt.Fprintf(os.Stderr, "redline: checked %d finding(s), kept %d\n", ruled, kept)
 		if out.VerifyFailed != "" {
@@ -506,10 +508,11 @@ func writeTrace(o opts, res *run.Result, out *review.Result, tally *scoutTally) 
 		CapHit:    tally.capHit,
 		Notes:     tally.log.Notes,
 	}
-	// Copied field by field rather than handed over. The scout is a context
-	// provider and the trace is Redline's own file, so this command is the
-	// one place that knows both shapes; internal/boundary is the test that
-	// keeps it that way.
+	// The fields are copied over one at a time here, instead of passing the
+	// scout's struct through directly. The scout is a context provider and
+	// the trace is Redline's own file, so this command is the one place
+	// that knows both shapes; internal/boundary is the test that keeps it
+	// that way.
 	for _, c := range tally.log.Calls {
 		look.Calls = append(look.Calls, postmortem.Call{
 			Turn: c.Turn, Tool: c.Tool, Args: c.Args, Result: c.Result, Failed: c.Failed,
@@ -634,8 +637,8 @@ func (o opts) scoutSettings() scoutSettings {
 // The head is the target's when it has one and the working tree otherwise,
 // which is the same pair ReviewIdentity distinguishes.
 func (o opts) sinceLastReview(res *run.Result) (string, []string, error) {
-	// The checkout under review, not o.root. o.root is the session directory,
-	// which is .redline inside the checkout by default and so happens to
+	// This is the checkout under review; it is not o.root. o.root is the
+	// session directory, which is .redline inside the checkout by default and so happens to
 	// resolve, but --out and --session can put it anywhere: a session cache
 	// outside the repository would resolve --since against the wrong
 	// repository or none at all. The target's own directory is what the panes

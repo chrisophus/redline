@@ -109,16 +109,17 @@ func questionsFor(cands []Candidate, in Input) []Question {
 // system prompt so the two calls share a prefix and the second is served from
 // cache.
 //
-// The pass is addressed as a judge of someone else's findings, not as the
-// reviewer checking its own. Sharing the prefix needs the same bytes ahead of
-// it, not the same speaker, and a model told these are its findings is being
-// asked to disown its own work: measured on a real run, it kept six of six
-// with no answers in front of it at all.
+// The pass is addressed as a judge of someone else's findings rather than as
+// the reviewer checking its own. Sharing the prefix needs the same bytes
+// ahead of it. It does not need the same speaker, and a model told these are
+// its own findings is being asked to disown its own work: measured on a real
+// run, it kept six of six with no answers in front of it at all.
 //
 // The hard part is the asymmetry. A pass rewarded only for withdrawing
-// findings will withdraw everything, score perfectly on precision, and be
-// worthless, and a reader with a stake in the code does exactly that. So the
-// instruction names the failure in both directions and gives the withdrawal
+// findings will withdraw everything. Its precision score would look perfect,
+// and the review would be worthless, which is exactly what a reader with a
+// stake in the code does too. So the instruction names the failure in both
+// directions and gives the withdrawal
 // a burden it must meet: quote what refutes it, or quote the finding's own
 // false premise. The second ground is there because a finding that is wrong
 // about the language has no line in the repository that refutes it, and
@@ -333,15 +334,15 @@ func Kept(rev findings.Review) (kept, ruled int) {
 // needsLookup decides whether a finding is worth a scout turn.
 //
 // The answerable kinds are decided by the question alone. A diff question is
-// not: it claims the material already in front of the reviewer settles the
-// finding, and nothing used to check that claim. On this repository's PR #46,
-// six of the nine findings the ruling could not settle were of this kind, and
-// the review delivered five of fifteen findings, so the claim taken on trust
-// cost about two thirds of a checked review.
+// the exception: it claims the material already shown to the reviewer
+// settles the finding, and nothing checks that claim on its own. On this
+// repository's PR #46, six of the nine findings the ruling could not settle
+// were of this kind, and the review delivered five of fifteen findings, so
+// the claim taken on trust cost about two thirds of a checked review.
 //
 // So the claim is checked against what the prompt actually carried. When the
 // material does cover the finding's location the question is honest and needs
-// nothing; when it does not, the finding rests on material the reviewer was
+// nothing; when it does not, the finding depends on material the reviewer was
 // never shown, and that is exactly a finding worth looking up. It keeps its
 // kind: "diff" is where the reviewer said the answer was, and the scout reads
 // a file for it either way.
@@ -418,10 +419,10 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 		if len(qs) > 0 {
 			env, err := opts.Answer(ctx, qs)
 			if err != nil {
-				// Named, not swallowed. A ruling made over no answers is a
-				// ruling made from the same material that produced the claim,
-				// which is the thing this stage exists to stop being the whole
-				// of it.
+				// The failure is reported rather than swallowed. A ruling made
+				// over no answers would be made from the same material that
+				// produced the claim in the first place, and stopping that from
+				// being the whole of the check is exactly why this stage exists.
 				if opts.Progress != nil {
 					opts.Progress(fmt.Sprintf("the lookups failed, so the ruling has nothing to check against: %v", err))
 				}
