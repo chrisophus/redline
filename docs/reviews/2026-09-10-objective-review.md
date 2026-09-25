@@ -36,12 +36,14 @@ measured with a real key. Field use twice produced reviews whose every
 finding the reader dismissed. The response was three more suppression
 mechanisms and a second model call, and the meter that would say whether
 any of it worked (`docs/plans/review-feedback.md`) is still marked not done.
-The verify pass that is meant to fix the dismissals fails open in three
-places, so it does not yet deliver the property it was built for.
+The verify pass that is meant to fix the dismissals lets unverified findings
+through in three places, so it does not yet deliver the property it was
+built for.
 
 Most of what follows is fixable in small pieces. The observe layer's holes
-are one-fixture tests away. The verify pass needs a handful of fail-closed
-rules. The eval needs labels that can say no. None of it is architectural.
+are one-fixture tests away. The verify pass needs a handful of rules that
+reject by default. The eval needs labels that can say no. None of it is
+architectural.
 
 ## Scorecard
 
@@ -62,7 +64,7 @@ rules. The eval needs labels that can say no. None of it is architectural.
 
 Ranked by how much they change what a user of the tool gets.
 
-### 1. The verify pass fails open
+### 1. The verify pass lets unchecked findings through
 
 The design sentence is "a review is posted only with the evidence it rests
 on." In code:
@@ -112,7 +114,7 @@ becomes "introduced", every existing suppression is re-reported, and every
 line counts as added; the README's "moved code does not read as new
 violations" holds only inside one file. A file's `Head` is carried whole
 into the session on a newline count alone (`change.go:210`), so a multi-MB
-binary with few newlines lands in `session.json` and the prompt. `Repo.File`
+binary with few newlines ends up whole in `session.json` and the prompt. `Repo.File`
 turns every git failure into "absent" (`git.go:509`), which the OpenAPI,
 lint-config and migration panes read as "added". `MergeBase` silently falls
 back to the ref itself on a shallow clone (`git.go:69`). `ls-tree --format`
