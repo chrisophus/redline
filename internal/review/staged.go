@@ -147,7 +147,7 @@ func stagedCeilingCost(opts Options, in Input, res *Result) float64 {
 	bound := pricingCohortBound(opts, in)
 	// Priced off a cohort request rather than the bare prefix: a cohort's
 	// tail carries its file list and, with cross-summaries on, a line for
-	// every other cohort, and undercounting it once per call is undercounting
+	// every other cohort, and leaving that out of every call would misprice
 	// the shape this guard exists to price. The cohort is representative -
 	// the prefix dominates and the tails are within a few hundred tokens of
 	// each other - and stage one has not run, so there is no real partition
@@ -171,15 +171,16 @@ func stagedCeilingCost(opts Options, in Input, res *Result) float64 {
 // cohortMaxTokens is one cohort call's response cap: the whole run's cap
 // divided across the fan-out.
 //
-// The budget is one review's, not one per cohort. Six calls at the full cap
-// is six times a review's worst case, which on a mid-sized change is $6
-// against a $2 tripwire - so the guard refused every real fixture in the
-// first sweep, correctly, for a request nobody intended to make. A cohort
-// reviewing two files does not need the cap a reviewer of fifty needs, and
-// the run measured here spent 3,267 output tokens across five of them.
+// The budget belongs to one review as a whole, divided across every cohort
+// rather than handed whole to each one. Six calls at the full cap is six
+// times a review's worst case, which on a mid-sized change is $6 against a
+// $2 tripwire - so the guard refused every real fixture in the first sweep,
+// correctly, for a request nobody intended to make. A cohort reviewing two
+// files does not need the cap a reviewer of fifty needs, and the run
+// measured here spent 3,267 output tokens across five of them.
 //
-// Floored, because a cap small enough to truncate a cohort's findings would
-// buy the guard by breaking the thing it guards.
+// Floored: a cap small enough to truncate a cohort's findings would defeat
+// the purpose the guard exists for.
 func cohortMaxTokens(opts Options, cohorts int) int64 {
 	if cohorts <= 1 {
 		return opts.MaxTokens
@@ -193,7 +194,8 @@ func cohortMaxTokens(opts Options, cohorts int) int64 {
 
 // MinCohortMaxTokens is the floor on a cohort call's response cap. Well above
 // what a cohort of a handful of files was measured writing, so the division
-// above bounds the bill without bounding the review.
+// above keeps the total cost in check while leaving each cohort enough room
+// to write a full review.
 const MinCohortMaxTokens int64 = 8000
 
 // cohortBound is how many stage-two calls this run may make. A change with
@@ -450,7 +452,7 @@ func fanOut(ctx context.Context, in Input, opts Options, res *Result, cohorts []
 	// reach for a file on the boundary between them are describing one defect,
 	// and a reader of the merged review must see it once.
 	merged.Review = unionReviews(kept)
-	// A truncation anywhere wins. kept[0] is whichever cohort landed first,
+	// A truncation anywhere wins. kept[0] is whichever cohort finished first,
 	// and the fan-out makes truncation more likely rather than less - each
 	// call runs against a divided cap - so reading one slot would hide the
 	// column the ledger uses to tell a cheap run from a wasted one.
@@ -539,12 +541,12 @@ func repairPartition(shown map[string]bool, cohorts []Cohort, bound int) ([]Coho
 // change can describe it in different words - so a selector kept from an
 // earlier plan is chasing wording that may already have moved. A file path
 // does not move, which is what makes it the fallback rather than the first
-// try: naming a phrase from the summary is what a caller remembers, and
-// naming a file is what still works when the summary said something else
-// this time. A selector matching nothing is an error naming the selector,
-// not a silent empty result: a partition of zero cohorts reads as a change
-// with nothing to review, and it would be a filter that missed rather than
-// a change that is clean.
+// try: a caller remembers a phrase from the summary, but a file path is what
+// still works when the summary said something else this time. A selector
+// matching nothing is reported as an error naming the selector. It does not
+// fail silently by returning nothing: a partition of zero cohorts reads as a
+// change with nothing to review, and it would be a filter that missed rather
+// than a change that is clean.
 func selectCohorts(cohorts []Cohort, selectors []string) ([]Cohort, error) {
 	var out []Cohort
 	seen := map[int]bool{}

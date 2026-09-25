@@ -3,7 +3,7 @@
 //
 // `redline run` observes the change and reports what it can establish
 // deterministically: findings.json, report.md, and report.html. The
-// reviewer's own comments and verdicts — human or agent, via review.json —
+// reviewer's own comments and verdicts - human or agent, via review.json -
 // merge into the same report, each finding marked with its source. `run`
 // invokes no model, by any route.
 //
@@ -16,7 +16,7 @@
 //
 // `redline post` is the one command that writes to GitHub: it submits the
 // session's observed findings as one pull request review. It is always
-// explicit — `run` stays read-only.
+// explicit - `run` stays read-only.
 package main
 
 import (
@@ -152,9 +152,9 @@ func (o opts) toRun(dir string) run.Options {
 		MigDir: o.migDir, PR: o.pr, Branch: o.branch, Commit: o.commit,
 		Range: o.revRange, Out: o.out, AllowMissingCoverage: o.allowMissingCoverage,
 		SkipLint: o.noLint, SkipContext: o.noContext,
-		// Which tree was observed decides what the harness could see, so it
-		// is said out loud rather than left to be inferred from a coverage
-		// number that came back missing.
+		// Which tree was observed decides what the harness could see, so
+		// this logs it directly. Otherwise the reader would have to infer
+		// it from a coverage number that came back missing.
 		Progress: func(msg string) { fmt.Fprintln(os.Stderr, "redline:", msg) },
 		Debug:    o.verboseSink(),
 	}
@@ -201,10 +201,10 @@ func cmdRun(o opts) error {
 // openFile points at report.html on disk, no server. The page is
 // self-contained, so a browser renders it straight from a file:// path; only
 // the click-to-comment feature, which needs a stable origin for
-// localStorage, wants the server. This is the answer to a report that lands
-// in .redline, a directory the file picker hides: the path is handed to the
-// opener directly, so no picker is involved. With browse, it opens; without,
-// it prints the file:// URL to click.
+// localStorage, wants the server. This is the answer to a report that is
+// written into .redline, a directory the file picker hides: the path is
+// handed to the opener directly, so no picker is involved. With browse, it
+// opens; without, it prints the file:// URL to click.
 func openFile(out string, browse bool) error {
 	abs, err := filepath.Abs(filepath.Join(out, "report.html"))
 	if err != nil {
@@ -265,7 +265,7 @@ func emitJSON(v any) error {
 }
 
 // write persists the run: findings.json, report.md, report.html, and any
-// captured artifacts. comments.json is never written here — it is the
+// captured artifacts. comments.json is never written here: it is the
 // reviewer's own state, and merging the two would clobber their decisions on
 // every re-run.
 func write(o opts, res *run.Result) error {

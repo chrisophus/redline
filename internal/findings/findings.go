@@ -326,7 +326,7 @@ type ToolStatus struct {
 
 // AgentReview is the agent's prose layer over a change, ingested from
 // review.json. The comments in that file become findings; this holds the parts
-// that have no single line to sit on.
+// that have no single line to anchor to.
 type AgentReview struct {
 	Overview string            `json:"overview,omitempty"`
 	Files    map[string]string `json:"files,omitempty"`
@@ -344,7 +344,7 @@ type AgentReview struct {
 }
 
 // FailedSubstrates returns panes that applied but did not run. Redline is
-// non-gating, so this drives rendering, not exit status.
+// non-gating, so this drives rendering rather than exit status.
 func (r *Report) FailedSubstrates() []SubstrateStatus {
 	var out []SubstrateStatus
 	for _, s := range r.Substrates {

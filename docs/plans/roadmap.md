@@ -307,11 +307,11 @@ which file worries them, and what they want asked. The PR #1360 miss is the
 case. The reader could have named the question in one sentence and there was
 nowhere to put it.
 
-Three rules for everything in this section. What a person types is written
-into the session, so the report and `redline postmortem` can show what the
-review was told. It ranks below a rule the team committed to the repository.
-And it arrives as context, so it can point attention somewhere and cannot push
-a finding past the ruling's gate or hold one back.
+Everything in this section follows the same three rules. What a person types
+is written into the session, so the report and `redline postmortem` can show
+what the review was told. It ranks below a rule the team committed to the
+repository. And it arrives as context, so it can point attention somewhere and
+cannot push a finding past the ruling's gate or hold one back.
 
 | Item | What | Effort |
 |---|---|---|

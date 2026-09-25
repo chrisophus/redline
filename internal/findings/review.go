@@ -456,8 +456,8 @@ func normalizeCategory(c Category) Category {
 // normalizeSide maps a comment's diff side onto the two values GitHub accepts,
 // forgiving case and whitespace. "LEFT" is a removed line on the old file;
 // "RIGHT" is the new file. Anything else, including empty, reads as "" and the
-// post layer defaults it to RIGHT, so a comment that named no side lands on
-// the new file the way it always did.
+// post layer defaults it to RIGHT, so a comment that named no side is placed
+// on the new file the way it always was.
 func normalizeSide(s string) string {
 	switch strings.ToUpper(strings.TrimSpace(s)) {
 	case "LEFT":

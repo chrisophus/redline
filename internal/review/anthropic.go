@@ -21,17 +21,17 @@ const (
 	APIOpenAI    = "openai"
 )
 
-// idleTimeout bounds the gap between bytes arriving on the wire, not the
-// call: a heavy-reasoning turn legitimately runs many minutes, and the API
-// sends something - a ping if nothing else - every few seconds while it is
-// really there.
+// idleTimeout bounds the gap between bytes arriving on the wire. It says
+// nothing about how long the call itself may run: a heavy-reasoning turn
+// legitimately runs many minutes, and the API sends something - a ping if
+// nothing else - every few seconds while it is really there.
 //
-// It has to sit below the SSE decoder, not in the turn loop: the decoder
-// discards ping frames before a caller ever sees them (anthropic-sdk-go's
-// packages/ssestream, `case "ping": continue`), so resetting a timer on
-// every stream.Next() starves on exactly the traffic that proves the
-// connection is alive - caught by a test written against that assumption,
-// which failed until the timeout moved here.
+// This has to run at the transport level, beneath the SSE decoder, rather
+// than in the turn loop: the decoder discards ping frames before a caller
+// ever sees them (anthropic-sdk-go's packages/ssestream, `case "ping":
+// continue`), so resetting a timer on every stream.Next() starves on exactly
+// the traffic that proves the connection is alive - caught by a test written
+// against that assumption, which failed until the timeout moved here.
 //
 // A gap this wide with no bytes at all, ping included, is a stalled
 // connection, and the failure this exists to name: a call that hung for
