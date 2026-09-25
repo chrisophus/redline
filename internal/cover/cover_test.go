@@ -62,7 +62,7 @@ func write(t *testing.T, dir, name, body string) string {
 }
 
 // The failure this exists to prevent: a missing profile rendering as 0%, which
-// reads as "nothing is tested" — a far stronger claim than "nobody measured".
+// reads as "nothing is tested", a far stronger claim than "nobody measured".
 func TestNoProfileIsNilNotZero(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "a.go", "package a\n")
@@ -272,7 +272,7 @@ func TestAddedLinesSkipsNoNewlineMarker(t *testing.T) {
 	}
 }
 
-// A pure rename has no hunk at all, so it must add no lines — a rename must
+// A pure rename has no hunk at all, so it must add no lines: a rename must
 // never be attributed coverage for lines it never touched.
 func TestAddedLinesEmptyForPureRename(t *testing.T) {
 	diff := "diff --git a/old.go b/new.go\nsimilarity index 100%\n" +

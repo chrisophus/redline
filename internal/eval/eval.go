@@ -615,11 +615,11 @@ type Totals struct {
 func (t Totals) FalsePositives() int { return t.QuietViolations + t.Rejected }
 
 // Sum aggregates. Expected counts the whole expectation set, optional ones
-// included whether or not they were caught: a caught optional lands in Caught
-// and a missed one in MissedOptional, so leaving MissedOptional out moved the
-// denominator with the result. Two configurations then printed 5/5 and 4/4
-// for the same fixture set, and the comparison table's rows are only worth
-// reading side by side if the number under the line is the same.
+// included whether or not they were caught: a caught optional goes into
+// Caught and a missed one into MissedOptional, so leaving MissedOptional out
+// moved the denominator with the result. Two configurations then printed 5/5
+// and 4/4 for the same fixture set, and the comparison table's rows are only
+// worth reading side by side if the number under the line is the same.
 func Sum(cards []Scorecard) Totals {
 	var t Totals
 	for _, c := range cards {

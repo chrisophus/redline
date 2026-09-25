@@ -95,10 +95,10 @@ Status values: `Pending`, `Pass`, `Fixed`, `Skipped`, `Blocked (needs human veri
 
 ## Paper Cuts (by persona)
 
-- **Human reviewer** — At 390px the sticky comment bar stacks "Copy comments for the agent" above "Clear", eating vertical space. Functional, slightly cramped. Severity: low — deferred.
-- **Agent reviewer** — Native `window.confirm` on Clear blocks `agent-browser click` until the dialog is handled (the CLI's auto-dialog path left a hung click). Humans click OK; headless Clear needs JS override. Severity: low — deferred.
-- **Agent reviewer** — A Go-only change still shows `0/N files examined` because the only shipped pane is migrations. The banner is honest; the gap is product scope, not a broken screen. Severity: medium — not a defect of this branch.
-- **Human reviewer** — Re-running `review` while writing this dogfood report includes `docs/dogfood-reports/...` in the change. Correct, noisy. Severity: low — deferred.
+- **Human reviewer**: At 390px the sticky comment bar stacks "Copy comments for the agent" above "Clear", eating vertical space. Functional, slightly cramped. Severity: low, deferred.
+- **Agent reviewer**: Native `window.confirm` on Clear blocks `agent-browser click` until the dialog is handled (the CLI's auto-dialog path left a hung click). Humans click OK; headless Clear needs JS override. Severity: low, deferred.
+- **Agent reviewer**: A Go-only change still shows `0/N files examined` because the only shipped pane is migrations. The banner is honest; the gap is product scope, not a broken screen. Severity: medium, not a defect of this branch.
+- **Human reviewer**: Re-running `review` while writing this dogfood report includes `docs/dogfood-reports/...` in the change. Correct, noisy. Severity: low, deferred.
 
 ## Console Errors
 
@@ -106,7 +106,7 @@ None. `agent-browser errors` was empty on the initial open, after comment save/c
 
 ## Human Verifications
 
-Not applicable — no OAuth, email, payments, or SMS.
+Not applicable: no OAuth, email, payments, or SMS.
 
 ## Decisions for a Human
 
@@ -119,12 +119,12 @@ None. The empty-diff bug and the target-resolution test failures were small enou
 - On macOS, `t.TempDir()` and `git rev-parse --show-toplevel` often disagree by a `/var` → `/private/var` symlink. Compare resolved paths.
 - Native `confirm()` is a poor fit for headless dogfood of a static HTML page; a custom in-page confirm would be automatable.
 
-Worth feeding to `ce-compound`: the untracked `git diff` hole — it will recur in any pre-push review tool.
+Worth feeding to `ce-compound`: the untracked `git diff` hole. It will recur in any pre-push review tool.
 
 ## Final Status
 
 **Ready to ship**, with the coverage caveat above (migrations pane only; Go changes stay unexamined by design of rung 1).
 
-Automated suite: `go test ./...` — **40 passed** in 11 packages after `d61165f`, `fc0a4f7`, and `4489116`.
+Automated suite: `go test ./...`, **40 passed** in 11 packages after `d61165f`, `fc0a4f7`, and `4489116`.
 
 Browser matrix: 10 Pass, 1 Fixed, 0 Blocked.

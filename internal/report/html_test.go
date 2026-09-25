@@ -88,7 +88,7 @@ func TestDrillGroupsByLanguageAndKind(t *testing.T) {
 }
 
 // A finding with a file offers a View code control that opens that file's diff
-// in the drawer at the finding's line — the one source view, shared with the
+// in the drawer at the finding's line: the one source view, shared with the
 // drill-in, rather than a second inline snippet.
 func TestFindingLinksToItsFileInTheDrawer(t *testing.T) {
 	html, err := HTML(HTMLInput{
@@ -562,7 +562,7 @@ func TestMarkdownSection3DoesNotClaimCompleteCoverage(t *testing.T) {
 
 // A deleted line whose text begins with "--" is content, not a file header.
 // Misreading it left the old-side cursor behind and shifted every following
-// line number in the hunk — the exact failure line anchoring exists to avoid.
+// line number in the hunk. That is the exact failure line anchoring exists to avoid.
 func TestDiffLineStartingWithDashesIsContent(t *testing.T) {
 	diff := "--- a/README.md\n+++ b/README.md\n@@ -10,4 +10,3 @@\n context\n---port N\n+++count M\n more\n"
 	html := highlightDiffFor("README.md", diff, nil)
@@ -687,7 +687,7 @@ func TestExpandForFindingsAddsContextForOffDiffLine(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// The diff only touches line 1; the finding sits on line 8, far outside the
+	// The diff only touches line 1; the finding is on line 8, far outside the
 	// default 3-line context, so it is not in the diff at all.
 	diff := "@@ -1 +1 @@\n-old1\n+l1\n"
 	out := expandForFindings(dir, "a.go", diff, []int{8})
@@ -923,9 +923,9 @@ func TestLowConfidenceFindingsAreFoldedAwayButStayReachable(t *testing.T) {
 }
 
 // An agent comment arrives with its whole remark in Message. Rendered straight
-// into the h3 it produced headings over 1000 characters — eleven lines of bold
-// prose where the deterministic card beside it has a one-line title — which is
-// the end of the ten-second orientation the briefing exists for.
+// into the h3, it produced headings over 1000 characters, eleven lines of bold
+// prose, where the deterministic card beside it has a one-line title. That is
+// well past the ten-second orientation the briefing exists for.
 func TestLongAgentMessageSplitsIntoHeadingAndBody(t *testing.T) {
 	long := "The migration adds a NOT NULL column with no default, so every row " +
 		"already in `users` violates it the moment this deploys. Backfill first " +

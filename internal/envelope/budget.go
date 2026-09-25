@@ -27,13 +27,13 @@ const DefaultCeiling = 250_000
 //
 // The ratio is measured, not assumed. Four measured runs of `redline review`
 // on real changes came in at 2.24, 2.29 and 2.34 characters per token, against
-// payloads that were Go source, unified diffs and JSON expansion details — the
+// payloads that were Go source, unified diffs and JSON expansion details, the
 // mix this tool actually sends. The old 3.5 was a rule of thumb borrowed from
 // English prose, and it under-counted those requests by 1.49x to 1.53x, which
 // is the wrong direction for a number a ceiling is enforced against: a request
 // estimated at 249,767 tokens was admitted under a 250,000 ceiling and then
 // sent 372,844. So the divisor is 7/3, i.e. 2.33 characters per token, which
-// errs high on prose — the harmless side.
+// errs high on prose, the harmless side.
 //
 // Anything that needs a real count should ask the API's own token counter,
 // which is free and exact. This is the offline approximation for budgeting.
@@ -239,8 +239,8 @@ func (b Budgeted) excludedClause() string {
 // Content, which is the property that lets one implementation serve every
 // language: Redline cannot tell Go from SQL here and does not need to.
 //
-// Order is total and deterministic — role rank, then priority descending,
-// then file, line, and symbol — so the same envelope produces the same
+// Order is total and deterministic: role rank, then priority descending,
+// then file, line, and symbol, so the same envelope produces the same
 // context block on every run. An eval that cannot reproduce its own input is
 // measuring noise.
 func Fit(e *Envelope, ceiling int) Budgeted {
@@ -283,7 +283,7 @@ func FitFilter(e *Envelope, ceiling int, seen Seen, filter Filter) Budgeted {
 
 	// Before the walk, because it changes what an expansion costs and the
 	// walk is what spends the ceiling. In ranked order, so the full copy of a
-	// commit message lands in the expansion most likely to survive.
+	// commit message ends up in the expansion most likely to survive.
 	dedupeCommits(ranked)
 
 	// Kept lines join seen as the walk goes, so the same code is paid for
@@ -341,7 +341,7 @@ func markSeen(seen Seen, x Expansion) {
 }
 
 // Render writes the kept expansions as the context block the model reads.
-// Grouped by role, in rank order, each under a header naming what it is —
+// Grouped by role, in rank order, each under a header naming what it is:
 // the model is told a caller is a caller, because "here is some code" and
 // "here is who calls the thing you changed" support very different findings.
 func (b Budgeted) Render() string {

@@ -328,7 +328,7 @@ func TestDifferSkipsAddedAndDeletedFiles(t *testing.T) {
 
 // An unreadable baseline degrades the delta and says so; the lint-clean-delta
 // confirmation would assert a comparison that never happened, so it is
-// withheld even when no head issue lands on an added line.
+// withheld even when no head issue is on an added line.
 func TestBaselineUnreadableForfeitsCleanConfirmation(t *testing.T) {
 	fakeToolFromFixture(t, "mylint", "mylint-fixture.json")
 	r := newRepo(t)

@@ -137,7 +137,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   The scout is the shape a cheap input rate pays off in most: it resends a
   growing conversation on every turn, where the review sends its prompt once
   and reads it back from cache after that. Luna's input is a tenth of
-  `claude-sonnet-5`'s, so the turns are where the saving lands. Pricing it
+  `claude-sonnet-5`'s, so the turns are where the saving happens. Pricing it
   also makes `--max-cost` work for it at all: `overBudgetOpenAI` leaves an
   unpriced model ungoverned by cost and bounded only by turns. The cap stays
   at the $0.25 default, which a full eight turns comes in well under. Without
@@ -189,7 +189,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   in a table of File, Lines and What changed. GitHub divides a table's width
   between its columns and the prose column is the longest, so it took the
   space: paths wrapped in the middle of a directory name and a file's added
-  and removed counts landed on separate lines. A file is now one list item,
+  and removed counts ended up on separate lines. A file is now one list item,
   which has no columns to divide, and the two counts are joined by a
   non-breaking space so nothing can split them. A section is about 40 bytes
   cheaper than the table it replaces, since there is no header row to repeat
@@ -276,7 +276,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   catalogue only for a run that was given a commit, and the files that moved
   are named in the instruction rather than left to the model, because the diff
   it is shown is against the merge base and nothing in it records when any of
-  it landed. `--since` is resolved against the checkout and a commit it cannot
+  it was committed. `--since` is resolved against the checkout and a commit it cannot
   find is refused, and `--recap` is refused when the session carries no such
   paragraph rather than posting the walkthrough again under a heading that
   promises otherwise.
@@ -333,7 +333,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   where `gorefactor` is not on PATH: a tool the reviewer can see and cannot
   use costs it a turn to find that out. The catalogue is 2454 input tokens
   with no lookups, 3073 with `grep` and `read_lines` alone and 3888 with all
-  five, and it sits in the cached prefix, so only a run's first call pays
+  five, and it is part of the cached prefix, so only a run's first call pays
   full rate for the difference.
 - **`ruling` on a finding in `findings.json`.** The verifying pass's verdict
   rides on the finding itself, for `source: llm` only and empty when no pass
@@ -559,7 +559,7 @@ Releases whose tag carries only a subject line are listed as that subject.
   tenfold internal duplication with no deduplication at all. What each
   expansion keeps is the part that differs, the commit header and the hunk git
   printed for that range; only the message body is replaced, by a line saying
-  where to read it, and the full copy lands in the highest-ranked expansion so
+  where to read it, and the full copy goes into the highest-ranked expansion so
   it is the one that survives a binding budget. On PR #83: history and removal
   429,314 to 64,593 tokens, the whole envelope 587,072 to 222,351, and nothing
   exceeds the ceiling any more - the 52 expansions it used to drop all fit,
