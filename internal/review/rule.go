@@ -119,11 +119,11 @@ func questionsFor(cands []Candidate, in Input) []Question {
 // findings will withdraw everything. Its precision score would look perfect,
 // and the review would be worthless, which is exactly what a reader with a
 // stake in the code does too. So the instruction names the failure in both
-// directions and gives the withdrawal
-// a burden it must meet: quote what refutes it, or quote the finding's own
-// false premise. The second ground is there because a finding that is wrong
-// about the language has no line in the repository that refutes it, and
-// without it such a finding could only be kept.
+// directions and gives the withdrawal a burden it must meet: quote what
+// refutes it, or quote the finding's own false premise. The second ground is
+// there because a finding that is wrong about the language has no line in the
+// repository that refutes it, and without it such a finding could only be
+// kept.
 //
 //go:embed prompts/ruling.md
 var rulePrompt string
