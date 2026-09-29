@@ -30,7 +30,7 @@ import (
 // FileType is the half of the graph a node came from. Only "code" nodes come
 // out of tree-sitter; "document", "paper", "image", "rationale" and "concept"
 // are written by Graphify's semantic pass, which is a model call. That
-// distinction is load-bearing here and not decoration: see deterministic.
+// distinction is load-bearing here: see deterministic.
 type Node struct {
 	ID             string `json:"id"`
 	Label          string `json:"label"`
@@ -77,7 +77,7 @@ func (n Node) isFile() bool {
 // Edge is one connection, with Graphify's own account of how sure it is.
 // Confidence is EXTRACTED (the source says so), INFERRED (a second pass
 // deduced it) or AMBIGUOUS. Redline never presents an INFERRED edge as a
-// resolved fact, so the tag rides into the envelope's details.
+// resolved fact, so the tag is carried into the envelope's details.
 type Edge struct {
 	Source     string `json:"source"`
 	Target     string `json:"target"`
@@ -272,14 +272,15 @@ type hop struct {
 // treeSitterRelations are the edge kinds Graphify's tree-sitter extractors
 // emit. Everything the adapter walks has to be in here.
 //
-// An allowlist and not a denylist, on purpose. Graphify's other half runs
-// subagents or calls a model to write semantic edges, and two fresh rebuilds
-// of the identical commit are not guaranteed to produce the same ones. An
-// envelope built from those is not reproducible, which makes the eval measure
-// noise rather than the reviewer. A denylist would admit every relation a
-// future model pass invents; this drops every relation a future grammar
-// invents instead, and that direction fails visibly: the expansion is missing,
-// and skippedRelations says which relation names were passed over.
+// This is an allowlist, chosen over a denylist on purpose. Graphify's other
+// half runs subagents or calls a model to write semantic edges, and two
+// fresh rebuilds of the identical commit are not guaranteed to produce the
+// same ones. An envelope built from those is not reproducible, which makes
+// the eval measure noise rather than the reviewer. A denylist would admit
+// every relation a future model pass invents; this drops every relation a
+// future grammar invents instead, and that direction fails visibly: the
+// expansion is missing, and skippedRelations says which relation names were
+// passed over.
 var treeSitterRelations = map[string]bool{
 	"accesses":            true,
 	"binds_method":        true,

@@ -64,10 +64,11 @@ func (p *Delta) detect() ([]tool, error) {
 // config. No configured tool means an empty scope: the pane then reads as
 // skipped, the honest state for a repository that has opted into no linter
 // Redline can run. A .redline.yml that fails to parse must fail the pane
-// visibly, not remove it: detection still returns the built-in tools, whose
-// coverage scopes files so Observe runs and reports the parse error; and if nothing
-// else lands in scope, the whole change does — an unreadable config means
-// nobody knows which files its tools cover.
+// visibly instead of disappearing from it: detection still returns the
+// built-in tools, whose coverage scopes files so Observe runs and reports the
+// parse error. And if nothing else falls in scope, the whole change does,
+// because an unreadable config means nobody knows which files its tools
+// cover.
 func (p *Delta) Scope(changed []string) []string {
 	tools, err := p.detect()
 	var out []string
@@ -112,7 +113,7 @@ func (s *snapshot) ID() string {
 	return "lint@" + rev
 }
 
-// Observe runs every detected tool at one revision. The head side is strict —
+// Observe runs every detected tool at one revision. The head side is strict:
 // a tool that fails there fails the pane, because no delta can be computed.
 // The base side records failures instead: an old revision that no longer
 // lints (a config newer than the code, missing dependencies in a bare
@@ -243,8 +244,8 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 	for _, hr := range head.Runs {
 		toolNames = append(toolNames, hr.Tool)
 
-		// The "already existed" set is either the base run, or — for a
-		// baseline-file tool — the committed baseline artifact.
+		// The "already existed" set is either the base run or, for a
+		// baseline-file tool, the committed baseline artifact.
 		var baseIssues []Issue
 		degraded, degradeMsg, reason := false, "", ""
 		if cfg := customByName[hr.Tool]; cfg != nil && cfg.Baseline.Mode == "file" {
@@ -347,9 +348,9 @@ func (p *Delta) Diff(before, after pane.Observation) (pane.Result, error) {
 		})
 	}
 	// The clean confirmation asserts a comparison happened for every tool.
-	// A degraded tool — base run failed, baseline unreadable, a differ file
-	// it could not compare — already stated an unknown, and a confirmation
-	// beside it would claim the comparison that never ran.
+	// A degraded tool (base run failed, baseline unreadable, or a differ file
+	// it could not compare) already stated an unknown, and a confirmation
+	// beside it would claim a comparison that never ran.
 	if len(introduced) == 0 && !anyDegraded && ranComparisons > 0 && allBaseRan(base) {
 		res.Confirmations = append(res.Confirmations, findings.Confirmation{
 			Substrate: DeltaSubstrate,
@@ -386,8 +387,8 @@ func (p *Delta) issuesOnAddedLines(baseRev string, issues []Issue) []Issue {
 	return out
 }
 
-// baselineIssues parses a baseline-file tool's committed artifact — the same
-// output shape the tool always produces — into the issue set treated as
+// baselineIssues parses a baseline-file tool's committed artifact, in the
+// same output shape the tool always produces, into the issue set treated as
 // already present.
 func (p *Delta) baselineIssues(cfg ToolConfig) ([]Issue, error) {
 	raw, err := p.Repo.File("", cfg.Baseline.File)

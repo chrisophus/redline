@@ -65,9 +65,10 @@ func (r *Repo) Exists(rev string) bool {
 }
 
 // MergeBase returns the merge base of rev and HEAD. A shallow clone, or two
-// histories with no common ancestor, has none: that is reported as an error,
-// not as rev itself, so a run never diffs against a base that is not a base
-// and a shallow clone does not masquerade as having one.
+// histories with no common ancestor, has none. That case is reported as an
+// error rather than falling back to rev, so a run never diffs against
+// something that isn't really a base, and a shallow clone never appears to
+// have one when it doesn't.
 func (r *Repo) MergeBase(rev string) (string, error) {
 	out, err := r.git("merge-base", rev, "HEAD")
 	if err != nil {
@@ -535,7 +536,8 @@ func short(s string) string {
 // tree. Best-effort: evidence capture must never fail a run.
 //
 // `git diff REV -- path` is empty for untracked files. Those still belong in
-// the change — Redline is pre-push — so they are compared against /dev/null.
+// the change because Redline is pre-push, so they are compared against
+// /dev/null.
 func (r *Repo) DiffPath(rev, path string) string {
 	out, err := r.git("diff", "--no-color", "-U3", rev, "--", path)
 	if err == nil && strings.TrimSpace(out) != "" {
@@ -666,7 +668,7 @@ func (r *Repo) ChangedPaths(rev string) ([]string, error) {
 // of a revision and the working tree. It is what says which part of a change
 // arrived after a particular commit, which the diff against the merge base
 // cannot answer: that diff shows the whole change and nothing in it records
-// when any of it landed.
+// when any of it arrived.
 func (r *Repo) ChangedPathsBetween(from, to string) ([]string, error) {
 	a, err := r.Blobs(from)
 	if err != nil {

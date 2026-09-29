@@ -12,8 +12,9 @@ testdata/fixtures/<name>/
 
 `session.json` is real output, written by `redline run` and copied here
 unchanged. It is never re-derived. A fixture that re-observed its repository
-would measure whatever the panes do today, so the review's input would move
-underneath the score, and rewriting the commit it came from would break it.
+would measure whatever the panes do today, so the review's input would
+change and no longer match the score, and rewriting the commit it came from
+would break it.
 Freezing also keeps the set usable when a second provider arrives: the
 envelope in the file is the one the review was scored against.
 
@@ -55,7 +56,7 @@ for each expectation the words a correct finding would plausibly use.
 
 `expect` and `quiet` are both written before a review runs, which is why the
 set was blind to the failure the field found: everything a review said that
-nobody had predicted landed in `Extra`, and `Extra` is not scored as wrong. So
+nobody had predicted went into `Extra`, and `Extra` is not scored as wrong. So
 a reviewer could double its output with invention and score the same.
 
 `reject` is written afterwards, from a review that actually ran. Dump the

@@ -80,7 +80,7 @@ func TestGraphPathPassesDashEndpointsAsPositionals(t *testing.T) {
 
 // record() reminds a scout that an untagged record is tied to no question
 // and asks it to record the range again with the finding's id. That second
-// call replaces the first, so it does not grow the set — but the cap was
+// call replaces the first, so it does not grow the set, but the cap was
 // checked before the replacement ran, so at the limit the tool refused the
 // very call it had just asked for.
 func TestARetagIsAcceptedAtTheRecordCap(t *testing.T) {

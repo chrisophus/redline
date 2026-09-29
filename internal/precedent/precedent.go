@@ -1,4 +1,4 @@
-// Package precedent puts the file next door in front of the reviewer.
+// Package precedent shows the reviewer the file next door.
 //
 // The failure it is built for: a review flagged a hard-coded column list, an
 // idempotency check outside its transaction, and a zero-based row index in a
@@ -12,8 +12,8 @@
 // implementation of a declared interface, and two staging files that share no
 // interface are not siblings to a type checker. The parity pane compares
 // filenames across parallel directories, which is the other axis: it answers
-// "gcp has this and azure does not", not "the file next to this one solved
-// the same problem already".
+// "gcp has this and azure does not". It does not answer "the file next to
+// this one solved the same problem already".
 //
 // So this reads the directory. Two files whose names share enough of their
 // parts are doing the same kind of work, and the older one is the precedent
@@ -64,14 +64,14 @@ const minTokens = 2
 // The guard that makes the heuristic safe. When one file in a directory of
 // thirty shares its shape with three others, those three mean something. When
 // it shares its shape with twenty, the token they have in common is the
-// directory's own vocabulary -- handler, service, test -- and picking one of
+// directory's own vocabulary: handler, service, test. Picking one of
 // the twenty would be picking arbitrarily. Silence is the honest answer, and
 // it is the answer a reviewer can act on: nothing was claimed.
 const maxCandidates = 3
 
 // maxSiblings bounds the whole envelope. A change touching forty files must
-// not put forty whole files in front of a reviewer whose ceiling is spent on
-// the diff.
+// not show a reviewer forty whole files when the reviewer's ceiling is
+// already spent on the diff.
 const maxSiblings = 3
 
 // maxLines bounds one sibling. The point is the shape of the thing, which the
@@ -185,8 +185,8 @@ func Resolve(root string, changed []string) (*envelope.Envelope, error) {
 
 // priority ranks a precedent against the other siblings a provider resolved.
 // Below a type checker's, which is a resolved fact where this is a guess, and
-// above nothing: when the budget binds, the exact answer should survive and
-// the guess should not.
+// above nothing: when the budget binds, the exact answer survives over the
+// guess.
 const priority = 40
 
 // promptFragment says what this context is and, more importantly, what it is
@@ -280,7 +280,7 @@ func nearest(dirs *dirCache, rel string, inChange map[string]bool) (sibling, boo
 	}
 	var kept []sibling
 	for _, c := range cands {
-		// Already in front of the reviewer as part of the diff. Sending it
+		// Already shown to the reviewer as part of the diff. Sending it
 		// again would spend the ceiling to repeat what was shown.
 		if !inChange[c.path] {
 			kept = append(kept, c)
@@ -429,7 +429,7 @@ func (d *dirCache) dirs(dir string) ([]string, error) {
 // skip and its empty schedule request as though each were novel, and
 // accountfeedingest/workflow.go had answered all three. Those are not the file
 // beside it: they are the same name in the directory next door, which nothing
-// shipping put in front of a reviewer. The parity pane knows those two
+// shipping showed a reviewer. The parity pane knows those two
 // directories are parallel, and reports the file one of them is missing; it
 // does not carry the sibling's body. gorefactor still needs a shared
 // interface. The scout could find it, but only if the generator happened to

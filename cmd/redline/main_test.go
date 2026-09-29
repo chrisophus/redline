@@ -436,8 +436,8 @@ func TestPostSkipsWhenAlreadyReviewedWithNoNewFindings(t *testing.T) {
 	}
 }
 
-// A push that lands between the review step and the post step must not throw
-// the review away. Under a profile that requires the head, the review still
+// A push that happens between the review step and the post step must not
+// throw the review away. Under a profile that requires the head, the review still
 // posts with a notice, keeps its finding markers, and withholds the gate
 // verdict, so a gate that wants a verdict on the current commit is not handed
 // one about an older commit.
@@ -503,8 +503,8 @@ func captureStderr(t *testing.T, fn func()) string {
 	return out
 }
 
-// startServe refuses to re-exec this binary. If a child is invoked anyway —
-// `redline.test serve …` — Go's flag parser would stop at "serve", ignore
+// startServe refuses to re-exec this binary. If a child is invoked anyway,
+// as `redline.test serve …`, Go's flag parser would stop at "serve", ignore
 // the flags, and run the suite again. Route those arguments to runMain so
 // the child is a real server and nothing recurses.
 func TestMain(m *testing.M) {
@@ -527,7 +527,7 @@ func isSubcommand(arg string) bool {
 }
 
 // openFile is the no-server path: it points straight at report.html on disk,
-// so a report that lands in .redline (a directory the file picker hides) is
+// so a report written to .redline (a directory the file picker hides) is
 // reachable without a server or a picker.
 func TestOpenFilePrintsFileURLWithoutServing(t *testing.T) {
 	dir := t.TempDir()
@@ -552,8 +552,8 @@ func TestOpenFileMissingReportIsAnError(t *testing.T) {
 }
 
 // A dry run answers exactly one question: what would be sent. The system
-// block is half the request — the harness instructions plus every provider's
-// language fragment, which come from another repository entirely — so a dry
+// block is half the request, the harness instructions plus every provider's
+// language fragment, which come from another repository entirely. So a dry
 // run that printed only the user turn answered the question wrong while
 // looking complete. It calls nothing, so this needs no key and no network.
 func TestReviewDryRunPrintsTheSystemBlockAndTheUserTurn(t *testing.T) {
@@ -580,7 +580,7 @@ func TestReviewDryRunPrintsTheSystemBlockAndTheUserTurn(t *testing.T) {
 }
 
 // A comment carrying side LEFT must post LEFT. Every comment used to go up
-// RIGHT, which lands a remark about a removed line on the new-file line of the
+// RIGHT, which puts a remark about a removed line on the new-file line of the
 // same number: different code.
 func TestReviewRequestHonorsCommentSide(t *testing.T) {
 	p := post.Payload{Comments: []post.Comment{
@@ -639,8 +639,9 @@ func TestGhLoginHonoursREDLINE_GH_LOGIN(t *testing.T) {
 // The review anchors to the session head, so its line comments have to be
 // validated against that head's diff, not the pull request's current one.
 // Commentable lines come from the session's own recorded diff: a finding on a
-// line the session diff shows becomes a comment, one that is not rides in the
-// body, even offline with no PR diff fetched.
+// line the session diff shows becomes a comment, and a finding on a line the
+// diff does not show goes in the body instead, even offline with no PR diff
+// fetched.
 func TestPostAnchorsCommentsToTheSessionDiff(t *testing.T) {
 	t.Setenv("PATH", "")
 	dir := reportDir(t)

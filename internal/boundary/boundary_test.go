@@ -1,7 +1,7 @@
 // Package boundary holds the one check that keeps Redline out of the
 // language-toolchain business.
 //
-// The architecture rests on a single claim: Redline is language-agnostic, and
+// The architecture depends on a single claim: Redline is language-agnostic, and
 // everything language-specific lives behind the provider interface. That claim
 // is worth exactly as much as its enforcement. The first time someone needs a
 // caller list and go/packages is one import away, the boundary erodes, and it

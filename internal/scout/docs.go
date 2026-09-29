@@ -41,7 +41,7 @@ type docFile struct {
 }
 
 // guidelines finds the rules that govern this change: the ones at the
-// repository root, and the ones sitting closer to the files being changed.
+// repository root, and the ones closer to the files being changed.
 //
 // The nearest-first walk is the convention agents already follow, and it is
 // the one that matters for a large repository: a package with its own
@@ -277,9 +277,9 @@ func firstHeading(lines []string) string {
 //
 // They are shown with line numbers, in the shape read_lines uses. A record
 // needs a line range, and a file shown without numbers has to be counted
-// through or read again before one can be given; the second is the round trip
-// inlining was meant to save, and the first is how a rule gets filed three
-// lines off.
+// through or read again before one can be given. Reading it again is the
+// round trip inlining was meant to save, and counting it by eye is how a rule
+// gets filed three lines off.
 func guidelineBrief(root string, found []docFile, inlineLines, totalLines int) string {
 	if len(found) == 0 {
 		return ""

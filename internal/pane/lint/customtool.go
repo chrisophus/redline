@@ -187,7 +187,7 @@ func parseSARIF(stdout string, cfg ToolConfig) ([]Issue, error) {
 // spectralItem is one entry of Spectral's JSON output, which vacuum's
 // spectral-report command produces too. code is the rule, source the file,
 // severity a number (0 error, 1 warn, 2 info, 3 hint), and range.start.line
-// is 0-indexed — set lineOffset: 1 in config to render 1-indexed lines.
+// is 0-indexed. Set lineOffset: 1 in config to render 1-indexed lines.
 type spectralItem struct {
 	Code     any    `json:"code"`
 	Message  string `json:"message"`
@@ -217,8 +217,8 @@ func parseSpectral(stdout string, cfg ToolConfig) ([]Issue, error) {
 }
 
 // mapSeverity translates a tool's own severity spelling to Redline's. An
-// explicit config entry wins; otherwise the common spellings — error/err,
-// warn/warning, the Spectral numbers 0 and 1 — are recognized, and anything
+// explicit config entry wins; otherwise the common spellings (error/err,
+// warn/warning, the Spectral numbers 0 and 1) are recognized, and anything
 // else is info, the safe floor for a signal Redline does not gate on anyway.
 func mapSeverity(raw string, m map[string]string) string {
 	if mapped, ok := m[raw]; ok {

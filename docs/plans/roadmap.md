@@ -205,9 +205,9 @@ What the research behind it said, and what was changed because of it:
 | Item | What | Effort |
 |---|---|---|
 | **The providers reach further out** | Shipped in both, gorefactor 0.18.0 and tsrefactor 0.1.0. A caller carries its whole enclosing function instead of the use line plus two, keyed on the declaration so two uses in one function ship it once. A `callee` role says what the change calls, which is the other half of most contract defects and of the cache-key miss above. An `indirect-caller` role carries the second hop. The `type` role reaches past a signature to field types, body types and what a changed type refers to; the interface a changed type implements is sent rather than only named; a changed interface brings its implementations, matched on a shared member rather than on still satisfying it, because an interface that gains a method is exactly when its implementations stop satisfying it; tests that reach the change through a caller are emitted, which is the cross-package test the role never reported. History caps are flags. tsrefactor also resolves `.js`, makes the functions inside a function declarations, and reports the cache-key coverage question as an unknown rather than as a resolved role, since matching two key literals is a guess. | done |
-| **Speculative findings about unseen callers** | On the clean fixture both runs flagged a nil return for callers that might exist. A finding should rest on code the reviewer saw or read. Measure a sentence to that effect on the clean pair. | S |
+| **Speculative findings about unseen callers** | On the clean fixture both runs flagged a nil return for callers that might exist. A finding should depend on code the reviewer saw or read. Measure a sentence to that effect on the clean pair. | S |
 | **The describing pass reads context too** | It fetched the caller on both synthetic runs. Cheap here, but it is not the pass that needs it. | S |
-| **Try it on the cache-key PR** | The real miss this is aimed at, with tsrefactor's context and a large change, where the relevant entry is one of many. Unblocked: whole calling functions have landed, so the page's caller now carries the panel render four lines below the hook call, and the callee role carries both the hook and the panel when the page is what changed. Nothing has run it on the real change yet, and that is the next thing worth a model call. | S |
+| **Try it on the cache-key PR** | The real miss this is aimed at, with tsrefactor's context and a large change, where the relevant entry is one of many. Unblocked: whole calling functions have shipped, so the page's caller now carries the panel render four lines below the hook call, and the callee role carries both the hook and the panel when the page is what changed. Nothing has run it on the real change yet, and that is the next thing worth a model call. | S |
 | **Decide whether context defers by default** | Not before it has run on real changes with the extended providers. | S |
 
 ## Cohorts
@@ -274,8 +274,8 @@ document:
 
 Almost every awkward thing above exists to keep the prompt cache warm. The
 answer travels as tool calls because the normal way to ask for structured
-output sits in front of the prompt and changing it between calls throws the
-cache away. Model and effort are pinned for the whole run. The passes are
+output comes before the prompt in the request, and changing it between calls
+throws the cache away. Model and effort are pinned for the whole run. The passes are
 siblings rather than one conversation, each one re-sending the same material
 with a different instruction stuck on the end, though each pass is now a short
 conversation of its own.
@@ -307,15 +307,15 @@ which file worries them, and what they want asked. The PR #1360 miss is the
 case. The reader could have named the question in one sentence and there was
 nowhere to put it.
 
-Three rules for everything in this section. What a person types is written
-into the session, so the report and `redline postmortem` can show what the
-review was told. It ranks below a rule the team committed to the repository.
-And it arrives as context, so it can point attention somewhere and cannot push
-a finding past the ruling's gate or hold one back.
+Everything in this section follows the same three rules. What a person types
+is written into the session, so the report and `redline postmortem` can show
+what the review was told. It ranks below a rule the team committed to the
+repository. And it arrives as context, so it can point attention somewhere and
+cannot push a finding past the ruling's gate or hold one back.
 
 | Item | What | Effort |
 |---|---|---|
-| **A note from whoever asked for the review** | `--note "..."` and `--note-file path` ship. The note goes at the end of every judging call, behind the cache breakpoint: the one-call review, the judging call after a walkthrough or without one, each cohort call, and the end of explore's opening. The describing call and the ruling do not see it. It is saved in `review.json` and the postmortem and shown on the report, and the prompt tells the reviewer it is not evidence and that a finding resting on it says so. What is left is the test that says whether it works: a note naming the cross-file question on the change with the React Query cache-key miss, where the answer is known. An empty note already leaves the request byte for byte unchanged. | S |
+| **A note from whoever asked for the review** | `--note "..."` and `--note-file path` ship. The note goes at the end of every judging call, behind the cache breakpoint: the one-call review, the judging call after a walkthrough or without one, each cohort call, and the end of explore's opening. The describing call and the ruling do not see it. It is saved in `review.json` and the postmortem and shown on the report, and the prompt tells the reviewer it is not evidence and that a finding based on it says so. What is left is the test that says whether it works: a note naming the cross-file question on the change with the React Query cache-key miss, where the answer is known. An empty note already leaves the request byte for byte unchanged. | S |
 | **Judge the files a person names** | `--only-files a.go,b.tsx`. Most of it exists: `--only-cohorts` already falls back to matching a file path inside a group, which is what makes it stable between runs. Three gaps. It only works with the split turned on. A path can be swallowed by a group whose name happens to contain the same text, because the name match runs first and stops the path match. And it narrows what gets judged, not what gets read, so the saving is output and time. Done when naming one file works under either shape and the report says which files were not judged, rather than reading like a clean review of everything. | S |
 | **Put extra files in front of the reviewer** | `--include path`, for files a person knows matter and no resolver found: a sibling in another shape, a design note, the interface being implemented. Read at the revision under review, written into the session, and budgeted like any other context so they compete for room rather than shove something else out. A role has to be picked, and an unknown role ranks last and gets reported, which is the honest default. Done when an included file shows up in the packet under its own name and the budget summary says what it displaced. | S |
 
@@ -396,7 +396,7 @@ themselves.
 | Catch model-written junk before it posts | A ruling once emitted `…the finding claims.dependencies.python.org.(placeholder)` into a verdict. It was in neither request nor the review response, so the model made it up, and it rendered into `report.md` and would have gone to a pull request. Bare domains and placeholder-shaped fragments in model text are cheap to catch. | S |
 | The report must not contradict itself | `report.md` said no agent review was merged while `review.json` recorded the change under review and the report printed its five comments. The staleness note and the merged findings cannot be allowed to disagree. | S |
 | Let the reviewer say a pane is wrong | Two `sibling-missing-file` findings claimed a capability was tested on one side only, and a test file in the same diff tested both. The reviewer can build on a pane's finding but has no way to contradict one. Wants a rebuttal in the output form, checked like any other finding, and never able to clear an error-level gate. | M |
-| Hand the unknowns to the reviewer | Two Copilot findings landed exactly in Redline's own list of what it could not determine. That list is printed for the person and never given to the reviewer as work. | S |
+| Hand the unknowns to the reviewer | Two Copilot findings matched entries already in Redline's own list of what it could not determine. That list is printed for the person and never given to the reviewer as work. | S |
 | Test the claims in the description | The pull request title, body and commit messages now render under `## The change`. What is left is asking the reviewer to check each claim against the code rather than read it as background. Copilot does this by default and caught two bugs that way. | S |
 | Click a line, see the tests that cover it | The coverage profile knows covered from uncovered but not which test ran a line. That needs per-test coverage, which means running the suite many times, so it cannot be part of `run`, which stays free. An opt-in command that writes a line-to-tests map the report reads. Mutation testing wants the same data, so build it once. | L |
 | Interface section | A placeholder that only ever renders a gap. Screenshots from an agent, a deterministic list of what UI moved, or drop the section. | M |
@@ -490,7 +490,7 @@ SQL, YAML, Terraform, shell, request collections.
 | Try it where changes span languages | Nothing is measured, and this repository cannot pose the question: its changes are Go. | M |
 | The catch-all role | Context arrives under a role Redline does not know, which ranks last and gets reported. Give it a real name only if it turns out to find things. | S |
 | Graph queries as scout tools | `graph_affected` and `graph_path` ask the cross-language question directly instead of reconstructing it from a one-hop walk. The CLI answers in prose, which is wrong for a program and fine for a model. | M |
-| Graph queries in the review itself | The bigger version of the row above, and it lands with the first row of the gap section rather than before it. | L |
+| Graph queries in the review itself | The bigger version of the row above, and it belongs with the first row of the gap section rather than before it. | L |
 | Check the grammars are installed | Without `tree_sitter_sql` the SQL extractor returns an error that the merge step drops, so 88 migrations produced no nodes and nothing said so. The adapter now notes a file it claimed and found nothing for. The missing grammar is upstream. | S |
 
 One rule holds here whatever else changes. The roles `caller`, `sibling` and

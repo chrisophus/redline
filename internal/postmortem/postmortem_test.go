@@ -179,7 +179,7 @@ func TestLoadSaysWhatToRunWhenThereIsNoReview(t *testing.T) {
 
 // The two questions the lookups exist to answer are not the same: whether the
 // scout found anything, and whether what it found is the line the ruling then
-// rested on. A run where nothing rested on a lookup paid for a stage that
+// depended on. A run where nothing depended on a lookup paid for a stage that
 // changed no decision.
 func TestTheTraceSaysWhetherARulingRestedOnWhatTheScoutFetched(t *testing.T) {
 	res := reviewed()

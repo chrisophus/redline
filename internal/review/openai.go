@@ -17,7 +17,7 @@ import (
 // It exists for the proxy case. A team that routes every model call through
 // one gateway, for billing, audit, or because the vendor's API is not
 // reachable from where the review runs, exposes that gateway as an
-// OpenAI-compatible endpoint whatever sits behind it. So this is written to
+// OpenAI-compatible endpoint no matter what runs behind it. So this is written to
 // the protocol rather than to the vendor, with no SDK: the request is one
 // JSON body, the response is one JSON body, and the parts a review needs from
 // each are small enough to read by hand. Nothing here decides what the review
@@ -66,9 +66,9 @@ type openAIRequest struct {
 	// gateway that serves one vendor's model over another's protocol does not
 	// enforce response_format: on the internal gateway this repository is run
 	// through, one review in four came back with the schema's array as a JSON string or
-	// an object, and the checking pass failed open on the parse. Function
-	// calling is honoured where the schema is not, because the same gateway
-	// drives the scout's tool loop reliably.
+	// an object, and the checking pass did not catch it, letting the bad
+	// output through unflagged. Function calling is honoured where the schema
+	// is not, because the same gateway drives the scout's tool loop reliably.
 	Tools           []openAITool `json:"tools,omitempty"`
 	ToolChoice      any          `json:"tool_choice,omitempty"`
 	ReasoningEffort string       `json:"reasoning_effort,omitempty"`

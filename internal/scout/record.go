@@ -347,7 +347,7 @@ func (r *resolver) inTree(rel string) (string, error) {
 		return "", fmt.Errorf("path is outside the tree under review")
 	}
 	// A path that does not exist yet is not a symlink escape; let the
-	// caller report it missing. Anything that does resolve must land inside
+	// caller report it missing. Anything that does resolve must be inside
 	// the tree's own real path.
 	resolved, err := filepath.EvalSymlinks(full)
 	if err != nil {

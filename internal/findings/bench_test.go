@@ -8,8 +8,8 @@ import (
 )
 
 // realisticFindings builds findings across every severity/category the
-// panes emit, with a mix of file:line locations and pane-relative anchors —
-// the shape of a real merged report before Finalize runs.
+// panes emit, with a mix of file:line locations and pane-relative anchors.
+// It matches the shape of a real merged report before Finalize runs.
 func realisticFindings(n int) []findings.Finding {
 	categories := []findings.Category{
 		findings.CategorySchema, findings.CategoryContract, findings.CategoryCover,

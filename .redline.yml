@@ -32,7 +32,7 @@ context:
   # rewards a cheap input rate more than anything else here, because it resends
   # a growing conversation on every one of its turns while the review sends its
   # prompt once. Luna's input is a tenth of claude-sonnet-5's, so the turns are
-  # where the saving lands.
+  # where the saving happens.
   #
   # Needs OPENAI_API_KEY. OPENAI_BASE_URL and OPENAI_USER are read too, which
   # is how a gateway is reached without its address being committed here. With

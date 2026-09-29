@@ -92,8 +92,8 @@ func TestASmallFamilyStillResolves(t *testing.T) {
 	}
 }
 
-// A sibling already in the diff is already in front of the reviewer. Sending
-// it again spends the ceiling to repeat what was shown.
+// A sibling already in the diff has already been shown to the reviewer.
+// Sending it again spends the ceiling to repeat what was shown.
 func TestASiblingInsideTheChangeIsNotSentTwice(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "internal/feed/aws_account_feed.go", "package feed\n")
@@ -125,8 +125,7 @@ func TestTestFilesAreNeitherAskedAboutNorOffered(t *testing.T) {
 }
 
 // One shared part out of five is two files that happen to mention the same
-// word. The bar scales with the shorter name rather than sitting at a
-// constant.
+// word. The bar scales with the shorter name rather than staying fixed.
 func TestOneSharedPartOfManyIsNotEnough(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "internal/x/aws_offer_amend_mutability_check.go", "package x\n")
@@ -161,8 +160,8 @@ func TestTheExpansionSaysItWasMatchedByName(t *testing.T) {
 	}
 }
 
-// A wide change must not put a whole file in front of the reviewer for every
-// path it touches. What is cut is counted.
+// A wide change must not show the reviewer a whole file for every path it
+// touches. What is cut is counted.
 func TestTheEnvelopeIsBoundedAndSaysWhatItDropped(t *testing.T) {
 	root := t.TempDir()
 	var changed []string
@@ -230,7 +229,7 @@ func TestTheSameFileInTheParallelPackageIsCarried(t *testing.T) {
 
 // Two packages that merely sit side by side are not parallel implementations.
 // Sharing one filename every Go package has is a coincidence, and picking one
-// on that basis would put unrelated code in front of a reviewer.
+// on that basis would show a reviewer unrelated code.
 func TestPackagesThatShareAlmostNothingAreNotParallel(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "internal/lint/doc.go", "package lint\n")
@@ -279,8 +278,8 @@ func TestAParallelMatchSaysWhatItIs(t *testing.T) {
 	}
 }
 
-// A file the change already carries is in front of the reviewer, whichever
-// directory it lives in.
+// A file the change already carries has already been shown to the reviewer,
+// whichever directory it lives in.
 func TestAParallelSiblingInsideTheChangeIsNotSentTwice(t *testing.T) {
 	root := t.TempDir()
 	for _, n := range []string{"workflow.go", "activities.go", "schedule.go"} {

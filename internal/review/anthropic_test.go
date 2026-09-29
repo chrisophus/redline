@@ -40,7 +40,7 @@ func TestAStalledStreamNamesItselfDistinctFromAnyOtherFailure(t *testing.T) {
 
 // A stream that keeps sending real events must never trip the same watchdog,
 // however long the whole call runs: the timeout bounds the gap between
-// events, not the call.
+// events. It says nothing about how long the call itself may run.
 func TestAStreamThatKeepsTalkingNeverStalls(t *testing.T) {
 	old := idleTimeout
 	idleTimeout = 20 * time.Millisecond

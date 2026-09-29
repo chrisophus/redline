@@ -40,7 +40,7 @@ func sentThinkingWire(t *testing.T) thinkingWire {
 // The tool choice is never pinned, on Sonnet 5 or any other model: forcing it
 // is incompatible with thinking on this API. Every call leaves the choice to
 // the model, says in words which calls answer it, and asks for adaptive
-// thinking with its summary on the stream — the model thinks by default once
+// thinking with its summary on the stream. The model thinks by default once
 // the choice is not pinned, so asking is the only way to see it happen rather
 // than pay for it invisibly.
 func TestEveryCallOffersTheToolAndAsksForAdaptiveThinking(t *testing.T) {

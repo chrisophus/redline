@@ -19,7 +19,7 @@ were established by reading the code at the lines cited.
 
 Redline is a well-built instrument with a good idea at its centre, and a
 model-review layer on top of it that has grown faster than anything
-measures it.
+that measures it.
 
 The good idea is the framing: a gate compresses what it saw into one bit, and
 a reviewer needs the detail behind the bit, plus an explicit statement of
@@ -36,12 +36,14 @@ measured with a real key. Field use twice produced reviews whose every
 finding the reader dismissed. The response was three more suppression
 mechanisms and a second model call, and the meter that would say whether
 any of it worked (`docs/plans/review-feedback.md`) is still marked not done.
-The verify pass that is meant to fix the dismissals fails open in three
-places, so it does not yet deliver the property it was built for.
+The verify pass that is meant to fix the dismissals lets unverified findings
+through in three places, so it does not yet deliver the property it was
+built for.
 
 Most of what follows is fixable in small pieces. The observe layer's holes
-are one-fixture tests away. The verify pass needs a handful of fail-closed
-rules. The eval needs labels that can say no. None of it is architectural.
+are one-fixture tests away. The verify pass needs a handful of rules that
+reject by default. The eval needs labels that can say no. None of it is
+architectural.
 
 ## Scorecard
 
@@ -62,7 +64,7 @@ rules. The eval needs labels that can say no. None of it is architectural.
 
 Ranked by how much they change what a user of the tool gets.
 
-### 1. The verify pass fails open
+### 1. The verify pass lets unchecked findings through
 
 The design sentence is "a review is posted only with the evidence it rests
 on." In code:
@@ -112,8 +114,8 @@ becomes "introduced", every existing suppression is re-reported, and every
 line counts as added; the README's "moved code does not read as new
 violations" holds only inside one file. A file's `Head` is carried whole
 into the session on a newline count alone (`change.go:210`), so a multi-MB
-binary with few newlines lands in `session.json` and the prompt. `Repo.File`
-turns every git failure into "absent" (`git.go:509`), which the OpenAPI,
+binary with few newlines ends up whole in `session.json` and the prompt.
+`Repo.File` turns every git failure into "absent" (`git.go:509`), which the OpenAPI,
 lint-config and migration panes read as "added". `MergeBase` silently falls
 back to the ref itself on a shallow clone (`git.go:69`). `ls-tree --format`
 needs git 2.36, undocumented.
@@ -127,7 +129,7 @@ needs git 2.36, undocumented.
   included.
 - A reviewer comment's `side` is parsed (`findings/review.go:249`) and
   dropped; every comment posts `RIGHT` (`cmd/redline/post.go:223`). A
-  comment on a removed line lands on the wrong code.
+  comment on a removed line is attached to the wrong code.
 - `hedged()` scans `Context` (`post.go:282`), and for a verified finding
   `Context` is the ruling's quoted repository evidence. A kept finding is
   withheld as hedged because the code it quotes contains "nit:" or "probably
@@ -138,7 +140,7 @@ needs git 2.36, undocumented.
 
 The fingerprint (`fingerprint.go:37`) is file, rule and digit-normalised
 message, so two findings in one file with the same rule whose messages
-differ only by a number collide: one verdict lands on both, one posted
+differ only by a number collide: one verdict applies to both, one posted
 marker suppresses all, and `relatedFindings` resolves to the first.
 
 ### 5. The report server and the scout can be read from outside the tree
@@ -153,7 +155,7 @@ The fix is a `Host` check and serving only `report.html` and `evidence/`.
 In the scout, `record.go:326` checks paths lexically for `..` and absolute
 prefixes but never resolves symlinks, so a symlink added by the change makes
 `read_lines` and `grepTree` read outside the tree (`.git/config` included),
-and the bytes land in the envelope, the session and the prompt.
+and the bytes end up in the envelope, the session and the prompt.
 Model-chosen strings are passed positionally to `gorefactor` and `graphify`
 with no `--` separator (`tools.go:227,251`).
 
@@ -192,7 +194,7 @@ clean rate can only read 0 or 100. Twenty-eight of thirty-two labels come
 from two commits in one of the author's other repositories.
 
 The paid sweep has not yet run with a working key, records no prompt hash
-or commit, and has no checked-in result anyone could rerun. A real bug sits
+or commit, and has no checked-in result anyone could rerun. A real bug is
 in the newest scorer: `delivered.go:64` pairs `CommentFindings()[i]` with
 `rev.Comments[i]`, but `CommentFindings` skips empty bodies, so the indices
 drift and a real defect can be reported as suppressed. The Copilot
@@ -204,8 +206,8 @@ be read as a measurement.
 
 `README.md:289`, `docs/plans/two-stage-review.md:293` and comments in
 `rule.go` say the ruling call is served from prompt cache at a fraction of
-the input rate, and the plan's "under twice today's review" estimate rests
-on it. The code sets no cache breakpoint anywhere (`anthropic.go:49`;
+the input rate, and the plan's "under twice today's review" estimate
+depends on it. The code sets no cache breakpoint anywhere (`anthropic.go:49`;
 `cost.go:200` says so), so the second call pays the full input rate for
 the whole first prompt again. Even with a breakpoint added, `rule.go:406`
 appends the ruling instruction to the system block, so the prefix changes
@@ -348,9 +350,9 @@ already-escaped text, and the JavaScript builds DOM with `textContent`. The
 page is fully self-contained, works from `file://`, has a complete dark
 theme, and is responsive. The `gh` boundary passes nothing untrusted as an
 argument; the review JSON goes over stdin. Idempotency per head SHA and
-fingerprint is tested. The gate fails closed on a pane that applied and did
-not run. `post_test.go` exercises the real predicates and is the best test
-file in the repository.
+fingerprint is tested. The gate treats a pane that applied and did not run
+as a failure, not a silent pass. `post_test.go` exercises the real
+predicates and is the best test file in the repository.
 
 Gaps beyond finding 4: line anchoring is validated against the current head's
 diff while the review is anchored to the session's head
@@ -443,7 +445,7 @@ snapshot, advisory bench and diff-scoped mutation.
 
 ## What I would do, in order
 
-1. Make the ruling fail closed. `finding` becomes an enum of candidate ids;
+1. Make the ruling reject by default. `finding` becomes an enum of candidate ids;
    a candidate with no ruling after a completed pass is `unverifiable`;
    `withdrawn` and `justified` require evidence found verbatim in the
    material; a model `already-raised` requires a prior thread or a

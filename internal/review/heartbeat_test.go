@@ -57,7 +57,7 @@ func TestATruncatedReviewStillAsksForABiggerCap(t *testing.T) {
 }
 
 // A failed call is the one whose record is worth having. Before this, the
-// capture ran only after the error check, and wrote the bare body — so every
+// capture ran only after the error check, and wrote the bare body, so every
 // failure that mattered left either nothing or an empty file.
 func TestAFailedCallIsCapturedWithEnoughToDiagnoseIt(t *testing.T) {
 	api := serveSSE(t, anthropicSSE("max_tokens", 1000, 4096,

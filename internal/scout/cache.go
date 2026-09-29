@@ -12,13 +12,13 @@ import (
 //
 // Split out of scout.go because it is a separate concern from driving the
 // loop, and because adding it inline pushed that file one line past its size
-// limit. The loop asks one question of this file — may the next turn be sent
-// — and the answer depends on what the wire charged for the last one.
+// limit. The loop asks one question of this file - may the next turn be sent
+// - and the answer depends on what the wire charged for the last one.
 
 // overBudget stops the loop before a turn that would take the run past its
 // allowance. It prices the turn about to be sent, which is what a governor
-// has to do: knowing afterwards that a turn was too expensive is knowing it
-// too late.
+// has to do: finding out after the turn ran that it was too expensive is too
+// late to stop it.
 //
 // cachedLast is what the previous turn read from or wrote to the prompt
 // cache. When it is more than nothing, the prefix under the breakpoints is

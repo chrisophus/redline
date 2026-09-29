@@ -58,8 +58,8 @@ type Expectation struct {
 	// RelatesToRules names the wave-one rules the correlation should
 	// reference. Checked against the fixture's own findings: the comment's
 	// references are resolved the way the report resolves them, and a
-	// reference that lands nowhere, or lands on some other rule, is not a
-	// correlation caught.
+	// reference that resolves to nothing, or resolves to a different rule, is
+	// not a correlation caught.
 	RelatesToRules []string `json:"relates_to_rules"`
 	// Optional expectations are worth having and are not scored as misses.
 	Optional bool `json:"optional"`
@@ -475,10 +475,11 @@ var denialPhrases = []string{
 // round at effort=medium lost fourteen of twenty-eight the same way. A catch
 // has to be a claim, so a denial satisfies no expectation.
 //
-// Only the last sentence is read, because that is where the verdict lands; a
-// denial phrase earlier in the body is usually a concern set aside on the way
-// to one that is kept. A contrast after the phrase keeps the comment a claim:
-// "this is fine, but the map is never checked" raises the second half.
+// Only the last sentence is read, because that is where the verdict is
+// stated; a denial phrase earlier in the body is usually a concern set aside
+// on the way to one that is kept. A contrast after the phrase keeps the
+// comment a claim: "this is fine, but the map is never checked" raises the
+// second half.
 func deniesDefect(body string) bool {
 	last := lastSentence(strings.ToLower(body))
 	end := -1
@@ -614,11 +615,11 @@ type Totals struct {
 func (t Totals) FalsePositives() int { return t.QuietViolations + t.Rejected }
 
 // Sum aggregates. Expected counts the whole expectation set, optional ones
-// included whether or not they were caught: a caught optional lands in Caught
-// and a missed one in MissedOptional, so leaving MissedOptional out moved the
-// denominator with the result. Two configurations then printed 5/5 and 4/4
-// for the same fixture set, and the comparison table's rows are only worth
-// reading side by side if the number under the line is the same.
+// included whether or not they were caught: a caught optional goes into
+// Caught and a missed one into MissedOptional, so leaving MissedOptional out
+// moved the denominator with the result. Two configurations then printed 5/5
+// and 4/4 for the same fixture set, and the comparison table's rows are only
+// worth reading side by side if the number under the line is the same.
 func Sum(cards []Scorecard) Totals {
 	var t Totals
 	for _, c := range cards {

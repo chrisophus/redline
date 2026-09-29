@@ -275,16 +275,17 @@ func ruling(r findings.Ruling, from string) string {
 		s += "\n" + r.Why
 	}
 	if r.Analysis != "" {
-		// The working, not the conclusion. A verdict that reads wrong is
-		// usually wrong somewhere in here, and this is the only place it is
-		// kept: the report shows it beside the finding, and a withdrawn
-		// finding is not on the report the author sees.
+		// This is the reasoning that produced the verdict, not the verdict
+		// itself. A verdict that reads wrong is usually wrong somewhere in
+		// here, and this is the only place it is kept: the report shows it
+		// beside the finding, and a withdrawn finding is not on the report
+		// the author sees.
 		s += "\nworking: " + r.Analysis
 	}
 	return s
 }
 
-// source says where the line a ruling rested on came from, which is the
+// source says where the line a ruling depended on came from, which is the
 // question the lookups are paid to answer. A ruling that quotes something
 // nobody showed it is quoting its own memory, and the pass records that rather
 // than trusting it.
@@ -371,8 +372,8 @@ func (t *Trace) thinking(b *strings.Builder) {
 
 // restedOnALookup counts the rulings that quoted a range the scout fetched.
 // It is the measurement the whole second stage is for: a run where nothing
-// rested on a lookup either had a change the diff settled by itself or had a
-// scout that fetched the wrong things.
+// depended on a lookup either had a change the diff settled by itself or had
+// a scout that fetched the wrong things.
 func (t *Trace) restedOnALookup() int {
 	n := 0
 	for _, f := range t.Findings {

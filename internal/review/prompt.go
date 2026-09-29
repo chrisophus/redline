@@ -608,9 +608,9 @@ func (in Input) build(budget envelope.Budgeted) string {
 // contextHeader introduces the context block, naming the roles it actually
 // contains. The sentence used to enumerate Redline's six roles unconditionally,
 // which made an exhaustive claim the block could contradict: a provider may
-// ship a role Redline does not rank — the graph adapter's `neighbor` — and
-// that block then arrived under a sentence saying every block was one of six
-// other things. An unranked role is described by its own provider's
+// ship a role Redline does not rank, such as the graph adapter's `neighbor`,
+// and that block then arrived under a sentence saying every block was one of
+// six other things. An unranked role is described by its own provider's
 // promptFragment, so the honest header names it and leaves the words to the
 // provider.
 //
@@ -1076,8 +1076,8 @@ func (in Input) diffSectionWith(after func(file string) string) string {
 		// The whole file is below, so every added line is already about to
 		// be sent. Repeating the unified diff sends it twice, which on a
 		// change that is mostly additions is most of the prompt. What the
-		// file cannot show is what left and where the edits landed, so that
-		// is what the diff is reduced to.
+		// file cannot show is what left and which lines the edits touched,
+		// so that is what the diff is reduced to.
 		ranges, removed := changeShape(f.Diff)
 		if len(ranges) > 0 {
 			fmt.Fprintf(&b, "Changed lines: %s.\n", strings.Join(ranges, ", "))

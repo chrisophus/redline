@@ -33,7 +33,7 @@ import (
 )
 
 // DefaultModel is the model the cost target was built on. Sonnet's rates are
-// what make a review land under half a dollar with a 120k context block; a
+// what keep a review under half a dollar with a 120k context block; a
 // larger model is a deliberate trade the caller makes with --model, and the
 // per-run cost is logged either way so the trade is measurable.
 const DefaultModel = "claude-sonnet-5"
@@ -652,7 +652,7 @@ type PassThinking struct {
 // Bytes rather than the answer itself. The answers are large by design -
 // sixty matches, two hundred lines, sixteen kilobytes of symbol context - and
 // a trace that carried them would be a second copy of the conversation. What
-// a reader needs is what was asked and whether it landed.
+// a reader needs is what was asked and whether it came back with anything.
 type Lookup struct {
 	Tool  string `json:"tool"`
 	Input string `json:"input,omitempty"`
@@ -1679,7 +1679,7 @@ func jsonObjectOf(s string) string {
 // the empty string when there is none.
 //
 // It scans twice. The string-aware pass is the correct one: a brace inside a
-// JSON string is text and must not move the depth. But its correctness rests
+// JSON string is text and must not move the depth. But its correctness depends
 // on the quotes around it pairing up, and the prose it has to survive is not
 // JSON and makes no such promise. One reply of 46KB of reasoning quoting Go
 // source will eventually carry an odd quote, and from there the pass reads
@@ -1775,7 +1775,7 @@ func (r *Result) stage() string {
 // apart at a glance, and they cost nothing to write down.
 //
 // A body that is JSON is nested as JSON rather than escaped into a string,
-// so the file stays worth piping through jq — which is the only reason
+// so the file stays worth piping through jq, which is the only reason
 // anybody opens it.
 func captureResponse(opts Options, stage string, res *Result, c completion, callErr error) []byte {
 	out := map[string]any{

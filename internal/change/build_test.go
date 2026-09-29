@@ -69,7 +69,7 @@ func (r *buildRepo) head() string {
 }
 
 // A binary file must not be carried whole into the session on a newline count
-// alone: a multi-megabyte blob with few newlines would otherwise land in
+// alone: a multi-megabyte blob with few newlines would otherwise end up in
 // session.json and the prompt. Detection matches git: a NUL byte in the first
 // block marks the content binary.
 func TestBuildDoesNotCarryBinaryHead(t *testing.T) {

@@ -14,7 +14,7 @@ import (
 //
 // The extension is the whole rule. A finer classifier would be guessing at
 // what a file means from its name, and the graph already knows what is next
-// to what — this only has to say whether two files are the same sort of
+// to what. This only has to say whether two files are the same sort of
 // thing.
 func fileKind(path string) string {
 	p := normPath(path)

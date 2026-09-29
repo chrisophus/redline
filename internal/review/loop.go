@@ -413,9 +413,9 @@ func (g *governor) allowance(turn int, tokensLeft int64, spent Usage) (int64, st
 	if perToken <= 0 {
 		return tokensLeft, StoppedBudget
 	}
-	// Rounded, not truncated: a ceiling priced at exactly this allowance
-	// comes back a hair under it in floating point, and a token short of the
-	// cap is a cap the caller did not set.
+	// This rounds rather than truncates: a ceiling priced at exactly this
+	// allowance comes back a hair under it in floating point, and a token
+	// short of the cap is a cap the caller did not set.
 	afford := int64((g.ceiling-paid-in)/(perToken/1_000_000) + 0.5)
 	if afford < tokensLeft {
 		return max(afford, 0), StoppedCostCap

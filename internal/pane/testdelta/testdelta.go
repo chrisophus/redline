@@ -1,10 +1,10 @@
 // Package testdelta reports cheap, deterministic facts about how a change treats
 // its tests, read from the diff alone: source that changed with no test beside
 // it, tests newly skipped or focused, and assertions removed. These are info
-// findings, signals for the reviewer to weigh, not gates. They sit next to
+// findings, signals for the reviewer to weigh, not gates. They complement
 // coverage (did a test run this line) and mutation (would a test catch it
-// breaking) with the third question the diff can answer for free: did the tests
-// move with the code.
+// breaking) by answering the third question the diff can answer for free: did
+// the tests move with the code.
 package testdelta
 
 import (
@@ -86,8 +86,8 @@ func (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {
 		// without a .go suffix, so on a TypeScript- or Python-only change
 		// nothing ever asked whether a test in the package moved. Confirmations
 		// are this report's "we checked and it held" channel, so a change with
-		// no Go file in it gets a message naming only the checks that ran —
-		// otherwise an absence would read as a pass.
+		// no Go file in it gets a message naming only the checks that ran.
+		// Otherwise an absence would read as a pass.
 		msg := "no test was skipped or focused, and no assertions were removed"
 		if p.changedGo() {
 			msg = "every changed package changed a test, " + msg
@@ -202,7 +202,7 @@ func (p *Pane) skipsAdded(baseRev string, res *pane.Result, lines *[]string) {
 
 // assertionsRemoved reports a test file that ends the change with fewer
 // assertion-like lines than it started. It is reported per file rather than per
-// line, because a deleted line has no home in the head tree to anchor on.
+// line, because a deleted line has no place in the head tree to anchor on.
 func (p *Pane) assertionsRemoved(baseRev string, res *pane.Result, lines *[]string) {
 	var counts []testAssertions
 	for _, f := range p.scoped {
@@ -288,16 +288,15 @@ func assertionLosses(files []testAssertions) []testAssertions {
 }
 
 // skipKind classifies a skip or focus directive on a line of a test file in
-// lang, or returns "" for neither. Two things keep prose out. The JS/TS
-// patterns are tried only on JS/TS files, because Jasmine's bare fit and
-// fdescribe are indistinguishable from the English word "fit": matching them
-// everywhere turned a Go comment about trimming context "to fit the ceiling"
-// into a finding claiming the change focuses tests, and a Go string literal
-// saying "no context can fit" into another. And a directive has to look like
-// the call or declaration it is: the call forms need their opening parenthesis,
-// and an obvious line comment is cut off first, so a directive merely named in
-// a comment or a string does not count. This is deliberately lexical; the pane
-// does not parse Go.
+// lang, or returns "" for neither. The JS/TS patterns are tried only on JS/TS
+// files, because Jasmine's bare fit and fdescribe are indistinguishable from
+// the English word "fit": matching them everywhere turned a Go comment about
+// trimming context "to fit the ceiling" into a finding claiming the change
+// focuses tests, and a Go string literal saying "no context can fit" into
+// another. A directive also has to look like the call or declaration it is:
+// the call forms need their opening parenthesis, and an obvious line comment
+// is cut off first, so a directive merely named in a comment or a string does
+// not count. This is deliberately lexical; the pane does not parse Go.
 func skipKind(line, lang string) string {
 	code := line
 	marker := "//"

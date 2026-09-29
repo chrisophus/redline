@@ -12,7 +12,7 @@ import (
 // that are machine output.
 //
 // A reviewer does not read generated code. They read the declaration it was
-// generated from — the OpenAPI spec, the SQL, the proto — and trust the
+// generated from - the OpenAPI spec, the SQL, the proto - and trust the
 // generator. Leaving ogen's output in the change buries the four hand-written
 // lines that caused it, and spends the reviewing agent's context on text no
 // human will ever act on.
@@ -56,7 +56,7 @@ func GeneratedReason(dir, path string, attrSet map[string]bool, exclude []string
 }
 
 // generatedByName matches only filenames no human writes by hand. Suffixes
-// that a person might plausibly choose — models.go, querier.go, api.ts — are
+// that a person might plausibly choose - models.go, querier.go, api.ts - are
 // left to the header check, which is authoritative when it matches.
 func generatedByName(path string) string {
 	lower := strings.ToLower(path)
@@ -127,7 +127,7 @@ const (
 // anchored at both ends.
 //
 // Anchoring is the whole point. A substring test for "Code generated" and
-// "DO NOT EDIT" also matches any file that discusses the convention — including
+// "DO NOT EDIT" also matches any file that discusses the convention, including
 // this one, which excluded itself and its own test from a review before the
 // anchors went in. That is the asymmetric failure this package is built to
 // avoid: a hand-written file silently dropped, and the reviewer never learns it

@@ -471,7 +471,7 @@ func TestARefusedClosingTurnBuysTheTurnItsCorrectionNeeds(t *testing.T) {
 		t.Fatalf("turns = %d, want the refused closing turn to buy one more", spend.Turns)
 	}
 	if len(env.Expansions) != 1 {
-		t.Fatalf("the corrected record never landed: %d expansion(s)", len(env.Expansions))
+		t.Fatalf("the corrected record never reached the envelope: %d expansion(s)", len(env.Expansions))
 	}
 	// Granted once. A loop that renews it on every refusal has no turn limit
 	// left, and the closing message must not be sent twice either.
