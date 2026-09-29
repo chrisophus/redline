@@ -9,7 +9,7 @@ This file starts at 0.10.0. Earlier entries are drawn from the annotated git
 tags, which remain the record for them: `git tag -l --format='%(contents)' vX.Y.Z`.
 Releases whose tag carries only a subject line are listed as that subject.
 
-## [Unreleased]
+## [0.17.0] - 2026-09-29
 
 ### Added
 - **The walkthrough can show tests and generated files as totals only.**
