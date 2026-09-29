@@ -61,11 +61,12 @@ var bodySections = map[string]bool{
 	"coverage": true, "lint": true, "confirmations": true, "unknowns": true,
 	"low-confidence": true, "diff-links": true,
 	"intent": true, "evidence": true, "composition": true, "line-counts": true,
+	"test-totals": true, "generated-totals": true,
 }
 
 // bodySectionNames lists the keys for the error a bad key gets.
 const bodySectionNames = "coverage, lint, confirmations, unknowns, low-confidence, diff-links, " +
-	"intent, evidence, composition, line-counts"
+	"intent, evidence, composition, line-counts, test-totals, generated-totals"
 
 // includes reports whether a walkthrough body carries an optional section.
 func (p *Profile) includes(section string) bool {

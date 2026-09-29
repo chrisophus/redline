@@ -258,6 +258,11 @@ type Coverage struct {
 	// human actually wrote is the one way this feature can hide a real change,
 	// and naming every exclusion is what makes that recoverable.
 	Generated []string `json:"generated,omitempty"`
+	// GeneratedAdded and GeneratedRemoved are the lines those paths moved,
+	// so a posted review can say how big the machine output was without
+	// listing it.
+	GeneratedAdded   int `json:"generatedAdded,omitempty"`
+	GeneratedRemoved int `json:"generatedRemoved,omitempty"`
 
 	// CoverableFiles counts the changed files a coverage profile could
 	// describe (Go files, until the pane reads other formats). Zero means the

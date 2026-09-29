@@ -784,9 +784,22 @@ func buildBodyWalkthrough(p Payload) string {
 		head0.WriteString(compositionSection(p.files))
 	}
 	// A finding on a listed file rides under it; the rest, including one on
-	// a file a recap leaves out of the list, go in the flat list after.
-	perFile, leftover := splitBodyFindingsByFile(files, p.bodyFindings)
-	if s := walkthroughSection(p, files, title, perFile, maxNarrative); s != "" {
+	// a file a recap leaves out of the list or a test file under
+	// test-totals, go in the flat list after.
+	listed := files
+	if p.profile.includes("test-totals") {
+		listed = nil
+		for _, f := range files {
+			if !change.IsTest(f.Path) {
+				listed = append(listed, f)
+			}
+		}
+	}
+	perFile, leftover := splitBodyFindingsByFile(listed, p.bodyFindings)
+	// Generated totals are for the whole change, so a recap's list of moved
+	// files does not carry them.
+	withGenerated := p.recap == "" || title == "Walkthrough"
+	if s := walkthroughSection(p, files, title, perFile, withGenerated, maxNarrative); s != "" {
 		head0.WriteString(s)
 	}
 	if p.profile.includes("evidence") {
@@ -877,7 +890,8 @@ func walkthroughHeading(gateVerdict string) string {
 // dropped, because a flat table interleaved them with the code they test and
 // the rows read as noise; under a heading of their own they are the thing a
 // reviewer wanted to see, which is how much of the change is test.
-func walkthroughSection(p Payload, files []change.File, title string, perFile map[string][]findings.Finding, budget int) string {
+func walkthroughSection(p Payload, files []change.File, title string, perFile map[string][]findings.Finding,
+	withGenerated bool, budget int) string {
 	if len(files) == 0 {
 		return ""
 	}
@@ -885,6 +899,7 @@ func walkthroughSection(p Payload, files []change.File, title string, perFile ma
 	withLint := p.profile.includes("lint")
 	withLinks := p.profile.includes("diff-links") && p.prURL != ""
 	withCounts := p.profile.includes("line-counts")
+	testTotals := p.profile.includes("test-totals")
 	var uncovered map[string]int
 	if withCoverage {
 		uncovered = uncoveredByFile(p.rep)
@@ -908,6 +923,14 @@ func walkthroughSection(p Payload, files []change.File, title string, perFile ma
 		sort.Slice(group, func(i, j int) bool { return group[i].Path < group[j].Path })
 
 		var sec strings.Builder
+		if testTotals && g.Kind == change.KindTest {
+			// The heading and its totals are the whole entry: how much of
+			// the change is test, without a row per file.
+			fmt.Fprintf(&sec, "**%s %s** (%d file(s), +%d%s−%d)\n\n",
+				escapeLine(g.Language), escapeLine(g.Kind), len(g.Files), g.Added, nbsp, g.Removed)
+			b.WriteString(sec.String())
+			continue
+		}
 		if withCounts {
 			fmt.Fprintf(&sec, "**%s %s** (%d file(s), +%d%s−%d)\n\n",
 				escapeLine(g.Language), escapeLine(g.Kind), len(g.Files), g.Added, nbsp, g.Removed)
@@ -920,9 +943,6 @@ func walkthroughSection(p Payload, files []change.File, title string, perFile ma
 		// the prose column wide enough that a path does not wrap in the
 		// middle; that wrapping is why this was once a list instead.
 		header, rule := "| File |", "|---|"
-		if withCounts {
-			header, rule = header+" Lines |", rule+"---:|"
-		}
 		if withCoverage {
 			header, rule = header+" Uncovered |", rule+"---:|"
 		}
@@ -941,12 +961,13 @@ func walkthroughSection(p Payload, files []change.File, title string, perFile ma
 			if withLinks && g.Kind != change.KindTest {
 				name = fmt.Sprintf("[%s](%s)", name, diffLink(p.prURL, f.Path))
 			}
-			item := "| " + name + " |"
 			if withCounts {
-				// Joined by a non-breaking space so a narrow column cannot
-				// put the two counts on separate lines.
-				item += fmt.Sprintf(" +%d%s−%d |", f.Added, nbsp, f.Removed)
+				// Beside the path rather than in a column of their own, so
+				// they cost no width. Joined by a non-breaking space so the
+				// two counts cannot land on separate lines.
+				name += fmt.Sprintf(" +%d%s−%d", f.Added, nbsp, f.Removed)
 			}
+			item := "| " + name + " |"
 			if withCoverage {
 				item += " " + orDash(fmt.Sprint(uncovered[f.Path]), uncovered[f.Path] > 0) + " |"
 			}
@@ -970,6 +991,11 @@ func walkthroughSection(p Payload, files []change.File, title string, perFile ma
 		}
 		sec.WriteString("\n")
 		b.WriteString(sec.String())
+	}
+	if cov := p.rep; withGenerated && p.profile.includes("generated-totals") && cov != nil && len(cov.Coverage.Generated) > 0 {
+		// Generated files never reach the change, so they are only counted.
+		fmt.Fprintf(&b, "**generated** (%d file(s), +%d%s−%d)\n\n",
+			len(cov.Coverage.Generated), cov.Coverage.GeneratedAdded, nbsp, cov.Coverage.GeneratedRemoved)
 	}
 	if omitted > 0 {
 		fmt.Fprintf(&b, "_%d more file(s) on the full report._\n", omitted)
