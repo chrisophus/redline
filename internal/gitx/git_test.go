@@ -159,6 +159,28 @@ func TestDiffPathTrackedEditStillWorks(t *testing.T) {
 	}
 }
 
+func TestDiffPathDetectsRenamedFiles(t *testing.T) {
+	r := newRepo(t)
+	r.write("old/keep.go", "package keep\n\nfunc Keep() {}\n")
+	r.commit("init")
+	head, err := r.open().Head()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(r.dir, "new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(r.dir, "old/keep.go"), filepath.Join(r.dir, "new/keep.go")); err != nil {
+		t.Fatal(err)
+	}
+	r.commit("move file")
+
+	diff := r.open().DiffPath(head, "new/keep.go")
+	if !strings.Contains(diff, "rename from old/keep.go") || !strings.Contains(diff, "rename to new/keep.go") {
+		t.Fatalf("diff should identify the rename, got:\n%s", diff)
+	}
+}
+
 func TestStatCountsUntrackedAdds(t *testing.T) {
 	r := newRepo(t)
 	r.write("keep.go", "package keep\n")
