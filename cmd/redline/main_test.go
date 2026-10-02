@@ -341,36 +341,43 @@ func fakeGh(t *testing.T, login string, comments, reviews []ghItem) {
 // moved past the commit the session reviewed.
 func fakeGhAt(t *testing.T, login, head string, comments, reviews []ghItem) {
 	t.Helper()
-	bin := t.TempDir()
+	fakeGhScript(t, fmt.Sprintf(`#!/bin/sh
+set -e
+for a in "$@"; do case "$a" in POST|--method) echo 'fake gh: unexpected write' >&2; exit 2;; esac; done
+sub=""
+for a in "$@"; do
+  case "$a" in user) sub=user;; *'/comments'*) sub=comments;; *'/reviews'*) sub=reviews;; *'/files'*) sub=files;; *'/pulls/'*) [ -z "$sub" ] && sub=head;; esac
+done
+case "$sub" in
+  user) printf '%%s\n' %s;;
+  head) printf '%%s\n' %s;;
+	  files) printf '%%s\n' '[[]]';;
+  comments) printf '%%s' %s;;
+  reviews) printf '%%s' %s;;
+  *) exit 3;;
+esac
+`, shQuote(login), shQuote(head), shQuote(ghPagesJSON(t, comments)), shQuote(ghPagesJSON(t, reviews))))
+}
+
+func fakeGhScript(t *testing.T, script string) {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", "..", "scratch"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bin, err := os.MkdirTemp(root, "fake-gh-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(bin) })
 	// The stand-in is a shell script so the test does not need to compile a
 	// second Go binary. It classifies the call by scanning every argument, then
 	// answers with a shell builtin only: PATH is set to this directory alone, so
 	// no external command (not even cat) is reachable.
-	var b strings.Builder
-	b.WriteString("#!/bin/sh\n")
-	b.WriteString("set -e\n")
-	b.WriteString("for a in \"$@\"; do\n")
-	b.WriteString("  case \"$a\" in POST|--method) echo 'fake gh: unexpected write' >&2; exit 2;; esac\n")
-	b.WriteString("done\n")
-	b.WriteString("sub=\"\"\n")
-	b.WriteString("for a in \"$@\"; do\n")
-	b.WriteString("  case \"$a\" in\n")
-	b.WriteString("    user) sub=user;;\n")
-	b.WriteString("    *'/comments'*) sub=comments;;\n")
-	b.WriteString("    *'/reviews'*) sub=reviews;;\n")
-	b.WriteString("    *'/files'*) sub=files;;\n")
-	b.WriteString("    *'/pulls/'*) [ -z \"$sub\" ] && sub=head;;\n")
-	b.WriteString("  esac\n")
-	b.WriteString("done\n")
-	b.WriteString("case \"$sub\" in\n")
-	fmt.Fprintf(&b, "  user) printf '%%s\\n' %s;;\n", shQuote(login))
-	fmt.Fprintf(&b, "  head) printf '%%s\\n' %s;;\n", shQuote(head))
-	b.WriteString("  files) printf '%s\\n' '[[]]';;\n")
-	fmt.Fprintf(&b, "  comments) printf '%%s' %s;;\n", shQuote(ghPagesJSON(t, comments)))
-	fmt.Fprintf(&b, "  reviews) printf '%%s' %s;;\n", shQuote(ghPagesJSON(t, reviews)))
-	b.WriteString("  *) echo \"fake gh: unexpected args $*\" >&2; exit 3;;\n")
-	b.WriteString("esac\n")
-	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(b.String()), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin)
@@ -636,12 +643,9 @@ func TestGhLoginHonoursREDLINE_GH_LOGIN(t *testing.T) {
 	}
 }
 
-// The review anchors to the session head, so its line comments have to be
-// validated against that head's diff, not the pull request's current one.
-// Commentable lines come from the session's own recorded diff: a finding on a
-// line the session diff shows becomes a comment, one that is not rides in the
-// body, even offline with no PR diff fetched.
-func TestPostAnchorsCommentsToTheSessionDiff(t *testing.T) {
+// A dry run is offline, so its line comments use the session's recorded diff.
+// A finding outside that diff rides in the review body.
+func TestPostDryRunUsesTheSessionDiff(t *testing.T) {
 	t.Setenv("PATH", "")
 	dir := reportDir(t)
 	rep := findings.Report{
@@ -683,6 +687,147 @@ func TestPostAnchorsCommentsToTheSessionDiff(t *testing.T) {
 	if !strings.Contains(req.Body, "not in the session diff") {
 		t.Fatalf("the off-diff finding should ride in the body:\n%s", req.Body)
 	}
+}
+
+func TestGitHubPatchesControlCommentableLinesForRenames(t *testing.T) {
+	t.Run("pure rename has no commentable lines", func(t *testing.T) {
+		fakeGhFiles(t, `[[{"filename":"new/a.go","status":"renamed","changes":0}]]`)
+		lines, err := ghPRCommentable("o", "r", 7)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(lines) != 0 {
+			t.Fatalf("a rename with no patch cannot accept line comments: %v", lines)
+		}
+	})
+
+	t.Run("finding outside rename hunk rides in body", func(t *testing.T) {
+		fakeGhFiles(t, `[[{"filename":"new/a.go","status":"renamed","changes":2,"patch":"@@ -10,2 +12,2 @@\n context\n-old\n+new"}]]`)
+		lines, err := ghPRCommentable("o", "r", 7)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rep := findings.Report{Findings: []findings.Finding{
+			{File: "new/a.go", Line: 13, Rule: "in-hunk", Severity: findings.SeverityError, Message: "patched line"},
+			{File: "new/a.go", Line: 25, Rule: "outside-hunk", Severity: findings.SeverityError, Message: "renamed line outside patch"},
+		}}
+		rep.Finalize()
+		payload := post.Build(&rep, prSessionTarget(), "", lines)
+		if len(payload.Comments) != 1 || payload.Comments[0].Line != 13 {
+			t.Fatalf("only the patched line should be a comment: %+v", payload.Comments)
+		}
+		if !strings.Contains(payload.Body, "renamed line outside patch") {
+			t.Fatalf("the off-hunk finding should be in the review body:\n%s", payload.Body)
+		}
+	})
+}
+
+func TestGitHubFilesArePaginatedAndPatchesAreCombined(t *testing.T) {
+	fakeGhFiles(t, `[[{"filename":"new/a.go","patch":"@@ -1 +1 @@\n-old\n+new"}],[{"filename":"b.go","patch":"@@ -4 +4 @@\n-old\n+new"}]]`)
+	lines, err := ghPRCommentable("o", "r", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !lines["new/a.go"][1] || !lines["b.go"][4] {
+		t.Fatalf("patches from each returned page should be commentable: %v", lines)
+	}
+}
+
+func fakeGhFiles(t *testing.T, output string) {
+	t.Helper()
+	fakeGhScript(t, "#!/bin/sh\nprintf '%s' "+shQuote(output)+"\n")
+}
+
+func TestSubmitReviewRetries422WithoutInlineComments(t *testing.T) {
+	state := testScratchPath(t, "submit-review-retry.state")
+	requests := testScratchPath(t, "submit-review-retry.jsonl")
+	if err := os.MkdirAll(filepath.Dir(state), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(state)
+	_ = os.Remove(requests)
+	t.Cleanup(func() { _ = os.Remove(state); _ = os.Remove(requests) })
+	fakeGhScript(t, fmt.Sprintf(`#!/bin/sh
+set -e
+IFS= read -r line || [ -n "$line" ]
+printf '%%s' "$line" >> %s
+printf '\n' >> %s
+if [ ! -e %s ]; then
+  : > %s
+  echo 'HTTP 422: Line could not be resolved' >&2
+  exit 1
+fi
+`, shQuote(requests), shQuote(requests), shQuote(state), shQuote(state)))
+	request := ghReviewRequest{Body: "review body", Event: post.Event, Comments: []ghReviewComment{{Path: "a.go", Line: 12, Body: "finding with marker"}}}
+	var err error
+	stderr := captureStderr(t, func() {
+		err = submitReview("o", "r", 7, post.Payload{Body: request.Body, Comments: []post.Comment{{Path: "a.go", Line: 12, Body: "finding with marker"}}})
+	})
+	if err != nil {
+		t.Fatalf("retry should post successfully: %v", err)
+	}
+	if !strings.Contains(stderr, "retrying once") {
+		t.Fatalf("retry should be logged, got %q", stderr)
+	}
+	data, err := os.ReadFile(requests)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected initial and fallback requests, got %d: %s", len(lines), data)
+	}
+	var first, second ghReviewRequest
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &second); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Comments) != 1 || len(second.Comments) != 0 {
+		t.Fatalf("fallback should move all inline comments to body, got first=%+v second=%+v", first.Comments, second.Comments)
+	}
+	if !strings.Contains(second.Body, "finding with marker") || !strings.Contains(second.Body, "### Findings not shown inline") {
+		t.Fatalf("fallback body lost the inline finding: %s", second.Body)
+	}
+}
+
+func TestSubmitReviewHappyPathPostsOnce(t *testing.T) {
+	requests := testScratchPath(t, "submit-review-happy.jsonl")
+	if err := os.MkdirAll(filepath.Dir(requests), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(requests)
+	t.Cleanup(func() { _ = os.Remove(requests) })
+	fakeGhScript(t, fmt.Sprintf(`#!/bin/sh
+IFS= read -r line || [ -n "$line" ]
+printf '%%s' "$line" >> %s
+printf '\n' >> %s
+`, shQuote(requests), shQuote(requests)))
+	err := submitReview("o", "r", 7, post.Payload{Body: "review body", Comments: []post.Comment{{Path: "a.go", Line: 12, Body: "finding"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(requests)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request ghReviewRequest
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(data))), &request); err != nil {
+		t.Fatal(err)
+	}
+	if len(request.Comments) != 1 || request.Body != "review body" {
+		t.Fatalf("happy path should preserve the original review, got %+v", request)
+	}
+}
+
+func testScratchPath(t *testing.T, name string) string {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", "..", "scratch"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(root, name)
 }
 
 // The scout speaks either wire now, so on the OpenAI wire the checking pass is

@@ -532,13 +532,19 @@ func short(s string) string {
 }
 
 // DiffPath returns the unified diff of one path between rev and the working
-// tree. Best-effort: evidence capture must never fail a run.
+// tree, with Git rename detection enabled. Best-effort: evidence capture must
+// never fail a run.
 //
 // `git diff REV -- path` is empty for untracked files. Those still belong in
 // the change — Redline is pre-push — so they are compared against /dev/null.
 func (r *Repo) DiffPath(rev, path string) string {
-	out, err := r.git("diff", "--no-color", "-U3", rev, "--", path)
+	out, err := r.git("diff", "--no-color", "-M", "-U3", rev, "--", path)
 	if err == nil && strings.TrimSpace(out) != "" {
+		if strings.Contains(out, "new file mode") {
+			if renamed := r.renameDiffPath(rev, path); renamed != "" {
+				return renamed
+			}
+		}
 		return out
 	}
 	full := filepath.Join(r.Root, path)
@@ -553,6 +559,33 @@ func (r *Repo) DiffPath(rev, path string) string {
 		return out
 	}
 	return ni
+}
+
+func (r *Repo) renameDiffPath(rev, newPath string) string {
+	out, err := r.git("diff", "--no-color", "-M", "--name-status", "-z", rev)
+	if err != nil {
+		return ""
+	}
+	fields := strings.Split(out, "\x00")
+	for i := 0; i+2 < len(fields); {
+		status := fields[i]
+		i++
+		if strings.HasPrefix(status, "R") && i+1 < len(fields) {
+			oldPath, nextPath := fields[i], fields[i+1]
+			i += 2
+			if nextPath == newPath {
+				diff, diffErr := r.git("diff", "--no-color", "-M", "-U3", rev, "--", oldPath, nextPath)
+				if diffErr == nil {
+					return diff
+				}
+			}
+			continue
+		}
+		// A non-rename status has one path. Its status may be followed by
+		// another record, so advance without interpreting it as a pair.
+		i++
+	}
+	return ""
 }
 
 // diffNoIndex compares path to an empty file. git exits 1 when the files
