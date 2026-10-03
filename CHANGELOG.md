@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.2] - 2026-10-03
+
+### Added
+- **`redline review --show-modified-tests` sends edited test files.** Test
+  code is normally left out of the review request and only named, because
+  coverage and mutation measure whether the tests are enough. Those checks
+  still pass when an existing test was edited to expect new, wrong output.
+  With the flag, test files the change modified are sent, and the review is
+  asked whether an expectation was changed to fit behavior the change does
+  not say it intends. New and deleted test files are still left out.
+
 ## [0.17.1] - 2026-10-02
 
 ### Fixed
