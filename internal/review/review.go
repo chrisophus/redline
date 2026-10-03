@@ -124,8 +124,8 @@ type Input struct {
 	// against code, not against what someone hoped they would say. Empty sends
 	// a request byte for byte what it was without the note.
 	Note string
-	// ShowModifiedTests sends the diffs of test files that existed before the
-	// change, modified or deleted, even when the rest of the test code is held
+	// ShowModifiedTests sends the diffs of test files the change modified,
+	// even when the rest of the test code is held
 	// back. A test edited to match new output is how an unintended behavior
 	// change gets past the checks: coverage and mutation still pass, because
 	// the test now asserts the wrong thing. Only the diff shows that.

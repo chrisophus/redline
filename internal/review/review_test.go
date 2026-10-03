@@ -681,9 +681,9 @@ func TestPromptNamesTestFilesInsteadOfSendingThem(t *testing.T) {
 	}
 }
 
-// With ShowModifiedTests, an existing test that was edited or deleted is
-// sent, because that is where a test rewritten to fit new behavior shows up.
-// A new test file is still only named.
+// With ShowModifiedTests, an existing test that was edited is sent, because
+// that is where a test rewritten to fit new behavior shows up. New and deleted
+// test files are still only named.
 func TestShowModifiedTestsSendsExistingTestDiffs(t *testing.T) {
 	in := Input{ShowModifiedTests: true, Change: &change.Set{Files: []change.File{
 		{Path: "store.go", Status: "modified", Added: 1, Diff: "@@ -1,1 +1,1 @@\n+x", Language: "go"},
@@ -698,20 +698,20 @@ func TestShowModifiedTestsSendsExistingTestDiffs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got.Prompt, "+want := 4") || !strings.Contains(got.Prompt, "removedAssertion") {
-		t.Fatal("modified and deleted tests must be sent when asked for")
+	if !strings.Contains(got.Prompt, "+want := 4") {
+		t.Fatal("modified tests must be sent when asked for")
 	}
-	if strings.Contains(got.Prompt, "newBody") {
-		t.Fatal("a new test file adds checks and stays held back")
+	if strings.Contains(got.Prompt, "newBody") || strings.Contains(got.Prompt, "removedAssertion") {
+		t.Fatal("new and deleted test files stay held back")
 	}
-	if !strings.Contains(got.Prompt, "1 test file(s) also changed (+5 -0) and are not shown: new_test.go") {
+	if !strings.Contains(got.Prompt, "2 test file(s) also changed (+5 -2) and are not shown: old_test.go, new_test.go") {
 		t.Fatal("the held-back line must name only what was held back")
 	}
-	if !strings.Contains(got.Prompt, "were modified or deleted and are shown: store_test.go, old_test.go") {
+	if !strings.Contains(got.Prompt, "were modified and are shown: store_test.go.") {
 		t.Fatal("the review must be told why these tests are shown")
 	}
 	shown := in.ShownFiles()
-	if !shown["store_test.go"] || !shown["old_test.go"] || shown["new_test.go"] {
+	if !shown["store_test.go"] || shown["old_test.go"] || shown["new_test.go"] {
 		t.Fatalf("shown files = %v", shown)
 	}
 }

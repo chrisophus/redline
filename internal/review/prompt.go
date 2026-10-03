@@ -334,14 +334,15 @@ func (in Input) hidesTests() bool {
 
 // holdsBack reports whether a file is test code the request leaves out when
 // tests are held back. With ShowModifiedTests, a test file that existed before
-// the change is sent anyway, so the review can see an assertion that was
-// rewritten or removed. New test files stay held back: they add checks rather
-// than change the ones the old behavior was held to.
+// the change and was modified is sent anyway, so the review can see an
+// assertion that was rewritten. New and deleted test files stay held back: a
+// new one adds checks, and a deleted one is named on the "not shown" line,
+// which is enough to raise the question.
 func (in Input) holdsBack(f change.File) bool {
 	if !change.IsTestCode(f.Path) {
 		return false
 	}
-	return !in.ShowModifiedTests || (f.Status != "modified" && f.Status != "deleted")
+	return !in.ShowModifiedTests || f.Status != "modified"
 }
 
 // ShownFiles is the set of paths whose diffs the prompt actually carries,
@@ -434,7 +435,7 @@ func (in Input) modifiedTestsLine() string {
 	if len(paths) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%d existing test file(s) were modified or deleted and are shown: %s. "+
+	return fmt.Sprintf("%d existing test file(s) were modified and are shown: %s. "+
 		"Check whether an expectation was changed, loosened or removed to fit new behavior "+
 		"that the change does not say it intends. A test updated to match a new output passes "+
 		"every check, so this is the only place that shows up.",
