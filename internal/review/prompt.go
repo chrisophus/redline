@@ -332,6 +332,18 @@ func (in Input) hidesTests() bool {
 	return false
 }
 
+// holdsBack reports whether a file is test code the request leaves out when
+// tests are held back. With ShowModifiedTests, a test file that existed before
+// the change is sent anyway, so the review can see an assertion that was
+// rewritten or removed. New test files stay held back: they add checks rather
+// than change the ones the old behavior was held to.
+func (in Input) holdsBack(f change.File) bool {
+	if !change.IsTestCode(f.Path) {
+		return false
+	}
+	return !in.ShowModifiedTests || (f.Status != "modified" && f.Status != "deleted")
+}
+
 // ShownFiles is the set of paths whose diffs the prompt actually carries,
 // which is the set a walkthrough is expected to have a line for and no more.
 //
@@ -349,7 +361,7 @@ func (in Input) ShownFiles() map[string]bool {
 		if f.Diff == "" && f.Head == "" {
 			continue
 		}
-		if hideTests && change.IsTestCode(f.Path) {
+		if hideTests && in.holdsBack(f) {
 			continue
 		}
 		shown[f.Path] = true
@@ -365,9 +377,15 @@ func (in Input) contextFilter() envelope.Filter {
 	if !in.hidesTests() {
 		return envelope.Filter{}
 	}
+	shown := in.ShownFiles()
 	return envelope.Filter{
 		What: "test code",
 		Drop: func(x envelope.Expansion) bool {
+			// A test file sent for ShowModifiedTests keeps the context
+			// around its own changed lines, as any shown file does.
+			if shown[x.File] {
+				return false
+			}
 			return x.Role == envelope.RoleTest || change.IsTestCode(x.File)
 		},
 	}
@@ -384,7 +402,7 @@ func (in Input) testsLine() string {
 	var paths []string
 	var added, removed int
 	for _, f := range in.Change.Files {
-		if !change.IsTestCode(f.Path) {
+		if !in.holdsBack(f) {
 			continue
 		}
 		paths = append(paths, f.Path)
@@ -398,6 +416,29 @@ func (in Input) testsLine() string {
 		"The change is not untested; whether the tests are enough is measured by the checks. "+
 		"Judge the code they test.",
 		len(paths), added, removed, strings.Join(paths, ", "))
+}
+
+// modifiedTestsLine says why existing test files are in the diff when the
+// rest of the tests are not, and what to look for in them. Without it the
+// review reads them as more code to judge on its own terms.
+func (in Input) modifiedTestsLine() string {
+	if in.Change == nil || !in.ShowModifiedTests || !in.hidesTests() {
+		return ""
+	}
+	var paths []string
+	for _, f := range in.Change.Files {
+		if change.IsTestCode(f.Path) && !in.holdsBack(f) {
+			paths = append(paths, f.Path)
+		}
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d existing test file(s) were modified or deleted and are shown: %s. "+
+		"Check whether an expectation was changed, loosened or removed to fit new behavior "+
+		"that the change does not say it intends. A test updated to match a new output passes "+
+		"every check, so this is the only place that shows up.",
+		len(paths), strings.Join(paths, ", "))
 }
 
 // shownLines is every line of the change the diff section already puts in
@@ -415,7 +456,7 @@ func (in Input) shownLines() envelope.Seen {
 	}
 	hideTests := in.hidesTests()
 	for _, f := range in.Change.Files {
-		if hideTests && change.IsTestCode(f.Path) {
+		if hideTests && in.holdsBack(f) {
 			// Held back below, so nothing in it has been shown. Marking it
 			// seen would suppress expansions on the grounds that the model
 			// had already read lines it was never sent.
@@ -743,6 +784,9 @@ func (in Input) changeSection() string {
 		b.WriteString(gen + "\n\n")
 	}
 	if tests := in.testsLine(); tests != "" {
+		b.WriteString(tests + "\n\n")
+	}
+	if tests := in.modifiedTestsLine(); tests != "" {
 		b.WriteString(tests + "\n\n")
 	}
 	return b.String()

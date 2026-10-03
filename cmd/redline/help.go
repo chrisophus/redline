@@ -169,6 +169,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.noteFile, "note-file", "", "read the note from a file")
 	fs.BoolVar(&o.deferContext, "defer-context", false, "list the resolved context beside each file's diff and let the reviewer read it with get_context")
 	fs.BoolVar(&o.noLook, "no-look", false, "the judging pass writes from the material it was sent, looking nothing up")
+	fs.BoolVar(&o.showModifiedTests, "show-modified-tests", false, "send the diffs of existing test files the change modified or deleted, so the review can check whether a test was edited to fit new behavior")
 	fs.BoolVar(&o.verify, "verify", false, "check each finding against the repository before posting it")
 	fs.BoolVar(&o.noCache, "no-cache", false, "send every call at full input rate")
 	fs.StringVar(&o.cacheTTL, "cache-ttl", "", "how long the cached prefix lives, 5m or 1h")
@@ -368,6 +369,14 @@ what to look at:
                     committed outranks it. Saved in review.json and the
                     postmortem, and shown on the report.
   --note-file PATH  the same, read from a file. Pass one or the other.
+  --show-modified-tests
+                    send the diffs of test files that existed before the
+                    change and were modified or deleted. Test code is
+                    normally left out and only named, because coverage and
+                    mutation already measure whether the tests are enough.
+                    Those checks still pass when a test was edited to expect
+                    the new, wrong output, so this lets the review look for
+                    that. New test files are still left out.
   --no-look         the judging pass writes from the material it was sent,
                     looking nothing up. Looking things up is the default: a
                     claim about code outside the diff is one the reviewer can

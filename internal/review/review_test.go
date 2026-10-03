@@ -681,6 +681,41 @@ func TestPromptNamesTestFilesInsteadOfSendingThem(t *testing.T) {
 	}
 }
 
+// With ShowModifiedTests, an existing test that was edited or deleted is
+// sent, because that is where a test rewritten to fit new behavior shows up.
+// A new test file is still only named.
+func TestShowModifiedTestsSendsExistingTestDiffs(t *testing.T) {
+	in := Input{ShowModifiedTests: true, Change: &change.Set{Files: []change.File{
+		{Path: "store.go", Status: "modified", Added: 1, Diff: "@@ -1,1 +1,1 @@\n+x", Language: "go"},
+		{Path: "store_test.go", Status: "modified", Added: 1, Removed: 1,
+			Diff: "@@ -1,1 +1,1 @@\n-want := 3\n+want := 4", Language: "go"},
+		{Path: "old_test.go", Status: "deleted", Removed: 2,
+			Diff: "@@ -1,2 +0,0 @@\n-func TestGone(t *testing.T) { removedAssertion() }", Language: "go"},
+		{Path: "new_test.go", Status: "added", Added: 5,
+			Diff: "@@ -0,0 +1,5 @@\n+func TestNew(t *testing.T) { newBody() }", Language: "go"},
+	}}}
+	got, err := Assemble(in, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Prompt, "+want := 4") || !strings.Contains(got.Prompt, "removedAssertion") {
+		t.Fatal("modified and deleted tests must be sent when asked for")
+	}
+	if strings.Contains(got.Prompt, "newBody") {
+		t.Fatal("a new test file adds checks and stays held back")
+	}
+	if !strings.Contains(got.Prompt, "1 test file(s) also changed (+5 -0) and are not shown: new_test.go") {
+		t.Fatal("the held-back line must name only what was held back")
+	}
+	if !strings.Contains(got.Prompt, "were modified or deleted and are shown: store_test.go, old_test.go") {
+		t.Fatal("the review must be told why these tests are shown")
+	}
+	shown := in.ShownFiles()
+	if !shown["store_test.go"] || !shown["old_test.go"] || shown["new_test.go"] {
+		t.Fatalf("shown files = %v", shown)
+	}
+}
+
 // A change that is only tests has nothing else to review, so the tests are
 // the change and they are sent.
 func TestATestOnlyChangeIsStillReviewed(t *testing.T) {
