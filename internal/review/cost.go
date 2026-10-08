@@ -27,6 +27,7 @@ var priceTable = map[string]Pricing{
 	"claude-opus-5":   {InPerM: 5, OutPerM: 25},
 	"claude-opus-4":   {InPerM: 5, OutPerM: 25},
 	"claude-sonnet-5": {InPerM: 2, OutPerM: 10},
+	"claude-sonnet-5.5": {InPerM: 2, OutPerM: 10},
 	"claude-sonnet-4": {InPerM: 3, OutPerM: 15},
 	"claude-haiku-4":  {InPerM: 1, OutPerM: 5},
 	// OpenAI list rates, for --api openai. A proxy that aliases a model

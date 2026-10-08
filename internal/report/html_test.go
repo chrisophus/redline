@@ -118,6 +118,32 @@ func TestFindingLinksToItsFileInTheDrawer(t *testing.T) {
 	}
 }
 
+func TestDrawerShowsTheFileWalkthroughBesideItsDiff(t *testing.T) {
+	html, err := HTML(HTMLInput{
+		Report: &findings.Report{
+			Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1},
+			Agent:    &findings.AgentReview{Files: map[string]string{"a.go": "moves retry handling into the client"}},
+		},
+		Change: &change.Set{Files: []change.File{{Path: "a.go", Language: "go", Diff: "@@ -1 +1 @@\n-old\n+new\n"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := strings.Index(html, `<div id="filestore" hidden>`)
+	if store < 0 {
+		t.Fatal("the drawer's file store is missing")
+	}
+	fileStore := html[store:]
+	note := strings.Index(fileStore, `class="walkthrough-note"`)
+	diff := strings.Index(fileStore, `<pre class="diff">`)
+	if note < 0 || diff < 0 || note > diff {
+		t.Fatalf("the walkthrough summary must travel with the diff and appear before it:\n%s", fileStore)
+	}
+	if !strings.Contains(fileStore[:diff], "moves retry handling into the client") {
+		t.Fatal("the drawer's file entry must include the walkthrough summary")
+	}
+}
+
 func TestHTMLIdentityAttribute(t *testing.T) {
 	html, err := HTML(HTMLInput{
 		Report: &findings.Report{BaseSHA: "abcdef0123456789", Coverage: findings.Coverage{ChangedFiles: 1, ExaminedFiles: 1}},
