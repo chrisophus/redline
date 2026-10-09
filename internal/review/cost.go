@@ -22,13 +22,14 @@ type Pricing struct {
 // zero: a review that silently reports costing nothing is worse than one that
 // admits it does not know.
 var priceTable = map[string]Pricing{
-	"claude-fable-5":  {InPerM: 10, OutPerM: 50},
-	"claude-mythos-5": {InPerM: 10, OutPerM: 50},
-	"claude-opus-5":   {InPerM: 5, OutPerM: 25},
-	"claude-opus-4":   {InPerM: 5, OutPerM: 25},
-	"claude-sonnet-5": {InPerM: 2, OutPerM: 10},
-	"claude-sonnet-4": {InPerM: 3, OutPerM: 15},
-	"claude-haiku-4":  {InPerM: 1, OutPerM: 5},
+	"claude-fable-5":    {InPerM: 10, OutPerM: 50},
+	"claude-mythos-5":   {InPerM: 10, OutPerM: 50},
+	"claude-opus-5":     {InPerM: 5, OutPerM: 25},
+	"claude-opus-4":     {InPerM: 5, OutPerM: 25},
+	"claude-sonnet-5":   {InPerM: 2, OutPerM: 10},
+	"claude-sonnet-5.5": {InPerM: 2, OutPerM: 10},
+	"claude-sonnet-4":   {InPerM: 3, OutPerM: 15},
+	"claude-haiku-4":    {InPerM: 1, OutPerM: 5},
 	// OpenAI list rates, for --api openai. A proxy that aliases a model
 	// to another name prices as unknown, which is the honest answer.
 	"gpt-5": {InPerM: 1.25, OutPerM: 10},

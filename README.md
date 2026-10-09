@@ -59,7 +59,8 @@ release changed.
    present only when the change has a file a profile could cover
 3. **Files** - the walkthrough, with finding counts per file
 4. **What Redline observed** - the findings, each with its evidence
-5. **Drill in** - per-area diffs with click-a-line comments and viewed state
+5. **Drill in** - per-area diffs with the walkthrough summary beside the code,
+   click-a-line comments, and viewed state
 6. **What could not be determined** - the section most tools omit
 
 ## Status
