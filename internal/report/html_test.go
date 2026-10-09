@@ -427,7 +427,8 @@ func TestTestFilesAreBrowsableInTheDrill(t *testing.T) {
 	if !strings.Contains(html, `data-jump="internal/run/run_test.go"`) {
 		t.Error("the test file must be a drill row")
 	}
-	if !strings.Contains(html, "func TestNew") {
+	// Syntax colouring wraps tokens in spans, so compare the text.
+	if !strings.Contains(regexp.MustCompile(`<[^>]+>`).ReplaceAllString(html, ""), "func TestNew") {
 		t.Error("the test diff must be viewable in the drawer store")
 	}
 }

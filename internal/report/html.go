@@ -448,7 +448,7 @@ func bannerText(rep *findings.Report) string {
 
 // highlightDiff marks up a unified diff. Deliberately hand-rolled: a syntax
 // highlighting library would be a dependency and a CDN fetch, and the page
-// must work with no network.
+// must work with no network. syntax.go does the token colouring.
 func highlightDiff(diff string) string { return highlightDiffFor("", diff, nil) }
 
 // hunkHeader captures the old and new starting line numbers of a unified-diff
@@ -468,15 +468,34 @@ func highlightDiffFor(path, diff string, cov map[int]bool) string {
 	}
 	var b strings.Builder
 	var cur diffCursor
+	sx := syntaxFor(path)
+	// The old and new files are coloured as two streams, so a block comment
+	// opened on a deleted line does not swallow the added lines after it.
+	// Context lines belong to both.
+	oldSt, newSt := plain, plain
 	for _, line := range strings.Split(diff, "\n") {
 		class, side, src := cur.classify(line)
-		escaped := template.HTMLEscapeString(line)
 		if path == "" || class == "meta" || class == "hunk" || src == 0 {
-			fmt.Fprintf(&b, `<span class="%s">%s</span>`, class, escaped)
+			oldSt, newSt = plain, plain
+			fmt.Fprintf(&b, `<span class="%s">%s</span>`, class, template.HTMLEscapeString(line))
 			continue
 		}
+		body := template.HTMLEscapeString(line)
+		if sx != nil && line != "" {
+			var code string
+			switch class {
+			case "add":
+				code, newSt = sx.highlight(line[1:], newSt)
+			case "del":
+				code, oldSt = sx.highlight(line[1:], oldSt)
+			default:
+				code, newSt = sx.highlight(line[1:], newSt)
+				oldSt = newSt
+			}
+			body = template.HTMLEscapeString(line[:1]) + code
+		}
 		fmt.Fprintf(&b, `<span class="%s" data-file="%s" data-line="%d" data-side="%s"%s>%s</span>`,
-			class, template.HTMLEscapeString(path), src, side, coverAttr(side, src, cov), escaped)
+			class, template.HTMLEscapeString(path), src, side, coverAttr(side, src, cov), body)
 	}
 	return b.String()
 }
