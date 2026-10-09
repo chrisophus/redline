@@ -694,7 +694,7 @@ func TestSuppressionsDetectsEveryDirectiveKind(t *testing.T) {
 }
 
 // A v2-format golangci config keeps its exclusions under linters.exclusions,
-// which a v1-only reader parses cleanly as nothing — and then certifies an
+// which a v1-only reader parses cleanly as nothing, and then certifies an
 // edit that silences findings as clean. Both schemas must be read.
 func TestConfigSeesGolangciV2Exclusions(t *testing.T) {
 	base := "version: \"2\"\nlinters:\n  enable: [errcheck]\n"
@@ -746,8 +746,8 @@ func TestDeltaBrokenRedlineConfigFailsNotVanishes(t *testing.T) {
 }
 
 // With no built-in tool detected either, an unreadable config leaves no way
-// to say which files its tools cover — so the whole change scopes under the
-// pane, which then fails visibly, rather than silently vanishing.
+// to say which files its tools cover, so the whole change scopes under the
+// pane, which then fails visibly instead of silently vanishing.
 func TestDeltaBrokenConfigWithNoBuiltinsScopesTheChange(t *testing.T) {
 	r := newRepo(t)
 	r.write(".redline.yml", "tools: [\n")
@@ -800,8 +800,8 @@ func TestDeltaSkipsToolWhenChangeOutsideScope(t *testing.T) {
 }
 
 // A finding present at head and absent at base is introduced by this change
-// even when it sits on a line the change did not touch: the delta is what the
-// base lacked, not which lines moved.
+// even when it appears on a line the change did not touch: the delta reports
+// what the base lacked, regardless of which lines moved.
 func TestDeltaReportsIntroducedFindingOnUnchangedLine(t *testing.T) {
 	fakeGolangci(t)
 	r := newRepo(t)

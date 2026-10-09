@@ -689,8 +689,8 @@ func TestSweep(t *testing.T) {
 	if len(cards) == 0 {
 		// Every call failed, so there is no result. Printing the table anyway
 		// renders a row of zeros at $0.0000 with a perfect false-positive
-		// count, which is the shape of an excellent arm and the substance of
-		// none: the same failure the price table already guards against, where
+		// count, which looks like an excellent arm but has no review behind
+		// it: the same failure the price table already guards against, where
 		// a model nobody could price printed as free.
 		t.Fatal("no fixture produced a review, so there is nothing to compare; " +
 			"the errors above are the result")

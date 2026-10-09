@@ -89,7 +89,7 @@ func TestGeneratedByHeaderReadsTheGeneratorsOwnClaim(t *testing.T) {
 }
 
 // Regression. A substring test for the markers also matches any file that
-// discusses them — which excluded this package and its own test from a review,
+// discusses them, which excluded this package and its own test from a review,
 // silently, in the change that introduced the feature. Every line below is
 // prose from real source in this repository.
 func TestFilesThatMerelyDiscussTheMarkersAreNotGenerated(t *testing.T) {

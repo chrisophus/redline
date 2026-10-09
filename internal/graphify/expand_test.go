@@ -208,8 +208,8 @@ func TestCallersAreLeftToTheExactProvider(t *testing.T) {
 	if x := find(env, envelope.RoleCaller, "Handle()"); x != nil {
 		t.Error("a name-resolved caller was sent for a file an exact resolver covers")
 	}
-	// Everything else still comes through: deferring callers is not deferring
-	// the provider.
+	// Everything else still comes through: deferring callers only turns off
+	// the caller role for that file.
 	if find(env, RoleNeighbor, "users") == nil {
 		t.Error("deferring callers dropped the cross-kind neighbor too")
 	}
@@ -243,8 +243,8 @@ func TestChangedFilesAreNotResentAsContext(t *testing.T) {
 
 // A hop into a node with no source file is what an incremental `graphify
 // update` leaves behind when the real definition sits outside the batch it
-// re-extracted. Following it lands nowhere, and silence there reads as
-// "nothing to say" rather than "not resolved".
+// re-extracted. Following it finds nothing on the other end, and silence
+// there reads as "nothing to say" rather than "not resolved".
 func TestBareNodeIsReportedRatherThanFollowed(t *testing.T) {
 	env := expand(t, Options{})
 	for _, x := range env.Expansions {

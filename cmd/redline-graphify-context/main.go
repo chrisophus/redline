@@ -104,7 +104,7 @@ func run(args []string, stdout io.Writer) error {
 	}
 	// The changed set is computed the way Redline computes it, from the same
 	// package, so the provider speaks about exactly the files the review is
-	// about — untracked files and deletions included.
+	// about, including untracked files and deletions.
 	paths, err := repo.ChangedPaths(base)
 	if err != nil {
 		return fmt.Errorf("changed paths: %w", err)

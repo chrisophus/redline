@@ -44,13 +44,14 @@ const Substrate = "redline/parity"
 // This is the guard that keeps the pane quiet on directories that merely sit
 // side by side. internal/pane/{lint,migrations,openapi} are siblings by path
 // and share no filenames, so a change to one of them says nothing about the
-// others and this pane holds its tongue. Provider directories share their
+// others and this pane reports nothing. Provider directories share their
 // whole shape, which is what makes a missing file there a signal.
 //
 // Exported because internal/precedent asks the same question for a different
 // reason: this pane reports the file a sibling directory is missing, and that
-// one puts the sibling's body in front of a review. Two answers to "are these
-// parallel implementations" that could disagree would be worse than either.
+// one shows the sibling's own code directly in the review. Two answers to
+// "are these parallel implementations" that could disagree would be worse
+// than either.
 const MinShared = 3
 
 // Pane compares a changed file's directory against its siblings.
@@ -64,7 +65,7 @@ type Pane struct {
 // Name implements pane.Pane.
 func (p *Pane) Name() string { return Substrate }
 
-// Scope selects the changed files that actually sit in a set of parallel
+// Scope selects the changed files that actually belong to a set of parallel
 // implementations.
 //
 // Depth alone was the first cut and it was wrong in a way worth naming: the
@@ -177,8 +178,9 @@ func (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {
 			continue
 		}
 		// One sibling is enough. Two parallel implementations that share a
-		// shape, where a capability landed in only one of them, is the whole
-		// question; a repository does not need three providers to have it.
+		// shape, where a capability was added to only one of them, is the
+		// whole question; a repository does not need three providers to have
+		// it.
 		siblings := parallelSiblings(byDir, dir)
 		if len(siblings) == 0 {
 			continue

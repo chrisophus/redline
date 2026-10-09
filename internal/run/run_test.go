@@ -186,7 +186,7 @@ func TestDeletedMergedMigration(t *testing.T) {
 // Check 2: a new migration reuses a version already published upstream.
 func TestVersionCollisionWithUpstream(t *testing.T) {
 	r := baseline(t)
-	// Someone else's 000002 lands upstream.
+	// Someone else's 000002 is committed upstream.
 	r.git("checkout", "upstream")
 	r.write("migrations/000002_add_name.up.sql", "ALTER TABLE users ADD COLUMN name text;\n")
 	r.commit("upstream 000002")
@@ -204,7 +204,7 @@ func TestVersionCollisionWithUpstream(t *testing.T) {
 	}
 }
 
-// The same migration also being upstream is not a collision — it is the same
+// The same migration also being upstream is not a collision: it is the same
 // file, and check 1 owns whether its contents drifted.
 func TestSameFileUpstreamIsNotACollision(t *testing.T) {
 	r := baseline(t)
@@ -542,8 +542,8 @@ func TestGeneratedFilesLeaveTheChangeAndAreNamed(t *testing.T) {
 	}
 }
 
-// A finding a reviewer cannot check for themselves is inference wearing
-// evidence's clothes: the edit's SQL must be captured and shown.
+// A finding a reviewer cannot check for themselves is an unverified claim
+// presented as fact: the edit's SQL must be captured and shown.
 func TestModificationCapturesTheSQLDiff(t *testing.T) {
 	r := baseline(t)
 	r.write("migrations/000001_init.up.sql", "CREATE TABLE users (id bigint);\n")
@@ -785,7 +785,7 @@ func providerRepo(t *testing.T) *repo {
 
 // A change that is half Go and half something no provider covers must say so.
 // The context block would otherwise cover the Go half and report nothing about
-// the rest, which reads exactly like a change that was fully resolved — the
+// the rest, which reads exactly like a change that was fully resolved: the
 // failure the whole unknown vocabulary exists to prevent.
 //
 // The provider's command does not exist, which is deliberate: scope decides
@@ -868,7 +868,7 @@ func TestAReviewFromAnotherChangeIsNotMerged(t *testing.T) {
 	if rep.Agent != nil {
 		t.Errorf("a review of another change reached the report's prose: %+v", rep.Agent)
 	}
-	// Refusing quietly would be the same bug wearing a different hat: the
+	// Refusing quietly would recreate the same bug in a different form: the
 	// reader has to be told a review was found and not used.
 	var said bool
 	for _, u := range rep.Unknowns {
@@ -914,7 +914,7 @@ func TestAnUnstampedReviewIsStillMerged(t *testing.T) {
 // the one the skill tells an agent to use, so it says nothing about which
 // change it is about, and the guard exempted exactly those: a review of one
 // change was merged into the report of every later change, silently. Reported
-// from the field, and reproduced here — a review about the commit that added
+// from the field, and reproduced here: a review about the commit that added
 // b.go rendered as the review of the commit that added c.go.
 //
 // Taking an unstamped review at its word once is right; it is sitting in this
@@ -984,7 +984,8 @@ func TestAHandWrittenReviewIsStampedSoALaterChangeRefusesIt(t *testing.T) {
 }
 
 // The stamp `redline review` writes has to match what the next run computes,
-// or every real review reads as stale. Same session, same identity, twice.
+// or every real review reads as stale. This computes the identity for the
+// same session twice and checks the two match.
 func TestTheStampMatchesTheChangeItWasWrittenFor(t *testing.T) {
 	r := newRepo(t)
 	r.write("a.go", "package a\n")

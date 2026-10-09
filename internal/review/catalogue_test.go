@@ -10,10 +10,11 @@ import (
 	"github.com/chrisophus/redline/internal/findings"
 )
 
-// The catalogue carries the three calls that write a walkthrough on every run
-// but the one where nothing sharing it writes one. That saves 855 tokens,
-// which is not the point: the point is that a findings pass offered
-// set_overview has been measured using it and having every call refused.
+// The catalogue carries the three calls that write a walkthrough on every
+// run except the one where nothing sharing it writes one. That saves 855
+// tokens, but that is not why it matters: a findings pass offered
+// set_overview has been measured calling it, and every one of those calls
+// was refused.
 
 func catalogueNames(r *Result) []string {
 	var out []string
@@ -203,8 +204,8 @@ func TestANarrowedCatalogueIsCheaperToSend(t *testing.T) {
 // set_recap is on the catalogue only for a run that was told which commit the
 // previous review ran against, and the describing instruction names the files
 // that moved since it. A pass asked for a recap with no list would be
-// guessing: the diff it is shown is against the merge base and nothing in it
-// records when any of it landed.
+// guessing: the diff it is shown is against the merge base, and nothing in
+// it records when any of it was committed.
 func TestTheRecapToolAndItsSectionArriveTogether(t *testing.T) {
 	base := Options{
 		API: APIAnthropic, Model: "claude-sonnet-5", Synopsis: true,
@@ -255,8 +256,8 @@ func TestARunWithNothingNewIsToldSo(t *testing.T) {
 	}
 }
 
-// A describing pass given a previous review calls set_recap and the call is
-// recorded, not refused.
+// A describing pass given a previous review calls set_recap, and the call is
+// recorded rather than refused.
 //
 // This is the test the recap shipped without. The ones above check that the
 // tool reaches the catalogue and that the instruction asks for it, and both

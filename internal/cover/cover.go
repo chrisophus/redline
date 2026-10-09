@@ -22,14 +22,14 @@ import (
 )
 
 // Result is the coverage of the changed lines, plus the profile's whole-repo
-// total — the diff number says whether what changed is tested, the total
-// says how well-tested the codebase it landed in already was, so a reviewer
+// total: the diff number says whether what changed is tested, the total
+// says how well-tested the surrounding codebase already was, so a reviewer
 // can tell one from the other rather than reading a single ambiguous percent.
 type Result struct {
 	// Profile is the file the number came from, relative to the repository.
 	// Named so a reviewer can judge whether to believe it.
 	Profile string `json:"profile"`
-	// Lines is how many added lines are coverable — inside a function a
+	// Lines is how many added lines are coverable: inside a function a
 	// profile has something to say about. Blank lines, imports and
 	// declarations are not.
 	Lines int `json:"lines"`
@@ -48,7 +48,7 @@ type Result struct {
 
 	// TotalLines, TotalCovered, and TotalPercent are every coverable line the
 	// whole profile has anything to say about, not just the lines this
-	// change added — the same line-granular measure as Lines/Covered/Percent,
+	// change added, the same line-granular measure as Lines/Covered/Percent,
 	// applied to the profile's full scope rather than the diff's. TotalPercent
 	// is -1 when TotalLines is zero, for the same reason Percent is.
 	TotalLines   int     `json:"totalLines"`
@@ -62,8 +62,8 @@ type FileGap struct {
 	Lines []int  `json:"lines"`
 }
 
-// profileNames are the conventional places a Go coverage profile lands. There
-// is no standard, so this is a search rather than a lookup.
+// profileNames are the conventional paths a Go coverage profile is written
+// to. There is no standard, so this is a search rather than a lookup.
 var profileNames = []string{
 	"coverage.out", "cover.out", "coverage.txt", "c.out",
 	"coverage/coverage.out", ".coverage/coverage.out",
@@ -249,7 +249,7 @@ func AddedLines(diff string) []int {
 
 // hunkStart reads the new-side start line out of `@@ -a,b +c,d @@`. The
 // second result is false when the header cannot be parsed, or names a
-// start below 1 — not a line any file has.
+// start below 1, not a line any file has.
 func hunkStart(header string) (int, bool) {
 	plus := strings.Index(header, "+")
 	if plus < 0 {
@@ -297,8 +297,8 @@ func Compute(root string, changed []Changed) *Result {
 		fileBlocks := blocksFor(blocks, c.Path)
 		if fileBlocks == nil {
 			// The profile says nothing about this file. That is not the same as
-			// uncovered — the package may simply not have been part of the run
-			// — so those lines are left out of the denominator entirely.
+			// uncovered: the package may simply not have been part of the run,
+			// so those lines are left out of the denominator entirely.
 			continue
 		}
 		var gap []int
@@ -421,7 +421,7 @@ func lineState(blocks []block, line int) (covered, coverable bool) {
 }
 
 // totalCoverage sums coverable and covered lines across every file the
-// profile mentions, independent of what this change touched — the same
+// profile mentions, independent of what this change touched, the same
 // per-line rule lineState applies to a single line, applied to every line
 // any block in the file claims.
 func totalCoverage(blocks map[string][]block) (lines, covered int) {

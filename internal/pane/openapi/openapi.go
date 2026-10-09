@@ -77,7 +77,7 @@ func (o *Observation) ID() string { return Name + "@" + o.Side }
 
 // Observe parses every in-scope spec at a revision. A spec that does not exist
 // there is absent from the map, which is how an added or deleted document is
-// represented — not as an error.
+// represented, not as an error.
 func (p *Pane) Observe(rev pane.Revision) (pane.Observation, error) {
 	obs := &Observation{Side: rev.Name, Rev: rev.Rev, Specs: map[string]*spec{}}
 	for _, path := range p.Paths {

@@ -3,7 +3,7 @@ package openapi
 import "testing"
 
 // FuzzParseSpec feeds parse arbitrary YAML/JSON bytes. parse's contract is
-// what Observe and Diff both lean on without rechecking: an error always
+// what Observe and Diff both depend on without rechecking: an error always
 // comes back with a nil spec (Observe wraps it into an Unknown, never an
 // empty successful diff), and a nil error always comes back with a non-nil
 // spec with non-nil operations (Diff indexes straight into it). Either half

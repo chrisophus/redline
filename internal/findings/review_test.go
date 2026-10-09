@@ -8,7 +8,7 @@ import (
 	"github.com/chrisophus/redline/internal/findings"
 )
 
-// The category an agent hand-writes is prose, not an enum: SKILL.md documents a
+// The category an agent hand-writes is prose rather than an enum: SKILL.md documents a
 // review.json written by hand, and "Correlation" is how a sentence spells it.
 // Taken verbatim it matched nothing, so the one finding the second wave exists
 // to produce arrived as an ordinary remark: rule agent-comment, category

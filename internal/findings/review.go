@@ -165,7 +165,7 @@ type reviewFileEntry struct {
 //
 // The file is rewritten through a raw map so a field this version of Redline
 // does not know is preserved: the file belongs to whoever wrote it, and this
-// is adding one key to it, not taking it over.
+// only adds one key to it. It does not take the file over.
 func StampReview(path, revision string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -192,7 +192,8 @@ func StampReview(path, revision string) error {
 
 // LoadReview reads a review file. A missing file is not an error: most runs have
 // no review yet. Every verdict and comment reads as source "llm" regardless of
-// what the file claims: Redline attributes the reading, the file does not.
+// what the file claims. Redline sets that attribution itself, instead of
+// trusting what the file says.
 //
 // Aliases accepted for cross-tool compatibility: what_it_does for overview;
 // findings for comments; path for file; high/medium/low severities; related
@@ -368,9 +369,9 @@ func parseReviewComments(commentsRaw, findingsRaw json.RawMessage) ([]ReviewComm
 }
 
 // CommentFindings turns the agent's line comments into findings so they carry a
-// fingerprint, sit on their line in the drawer, and render beside the observed
-// findings. Call before Finalize, which stamps the fingerprints. A comment with
-// no body is dropped: it has nothing to say and nothing to key on.
+// fingerprint, anchor to their line in the drawer, and render beside the
+// observed findings. Call before Finalize, which stamps the fingerprints. A
+// comment with no body is dropped: it has nothing to say and nothing to key on.
 func (r *Review) CommentFindings() []Finding {
 	if r == nil {
 		return nil
@@ -439,12 +440,12 @@ func normalizeSeverityFor(s Severity, cat Category) Severity {
 
 // normalizeCategory maps whatever the review file wrote onto the one category
 // a reviewer may claim, forgiving case and whitespace the way severity and
-// confidence are forgiven. The un-schema'd path an agent hand-writes spells
-// the label however prose spells it, and "Correlation" taken verbatim matched
-// nothing: the one finding a second wave exists to produce arrived as an
-// ordinary remark, with the agent-comment rule, the review category and the
-// severity that goes with it. Anything else reads as the review category, for
-// the reason ReviewComment's Category field gives.
+// confidence are forgiven. The hand-written path has no schema to enforce
+// spelling, so it names the label however prose names it, and "Correlation"
+// taken verbatim matched nothing: the one finding a second wave exists to
+// produce arrived as an ordinary remark, with the agent-comment rule, the
+// review category and the severity that goes with it. Anything else reads as
+// the review category, for the reason ReviewComment's Category field gives.
 func normalizeCategory(c Category) Category {
 	if Category(strings.ToLower(strings.TrimSpace(string(c)))) == CategoryCorrelation {
 		return CategoryCorrelation
@@ -455,8 +456,8 @@ func normalizeCategory(c Category) Category {
 // normalizeSide maps a comment's diff side onto the two values GitHub accepts,
 // forgiving case and whitespace. "LEFT" is a removed line on the old file;
 // "RIGHT" is the new file. Anything else, including empty, reads as "" and the
-// post layer defaults it to RIGHT, so a comment that named no side lands on
-// the new file the way it always did.
+// post layer defaults it to RIGHT, so a comment that named no side is placed
+// on the new file the way it always was.
 func normalizeSide(s string) string {
 	switch strings.ToUpper(strings.TrimSpace(s)) {
 	case "LEFT":

@@ -106,7 +106,7 @@ func TestTheHeadsOfEarlierReviewsComeOffTheirMarkers(t *testing.T) {
 // list, or posting with --recap drops it from the body without saying so.
 //
 // This is the one thing the recap must not do: it exists to stop a walkthrough
-// being repeated, not to stop a finding being read.
+// from repeating, but it must never keep a finding from being read.
 func TestTheRecapBodyStillCarriesAFindingOnAShownFile(t *testing.T) {
 	p := recapPayload(t)
 	p.bodyFindings = []findings.Finding{

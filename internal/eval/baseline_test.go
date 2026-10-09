@@ -29,9 +29,9 @@ import (
 //
 // Written to be plausible rather than empty. An empty review trivially catches
 // nothing and proves only that the matcher reads the body at all; the useful
-// null is the register a padding reviewer actually produces, because that is
-// what a configuration tuned for recall degenerates into. Each line names a
-// real reviewing topic and no defect.
+// null is the kind of thing a padding reviewer actually writes, because that
+// is what a configuration tuned for recall degenerates into. Each line names
+// a real reviewing topic and no defect.
 //
 // No defect, and that is a constraint on what can go in here rather than a
 // description of it. A line reading "worth regenerating" was in this list and

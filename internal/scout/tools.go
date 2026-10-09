@@ -548,7 +548,7 @@ var questionKindRoles = map[envelope.Role]envelope.Role{
 	// A diff question used to reach no lookup at all, so its word never had to
 	// mean a role. It reaches one now, when the material the reviewer claimed
 	// settles the finding turns out not to carry the line it points at, and
-	// what the scout brings back is the code at that location -- which is what
+	// what the scout brings back is the code at that location, which is what
 	// enclosing already means. Without this entry it is the PR #38 failure
 	// again, on a kind that only just started arriving.
 	"diff": envelope.RoleEnclosing,
@@ -688,7 +688,7 @@ func grepTree(root string, re *regexp.Regexp, glob string, max int, ignore []str
 	}
 	if matches == 0 {
 		// An empty search is an answer, and it has to say what it searched.
-		// A question about a dependency's behaviour lands here, and a bare
+		// A question about a dependency's behaviour ends up here, and a bare
 		// "no matches" reads as "this is nowhere in the code" when what
 		// happened is that the code is outside the tree: the module cache and
 		// everything else off the repository is not walked.

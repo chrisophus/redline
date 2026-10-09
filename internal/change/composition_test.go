@@ -81,7 +81,7 @@ func TestKindClassification(t *testing.T) {
 }
 
 // Generated files are filtered out of the change before Build ever sees
-// them (run.go), so Composition never needs its own generated bucket — an
+// them (run.go), so Composition never needs its own generated bucket. An
 // empty input, the shape a change with only generated files reduces to,
 // must not panic or report a phantom row.
 func TestCompositionEmptyInput(t *testing.T) {

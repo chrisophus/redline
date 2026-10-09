@@ -31,7 +31,7 @@ func tree(t *testing.T) string {
 	return root
 }
 
-// The rule the whole design rests on: the scout says where, this program says
+// The rule the whole design depends on: the scout says where, this program says
 // what. A record whose symbol claims one thing and whose lines hold another
 // still sends the lines, because the model never gets to write the content.
 func TestContentComesFromTheTreeNotTheModel(t *testing.T) {

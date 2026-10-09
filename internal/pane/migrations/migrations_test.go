@@ -105,7 +105,7 @@ func find(t *testing.T, res pane.Result, rule string) findings.Finding {
 // --- check 1: modified-after-merge ---
 
 // The README's third dogfooding lesson: a blob-hash-only message was not
-// enough to answer "what did the edit change?" — the unified SQL diff must
+// enough to answer "what did the edit change?" The unified SQL diff must
 // be attached to the finding as evidence.
 func TestModifiedMigrationEmitsFindingWithSQLDiff(t *testing.T) {
 	r := newRepo(t)

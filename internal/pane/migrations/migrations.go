@@ -3,7 +3,7 @@
 // new migration's version prefix already exists upstream).
 //
 // Both are pure git filename-and-blob comparisons. No database, no container,
-// no stack bring-up — which is why they ship first.
+// no stack bring-up. That is why they ship first.
 package migrations
 
 import (
@@ -24,7 +24,7 @@ const Substrate = "redline/sql"
 // filePattern matches a golang-migrate versioned migration:
 // {version}_{name}.{up|down}.sql. Rung 1 runs off this convention plus
 // command-line flags; redline.toml is not needed until the two-worktree
-// harness lands.
+// harness exists.
 var filePattern = regexp.MustCompile(`(?:^|/)(\d+)_[^/]*\.(up|down)\.sql$`)
 
 // parse returns the version prefix and direction of a migration path, and
@@ -51,8 +51,8 @@ type Set struct {
 	// UpstreamVersions is the set of migration versions already published on
 	// the upstream branch, and is populated on the base-side observation only:
 	// it is part of "what the world already has". UpstreamRef is empty and
-	// UpstreamErr set when the upstream ref could not be read — which is an
-	// unknown, never a pass.
+	// UpstreamErr set when the upstream ref could not be read: that is recorded
+	// as an unknown, never as a pass.
 	UpstreamVersions map[string]string // version → representative path upstream
 	UpstreamRef      string
 	UpstreamErr      string
@@ -226,7 +226,7 @@ func (p *Pane) Diff(before, after pane.Observation) (pane.Result, error) {
 }
 
 // checkModified is check 1: a migration file that exists at merge-base was
-// edited or deleted. Applied migrations are immutable by construction —
+// edited or deleted. Applied migrations are immutable by construction:
 // golang-migrate records the version, not the content, so an edited migration
 // silently diverges between anyone who has already run it and anyone who has
 // not.
@@ -289,7 +289,7 @@ func (p *Pane) checkModified(base, head *Set, evidence []string, artifacts map[s
 // checkCollisions is check 2: a migration added by this change carries a
 // version prefix that already exists upstream. Two branches picking the same
 // version is the ordinary way this happens, and golang-migrate will refuse to
-// apply the second one — after the branch is merged, not before.
+// apply the second one, after the branch is merged, not before.
 func (p *Pane) checkCollisions(base, head *Set, added map[string][]string, evidence []string) (out []findings.Finding, unknowns []findings.Unknown, confirmed []findings.Confirmation) {
 	if base.UpstreamVersions == nil {
 		if len(added) > 0 {
@@ -324,7 +324,7 @@ func (p *Pane) checkCollisions(base, head *Set, added map[string][]string, evide
 			})
 			continue
 		}
-		// The same path existing upstream is not a collision — that is the
+		// The same path existing upstream is not a collision: that is the
 		// same migration, and check 1 owns whether its contents drifted.
 		if containsPath(paths, upstreamPath) {
 			continue
@@ -373,7 +373,7 @@ func (p *Pane) unchangedExisting(base, head *Set) []string {
 	return out
 }
 
-// render is section 1: the change in the domain where it lives — which
+// render is section 1: the change in the domain where it lives, which
 // migration versions this branch adds, and which pre-existing ones it touches.
 func (p *Pane) render(base, head *Set, added map[string][]string) pane.Render {
 	var versions []string

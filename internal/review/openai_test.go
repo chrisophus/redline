@@ -117,7 +117,7 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 		t.Fatalf("effort must pass through, got %q", got.ReasoningEffort)
 	}
 	// The calls block and the pass's instruction ride in the same user message
-	// here, not in blocks of their own. The Anthropic wire keeps them apart so
+	// here, rather than in blocks of their own. The Anthropic wire keeps them apart so
 	// the cache breakpoint can sit between them; this wire places no
 	// breakpoint, so there is nothing to keep apart and the model reads one
 	// turn.
@@ -125,8 +125,8 @@ func TestOpenAISendsTheSameReviewOverTheOtherWire(t *testing.T) {
 		got.Messages[1].Role != "user" || got.Messages[1].Content != res.Prompt+callsBlock(StageReview, false, false, nil)+res.Tail {
 		t.Fatal("the system block and the prompt must be sent exactly as assembled and priced")
 	}
-	// The schemas go as functions, not as response_format, which this gateway
-	// class does not enforce.
+	// The schemas go as functions rather than as response_format, which this
+	// gateway class does not enforce.
 	var names []string
 	for _, tool := range got.Tools {
 		if tool.Type != "function" {

@@ -115,7 +115,7 @@ func TestAnUntaggedAnswerIsKeptAndTheScoutIsTold(t *testing.T) {
 		t.Errorf("the scout was not told the record answers nothing: %q", out)
 	}
 	// The second call the reminder asks for replaces the first rather than
-	// sitting beside it.
+	// being added alongside it.
 	ts.dispatch("record", json.RawMessage(`{"role":"caller","file":"internal/store/user.go","start_line":1,"end_line":2,"symbol":"Insert","answers":"[c1]"}`))
 	if len(ts.records) != 1 || ts.records[0].Answers != "c1" {
 		t.Errorf("records = %+v, want the tagged record alone", ts.records)
@@ -129,8 +129,8 @@ func TestAnUntaggedAnswerIsKeptAndTheScoutIsTold(t *testing.T) {
 
 // The author's account steers the exploring search and is kept out of the
 // checking one. A question already says what to look up, so the account adds
-// no lead there, and it does add a claim the author has a stake in to the
-// stage whose job is to check their code independently of it.
+// no lead there. It would only add a claim the author has a stake in, to a
+// stage whose job is to check their code independently of that claim.
 func TestTheAuthorsAccountIsKeptOutOfTheCheckingBrief(t *testing.T) {
 	opts := Options{Diff: "d", Intent: "- Mirror the account feed, this is intentional\n"}
 	if !strings.Contains(brief(opts), "Mirror the account feed") {

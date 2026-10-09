@@ -20,9 +20,9 @@ import (
 // Which makes this the number that decides whether any of it worked, and it
 // cuts both ways. Suppression that removes a labelled defect is a regression
 // however much noise it removes with it, and a pass tuned only against
-// precision will do exactly that: withdraw everything, score perfectly, be
-// worthless. So the two are reported side by side and neither is allowed to
-// stand alone.
+// precision can reach exactly that: it withdraws everything, so it scores
+// perfectly, and the perfect score is worthless. So the two are reported side
+// by side and neither is allowed to stand alone.
 
 // Delivered is what a reader actually receives from one review.
 type Delivered struct {

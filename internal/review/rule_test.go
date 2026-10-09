@@ -319,8 +319,9 @@ func TestVerifyCostsNothingOnACleanReview(t *testing.T) {
 // The second field round's first miss. The same pull request, reviewed again
 // on an unchanged head after the author replied on every thread, posted the
 // race finding a second time under wording with no words in common: first at
-// the pre-transaction check, then at CopyFrom and ON CONFLICT. One claim, two
-// wordings, two anchors, and a fingerprint that could not see it.
+// the pre-transaction check, then at CopyFrom and ON CONFLICT. It was one
+// claim said two different ways, anchored to two different lines, and the
+// fingerprint could not tell the two wordings were the same claim.
 func TestARewordedFindingOnAnAnsweredThreadIsAlreadyRaised(t *testing.T) {
 	q := findings.Question{Kind: findings.QuestionPrecedent, Subject: "ObjectAlreadyStaged"}
 	rev := findings.Review{Comments: []findings.ReviewComment{
@@ -664,8 +665,8 @@ func TestTheRulingInstructionRidesInItsOwnBlockAfterTheSharedPrefix(t *testing.T
 
 // A gateway that serves claude over the OpenAI protocol does not always honour
 // the json_schema and returns the rulings array wrapped in a JSON string. The
-// pass must read that rather than fail open, which in the field left six
-// findings unchecked on a review whose ruling came back stringified.
+// pass must read that rather than give up on the response, which in the field
+// left six findings unchecked on a review whose ruling came back stringified.
 func TestParseRulingsToleratesAStringifiedArray(t *testing.T) {
 	wrapped := []byte(`{"rulings":"[{\"finding\":\"c1\",\"verdict\":\"withdrawn\",\"evidence\":\"e\",\"why\":\"w\"}]"}`)
 	got, err := parseRulings(wrapped)
@@ -706,8 +707,8 @@ func TestParseRulingsReadsTheIdOutOfWhatTheModelCopied(t *testing.T) {
 
 // A schema-dropping gateway has also returned rulings as an object instead of
 // an array: one ruling on its own, or a map keyed by the finding id. Both
-// carry the same rulings, and the pass reads them rather than failing open,
-// which is the failure that left findings unchecked in the field.
+// carry the same rulings, and the pass reads them rather than giving up on
+// the response, which is what left findings unchecked in the field.
 func TestParseRulingsToleratesObjectShapes(t *testing.T) {
 	single := []byte(`{"rulings":{"finding":"c1","verdict":"withdrawn","evidence":"e","why":"w"}}`)
 	got, err := parseRulings(single)
@@ -749,9 +750,9 @@ func TestParseRulingsToleratesObjectShapes(t *testing.T) {
 
 // A gateway has also returned the whole {"rulings":[…]} object as a JSON string
 // and escaped it only once, so the decoded value is not valid JSON: a quote
-// inside a finding's own text (a code snippet like == "") sits raw where the
-// wire should carry an escaped one. Seen on a large ruling over an internal
-// gateway, where it dropped every verdict. Re-escape those quotes
+// inside a finding's own text (a code snippet like == "") is left unescaped
+// where the wire should carry an escaped one. Seen on a large ruling over an
+// internal gateway, where it dropped every verdict. Re-escape those quotes
 // and read the rulings rather than leaving the findings unchecked.
 func TestParseRulingsRecoversAStringifiedObjectThatLostEscaping(t *testing.T) {
 	mangled := []byte(`{"rulings":"{\"rulings\":[{\"finding\":\"c1\",\"verdict\":\"kept\",` +

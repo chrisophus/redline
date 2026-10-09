@@ -10,8 +10,8 @@ import (
 
 // The describing call can go out on a model of its own. Two things have to
 // hold for that to be worth having: the request has to reach the right
-// endpoint with the right credential, and what it costs has to land somewhere
-// the ledger can still read. These are the tests for both.
+// endpoint with the right credential, and what it costs has to reach the
+// ledger in a form it can still read. These are the tests for both.
 
 // A review that names no describing endpoint makes the calls it always made.
 // This is the regression guard on every run that does not use this feature,
@@ -253,7 +253,7 @@ func TestLunaResolvesToItsOwnRate(t *testing.T) {
 		t.Errorf("gpt-5.6-luna priced at %+v, not the rate it was given", p)
 	}
 	// The direction is asserted as well as the pair, because the two numbers
-	// arrived transposed once and every cost line downstream rests on them
+	// arrived transposed once and every cost line downstream depends on them
 	// being the right way round.
 	if p.OutPerM <= p.InPerM {
 		t.Errorf("gpt-5.6-luna's output is not above its input: %+v", p)

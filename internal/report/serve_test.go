@@ -107,7 +107,7 @@ func TestOpenDirRejectsAForeignServerOnThePort(t *testing.T) {
 	}
 }
 
-// A plain static server — `python -m http.server` in the evidence directory —
+// A plain static server (`python -m http.server` in the evidence directory)
 // answers 200 for report.html but cannot identify itself, so it is not ours.
 func TestOpenDirRejectsAnUnidentifiedServer(t *testing.T) {
 	dir := reportDir(t)
