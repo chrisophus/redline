@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.3] - 2026-10-08
+
+### Added
+- **The report shows each file's walkthrough note beside its diff.** The
+  drill-in view puts the walkthrough's note for a file above that file's diff,
+  under a Walkthrough label. A file the walkthrough did not describe shows its
+  diff alone, as it did before.
+
+### Changed
+- **`claude-sonnet-5.5` has a price.** It is priced at the same rates as
+  `claude-sonnet-5`, $2 per million input tokens and $10 per million output
+  tokens. Before this, cost was not counted for it and `--max-cost` did not
+  apply, so a run on it was bounded only by its turn limit.
+- **Comments and docs use plainer words.** Em dashes and figurative phrasing
+  were replaced in comments, the README and this file. No behavior changed.
+
 ## [0.17.2] - 2026-10-03
 
 ### Added
