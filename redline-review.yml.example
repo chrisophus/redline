@@ -32,7 +32,10 @@ body_style: evidence
 # the pull request. Only low-confidence applies to the evidence body as well.
 #   intent         the pull request's title and description, as "Stated intent"
 #   composition    the lines-by-language-and-type table
-#   line-counts    lines added and removed on each file and group heading
+#   line-counts    lines added and removed beside each file and on each group
+#                  heading
+#   test-totals    test files as a heading with totals, with no row per file
+#   generated-totals  one heading with the generated files' count and totals
 #   evidence       the one-line-per-pane evidence table, folded
 #   coverage       per-file uncovered-added-lines column
 #   lint           per-file finding counts by severity, and the note that
@@ -46,6 +49,8 @@ body_style: evidence
 #   - intent
 #   - composition
 #   - line-counts
+#   - test-totals
+#   - generated-totals
 #   - evidence
 #   - coverage
 #   - lint

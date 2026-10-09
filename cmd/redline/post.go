@@ -58,16 +58,17 @@ func cmdPost(o opts) error {
 			return fmt.Errorf("posting a review needs the gh CLI on PATH: %w", err)
 		}
 	}
-	// The set of lines GitHub will accept a comment on, taken from the diff the
-	// session recorded against its own head. The review anchors to that head
-	// (payload.CommitID) and GitHub validates a comment's line against the
-	// commit the review names, so the check is against the session's diff, not
-	// the pull request's current diff: after a push the two differ and a line
-	// valid on the new head can be one GitHub rejects on the commit this review
-	// is for. A finding pointing off the diff rides in the body, not as a line
-	// comment: the review API is all-or-nothing, so one out-of-diff comment
-	// 422s the whole submission.
+	// GitHub's file patches are the authority for line comments. In particular,
+	// GitHub may recognize a rename that the session's path-by-path diff did not.
+	// Dry runs stay offline and use the recorded diff as their best available
+	// preview.
 	commentable := sessionCommentable(res.Change)
+	if !o.dryRun {
+		commentable, err = ghPRCommentable(owner, repo, num)
+		if err != nil {
+			return err
+		}
+	}
 	var prof *post.Profile
 	if o.profile != "" {
 		var perr error
@@ -370,29 +371,74 @@ func reviewRequest(p post.Payload) ghReviewRequest {
 	return req
 }
 
-// submitReview posts one review via `gh api`.
+// submitReview posts one review via `gh api`. GitHub validates every inline
+// comment before creating a review, so a stale or missing patch must not lose
+// the body and all other findings with it.
 func submitReview(owner, repo string, num int, p post.Payload) error {
-	body, err := json.Marshal(reviewRequest(p))
-	if err != nil {
-		return err
-	}
 	path := fmt.Sprintf("repos/%s/%s/pulls/%d/reviews", owner, repo, num)
-	cmd := exec.Command("gh", "api", "--method", "POST", path, "--input", "-")
-	cmd.Stdin = bytes.NewReader(body)
-	out, err := cmd.CombinedOutput()
+	request := reviewRequest(p)
+	out, err := submitReviewRequest(path, request)
+	if err == nil {
+		return nil
+	}
+	if !strings.Contains(out, "Line could not be resolved") || len(request.Comments) == 0 {
+		return fmt.Errorf("gh api POST %s: %s", path, strings.TrimSpace(out))
+	}
+
+	fmt.Fprintf(os.Stderr, "redline: GitHub could not resolve an inline review line; retrying once with all findings in the review body\n")
+	request = bodyOnlyReview(request)
+	out, err = submitReviewRequest(path, request)
 	if err != nil {
-		return fmt.Errorf("gh api POST %s: %s", path, strings.TrimSpace(string(out)))
+		return fmt.Errorf("gh api POST %s retry without inline comments: %s", path, strings.TrimSpace(out))
 	}
 	return nil
 }
 
-// sessionCommentable resolves the lines a review comment may anchor to from the
-// diff the session recorded against its own head. That diff is what the review
-// is posted against, so a line it shows is one GitHub accepts on the commit the
-// review names. A file with no recorded diff contributes nothing, so its
-// findings ride in the body; a session that recorded no diff at all resolves to
-// nil, which the payload builder reads as "do not filter", the same as an
-// offline preview.
+func submitReviewRequest(path string, request ghReviewRequest) (string, error) {
+	body, err := json.Marshal(request)
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.Command("gh", "api", "--method", "POST", path, "--input", "-")
+	cmd.Stdin = bytes.NewReader(body)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// bodyOnlyReview retains the inline findings and their suppression markers
+// when GitHub rejects a line anchor, so a later post does not repeat them.
+func bodyOnlyReview(request ghReviewRequest) ghReviewRequest {
+	if len(request.Comments) == 0 {
+		return request
+	}
+	const heading = "### Findings not shown inline\n\n"
+	body := request.Body
+	if !strings.Contains(body, heading) {
+		if body != "" && !strings.HasSuffix(body, "\n\n") {
+			body = strings.TrimRight(body, "\n") + "\n\n"
+		}
+		body += heading
+	}
+	added := 0
+	for _, comment := range request.Comments {
+		entry := fmt.Sprintf("- **%s:%d**\n\n%s\n\n", comment.Path, comment.Line, comment.Body)
+		if len(body)+len(entry)+128 > 65536 {
+			continue
+		}
+		body += entry
+		added++
+	}
+	if added < len(request.Comments) {
+		body += fmt.Sprintf("_%d inline finding(s) could not fit in this review body; see the full report._\n", len(request.Comments)-added)
+	}
+	request.Body = body
+	request.Comments = nil
+	return request
+}
+
+// sessionCommentable resolves line comments from the recorded diff for an
+// offline preview. Live posts use ghPRCommentable, whose patches match the
+// file list GitHub validates comments against.
 func sessionCommentable(ch *change.Set) map[string]map[int]bool {
 	if ch == nil || len(ch.Files) == 0 {
 		return nil
@@ -407,6 +453,35 @@ func sessionCommentable(ch *change.Set) map[string]map[int]bool {
 		return nil
 	}
 	return post.CommentableLines(patches)
+}
+
+type ghPRFile struct {
+	Filename string `json:"filename"`
+	Patch    string `json:"patch"`
+}
+
+// ghPRCommentable uses the paginated pull-request files response because its
+// patch fields are the same hunks GitHub checks when it accepts review comments.
+func ghPRCommentable(owner, repo string, num int) (map[string]map[int]bool, error) {
+	path := fmt.Sprintf("repos/%s/%s/pulls/%d/files", owner, repo, num)
+	cmd := exec.Command("gh", "api", "--paginate", "--slurp", path)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, ghError(path, err)
+	}
+	var pages [][]ghPRFile
+	if err := json.Unmarshal(out, &pages); err != nil {
+		return nil, fmt.Errorf("decode gh api %s: %w", path, err)
+	}
+	patches := make(map[string]string)
+	for _, page := range pages {
+		for _, file := range page {
+			if file.Patch != "" {
+				patches[file.Filename] = file.Patch
+			}
+		}
+	}
+	return post.CommentableLines(patches), nil
 }
 
 // changedPaths is every path in the change, for callers that want the paths

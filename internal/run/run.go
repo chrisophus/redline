@@ -345,6 +345,8 @@ func Run(opts Options) (*Result, error) {
 	// against, and comparing that needs the change assembled. Nothing
 	// between here and where it used to be built touches the tree.
 	res.Change = change.Build(repo, tgt, baseSHA, changed)
+	res.Report.Coverage.GeneratedAdded, res.Report.Coverage.GeneratedRemoved =
+		change.LineTotals(repo, baseSHA, tgt.Head, generated)
 	// The agent's review, if it has written one. Loaded before Finalize so its
 	// line comments become findings that get fingerprints stamped with the rest;
 	// verdicts merge after, joining on those fingerprints. Never fatal: a run

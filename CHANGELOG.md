@@ -5,11 +5,41 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.2] - 2026-10-03
+
+### Added
+- **`redline review --show-modified-tests` sends edited test files.** Test
+  code is normally left out of the review request and only named, because
+  coverage and mutation measure whether the tests are enough. Those checks
+  still pass when an existing test was edited to expect new, wrong output.
+  With the flag, test files the change modified are sent, and the review is
+  asked whether an expectation was changed to fit behavior the change does
+  not say it intends. New and deleted test files are still left out.
+
+## [0.17.1] - 2026-10-02
+
+### Fixed
+- **Renamed-file findings no longer lose a review.** Posting now uses GitHub's
+  pull-request file patches to decide which lines accept comments. If GitHub
+  still rejects an inline line, Redline retries once with those findings in
+  the review body. Recorded diffs now detect renames.
+
 This file starts at 0.10.0. Earlier entries are drawn from the annotated git
 tags, which remain the record for them: `git tag -l --format='%(contents)' vX.Y.Z`.
 Releases whose tag carries only a subject line are listed as that subject.
 
-## [Unreleased]
+## [0.17.0] - 2026-09-29
+
+### Added
+- **The walkthrough can show tests and generated files as totals only.**
+  `body_include: test-totals` turns each test group into its heading and
+  line totals, with no row per file. `generated-totals` adds one heading
+  with how many generated files run left out of the change and how many
+  lines they moved, which the session now records.
+
+### Changed
+- **`line-counts` puts the counts beside each path.** They were a Lines
+  column, which took width from the summary.
 
 ## [0.16.0] - 2026-09-24
 

@@ -85,6 +85,9 @@ func cmdReview(o opts) error {
 		LineCoverage: res.LineCoverage,
 		Prior:        res.PriorReview,
 		Note:         note,
+		// Off by default: the checks already measure whether the tests are
+		// enough, and test diffs are often half the request.
+		ShowModifiedTests: o.showModifiedTests,
 	}
 	// Price the estimate against what this installation's reviews actually
 	// emit, when it has emitted any.

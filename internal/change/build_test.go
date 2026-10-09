@@ -124,3 +124,27 @@ func TestBuildAddedLinesSpanTruncatedDiff(t *testing.T) {
 		t.Fatalf("the last added line must be present, got %d want %d", last, lines)
 	}
 }
+
+// LineTotals counts only the paths it is given, so generated output can be
+// sized without joining the change.
+func TestLineTotalsSumsOnlyTheNamedPaths(t *testing.T) {
+	r := newBuildRepo(t)
+	r.writeFile("a.go", []byte("package a\n"))
+	r.git("add", "-A")
+	r.git("commit", "-m", "base")
+	base := r.head()
+	r.writeFile("a.go", []byte("package a\n\nfunc A() {}\n"))
+	r.writeFile("gen/x.pb.go", []byte("one\ntwo\nthree\n"))
+	r.writeFile("gen/y.pb.go", []byte("four\n"))
+	r.git("add", "-A")
+	r.git("commit", "-m", "change")
+	head := r.head()
+
+	added, removed := change.LineTotals(r.open(), base, head, []string{"gen/x.pb.go", "gen/y.pb.go"})
+	if added != 4 || removed != 0 {
+		t.Errorf("LineTotals = +%d -%d, want +4 -0 from the two generated files alone", added, removed)
+	}
+	if a, rm := change.LineTotals(r.open(), base, head, nil); a != 0 || rm != 0 {
+		t.Errorf("no paths should count nothing, got +%d -%d", a, rm)
+	}
+}

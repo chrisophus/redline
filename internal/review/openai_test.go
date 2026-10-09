@@ -348,6 +348,19 @@ func TestARateComesOnlyFromItsOwnFamily(t *testing.T) {
 	}
 }
 
+func TestSonnet55UsesSonnet5Pricing(t *testing.T) {
+	sonnet5, ok := LookupPricing("claude-sonnet-5")
+	if !ok {
+		t.Fatal("claude-sonnet-5 must have a known rate")
+	}
+	for _, model := range []string{"claude-sonnet-5.5", "claude-sonnet-5.5-20261001"} {
+		got, ok := LookupPricing(model)
+		if !ok || got != sonnet5 {
+			t.Errorf("%s pricing = %+v (known=%v), want claude-sonnet-5 pricing %+v", model, got, ok, sonnet5)
+		}
+	}
+}
+
 func TestOpenAINoChoicesIsAnError(t *testing.T) {
 	srv, _, _, _ := openAIServer(t, func(w http.ResponseWriter, req openAIRequest) {
 		_, _ = io.WriteString(w, `{"usage":{"prompt_tokens":10,"completion_tokens":5}}`)
