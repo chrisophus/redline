@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Diffs in the report have syntax colouring.** Keywords, strings, comments,
+  numbers and function names are coloured for Go, TypeScript and JavaScript,
+  Python, Rust, the C family, Ruby, shell, SQL, YAML, JSON, CSS and a few
+  config formats. It is done in Go when the report is written, so the page
+  still needs no network. Files in other languages, such as Markdown, show
+  as before.
+- **The file drawer has Prev and Next buttons.** They step through the changed
+  files in the order the Drill in section lists them, without closing the
+  drawer. The `[` and `]` keys do the same.
+
+### Changed
+- **Findings in the drawer sit under the line they are about.** Before, every
+  finding for a file was stacked above its diff. A finding with no line, or
+  whose line the diff does not show, still goes above the diff. A button in
+  the drawer header hides the inline findings and leaves their lines
+  highlighted. The choice is remembered for the report.
+
 ## [0.17.3] - 2026-10-08
 
 ### Added
