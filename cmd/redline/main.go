@@ -294,8 +294,10 @@ func write(o opts, res *run.Result) error {
 	if err := os.WriteFile(filepath.Join(dir, "report.html"), []byte(html), 0o644); err != nil {
 		return err
 	}
+	// Best effort: the report is already on disk, and the Send to agent
+	// button is the only thing that needs this record.
 	if err := report.RecordAgent(dir); err != nil {
-		return err
+		fmt.Fprintf(os.Stderr, "redline: could not record the herdr pane: %v\n", err)
 	}
 	return writeArtifacts(dir, res.Evidence)
 }

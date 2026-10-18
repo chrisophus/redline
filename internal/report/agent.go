@@ -100,6 +100,11 @@ var herdrPrompt = func(ctx context.Context, t agentTarget, text string) error {
 // send to. A 404 hides the button.
 func handleAgent(abs string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			sendError(w, http.StatusMethodNotAllowed, "GET only")
+			return
+		}
 		t, ok := readAgent(abs)
 		if !ok {
 			http.NotFound(w, r)
