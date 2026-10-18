@@ -265,8 +265,8 @@ func emitJSON(v any) error {
 	return enc.Encode(v)
 }
 
-// write persists the run: findings.json, report.md, report.html, and any
-// captured artifacts. comments.json is never written here: it is the
+// write persists the run: findings.json, report.md, report.html, agent.json
+// when run from a herdr pane, and any captured artifacts. comments.json is never written here: it is the
 // reviewer's own state, and merging the two would clobber their decisions on
 // every re-run.
 func write(o opts, res *run.Result) error {
@@ -292,6 +292,9 @@ func write(o opts, res *run.Result) error {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "report.html"), []byte(html), 0o644); err != nil {
+		return err
+	}
+	if err := report.RecordAgent(dir); err != nil {
 		return err
 	}
 	return writeArtifacts(dir, res.Evidence)

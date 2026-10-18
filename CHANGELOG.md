@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **The report can send queued comments straight to a herdr agent.** When
+  `redline run` is started from a herdr pane, it records that pane in
+  `agent.json` in the session directory, and the report page shows a Send to
+  agent button beside Copy for the agent. The report server types the same
+  payload into that pane with `herdr agent prompt`, so there is nothing to
+  paste. The server accepts the request only from the report page itself,
+  and a run started outside herdr removes the record, so the button goes
+  away.
+
 ## [0.18.0] - 2026-10-09
 
 ### Added

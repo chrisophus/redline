@@ -451,6 +451,7 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
 <div class="bar">
   <span class="n" id="cmt-count">Nothing queued yet. Comment on a line or finding, or ask the agent to explain or change it.</span>
   <span>
+    <button id="send-cmts" hidden>Send to agent</button>
     <button id="copy-cmts">Copy for the agent</button>
     <button id="clear-cmts">Clear</button>
   </span>
@@ -980,11 +981,11 @@ textarea.new{width:100%;font:inherit;font-size:13px;padding:8px;border-radius:6p
   });
 })();
 
-document.getElementById("copy-cmts").addEventListener("click", function () {
-    // The payload names the change it belongs to. A bare list of file:line
-    // comments pasted into a session that has since moved on would be applied
-    // to the wrong tree, and the agent cannot tell without being told.
-    var payload = JSON.stringify({redlineReviewComments: {
+  // The payload names the change it belongs to. A bare list of file:line
+  // comments pasted into a session that has since moved on would be applied
+  // to the wrong tree, and the agent cannot tell without being told.
+  function agentPayload() {
+    return JSON.stringify({redlineReviewComments: {
       instruction: "A human reviewed this change. Each item below sits on a specific diff line or finding and carries an action. " +
         "For \"comment\", address the feedback: make the change or reply why not. " +
         "For \"explain\", explain that line or finding and the code around it, without changing code. " +
@@ -999,7 +1000,39 @@ document.getElementById("copy-cmts").addEventListener("click", function () {
         return c.action ? c : Object.assign({}, c, {action: "comment"});
       })
     }}, null, 2);
-    copyText(payload).then(function () {
+  }
+
+  // The server answers /agent only when `redline run` was started from a
+  // herdr pane, and a file:// page has no server at all, so the button stays
+  // hidden unless there is somewhere to send.
+  var sendBtn = document.getElementById("send-cmts");
+  var sendLabel = "Send to agent";
+  function flashSend(text) {
+    sendBtn.textContent = text;
+    setTimeout(function () { sendBtn.textContent = sendLabel; }, 4000);
+  }
+  if (location.protocol === "http:") {
+    fetch("/agent").then(function (r) { return r.ok ? r.json() : null; }).then(function (a) {
+      if (!a || !a.pane) return;
+      sendLabel = "Send to agent (" + a.pane + ")";
+      sendBtn.textContent = sendLabel;
+      sendBtn.hidden = false;
+    }).catch(function () {});
+  }
+  sendBtn.addEventListener("click", function () {
+    if (!state.comments.length) { flashSend("Nothing queued"); return; }
+    sendBtn.disabled = true;
+    fetch("/agent/send", {method: "POST", headers: {"Content-Type": "application/json"}, body: agentPayload()})
+      .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+      .then(function (res) {
+        flashSend(res.ok ? "Sent to " + res.j.pane : "Not sent: " + (res.j.error || "unknown error"));
+      })
+      .catch(function (e) { flashSend("Not sent: " + e.message); })
+      .then(function () { sendBtn.disabled = false; });
+  });
+
+  document.getElementById("copy-cmts").addEventListener("click", function () {
+    copyText(agentPayload()).then(function () {
       var b = document.getElementById("copy-cmts");
       b.textContent = "Copied — paste into your agent session";
       setTimeout(function () { b.textContent = "Copy for the agent"; }, 2500);

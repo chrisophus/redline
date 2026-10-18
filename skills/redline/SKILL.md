@@ -139,7 +139,9 @@ there looks hand-written, say so.
 
 The report lets a human act on any diff line or finding without writing code:
 comment on it, ask you to **Explain** it, or ask you to **Apply** a change. They
-collect these and press **Copy for the agent**. What they paste looks like this:
+collect these and press **Copy for the agent**, or, when you ran `redline run`
+from a herdr pane, **Send to agent**, which types it straight into your session.
+Either way, what arrives looks like this:
 
 ```json
 {"redlineReviewComments": {

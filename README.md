@@ -862,6 +862,17 @@ Serving and opening are best effort. If the port cannot be had or no
 browser can be launched, `run` warns and still exits 0: the report is on
 disk either way, and a completed run must not report failure.
 
+When `redline run` is started from a [herdr](https://herdr.dev) pane, which
+is what happens when an agent running in herdr runs it, the page gets a Send
+to agent button. It sends the comments you queued to that pane with `herdr
+agent prompt`, the same payload Copy for the agent puts on the clipboard. The
+pane is recorded in `agent.json` in the session directory. A run started
+outside herdr removes that file, and the button goes with it. The server
+takes the request only from the report page itself: it checks the `Origin`
+and `Sec-Fetch-Site` headers and requires a JSON body, so another page open
+in the same browser cannot type into your agent. If the agent is waiting on
+a permission prompt, the button says so and nothing is sent.
+
 ## What never reaches the screen
 
 Generated files leave the change before any pane or the report sees them,
