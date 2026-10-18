@@ -139,7 +139,9 @@ there looks hand-written, say so.
 
 The report lets a human act on any diff line or finding without writing code:
 comment on it, ask you to **Explain** it, or ask you to **Apply** a change. They
-collect these and press **Copy for the agent**. What they paste looks like this:
+collect these and press **Copy for the agent**, or, when you ran `redline run`
+from a herdr pane, **Send to agent**, which types it straight into your session.
+Either way, what arrives looks like this:
 
 ```json
 {"redlineReviewComments": {
@@ -173,9 +175,17 @@ When you receive it:
      that fix.
    `code` is the line as the reviewer saw it; use it to find the right place when
    line numbers have shifted.
-3. **Do not re-review the rest of the diff.** They asked about these lines.
-4. **Re-run `redline run`** when you are done, so the report reflects the new
-   state. Use the same target flags.
+3. **Reply to each item when the payload has a `reply` field.** That means it
+   came through Send to agent, and each item has an `id`. Run the command the
+   `reply` field gives, once per item, with a short answer in plain words: what
+   you changed, your explanation, or why you did not change it. The reviewer
+   reads it under their comment on the report, and `redline post` puts it on the
+   pull request, so write it for them.
+4. **Do not re-review the rest of the diff.** They asked about these lines.
+5. **Re-run `redline run`** when you are done, so the report reflects the new
+   state. Use the same target flags, and the `--out` from the payload's
+   `session` when it has one, so the report the reviewer has open is the one
+   that updates.
 
 ## Bring your review into the report
 

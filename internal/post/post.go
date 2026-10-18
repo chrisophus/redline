@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/conversation"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/pane/lint"
 	"github.com/chrisophus/redline/internal/target"
@@ -159,6 +160,10 @@ type Payload struct {
 	// it, because Unposted renders the body again and a prefix would be lost.
 	staleHead  string
 	unattested bool
+	// bodyThreads are the reviewer's exchanges with an agent that could not be
+	// anchored to a line; see WithConversation. Tracked like bodyFindings so
+	// Unposted can drop the ones already on the pull request.
+	bodyThreads []conversation.Item
 }
 
 // Stale records that the pull request's head has moved past the commit this
@@ -209,7 +214,7 @@ func (p Payload) staleNotice() string {
 // still has to post when the commit has never been reviewed, because that is
 // how the evidence summary arrives.
 func (p Payload) NothingNew() bool {
-	return len(p.Comments) == 0 && len(p.bodyFindings) == 0
+	return len(p.Comments) == 0 && len(p.bodyFindings) == 0 && len(p.bodyThreads) == 0
 }
 
 // Build assembles the review from a finished report. reportURL is a link to the
@@ -573,7 +578,8 @@ func buildBody(p Payload) string {
 	budget := maxBody - head0.Len() - len(tail)
 	middle := notShownSection(p.bodyFindings, p.CommitID, p.profile, budget)
 	low := lowConfidenceSection(p.lowConf, p.CommitID, p.profile, budget-len(middle))
-	return head0.String() + middle + low + tail
+	convo := conversationSection(p.bodyThreads, p.CommitID, budget-len(middle)-len(low))
+	return head0.String() + middle + low + convo + tail
 }
 
 // compositionSection is what the change is made of: its lines grouped by
@@ -827,7 +833,8 @@ func buildBodyWalkthrough(p Payload) string {
 	budget := maxBody - head0.Len() - len(tail)
 	middle := notShownSection(leftover, p.CommitID, p.profile, budget)
 	low := lowConfidenceSection(p.lowConf, p.CommitID, p.profile, budget-len(middle))
-	return head0.String() + middle + low + tail
+	convo := conversationSection(p.bodyThreads, p.CommitID, budget-len(middle)-len(low))
+	return head0.String() + middle + low + convo + tail
 }
 
 // filesIn keeps the files whose path is in paths, in their original order.
@@ -1345,6 +1352,13 @@ func (p Payload) Unposted(posted map[string]bool) Payload {
 			continue
 		}
 		out.bodyFindings = append(out.bodyFindings, f)
+	}
+	out.bodyThreads = nil
+	for _, it := range p.bodyThreads {
+		if posted[threadFingerprint(it)] {
+			continue
+		}
+		out.bodyThreads = append(out.bodyThreads, it)
 	}
 	out.Body = out.renderBody()
 	return out

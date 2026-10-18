@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/conversation"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/post"
 	"github.com/chrisophus/redline/internal/run"
@@ -94,6 +95,13 @@ func cmdPost(o opts) error {
 		}
 		payload = payload.WithMeta(intent, reviewedBy)
 	}
+	// What the reviewer sent an agent from the report page, and the agent's
+	// replies, so a review done locally reaches the pull request.
+	convo, err := conversation.Load(o.out)
+	if err != nil {
+		return err
+	}
+	payload = payload.WithConversation(convo.Items, commentable)
 
 	// A session outlives the head it observed, so a review can be posted
 	// against a commit that is no longer the tip. In CI that is a race: a

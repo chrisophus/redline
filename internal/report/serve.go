@@ -79,7 +79,9 @@ func Serve(outDir string, port int) error {
 
 // serveHandler routes the report server. It serves only report.html and the
 // evidence/ subtree, with directory listing off, so serve.json and the
-// session it records stay off the wire. Every request is refused unless its
+// session it records stay off the wire. /agent and /agent/send hand the
+// page's comments to a herdr agent, and /conversation gives back what was
+// sent and replied; see agent.go. Every request is refused unless its
 // Host is loopback: session.json carries every diff and file body, and a page
 // on another origin that rebinds DNS to 127.0.0.1 would otherwise become
 // same-origin and read it.
@@ -93,6 +95,9 @@ func serveHandler(abs string, info serverInfo, idle *idleTimer) http.Handler {
 		http.ServeFile(w, r, filepath.Join(abs, "report.html"))
 	}
 	mux.HandleFunc("/report.html", report)
+	mux.HandleFunc("/agent", handleAgent(abs))
+	mux.HandleFunc("/agent/send", handleAgentSend(abs))
+	mux.HandleFunc("/conversation", handleConversation(abs))
 	mux.Handle("/evidence/", http.StripPrefix("/evidence",
 		http.FileServer(noListDir{http.Dir(filepath.Join(abs, "evidence"))})))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

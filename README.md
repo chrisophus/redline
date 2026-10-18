@@ -772,6 +772,15 @@ still-live finding does not read as fixed rather than being said twice. `gh`
 supplies the credentials; Redline never handles a token. `--report-url` links
 the full report (e.g. a CI artifact) from the review body.
 
+Comments you sent an agent from the report page, and its replies, are posted
+too, so a review done locally shows up on the pull request. Each exchange is a
+line comment with your words quoted and the agent's reply under them, when its
+line is on the new side of the diff; otherwise it goes in the review body under
+"Review conversation". Each carries a hidden marker, so a re-post does not
+repeat it, except that an exchange posted before the agent replied is posted
+once more when the reply is there. Comments you queued and never sent stay in
+your browser and are not posted.
+
 `--profile PATH` is how a repo's merge gate reads the review. The YAML names
 the hidden markers, which severities fail (default: error and warning), and
 whether posting is author-only and whether the gate verdict must be of the
@@ -861,6 +870,25 @@ idle, or on `redline serve --stop`.
 Serving and opening are best effort. If the port cannot be had or no
 browser can be launched, `run` warns and still exits 0: the report is on
 disk either way, and a completed run must not report failure.
+
+When `redline run` is started from a [herdr](https://herdr.dev) pane, which
+is what happens when an agent running in herdr runs it, the page gets a Send
+to agent button, in the bar at the foot of the page and in the file drawer.
+It sends the comments you queued to that pane with `herdr agent prompt`, the
+same payload Copy for the agent puts on the clipboard, plus the session
+directory and the command the agent answers with. The pane is recorded in
+`agent.json` in the session directory. A run started outside herdr removes
+that file, and the buttons go with it. The server takes the request only from
+the report page itself: it checks the `Origin` and `Sec-Fetch-Site` headers
+and requires a JSON body, so another page open in the same browser cannot
+type into your agent. If the agent is waiting on a permission prompt, the
+button says so and nothing is sent.
+
+What was sent is saved to `conversation.json` in the session directory. The
+agent answers each comment with `redline reply --out DIR --id ID --text
+TEXT`, and the page shows the reply under the comment within a few seconds,
+without a reload. `redline post` puts each comment and its reply on the pull
+request; see Posting.
 
 ## What never reaches the screen
 

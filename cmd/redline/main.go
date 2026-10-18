@@ -57,6 +57,7 @@ type opts struct {
 	scoutModel, scoutEffort                                           string
 	synopsisModel, synopsisAPI, synopsisBaseURL, synopsisEffort       string
 	since                                                             string
+	replyID, replyText                                                string
 	recap                                                             bool
 	open, stop, dryRun, file, prepare, allowMissingCoverage           bool
 	noLint                                                            bool
@@ -265,8 +266,8 @@ func emitJSON(v any) error {
 	return enc.Encode(v)
 }
 
-// write persists the run: findings.json, report.md, report.html, and any
-// captured artifacts. comments.json is never written here: it is the
+// write persists the run: findings.json, report.md, report.html, agent.json
+// when run from a herdr pane, and any captured artifacts. comments.json is never written here: it is the
 // reviewer's own state, and merging the two would clobber their decisions on
 // every re-run.
 func write(o opts, res *run.Result) error {
@@ -293,6 +294,11 @@ func write(o opts, res *run.Result) error {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "report.html"), []byte(html), 0o644); err != nil {
 		return err
+	}
+	// Best effort: the report is already on disk, and the Send to agent
+	// button is the only thing that needs this record.
+	if err := report.RecordAgent(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "redline: could not record the herdr pane: %v\n", err)
 	}
 	return writeArtifacts(dir, res.Evidence)
 }
