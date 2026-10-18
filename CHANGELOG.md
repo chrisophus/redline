@@ -15,7 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   payload into that pane with `herdr agent prompt`, so there is nothing to
   paste. The server accepts the request only from the report page itself,
   and a run started outside herdr removes the record, so the button goes
-  away.
+  away. The file drawer has the button too, since it covers the bar.
+- **Agent replies show on the report and post to the pull request.** What
+  Send to agent sent is saved to `conversation.json` in the session
+  directory. The agent answers each comment with the new `redline reply`
+  command, and the page shows the reply under the comment without a reload.
+  `redline post` puts each comment and its reply on the pull request, as a
+  line comment when the line is in the diff and in the review body otherwise,
+  so a review done locally shows up on GitHub.
 
 ## [0.18.0] - 2026-10-09
 

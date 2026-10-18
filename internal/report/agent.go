@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/chrisophus/redline/internal/conversation"
 )
 
 // agentFile records the herdr pane that ran `redline run`. When it is there,
@@ -145,11 +147,9 @@ func handleAgentSend(abs string) http.HandlerFunc {
 			sendError(w, http.StatusRequestEntityTooLarge, "payload too large")
 			return
 		}
-		var probe struct {
-			Comments json.RawMessage `json:"redlineReviewComments"`
-		}
-		if json.Unmarshal(body, &probe) != nil || len(probe.Comments) == 0 {
-			sendError(w, http.StatusBadRequest, "not a redlineReviewComments payload")
+		text, items, err := withReplyInstructions(body, abs)
+		if err != nil {
+			sendError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		t, ok := readAgent(abs)
@@ -159,11 +159,93 @@ func handleAgentSend(abs string) http.HandlerFunc {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
-		if err := herdrPrompt(ctx, t, string(body)); err != nil {
+		if err := herdrPrompt(ctx, t, text); err != nil {
 			sendError(w, http.StatusBadGateway, err.Error())
 			return
 		}
-		writeJSONResponse(w, http.StatusOK, map[string]string{"pane": t.Pane})
+		// Recorded only once herdr took it, so the record holds what the agent
+		// was actually given. The prompt has gone either way, so a failure here
+		// is reported without being treated as a failed send.
+		resp := map[string]string{"pane": t.Pane}
+		if err := conversation.AddSent(abs, items, time.Now().UTC()); err != nil {
+			resp["warning"] = "sent, but not saved for replies: " + err.Error()
+		}
+		writeJSONResponse(w, http.StatusOK, resp)
+	}
+}
+
+// withReplyInstructions checks the page's payload and adds what the agent
+// needs to answer each item where the reviewer will see it: the session
+// directory and the `redline reply` command. It returns the text to send and
+// the items to record.
+func withReplyInstructions(body []byte, abs string) (string, []conversation.Item, error) {
+	var outer map[string]json.RawMessage
+	if json.Unmarshal(body, &outer) != nil || len(outer["redlineReviewComments"]) == 0 {
+		return "", nil, errors.New("not a redlineReviewComments payload")
+	}
+	var inner map[string]any
+	if err := json.Unmarshal(outer["redlineReviewComments"], &inner); err != nil {
+		return "", nil, errors.New("not a redlineReviewComments payload")
+	}
+	raw, _ := json.Marshal(inner["comments"])
+	var items []conversation.Item
+	if err := json.Unmarshal(raw, &items); err != nil || len(items) == 0 {
+		return "", nil, errors.New("the payload has no comments")
+	}
+	for _, it := range items {
+		if it.ID == "" {
+			return "", nil, errors.New("a comment has no id; reload the report")
+		}
+	}
+	inner["session"] = abs
+	inner["reply"] = "When you have handled an item, record a short reply to it for the reviewer, in plain words: " +
+		"what you changed, or your explanation, or why you did not change it. " +
+		"Run: " + redlineCommand() + " reply --out " + shellQuote(abs) + " --id <the item's id> --text '<reply>'. " +
+		"For a longer reply, leave out --text and pipe the reply in on stdin. " +
+		"The reviewer reads it under their comment on the report, and `redline post` puts it on the pull request, " +
+		"so write it for them, not as a note to yourself."
+	// The agent reads this in a terminal, where < for "<" is noise.
+	var out strings.Builder
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(map[string]any{"redlineReviewComments": inner}); err != nil {
+		return "", nil, err
+	}
+	return strings.TrimSpace(out.String()), items, nil
+}
+
+// redlineCommand is how the agent should invoke redline: this server's own
+// binary, which is the build that wrote the report and knows `reply`. The
+// redline on the agent's PATH may be an older one. Bare "redline" when the
+// path cannot be found, and under go test, whose binary is not redline.
+func redlineCommand() string {
+	exe, err := os.Executable()
+	if err != nil || underGoTest() {
+		return "redline"
+	}
+	return shellQuote(exe)
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// handleConversation hands the page the record of what was sent and what the
+// agent replied, which it polls to show replies under each comment.
+func handleConversation(abs string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			sendError(w, http.StatusMethodNotAllowed, "GET only")
+			return
+		}
+		rec, err := conversation.Load(abs)
+		if err != nil {
+			sendError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSONResponse(w, http.StatusOK, rec)
 	}
 }
 

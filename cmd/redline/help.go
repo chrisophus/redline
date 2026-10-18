@@ -34,6 +34,8 @@ var commands = []command{
 		flags: postFlags, help: postHelp, run: cmdPost},
 	{name: "postmortem", summary: "read back what the last review did: what it\n              proposed, what the lookups found, what was ruled",
 		flags: postmortemFlags, help: postmortemHelp, run: cmdPostmortem},
+	{name: "reply", summary: "record an agent's reply to a comment sent from the report",
+		flags: replyFlags, help: replyHelp, run: cmdReply},
 	{name: "open", summary: "serve and open the last report",
 		flags: openFlags, help: openHelp, run: cmdOpen},
 	{name: "serve", summary: "serve .redline over http (blocks; --stop ends it)",
@@ -203,6 +205,12 @@ func postFlags(fs *flag.FlagSet, o *opts) {
 func postmortemFlags(fs *flag.FlagSet, o *opts) {
 	outFlag(fs, o)
 	fs.StringVar(&o.format, "format", "report", "report|json")
+}
+
+func replyFlags(fs *flag.FlagSet, o *opts) {
+	outFlag(fs, o)
+	fs.StringVar(&o.replyID, "id", "", "id of the comment being answered")
+	fs.StringVar(&o.replyText, "text", "", "the reply; read from stdin when empty")
 }
 
 func openFlags(fs *flag.FlagSet, o *opts) {
@@ -626,6 +634,22 @@ ruled.
 flags:
   --format FMT      report|json (default report); json is the whole trace as
                     it was written
+`
+
+const replyHelp = `redline reply — record an agent's reply to a comment sent from the report
+
+usage:
+  redline reply --out DIR --id ID --text TEXT
+  redline reply --out DIR --id ID < reply.txt
+
+The report page's Send to agent button tells the agent which session
+directory and id to use. The reply shows under the reviewer's comment on the
+report, and redline post puts the comment and the reply on the pull request.
+A second reply to the same id replaces the first.
+
+flags:
+  --id ID           the id of the comment being answered
+  --text TEXT       the reply; when empty it is read from stdin
 `
 
 const openHelp = `redline open — serve and open the last report

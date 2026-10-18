@@ -10,9 +10,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/chrisophus/redline/internal/conversation"
 )
 
-const sendBody = `{"redlineReviewComments":{"target":"PR #1","comments":[{"action":"comment","file":"a.go","line":3,"text":"why"}]}}`
+const sendBody = `{"redlineReviewComments":{"target":"PR #1","comments":[{"id":"c1","action":"comment","file":"a.go","line":3,"text":"why"}]}}`
 
 // agentServer is reportServer with agent.json in place, and herdrPrompt
 // replaced by a recorder.
@@ -56,11 +58,36 @@ func TestAgentSendPromptsTheRecordedPane(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}
-	if len(*sent) != 1 || (*sent)[0] != "w5:p1 /tmp/herdr.sock "+sendBody {
-		t.Errorf("sent %q", *sent)
+	if len(*sent) != 1 || !strings.HasPrefix((*sent)[0], "w5:p1 /tmp/herdr.sock {") {
+		t.Fatalf("sent %q", *sent)
+	}
+	// The agent is told where and how to reply, and the comment itself
+	// arrives unchanged.
+	for _, want := range []string{`"text": "why"`, `"session": "`, "redline reply --out '", `--id <the item's id>`} {
+		if !strings.Contains((*sent)[0], want) {
+			t.Errorf("sent text lacks %q:\n%s", want, (*sent)[0])
+		}
 	}
 	if r := request(h, "127.0.0.1:8765", "/agent"); r.StatusCode != http.StatusOK {
 		t.Errorf("/agent got %d, want 200", r.StatusCode)
+	}
+	// What was sent is recorded, so the page can show replies and post can
+	// carry it.
+	r := request(h, "127.0.0.1:8765", "/conversation")
+	var rec2 conversation.Record
+	if err := json.NewDecoder(r.Body).Decode(&rec2); err != nil || len(rec2.Items) != 1 || rec2.Items[0].ID != "c1" {
+		t.Errorf("/conversation = %+v, %v", rec2, err)
+	}
+}
+
+func TestAgentSendRefusesCommentsWithoutID(t *testing.T) {
+	h, sent := agentServer(t, nil)
+	body := `{"redlineReviewComments":{"comments":[{"action":"comment","file":"a.go","line":3}]}}`
+	if rec := postSend(h, "http://127.0.0.1:8765", "application/json", body); rec.Code != http.StatusBadRequest {
+		t.Errorf("got %d, want 400", rec.Code)
+	}
+	if len(*sent) != 0 {
+		t.Errorf("sent %q", *sent)
 	}
 }
 
