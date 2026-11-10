@@ -1477,6 +1477,29 @@ func FindingFingerprint(body string) (string, bool) {
 	return string(raw), true
 }
 
+// PostedFinding is one finding marker as written: the head commit it was posted
+// for, and its fingerprint.
+type PostedFinding struct {
+	Head        string
+	Fingerprint string
+}
+
+// PostedFindings reads every finding marker in a body, in order, with the head
+// SHA that FindingFingerprint ignores. A review body carries one per finding it
+// folded in. `redline dispositions` needs the head, because whether a later
+// commit fixed a finding depends on which commit it was said for.
+func PostedFindings(body string) []PostedFinding {
+	var out []PostedFinding
+	for _, m := range fpMarkerRe.FindAllStringSubmatch(body, -1) {
+		raw, err := hex.DecodeString(m[2])
+		if err != nil {
+			continue
+		}
+		out = append(out, PostedFinding{Head: strings.ToLower(m[1]), Fingerprint: string(raw)})
+	}
+	return out
+}
+
 // QuestionIn reads the question a posted comment's finding asked, from the
 // marker commentBody wrote. Empty when the comment predates the marker, or
 // when the finding asked nothing a lookup could settle.

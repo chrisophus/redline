@@ -1293,3 +1293,18 @@ func TestWalkthroughTestAndGeneratedTotals(t *testing.T) {
 		t.Errorf("without the keys test files are listed and generated ones are not:\n%s", plain.Body)
 	}
 }
+
+func TestPostedFindings_ReadsEveryMarkerWithItsHead(t *testing.T) {
+	t.Parallel()
+	body := "<!-- redline:fp:ABC1234:" + fmt.Sprintf("%x", "a.go\x00one") + " -->\n" +
+		"<!-- redline:fp:abc1234:zz -->\n" +
+		"<!-- redline:fp:def5678:" + fmt.Sprintf("%x", "b.go\x00two") + " -->"
+	got := PostedFindings(body)
+	want := []PostedFinding{{Head: "abc1234", Fingerprint: "a.go\x00one"}, {Head: "def5678", Fingerprint: "b.go\x00two"}}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("PostedFindings = %q, want %q", got, want)
+	}
+	if got := PostedFindings("plain comment"); got != nil {
+		t.Fatalf("no markers should read as nil, got %q", got)
+	}
+}

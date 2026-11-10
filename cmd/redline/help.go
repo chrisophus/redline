@@ -42,6 +42,8 @@ var commands = []command{
 		flags: serveFlags, help: serveHelp, run: cmdServe},
 	{name: "gc", summary: "remove this repo's cached review worktrees (~/.redline/worktrees)",
 		flags: gcFlags, help: gcHelp, run: cmdGC},
+	{name: "dispositions", summary: "record what became of each review finding on\n              pull requests, as JSONL",
+		flags: dispositionsFlags, help: dispositionsHelp, run: cmdDispositions},
 }
 
 func commandNamed(name string) (command, bool) {
@@ -55,7 +57,8 @@ func commandNamed(name string) (command, bool) {
 
 // globalFlags are the flags listed once in `redline help` rather than under
 // each command. --out is every command's but gc's, which works on
-// ~/.redline/worktrees and has no session to find.
+// ~/.redline/worktrees, and dispositions', which reads GitHub; neither has a
+// session to find.
 var globalFlags = []string{"out", "session"}
 
 func usage() string {
@@ -223,6 +226,15 @@ func serveFlags(fs *flag.FlagSet, o *opts) {
 	outFlag(fs, o)
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 	fs.BoolVar(&o.stop, "stop", false, "stop the report server for --out")
+}
+
+func dispositionsFlags(fs *flag.FlagSet, o *opts) {
+	fs.StringVar(&o.pr, "pr", "", "comma-separated pull request numbers")
+	fs.IntVar(&o.recent, "recent", 0, "the N most recently updated pull requests, in any state")
+	fs.StringVar(&o.repo, "repo", "", "OWNER/NAME (default: the current repository)")
+	fs.StringVar(&o.artifacts, "artifacts", "", "directory of downloaded Redline CI artifacts")
+	fs.StringVar(&o.jsonl, "jsonl", "", "directory to write the JSONL files into")
+	fs.StringVar(&o.evidenceMarker, "evidence-marker", "", "marker that opens a PR's evidence comment")
 }
 
 func gcFlags(fs *flag.FlagSet, o *opts) {
@@ -686,4 +698,32 @@ Removes the worktrees a --commit, --branch, --range or --pr run cached under
 
 flags:
   --older-than D    only remove cached worktrees older than D (e.g. 168h)
+`
+
+const dispositionsHelp = `redline dispositions — record what became of each review finding
+
+usage:
+  redline dispositions (--pr N[,N...] | --recent N) [flags]
+
+Reads each pull request's review threads and comments with gh and git and
+says, for every finding, whether it was fixed, declined, left open, went
+stale, or was never posted. That covers Redline's findings and the threads
+other review bots and people opened. A thread's disposition comes from the
+author's reply first ("Addressed in <sha>", "**Not fixing (intentional).**"),
+then from whether a later commit changed the lines it was anchored to.
+Prints a summary. Never writes to GitHub.
+
+flags:
+  --pr N[,N...]     pull request numbers
+  --recent N        the N most recently updated pull requests, in any state
+  --repo O/N        the repository (default: the current one)
+  --artifacts DIR   downloaded Redline CI artifacts, one redline-pr-<n>-<run>
+                    directory each. Adds source, confidence and scope, and
+                    the findings Redline kept but never posted.
+  --jsonl DIR       write findings.jsonl, dispositions.jsonl and prs.jsonl
+                    into DIR, one row per line
+  --evidence-marker M
+                    the marker that opens a PR's evidence comment; its
+                    Verified, Refuted and Not verified rows are counted
+                    on the PR's row. Without it, no evidence is read.
 `

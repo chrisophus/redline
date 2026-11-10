@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`redline dispositions` records what became of each review finding.** For
+  the pull requests named by `--pr` or `--recent`, it says whether each
+  finding was fixed, declined, left open, went stale, or was never posted,
+  covering Redline's findings and the threads other review bots and people
+  opened. The author's reply decides first; without one, a later commit that
+  changed the anchored lines counts as a fix. `--artifacts` reads downloaded
+  CI artifacts for the findings Redline never posted, `--jsonl` writes one
+  file per table, and `--evidence-marker` counts the rows of a PR's evidence
+  comment. It reads with the caller's `gh` login and never writes to GitHub.
+
 ## [0.19.0] - 2026-10-18
 
 ### Added

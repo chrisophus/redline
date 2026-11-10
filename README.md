@@ -141,6 +141,7 @@ go build ./cmd/redline
 ./redline open                    # serve and open http://127.0.0.1:8765/report.html
 ./redline serve --stop            # stop the server for this .redline
 ./redline gc                      # remove this repo's cached review worktrees
+./redline dispositions --recent 50 --jsonl out/  # what became of each review finding
 ```
 
 `run` writes `findings.json`, `report.md`, `report.html`, and any captured
@@ -155,6 +156,17 @@ out in a detached worktree, cached under `~/.redline/worktrees` and reused
 across runs so a second review of the same commit is instant. The cache is
 left in place on purpose; `redline gc` reclaims it for the current repository
 (`--older-than 168h` keeps recent worktrees).
+
+`redline dispositions` looks back at pull requests that were already reviewed
+and says what became of each finding: fixed, declined, left open, stale, or
+never posted. It reads Redline's threads and the threads other review bots and
+people opened, with the caller's own `gh` login, and never writes to GitHub.
+The author's reply decides first (`Addressed in <sha>`, `**Not fixing
+(intentional).**`); without one, a later commit that changed the anchored lines
+counts as a fix. `--artifacts DIR` adds what only the CI artifacts kept (source,
+confidence, the findings Redline never posted), and `--jsonl DIR` writes
+`findings.jsonl`, `dispositions.jsonl` and `prs.jsonl` for a loader to copy
+into a database.
 
 Target (`run`, `review`, and `--pr` on `post`; pass only one): the working tree by default,
 `--commit REF` for that commit against its parent (`HEAD` for the latest),
@@ -980,6 +992,7 @@ internal/pane/migrations   migration hygiene
 internal/pane/openapi      contract breaking-change diff
 internal/pane/parity       capabilities added to one of a set of parallel
                            implementations and not its siblings
+internal/dispositions what became of each review finding on past pull requests
 internal/post         the PR review payload and merge-gate profile
 internal/provider     finding and running language context providers
 internal/postmortem   what a review did, kept for `redline postmortem`
