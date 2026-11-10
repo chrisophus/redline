@@ -16,20 +16,27 @@ func qMarker(key string) string {
 func TestParseMarkers_DecodesFingerprintQuestionAndHead(t *testing.T) {
 	t.Parallel()
 	body := "**Warning · agent** — text\n" + fpMarker("ABCDEF1", "a.go\x00agent-comment\x00msg") + qMarker("caller\x00thing")
-	m := ParseMarkers(body)
-	assert.Equal(t, "abcdef1", m.HeadSHA)
-	assert.Equal(t, "a.go\x00agent-comment\x00msg", m.Fingerprint)
-	assert.Equal(t, "caller\x00thing", m.Question)
-	assert.Empty(t, m.ReviewHead)
+	want := Markers{HeadSHA: "abcdef1", Fingerprint: "a.go\x00agent-comment\x00msg", Question: "caller\x00thing"}
+	if got := ParseMarkers(body); got != want {
+		t.Errorf("ParseMarkers = %+q, want %+q", got, want)
+	}
 }
 
 func TestParseMarkers_ReviewBodyAndGarbage(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "deadbeef", ParseMarkers("<!-- redline:review:DEADBEEF -->").ReviewHead)
+	if got := ParseMarkers("<!-- redline:review:DEADBEEF -->").ReviewHead; got != "deadbeef" {
+		t.Errorf("ReviewHead = %q, want deadbeef", got)
+	}
 	// Non-hex payloads and bodies without markers decode to nothing instead of failing.
-	assert.Equal(t, Markers{}, ParseMarkers("<!-- redline:fp:abc:zz -->"))
-	assert.Equal(t, Markers{}, ParseMarkers("plain comment"))
-	assert.Equal(t, Markers{}, ParseMarkers("<!-- redline:fp:abc:abc -->"), "odd-length hex does not decode")
+	for _, body := range []string{
+		"<!-- redline:fp:abc:zz -->",
+		"plain comment",
+		"<!-- redline:fp:abc:abc -->", // odd-length hex
+	} {
+		if got := ParseMarkers(body); got != (Markers{}) {
+			t.Errorf("ParseMarkers(%q) = %+q, want nothing", body, got)
+		}
+	}
 }
 
 const testMarker = "<!-- mct-pr-evidence -->"
@@ -53,23 +60,27 @@ const evidenceBody = `<!-- mct-pr-evidence -->
 
 func TestParseEvidence_CountsClaimsAndGaps(t *testing.T) {
 	t.Parallel()
-	ev := ParseEvidence(evidenceBody, testMarker)
-	assert.True(t, ev.Present)
-	assert.Equal(t, 2, ev.Verified)
-	assert.Equal(t, 1, ev.Refuted)
-	assert.Equal(t, 2, ev.NotVerified, "bullets under Not verified count; residual risk bullets do not")
+	// Bullets under Not verified count; residual risk bullets do not.
+	want := Evidence{Present: true, Verified: 2, Refuted: 1, NotVerified: 2}
+	if got := ParseEvidence(evidenceBody, testMarker); got != want {
+		t.Errorf("ParseEvidence = %+v, want %+v", got, want)
+	}
 }
 
 func TestParseEvidence_AbsentWithoutMarker(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, Evidence{}, ParseEvidence("| a | b | Verified |", testMarker))
-	assert.Equal(t, Evidence{}, ParseEvidence(evidenceBody, ""), "no marker configured, no evidence read")
+	if got := ParseEvidence("| a | b | Verified |", testMarker); got != (Evidence{}) {
+		t.Errorf("a body without the marker = %+v, want nothing", got)
+	}
+	if got := ParseEvidence(evidenceBody, ""); got != (Evidence{}) {
+		t.Errorf("no marker configured = %+v, want nothing read", got)
+	}
 }
 
 func TestParseEvidence_NotVerifiedTableRow(t *testing.T) {
 	t.Parallel()
-	ev := ParseEvidence(testMarker+"\n| c | k | Not verified, needs login |\n", testMarker)
-	assert.True(t, ev.Present)
-	assert.Equal(t, 1, ev.NotVerified)
-	assert.Zero(t, ev.Verified)
+	want := Evidence{Present: true, NotVerified: 1}
+	if got := ParseEvidence(testMarker+"\n| c | k | Not verified, needs login |\n", testMarker); got != want {
+		t.Errorf("ParseEvidence = %+v, want %+v", got, want)
+	}
 }

@@ -2,6 +2,7 @@ package dispositions
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -47,36 +48,52 @@ func basePR(state string, ths ...Thread) PR {
 	return PR{Number: 10, State: state, CreatedAt: t0, Commits: commits("c1", "c2", "c3"), Threads: ths}
 }
 
+func mustDerive(t *testing.T, pr PR, runs []Run, d Differ, now time.Time) Result {
+	t.Helper()
+	res, err := Derive(pr, runs, d, now)
+	if err != nil {
+		t.Fatalf("Derive: %v", err)
+	}
+	return res
+}
+
+// derive1 returns the first thread disposition Derive produces.
 func derive1(t *testing.T, pr PR, runs []Run, d fakeDiff) DispositionRow {
 	t.Helper()
-	res, err := Derive(pr, runs, d, t0.Add(48*time.Hour))
-	require.NoError(t, err)
+	res := mustDerive(t, pr, runs, d, t0.Add(48*time.Hour))
 	for i := range res.Dispositions {
 		if res.Dispositions[i].Channel == ChannelThread {
 			return res.Dispositions[i]
 		}
 	}
-	require.Fail(t, "no thread disposition derived")
+	t.Fatal("no thread disposition derived")
 	return DispositionRow{}
+}
+
+func byFile(rows []DispositionRow) map[string]DispositionRow {
+	out := map[string]DispositionRow{}
+	for _, d := range rows {
+		out[d.File] = d
+	}
+	return out
 }
 
 func TestDerive_Dispositions(t *testing.T) {
 	t.Parallel()
 	q := "caller\x00foo"
 	cases := []struct {
-		name    string
-		pr      PR
-		d       fakeDiff
-		want    Disposition
-		fixSHA  string
-		anchor  string
-		channel string
+		name   string
+		pr     PR
+		d      fakeDiff
+		want   Disposition
+		fixSHA string
+		anchor string
 	}{
 		{
 			name: "resolved and a later commit edits the anchor is fixed",
 			pr:   basePR("MERGED", thread(100, "c1", "fp1", q, true)),
 			d:    fakeDiff{hunks: map[string][]Hunk{"c2|a.go": edit(102, 1)}},
-			want: DispFixed, fixSHA: "c2", anchor: AnchorLine, channel: ChannelThread,
+			want: DispFixed, fixSHA: "c2", anchor: AnchorLine,
 		},
 		{
 			name: "resolved with edits far from the anchor is declined",
@@ -154,11 +171,21 @@ func TestDerive_Dispositions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := derive1(t, tc.pr, nil, tc.d)
-			assert.Equal(t, string(tc.want), got.Disposition)
-			assert.Equal(t, tc.fixSHA, got.FixCommitSha)
-			assert.Equal(t, tc.anchor, got.AnchorKind)
-			assert.NotEmpty(t, got.FirstHeadSha)
-			assert.Equal(t, "human", got.AuthorKind)
+			if got.Disposition != string(tc.want) {
+				t.Errorf("Disposition = %q, want %q", got.Disposition, tc.want)
+			}
+			if got.FixCommitSha != tc.fixSHA {
+				t.Errorf("FixCommitSha = %q, want %q", got.FixCommitSha, tc.fixSHA)
+			}
+			if got.AnchorKind != tc.anchor {
+				t.Errorf("AnchorKind = %q, want %q", got.AnchorKind, tc.anchor)
+			}
+			if got.FirstHeadSha == "" {
+				t.Error("FirstHeadSha is empty")
+			}
+			if got.AuthorKind != "human" {
+				t.Errorf("AuthorKind = %q, want human", got.AuthorKind)
+			}
 		})
 	}
 }
@@ -166,13 +193,19 @@ func TestDerive_Dispositions(t *testing.T) {
 func TestDerive_FindingKeyUsesQuestionWhenPresent(t *testing.T) {
 	t.Parallel()
 	withQ := derive1(t, basePR("OPEN", thread(5, "c1", "fp1", "caller\x00foo", false)), nil, fakeDiff{})
-	assert.NotEmpty(t, withQ.QuestionID)
-	assert.Equal(t, withQ.QuestionID, withQ.FindingKey)
-	assert.NotEqual(t, withQ.FindingID, withQ.FindingKey)
+	if withQ.QuestionID == "" || withQ.FindingKey != withQ.QuestionID {
+		t.Errorf("with a question, FindingKey = %q, want the QuestionID %q", withQ.FindingKey, withQ.QuestionID)
+	}
+	if withQ.FindingKey == withQ.FindingID {
+		t.Errorf("with a question, FindingKey should not be the FindingID %q", withQ.FindingID)
+	}
 
+	// No question falls back to the finding id, so findings do not collapse onto one empty key.
 	noQ := derive1(t, basePR("OPEN", thread(5, "c1", "fp1", "", false)), nil, fakeDiff{})
-	assert.Empty(t, noQ.QuestionID)
-	assert.Equal(t, noQ.FindingID, noQ.FindingKey, "no question falls back to the finding id, so findings do not collapse onto one empty key")
+	if noQ.QuestionID != "" || noQ.FindingKey != noQ.FindingID {
+		t.Errorf("without a question, QuestionID = %q and FindingKey = %q, want none and the FindingID %q",
+			noQ.QuestionID, noQ.FindingKey, noQ.FindingID)
+	}
 }
 
 // The tables keep one row per (PR, FindingKey, File), so two rows with the same key would replace each other.
@@ -184,41 +217,47 @@ func TestDerive_FindingKeysAreUniquePerFile(t *testing.T) {
 		{Fingerprint: "fp3", File: "a.go", Line: 7, QuestionKey: q}, // the same question, re-asked and not posted
 		{Fingerprint: "fp4", File: "b.go", Line: 7, QuestionKey: q}, // the same question on another file
 	}}}
-	res, err := Derive(pr, runs, fakeDiff{}, t0)
-	require.NoError(t, err)
+	res := mustDerive(t, pr, runs, fakeDiff{}, t0)
 	seen := map[string]bool{}
 	for _, d := range res.Dispositions {
 		k := d.FindingKey + "\x00" + d.File
-		assert.False(t, seen[k], "duplicate key %q on %s", d.FindingKey, d.File)
+		if seen[k] {
+			t.Errorf("duplicate key %q on %s", d.FindingKey, d.File)
+		}
 		seen[k] = true
 	}
-	require.Len(t, res.Dispositions, 3, "a question already posted on the file gets no not-posted row")
-	require.Len(t, res.Findings, 3)
-	var notPosted []DispositionRow
+	if len(res.Dispositions) != 3 || len(res.Findings) != 3 {
+		t.Fatalf("got %d dispositions and %d findings, want 3 each: a question already posted on the file gets no not-posted row",
+			len(res.Dispositions), len(res.Findings))
+	}
+	var notPosted []string
 	for _, d := range res.Dispositions {
 		if d.Disposition == string(DispNotPosted) {
-			notPosted = append(notPosted, d)
+			notPosted = append(notPosted, d.File)
 		}
 	}
-	require.Len(t, notPosted, 1)
-	assert.Equal(t, "b.go", notPosted[0].File)
+	if len(notPosted) != 1 || notPosted[0] != "b.go" {
+		t.Errorf("not-posted rows on %q, want only b.go", notPosted)
+	}
 }
 
 func TestDerive_SameFingerprintThreadsKeepTheirOwnRows(t *testing.T) {
 	t.Parallel()
 	// The same Redline finding, with no question, posted as a thread at three heads.
 	pr := basePR("OPEN", thread(5, "c1", "fp1", "", false), thread(5, "c2", "fp1", "", false), thread(5, "c3", "fp1", "", false))
-	first, err := Derive(pr, nil, fakeDiff{}, t0)
-	require.NoError(t, err)
+	first := mustDerive(t, pr, nil, fakeDiff{}, t0)
 	keys := map[string]bool{}
 	for _, d := range first.Dispositions {
 		keys[d.FindingKey] = true
 	}
-	assert.Len(t, keys, 3)
-	again, err := Derive(pr, nil, fakeDiff{}, t0.Add(time.Hour))
-	require.NoError(t, err)
+	if len(keys) != 3 {
+		t.Errorf("got %d distinct keys, want 3", len(keys))
+	}
+	again := mustDerive(t, pr, nil, fakeDiff{}, t0.Add(time.Hour))
 	for i := range first.Findings {
-		assert.Equal(t, first.Findings[i].FindingKey, again.Findings[i].FindingKey, "stable across derivations")
+		if first.Findings[i].FindingKey != again.Findings[i].FindingKey {
+			t.Errorf("finding %d key changed across derivations: %q, then %q", i, first.Findings[i].FindingKey, again.Findings[i].FindingKey)
+		}
 	}
 }
 
@@ -230,20 +269,30 @@ func TestDerive_ReviewBodyAndArtifactOnlyFindingsAreNotPosted(t *testing.T) {
 		{Fingerprint: "fp1", File: "a.go", Line: 5, Source: "llm", Confidence: "high", Severity: "warning", Rule: "agent-comment", Category: "review", Substrate: "redline/review"},
 		{Fingerprint: "only-in-artifact", File: "b.go", Source: "deterministic", Severity: "info", Rule: "assertions-removed", Category: "tests", Substrate: "redline/test-delta"},
 	}}}
-	res, err := Derive(pr, runs, fakeDiff{}, t0)
-	require.NoError(t, err)
-	assert.Equal(t, 1, res.PR.ReviewRuns)
-	assert.Equal(t, 1, res.PR.FindingsInThreads)
+	res := mustDerive(t, pr, runs, fakeDiff{}, t0)
+	if res.PR.ReviewRuns != 1 || res.PR.FindingsInThreads != 1 {
+		t.Errorf("ReviewRuns, FindingsInThreads = %d, %d, want 1, 1", res.PR.ReviewRuns, res.PR.FindingsInThreads)
+	}
 
 	byChannel := map[string]DispositionRow{}
 	for _, d := range res.Dispositions {
 		byChannel[d.Channel] = d
 	}
-	require.Len(t, res.Dispositions, 3)
-	assert.Equal(t, string(DispNotPosted), byChannel[ChannelReviewBody].Disposition)
-	assert.Equal(t, string(DispNotPosted), byChannel[ChannelArtifact].Disposition)
-	assert.Equal(t, AnchorFile, byChannel[ChannelArtifact].AnchorKind, "no line means a file-level anchor")
-	assert.Equal(t, "deterministic", byChannel[ChannelArtifact].Source)
+	if len(res.Dispositions) != 3 {
+		t.Fatalf("got %d dispositions, want 3", len(res.Dispositions))
+	}
+	for _, ch := range []string{ChannelReviewBody, ChannelArtifact} {
+		if got := byChannel[ch].Disposition; got != string(DispNotPosted) {
+			t.Errorf("%s disposition = %q, want %q", ch, got, DispNotPosted)
+		}
+	}
+	art := byChannel[ChannelArtifact]
+	if art.AnchorKind != AnchorFile {
+		t.Errorf("an artifact finding with no line has AnchorKind %q, want %q", art.AnchorKind, AnchorFile)
+	}
+	if art.Source != "deterministic" {
+		t.Errorf("artifact Source = %q, want deterministic", art.Source)
+	}
 
 	// The posted finding picks up what only the artifact knows.
 	var posted FindingRow
@@ -252,10 +301,10 @@ func TestDerive_ReviewBodyAndArtifactOnlyFindingsAreNotPosted(t *testing.T) {
 			posted = f
 		}
 	}
-	assert.Equal(t, "llm", posted.Source)
-	assert.Equal(t, "high", posted.Confidence)
-	assert.Equal(t, int64(77), posted.RunID)
-	assert.Equal(t, "redline/review", posted.Substrate)
+	if posted.Source != "llm" || posted.Confidence != "high" || posted.RunID != 77 || posted.Substrate != "redline/review" {
+		t.Errorf("posted finding = source %q, confidence %q, run %d, substrate %q; want llm, high, 77, redline/review",
+			posted.Source, posted.Confidence, posted.RunID, posted.Substrate)
+	}
 }
 
 func TestDerive_VerifiedAddressed(t *testing.T) {
@@ -272,26 +321,27 @@ func TestDerive_VerifiedAddressed(t *testing.T) {
 	}
 	cases := []struct {
 		name string
+		pr   PR
 		runs []Run
 		want uint8
 	}{
-		{"a later run covers the file and does not raise the question", later([]string{"a.go"}, ""), 1},
-		{"a later run raises the same question again", later([]string{"a.go"}, q), 0},
-		{"a later run that did not cover the file proves nothing", later([]string{"z.go"}, ""), 0},
-		{"no later run at all", nil, 0},
-		{"a run from before the fix does not count", []Run{{ReviewedAt: t0, Scope: []string{"a.go"}}}, 0},
+		{"a later run covers the file and does not raise the question", pr, later([]string{"a.go"}, ""), 1},
+		{"a later run raises the same question again", pr, later([]string{"a.go"}, q), 0},
+		{"a later run that did not cover the file proves nothing", pr, later([]string{"z.go"}, ""), 0},
+		{"no later run at all", pr, nil, 0},
+		{"a run from before the fix does not count", pr, []Run{{ReviewedAt: t0, Scope: []string{"a.go"}}}, 0},
+		{"without a question key there is nothing to compare", basePR("MERGED", thread(100, "c1", "fp1", "", true)),
+			later([]string{"a.go"}, ""), 0},
 	}
 	for _, tc := range cases {
-		got := derive1(t, pr, tc.runs, d)
-		assert.Equal(t, string(DispFixed), got.Disposition, tc.name)
-		assert.Equal(t, tc.want, got.VerifiedAddressed, tc.name)
+		got := derive1(t, tc.pr, tc.runs, d)
+		if got.Disposition != string(DispFixed) {
+			t.Errorf("%s: Disposition = %q, want fixed", tc.name, got.Disposition)
+		}
+		if got.VerifiedAddressed != tc.want {
+			t.Errorf("%s: VerifiedAddressed = %d, want %d", tc.name, got.VerifiedAddressed, tc.want)
+		}
 	}
-
-	// Without a question key there is nothing to compare, so a fix stays unverified.
-	noQ := basePR("MERGED", thread(100, "c1", "fp1", "", true))
-	got := derive1(t, noQ, later([]string{"a.go"}, ""), d)
-	assert.Equal(t, string(DispFixed), got.Disposition)
-	assert.Zero(t, got.VerifiedAddressed)
 }
 
 func TestDerive_PRRowAndEvidence(t *testing.T) {
@@ -300,29 +350,38 @@ func TestDerive_PRRowAndEvidence(t *testing.T) {
 	pr.AuthorIsBot = true
 	pr.ClosedAt = t0.Add(5 * time.Hour)
 	pr.IssueComments = []string{"unrelated", evidenceBody}
-	res, err := Derive(pr, nil, fakeDiff{}, t0)
-	require.NoError(t, err)
-	assert.Zero(t, res.PR.HasEvidence, "Derive leaves evidence to RecordEvidence")
+	res := mustDerive(t, pr, nil, fakeDiff{}, t0)
+	if res.PR.HasEvidence != 0 {
+		t.Error("Derive should leave evidence to RecordEvidence")
+	}
 	RecordEvidence(&res.PR, pr.IssueComments, testMarker)
-	assert.Equal(t, "bot", res.PR.AuthorKind)
-	assert.Equal(t, "MERGED", res.PR.State)
-	assert.Equal(t, uint8(1), res.PR.HasEvidence)
-	assert.Equal(t, 2, res.PR.EvidenceVerified)
-	assert.Equal(t, 1, res.PR.EvidenceRefuted)
-	assert.Equal(t, 2, res.PR.EvidenceNotVerified)
-	require.NotNil(t, res.PR.ClosedAt)
+	row := res.PR
+	if row.AuthorKind != "bot" || row.State != "MERGED" {
+		t.Errorf("AuthorKind, State = %q, %q, want bot, MERGED", row.AuthorKind, row.State)
+	}
+	if row.HasEvidence != 1 || row.EvidenceVerified != 2 || row.EvidenceRefuted != 1 || row.EvidenceNotVerified != 2 {
+		t.Errorf("evidence = has %d, verified %d, refuted %d, not verified %d; want 1, 2, 1, 2",
+			row.HasEvidence, row.EvidenceVerified, row.EvidenceRefuted, row.EvidenceNotVerified)
+	}
+	if row.ClosedAt == nil {
+		t.Error("a merged PR should have a closed time")
+	}
 
-	open, err := Derive(basePR("OPEN"), nil, fakeDiff{}, t0)
-	require.NoError(t, err)
-	assert.Zero(t, open.PR.HasEvidence)
-	assert.Nil(t, open.PR.ClosedAt, "an open PR has no closed time")
+	open := mustDerive(t, basePR("OPEN"), nil, fakeDiff{}, t0)
+	if open.PR.HasEvidence != 0 {
+		t.Error("a PR without an evidence comment has no evidence")
+	}
+	if open.PR.ClosedAt != nil {
+		t.Errorf("an open PR has no closed time, got %v", open.PR.ClosedAt)
+	}
 }
 
 func TestDerive_DiffErrorPropagates(t *testing.T) {
 	t.Parallel()
 	pr := basePR("MERGED", thread(100, "c1", "fp1", "", true))
-	_, err := Derive(pr, nil, fakeDiff{err: errors.New("boom")}, t0)
-	require.ErrorContains(t, err, "boom")
+	if _, err := Derive(pr, nil, fakeDiff{err: errors.New("boom")}, t0); err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("Derive error = %v, want the diff's error", err)
+	}
 }
 
 func TestDerive_ThreadsRedlineDidNotOpen(t *testing.T) {
@@ -343,51 +402,82 @@ func TestDerive_ThreadsRedlineDidNotOpen(t *testing.T) {
 	}}
 	empty := Thread{Path: "d.go"}
 	pr := basePR("MERGED", bot, human, early, pushedLate, empty)
-	res, err := Derive(pr, nil, fakeDiff{hunks: map[string][]Hunk{"c3|b.go": edit(10, 1)}}, t0.Add(48*time.Hour))
-	require.NoError(t, err)
-	require.Len(t, res.Dispositions, 4, "a thread with no comments is skipped")
-	assert.Equal(t, 4, res.PR.FindingsInThreads)
-
-	byFile := map[string]DispositionRow{}
-	for _, d := range res.Dispositions {
-		byFile[d.File] = d
+	diff := fakeDiff{hunks: map[string][]Hunk{"c3|b.go": edit(10, 1)}}
+	res := mustDerive(t, pr, nil, diff, t0.Add(48*time.Hour))
+	if len(res.Dispositions) != 4 || res.PR.FindingsInThreads != 4 {
+		t.Fatalf("got %d dispositions and %d thread findings, want 4 each: a thread with no comments is skipped",
+			len(res.Dispositions), res.PR.FindingsInThreads)
 	}
-	assert.Equal(t, SourceBotReviewer, byFile["a.go"].Source)
-	assert.Equal(t, string(DispDeclined), byFile["a.go"].Disposition, "the author's reply decides, as for Redline threads")
-	assert.Equal(t, "c1", byFile["a.go"].FirstHeadSha, "anchored to the PR head when the thread was opened")
 
-	assert.Equal(t, SourceHumanReviewer, byFile["b.go"].Source)
-	assert.Equal(t, "c2", byFile["b.go"].FirstHeadSha)
-	assert.Equal(t, string(DispFixed), byFile["b.go"].Disposition, "geometry: c3 changed the anchor")
-
-	assert.Empty(t, byFile["c.go"].FirstHeadSha)
-	assert.Equal(t, string(DispUnknown), byFile["c.go"].Disposition, "no head to diff from, no reply")
-	assert.Empty(t, byFile["c.go"].Severity, "a reviewer's first word is not a severity")
-	assert.Equal(t, "c1", byFile["e.go"].FirstHeadSha)
-	assert.Empty(t, byFile["e.go"].Severity)
-
-	assert.NotEqual(t, byFile["a.go"].FindingKey, byFile["b.go"].FindingKey)
-	again, err := Derive(pr, nil, fakeDiff{hunks: map[string][]Hunk{"c3|b.go": edit(10, 1)}}, t0.Add(72*time.Hour))
-	require.NoError(t, err)
-	assert.Equal(t, res.Dispositions[0].FindingKey, again.Dispositions[0].FindingKey, "the key is stable across derivations")
+	rows := byFile(res.Dispositions)
+	cases := []struct {
+		file, source, disposition, head, why string
+	}{
+		{"a.go", SourceBotReviewer, string(DispDeclined), "c1", "the author's reply decides, and the head is the PR's when the thread was opened"},
+		{"b.go", SourceHumanReviewer, string(DispFixed), "c2", "no reply, so geometry: c3 changed the anchor"},
+		{"c.go", "", string(DispUnknown), "", "opened before any commit: no head to diff from, no reply"},
+		{"e.go", "", "", "c1", "GitHub's commit wins over the clock"},
+	}
+	for _, tc := range cases {
+		got := rows[tc.file]
+		if tc.source != "" && got.Source != tc.source {
+			t.Errorf("%s: Source = %q, want %q", tc.file, got.Source, tc.source)
+		}
+		if tc.disposition != "" && got.Disposition != tc.disposition {
+			t.Errorf("%s: Disposition = %q, want %q (%s)", tc.file, got.Disposition, tc.disposition, tc.why)
+		}
+		if got.FirstHeadSha != tc.head {
+			t.Errorf("%s: FirstHeadSha = %q, want %q (%s)", tc.file, got.FirstHeadSha, tc.head, tc.why)
+		}
+	}
+	for _, f := range []string{"c.go", "e.go"} {
+		if sev := rows[f].Severity; sev != "" {
+			t.Errorf("%s: Severity = %q, want none: a reviewer's first word is not a severity", f, sev)
+		}
+	}
+	if rows["a.go"].FindingKey == rows["b.go"].FindingKey {
+		t.Errorf("two threads share the key %q", rows["a.go"].FindingKey)
+	}
+	again := mustDerive(t, pr, nil, diff, t0.Add(72*time.Hour))
+	if res.Dispositions[0].FindingKey != again.Dispositions[0].FindingKey {
+		t.Errorf("the key changed across derivations: %q, then %q", res.Dispositions[0].FindingKey, again.Dispositions[0].FindingKey)
+	}
 }
 
 func TestHeadAt(t *testing.T) {
 	t.Parallel()
 	cs := commits("c1", "c2", "c3")
-	assert.Equal(t, "c1", headAt(cs, t0))
-	assert.Equal(t, "c2", headAt(cs, t0.Add(90*time.Minute)))
-	assert.Equal(t, "c3", headAt(cs, t0.Add(10*time.Hour)))
-	assert.Empty(t, headAt(cs, t0.Add(-time.Second)))
-	assert.Empty(t, headAt(nil, t0))
+	cases := []struct {
+		name string
+		cs   []Commit
+		at   time.Time
+		want string
+	}{
+		{"at the first commit", cs, t0, "c1"},
+		{"between commits", cs, t0.Add(90 * time.Minute), "c2"},
+		{"after the last", cs, t0.Add(10 * time.Hour), "c3"},
+		{"before any commit", cs, t0.Add(-time.Second), ""},
+		{"no commits", nil, t0, ""},
+	}
+	for _, tc := range cases {
+		if got := headAt(tc.cs, tc.at); got != tc.want {
+			t.Errorf("%s: headAt = %q, want %q", tc.name, got, tc.want)
+		}
+	}
 }
 
 func TestSeverityOf(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "warning", severityOf("**Warning · agent** — x"))
-	assert.Equal(t, "error", severityOf("**Error · agent** — x"))
-	assert.Equal(t, "info", severityOf("**Info · agent** — x"))
-	assert.Empty(t, severityOf("no severity"))
+	for body, want := range map[string]string{
+		"**Warning · agent** — x": "warning",
+		"**Error · agent** — x":   "error",
+		"**Info · agent** — x":    "info",
+		"no severity":             "",
+	} {
+		if got := severityOf(body); got != want {
+			t.Errorf("severityOf(%q) = %q, want %q", body, got, want)
+		}
+	}
 }
 
 func basePRLong(state string, ths ...Thread) PR {
@@ -417,65 +507,81 @@ func TestDerive_AuthorReplyIsThePrimarySignal(t *testing.T) {
 	t.Run("an Addressed reply wins over geometry that sees no change near the anchor", func(t *testing.T) {
 		t.Parallel()
 		got := derive1(t, basePRLong("MERGED", withReplies(bare(true), "Addressed in c3c3c3c3: added a row elsewhere in the file")), nil, farEdit)
-		assert.Equal(t, string(DispFixed), got.Disposition)
-		assert.Equal(t, BasisReply, got.Basis)
-		assert.Equal(t, ReplyAddressed, got.ReplyKind)
-		assert.Equal(t, string(DispDeclined), got.GeometryDisposition, "geometry disagrees, and that is recorded")
-		assert.Equal(t, "c3c3c3c3", got.FixCommitSha, "the sha the author named")
+		if got.Disposition != string(DispFixed) || got.Basis != BasisReply || got.ReplyKind != ReplyAddressed {
+			t.Errorf("Disposition, Basis, ReplyKind = %q, %q, %q, want fixed, reply, addressed", got.Disposition, got.Basis, got.ReplyKind)
+		}
+		if got.GeometryDisposition != string(DispDeclined) {
+			t.Errorf("GeometryDisposition = %q, want declined: the disagreement is recorded", got.GeometryDisposition)
+		}
+		if got.FixCommitSha != "c3c3c3c3" {
+			t.Errorf("FixCommitSha = %q, want c3c3c3c3, the sha the author named", got.FixCommitSha)
+		}
 	})
 	t.Run("a Not fixing reply wins over geometry that sees a change", func(t *testing.T) {
 		t.Parallel()
 		got := derive1(t, basePRLong("MERGED", withReplies(bare(true), "**Not fixing (intentional).** Same on main.")), nil, onAnchor)
-		assert.Equal(t, string(DispDeclined), got.Disposition)
-		assert.Equal(t, BasisReply, got.Basis)
-		assert.Equal(t, ReplyNotFixing, got.ReplyKind)
-		assert.Equal(t, string(DispFixed), got.GeometryDisposition)
-		assert.Empty(t, got.FixCommitSha, "a declined finding has no fix commit, whatever else touched the anchor")
+		if got.Disposition != string(DispDeclined) || got.Basis != BasisReply || got.ReplyKind != ReplyNotFixing {
+			t.Errorf("Disposition, Basis, ReplyKind = %q, %q, %q, want declined, reply, not-fixing", got.Disposition, got.Basis, got.ReplyKind)
+		}
+		if got.GeometryDisposition != string(DispFixed) {
+			t.Errorf("GeometryDisposition = %q, want fixed", got.GeometryDisposition)
+		}
+		if got.FixCommitSha != "" {
+			t.Errorf("FixCommitSha = %q, want none: a declined finding has no fix commit, whatever else touched the anchor", got.FixCommitSha)
+		}
 	})
 	t.Run("the commit the author cites wins over the one geometry found", func(t *testing.T) {
 		t.Parallel()
 		got := derive1(t, basePRLong("MERGED", withReplies(bare(true), "Addressed in c3c3c3c3: the real fix")), nil, onAnchor)
-		assert.Equal(t, "c3c3c3c3", got.FixCommitSha)
+		if got.FixCommitSha != "c3c3c3c3" {
+			t.Errorf("FixCommitSha = %q, want c3c3c3c3", got.FixCommitSha)
+		}
 	})
 	t.Run("the last reply that states a disposition wins", func(t *testing.T) {
 		t.Parallel()
 		got := derive1(t, basePRLong("MERGED", withReplies(bare(true), "**Not fixing (intentional).** no", "thanks", "Addressed in c2c2c2c2: changed my mind")), nil, onAnchor)
-		assert.Equal(t, string(DispFixed), got.Disposition)
-		assert.Equal(t, "c2c2c2c2", got.FixCommitSha, "the commit the author named")
+		if got.Disposition != string(DispFixed) || got.FixCommitSha != "c2c2c2c2" {
+			t.Errorf("Disposition, FixCommitSha = %q, %q, want fixed, c2c2c2c2", got.Disposition, got.FixCommitSha)
+		}
 	})
 	t.Run("with no recognisable reply geometry decides", func(t *testing.T) {
 		t.Parallel()
 		got := derive1(t, basePRLong("MERGED", withReplies(bare(true), "done, thanks")), nil, onAnchor)
-		assert.Equal(t, string(DispFixed), got.Disposition)
-		assert.Equal(t, BasisGeometry, got.Basis)
-		assert.Empty(t, got.ReplyKind)
+		if got.Disposition != string(DispFixed) || got.Basis != BasisGeometry || got.ReplyKind != "" {
+			t.Errorf("Disposition, Basis, ReplyKind = %q, %q, %q, want fixed, geometry, none", got.Disposition, got.Basis, got.ReplyKind)
+		}
 	})
 	t.Run("a reply does not resolve a thread that is still unresolved", func(t *testing.T) {
 		t.Parallel()
 		got := derive1(t, basePRLong("OPEN", withReplies(bare(false), "Addressed in c2c2c2c2: done")), nil, onAnchor)
-		assert.Equal(t, string(DispOpen), got.Disposition)
-		assert.Empty(t, got.Basis)
+		if got.Disposition != string(DispOpen) || got.Basis != "" {
+			t.Errorf("Disposition, Basis = %q, %q, want open, none", got.Disposition, got.Basis)
+		}
 	})
 	t.Run("an Addressed reply rescues a resolved thread whose commit left the PR", func(t *testing.T) {
 		t.Parallel()
 		th := withReplies(thread(100, "dead0001", "fp1", q, true), "Addressed in c2c2c2c2: done")
 		got := derive1(t, basePRLong("MERGED", th), nil, fakeDiff{})
-		assert.Equal(t, string(DispUnknown), got.GeometryDisposition)
-		assert.Equal(t, string(DispFixed), got.Disposition)
+		if got.GeometryDisposition != string(DispUnknown) || got.Disposition != string(DispFixed) {
+			t.Errorf("GeometryDisposition, Disposition = %q, %q, want unknown, fixed", got.GeometryDisposition, got.Disposition)
+		}
 	})
 	t.Run("Redline's own first comment is never read as a reply", func(t *testing.T) {
 		t.Parallel()
 		th := thread(100, "c1", "fp1", q, true)
 		th.Comments = th.Comments[:1]
 		th.Comments[0].Body += "\nAddressed in c2c2c2c2"
-		got := derive1(t, basePRLong("MERGED", th), nil, farEdit)
-		assert.Empty(t, got.ReplyKind)
+		if got := derive1(t, basePRLong("MERGED", th), nil, farEdit); got.ReplyKind != "" {
+			t.Errorf("ReplyKind = %q, want none", got.ReplyKind)
+		}
 	})
 	t.Run("an Addressed reply feeds verified-addressed through the commit it names", func(t *testing.T) {
 		t.Parallel()
 		runs := []Run{{ReviewedAt: t0.Add(10 * time.Hour), Scope: []string{"a.go"}}}
 		got := derive1(t, basePRLong("MERGED", withReplies(bare(true), "Addressed in c2c2c2c2: done")), runs, farEdit)
-		assert.Equal(t, uint8(1), got.VerifiedAddressed)
+		if got.VerifiedAddressed != 1 {
+			t.Errorf("VerifiedAddressed = %d, want 1", got.VerifiedAddressed)
+		}
 	})
 }
 
@@ -486,12 +592,19 @@ func TestSummarize(t *testing.T) {
 		withReplies(thread(300, "c1", "fp2", "caller\x00bar", true), "Addressed in c3c3c3c3: elsewhere"),
 	)
 	pr.IssueComments = []string{evidenceBody}
-	res, err := Derive(pr, nil, fakeDiff{hunks: map[string][]Hunk{"c2c2c2c2|a.go": edit(100, 1)}}, t0)
-	require.NoError(t, err)
+	res := mustDerive(t, pr, nil, fakeDiff{hunks: map[string][]Hunk{"c2c2c2c2|a.go": edit(100, 1)}}, t0)
 	RecordEvidence(&res.PR, pr.IssueComments, testMarker)
 	out := Summarize([]Result{res})
-	assert.Contains(t, out, "PRs recorded: 1 (bot-authored 0, with an evidence comment 1)")
-	assert.Contains(t, out, "fixed=2")
-	assert.Contains(t, out, "reply and geometry agree on 1 of 2")
-	assert.Equal(t, "PRs recorded: 0 (bot-authored 0, with an evidence comment 0)\nFindings by disposition: none\n", Summarize(nil))
+	for _, want := range []string{
+		"PRs recorded: 1 (bot-authored 0, with an evidence comment 1)",
+		"fixed=2",
+		"reply and geometry agree on 1 of 2",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("summary is missing %q:\n%s", want, out)
+		}
+	}
+	if want := "PRs recorded: 0 (bot-authored 0, with an evidence comment 0)\nFindings by disposition: none\n"; Summarize(nil) != want {
+		t.Errorf("empty summary = %q, want %q", Summarize(nil), want)
+	}
 }
