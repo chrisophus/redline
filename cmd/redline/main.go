@@ -80,6 +80,10 @@ type opts struct {
 	// caller gave, and sessionKey the session resolveSession chose under it.
 	observe                   bool
 	session, root, sessionKey string
+	// dispositions' flags. --pr is shared with the commands that take one.
+	recent                 int
+	repo, artifacts, jsonl string
+	evidenceMarker         string
 }
 
 func runMain(args []string) error {
