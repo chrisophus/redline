@@ -55,6 +55,9 @@ type ThreadComment struct {
 	AuthorIsBot bool
 	// CommitSHA is the commit the comment was made on (GitHub's originalCommit), empty when GitHub has none.
 	CommitSHA string
+	// ByPRAuthor is whether the PR's author wrote the comment. Only their reply says what became of a finding.
+	// The logins are compared when the PR is read and not kept.
+	ByPRAuthor bool
 }
 
 // Run is one Redline review run, read from its CI artifact.
@@ -62,6 +65,9 @@ type Run struct {
 	PRNumber   int
 	RunID      int64
 	ReviewedAt time.Time
+	// ModelRan is whether a model review ran, which the run's reviews.jsonl records. Only such a run could have
+	// asked a finding's question again, so only it can verify that a fix answered the question.
+	ModelRan bool
 	// Scope is the files the run examined. An incremental run (--since) lists only what changed since the
 	// last review, which is why absence from a run proves nothing outside its scope.
 	Scope    []string
@@ -87,9 +93,17 @@ type ArtifactFinding struct {
 
 // Differ answers git questions. The recorder implements it with `git diff`; tests use a fake.
 type Differ interface {
-	// Hunks returns the -U0 hunks that commit made to path against its first parent, and whether the commit
-	// deleted the file.
-	Hunks(commit, path string) (hunks []Hunk, deleted bool, err error)
+	// Change returns what commit did to path against its first parent.
+	Change(commit, path string) (FileChange, error)
+}
+
+// FileChange is what one commit did to one file.
+type FileChange struct {
+	// Hunks are the -U0 hunks, from path to RenamedTo when the file was renamed.
+	Hunks   []Hunk
+	Deleted bool
+	// RenamedTo is the file's new path when the commit renamed it, else empty.
+	RenamedTo string
 }
 
 // Disposition is what happened to a finding, evaluated in this order.
@@ -97,7 +111,7 @@ type Disposition string
 
 const (
 	DispNotPosted Disposition = "not-posted" // never became a review thread
-	DispStale     Disposition = "stale"      // PR ended with the thread unresolved, or the file was deleted
+	DispStale     Disposition = "stale"      // PR ended with the thread unresolved and no reply, or the file was deleted
 	DispOpen      Disposition = "open"       // unresolved on a PR still open
 	DispFixed     Disposition = "fixed"      // resolved with an Addressed reply, or a later commit changed the anchor
 	DispDeclined  Disposition = "declined"   // resolved with a Not fixing reply, or no such change

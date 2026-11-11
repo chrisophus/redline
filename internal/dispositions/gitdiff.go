@@ -8,8 +8,10 @@ import (
 // GitDiffer implements Differ with `git diff` against a local checkout. The commits must be present: fetch
 // refs/pull/<n>/head first (see FetchPRCommits).
 type GitDiffer struct {
-	git   func(args ...string) ([]byte, error)
-	cache map[string]diffResult
+	git     func(args ...string) ([]byte, error)
+	changes map[string]FileChange
+	// statuses holds each commit's file statuses, read once per commit.
+	statuses map[string]map[string]fileStatus
 }
 
 // NewGitDiffer runs git through r, under ctx.
@@ -17,37 +19,93 @@ func NewGitDiffer(ctx context.Context, r Runner) *GitDiffer {
 	return &GitDiffer{git: func(args ...string) ([]byte, error) { return r.Run(ctx, "git", args...) }}
 }
 
-type diffResult struct {
-	hunks   []Hunk
-	deleted bool
+// fileStatus is one path in `git diff --name-status`: its status letter and, for a rename, the new path.
+type fileStatus struct {
+	status byte
+	to     string
 }
 
-// Hunks returns what commit changed in path against its first parent. A commit git cannot diff (missing
+// Change returns what commit did to path against its first parent. A commit git cannot diff (missing
 // locally, or a root commit) is an error, never "no change": a silent empty diff would read every resolved
-// finding as declined.
-func (g *GitDiffer) Hunks(commit, path string) ([]Hunk, bool, error) {
+// finding as declined. A rename is followed, so a moved file does not read as deleted.
+func (g *GitDiffer) Change(commit, path string) (FileChange, error) {
 	key := commit + "|" + path
-	if r, ok := g.cache[key]; ok {
-		return r.hunks, r.deleted, nil
+	if c, ok := g.changes[key]; ok {
+		return c, nil
 	}
-	// --no-renames makes a moved file a delete plus an add, so a rename reads as the file being deleted.
-	status, err := g.git("diff", "--no-renames", "--name-status", commit+"^1", commit, "--", path)
+	statuses, err := g.status(commit)
 	if err != nil {
-		return nil, false, err
+		return FileChange{}, err
 	}
-	res := diffResult{deleted: strings.HasPrefix(strings.TrimSpace(string(status)), "D")}
-	if !res.deleted {
-		diff, err := g.git("diff", "--no-renames", "-U0", "--no-color", commit+"^1", commit, "--", path)
-		if err != nil {
-			return nil, false, err
+	var c FileChange
+	st, touched := statuses[path]
+	switch {
+	case !touched:
+	case st.status == 'D':
+		c.Deleted = true
+	default:
+		args := []string{"diff", "-M", "-U0", "--no-color", commit + "^1", commit, "--", path}
+		if st.status == 'R' {
+			c.RenamedTo = st.to
+			args = append(args, st.to)
 		}
-		res.hunks = ParseHunks(string(diff))
+		diff, err := g.git(args...)
+		if err != nil {
+			return FileChange{}, err
+		}
+		c.Hunks = ParseHunks(string(diff))
 	}
-	if g.cache == nil {
-		g.cache = map[string]diffResult{}
+	if g.changes == nil {
+		g.changes = map[string]FileChange{}
 	}
-	g.cache[key] = res
-	return res.hunks, res.deleted, nil
+	g.changes[key] = c
+	return c, nil
+}
+
+// status reads every path the commit touched, by its old path. Rename detection needs the whole commit in
+// view: limited to one path, git cannot see where the file went and reports a delete.
+func (g *GitDiffer) status(commit string) (map[string]fileStatus, error) {
+	if s, ok := g.statuses[commit]; ok {
+		return s, nil
+	}
+	out, err := g.git("diff", "-M", "--name-status", "-z", commit+"^1", commit)
+	if err != nil {
+		return nil, err
+	}
+	s := parseNameStatus(string(out))
+	if g.statuses == nil {
+		g.statuses = map[string]map[string]fileStatus{}
+	}
+	g.statuses[commit] = s
+	return s, nil
+}
+
+// parseNameStatus reads `git diff --name-status -z`: a status, then one path, or two for a rename or copy.
+// -z leaves paths unquoted, so a name with spaces or non-ASCII letters reads as written.
+func parseNameStatus(out string) map[string]fileStatus {
+	fields := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
+	res := map[string]fileStatus{}
+	for i := 0; i+1 < len(fields); {
+		st := fields[i]
+		if st == "" {
+			i++
+			continue
+		}
+		switch st[0] {
+		case 'R', 'C':
+			if i+2 >= len(fields) {
+				return res
+			}
+			if st[0] == 'R' {
+				res[fields[i+1]] = fileStatus{status: 'R', to: fields[i+2]}
+			}
+			i += 3
+		default:
+			res[fields[i+1]] = fileStatus{status: st[0]}
+			i += 2
+		}
+	}
+	return res
 }
 
 // FetchPRCommits makes a PR's commits available locally, including those of merged and force-pushed PRs.

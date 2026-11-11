@@ -15,7 +15,7 @@ type fixResult struct {
 
 // findFix walks the PR's commits after the finding's head and reports the first non-merge commit that changed
 // the finding's anchor, carrying the anchor window forward through each commit's diff so earlier edits that
-// shift line numbers do not read as a fix or hide one.
+// shift line numbers do not read as a fix or hide one. A rename is followed to the file's new path.
 func findFix(pr PR, file string, line, startLine int, head string, diff Differ) (fixResult, error) {
 	idx := -1
 	for i, c := range pr.Commits {
@@ -30,14 +30,18 @@ func findFix(pr PR, file string, line, startLine int, head string, diff Differ) 
 	res := fixResult{mapped: true}
 	win := AnchorWindow(line, startLine, AnchorRadius)
 	for _, c := range pr.Commits[idx+1:] {
-		hunks, deleted, err := diff.Hunks(c.SHA, file)
+		ch, err := diff.Change(c.SHA, file)
 		if err != nil {
 			return res, fmt.Errorf("diff %s %s: %w", short(c.SHA), file, err)
 		}
-		if deleted {
+		if ch.Deleted {
 			res.deleted = true
 			return res, nil
 		}
+		if ch.RenamedTo != "" {
+			file = ch.RenamedTo
+		}
+		hunks := ch.Hunks
 		if len(hunks) == 0 {
 			continue
 		}

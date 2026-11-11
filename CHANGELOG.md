@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **`redline dispositions` reads the verifying pass's verdict.** It looked for
+  a `verdict` field shaped differently from what `findings.json` writes, so
+  the `VerifyVerdict` column was always empty. It now reads `ruling`.
+- **Only the PR author's reply decides a finding, and only when a line of it
+  starts with the reply format.** Before, any commenter counted, "not
+  addressed in abc1234" read as a fix, and "Addressed in feedback" read as a
+  fix in commit `feedbac`.
+- **The author's reply decides before a deleted file, and on a merged or
+  closed PR even when nobody resolved the thread.** Both cases used to read
+  as stale.
+- **A renamed file is followed to its new path.** Every finding on a file
+  that was later moved used to read as stale.
+- **A fix counts as verified only after a later run with a model review.** A
+  run with only deterministic checks cannot ask the question again, so it
+  used to verify every fix it covered.
+- **A review thread with more than 100 comments is an error,** like the other
+  limits, instead of losing its later replies.
+- **A repository whose owner or name looks like a number or a boolean can be
+  read.** They were sent to `gh api graphql` with `-F`, which converts them.
+- **`--jsonl` keeps the previous files when every PR fails,** instead of
+  writing them empty.
+- `FixCommitSha` holds the full SHA when the reply gave an abbreviation, and a
+  comment author counts as a bot only when GitHub says it is one, as the PR
+  author already did.
+
 ## [0.20.0] - 2026-11-10
 
 ### Added

@@ -58,7 +58,8 @@ func runDispositions(ctx context.Context, o opts, runner dispositions.Runner, st
 	if _, err := fmt.Fprint(stdout, dispositions.Summarize(results)); err != nil {
 		return err
 	}
-	if o.jsonl != "" {
+	// When every PR failed there is nothing to write, and writing would empty the files a previous run left.
+	if o.jsonl != "" && len(results) > 0 {
 		if err := writeDispositions(o.jsonl, results); err != nil {
 			return err
 		}

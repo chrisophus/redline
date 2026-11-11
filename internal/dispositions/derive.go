@@ -332,9 +332,14 @@ func buildRows(pr PR, it posted, af ArtifactFinding, hasArtifact bool, runs []Ru
 	}
 	decideThread(&drow, pr.State, th, fix)
 	if drow.Disposition == string(DispFixed) {
-		fixedAt := commitTime(pr, drow.FixCommitSha)
-		if drow.FixCommitSha == fix.sha {
-			fixedAt = fix.time
+		fixedAt := fix.time
+		if drow.FixCommitSha != fix.sha {
+			// A reply names its commit by an abbreviation; store the full SHA so the column holds one form.
+			var full string
+			full, fixedAt = findCommit(pr, drow.FixCommitSha)
+			if full != "" {
+				drow.FixCommitSha = full
+			}
 		}
 		if !fixedAt.IsZero() && verifiedAddressed(runs, d.file, d.qkey, fixedAt) {
 			drow.VerifiedAddressed = 1
@@ -344,8 +349,9 @@ func buildRows(pr PR, it posted, af ArtifactFinding, hasArtifact bool, runs []Ru
 }
 
 // decideThread sets the disposition of a finding that has a thread. The author's reply decides a resolved
-// thread; the anchor check (geometry) decides only when there is no recognisable reply, and is recorded either way.
-// FixCommitSha is set only for a fixed finding: the commit the author cited, else the one geometry found.
+// thread, and any thread on a PR that has ended, since many authors reply without clicking resolve. The anchor
+// check (geometry) decides a resolved thread only when there is no recognisable reply, and is recorded either
+// way. FixCommitSha is set only for a fixed finding: the commit the author cited, else the one geometry found.
 func decideThread(drow *DispositionRow, state string, th *Thread, fix fixResult) {
 	reply := readReply(th)
 	drow.ReplyKind = reply.kind
@@ -360,19 +366,20 @@ func decideThread(drow *DispositionRow, state string, th *Thread, fix fixResult)
 	drow.GeometryDisposition = string(geometry)
 
 	ended := state == "MERGED" || state == "CLOSED"
+	replyDecides := th.IsResolved || ended
 	switch {
-	case fix.deleted, !th.IsResolved && ended:
-		drow.Disposition = string(DispStale)
-	case !th.IsResolved:
-		drow.Disposition = string(DispOpen)
-	case reply.kind == ReplyAddressed:
+	case replyDecides && reply.kind == ReplyAddressed:
 		drow.Disposition, drow.Basis = string(DispFixed), BasisReply
 		drow.FixCommitSha = reply.sha
 		if drow.FixCommitSha == "" {
 			drow.FixCommitSha = fix.sha
 		}
-	case reply.kind == ReplyNotFixing:
+	case replyDecides && reply.kind == ReplyNotFixing:
 		drow.Disposition, drow.Basis = string(DispDeclined), BasisReply
+	case fix.deleted, !th.IsResolved && ended:
+		drow.Disposition = string(DispStale)
+	case !th.IsResolved:
+		drow.Disposition = string(DispOpen)
 	default:
 		drow.Disposition, drow.Basis = string(geometry), BasisGeometry
 		if geometry == DispFixed {
@@ -381,8 +388,9 @@ func decideThread(drow *DispositionRow, state string, th *Thread, fix fixResult)
 	}
 }
 
-// verifiedAddressed reports whether a Redline run after the fix covered the file and did not raise the same
-// question again. Without a question key there is nothing to compare, so it stays unverified.
+// verifiedAddressed reports whether a Redline model run after the fix covered the file and did not raise the
+// same question again. A run with no model review could not have raised it, so it does not count. Without a
+// question key there is nothing to compare, so it stays unverified.
 func verifiedAddressed(runs []Run, file, qkey string, fixedAt time.Time) bool {
 	if qkey == "" {
 		return false
@@ -390,7 +398,7 @@ func verifiedAddressed(runs []Run, file, qkey string, fixedAt time.Time) bool {
 	covered := false
 	for i := range runs {
 		r := &runs[i]
-		if !r.ReviewedAt.After(fixedAt) {
+		if !r.ModelRan || !r.ReviewedAt.After(fixedAt) {
 			continue
 		}
 		if !slices.Contains(r.Scope, file) {
@@ -412,18 +420,24 @@ type reply struct {
 	sha  string
 }
 
+// Both reply formats open a line. Anchoring there keeps "this was not addressed in abc1234" and a quoted
+// earlier reply from counting, and the word boundary keeps "addressed in feedback" from reading as a SHA.
 var (
-	addressedRe = regexp.MustCompile(`(?i)\baddressed in\s+` + "`?" + `([0-9a-f]{7,40})`)
-	notFixingRe = regexp.MustCompile(`(?i)\*\*not fixing\s*\(intentional\)`)
+	addressedRe = regexp.MustCompile(`(?im)^\s*(?:\*\*)?addressed in\s+` + "`?" + `([0-9a-f]{7,40})\b`)
+	notFixingRe = regexp.MustCompile(`(?im)^\s*\*\*not fixing\s*\(intentional\)`)
 )
 
 // readReply reads the author's disposition from the thread's replies, in the two reply formats this reads:
 // "Addressed in <sha>: ..." and "**Not fixing (intentional).** ...". The last
-// reply that says one of them wins, since a later reply can change the author's mind. The first comment is
-// Redline's own and is never read.
+// reply that says one of them wins, since a later reply can change the author's mind. Only the PR author's
+// replies are read: a reviewer saying "not fixing" on someone else's change does not decide it. The first
+// comment opened the thread and is never read.
 func readReply(th *Thread) reply {
 	var out reply
 	for _, c := range th.Comments[1:] {
+		if !c.ByPRAuthor {
+			continue
+		}
 		if m := addressedRe.FindStringSubmatch(c.Body); m != nil {
 			out = reply{kind: ReplyAddressed, sha: strings.ToLower(m[1])}
 		} else if notFixingRe.MatchString(c.Body) {
@@ -433,15 +447,16 @@ func readReply(th *Thread) reply {
 	return out
 }
 
-// commitTime finds a commit by full SHA or by the abbreviation a reply carries.
-func commitTime(pr PR, sha string) time.Time {
+// findCommit finds a PR commit by full SHA or by the abbreviation a reply carries, and returns its full SHA
+// and time. Both are zero when no commit of the PR matches.
+func findCommit(pr PR, sha string) (string, time.Time) {
 	if sha == "" {
-		return time.Time{}
+		return "", time.Time{}
 	}
 	for _, c := range pr.Commits {
 		if strings.HasPrefix(strings.ToLower(c.SHA), sha) {
-			return c.Time
+			return c.SHA, c.Time
 		}
 	}
-	return time.Time{}
+	return "", time.Time{}
 }

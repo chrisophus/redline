@@ -12,12 +12,13 @@ var t0 = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
 type fakeDiff struct {
 	hunks   map[string][]Hunk
 	deleted map[string]bool
+	renamed map[string]string
 	err     error
 }
 
-func (f fakeDiff) Hunks(commit, path string) ([]Hunk, bool, error) {
+func (f fakeDiff) Change(commit, path string) (FileChange, error) {
 	k := commit + "|" + path
-	return f.hunks[k], f.deleted[k], f.err
+	return FileChange{Hunks: f.hunks[k], Deleted: f.deleted[k], RenamedTo: f.renamed[k]}, f.err
 }
 
 func commits(shas ...string) []Commit {
@@ -40,7 +41,7 @@ func thread(line int, head, fingerprint, question string, resolved bool) Thread 
 	}
 	return Thread{
 		Path: "a.go", Line: line, OrigLine: line, IsResolved: resolved,
-		Comments: []ThreadComment{{Body: body, CreatedAt: t0}, {Body: "Addressed", CreatedAt: t0.Add(30 * time.Minute)}},
+		Comments: []ThreadComment{{Body: body, CreatedAt: t0}, {Body: "Addressed", CreatedAt: t0.Add(30 * time.Minute), ByPRAuthor: true}},
 	}
 }
 
@@ -315,7 +316,7 @@ func TestDerive_VerifiedAddressed(t *testing.T) {
 	fixedAt := t0.Add(time.Hour) // c2's time
 
 	later := func(scope []string, qk string) []Run {
-		return []Run{{PRNumber: 10, ReviewedAt: fixedAt.Add(time.Hour), Scope: scope, Findings: []ArtifactFinding{
+		return []Run{{PRNumber: 10, ReviewedAt: fixedAt.Add(time.Hour), ModelRan: true, Scope: scope, Findings: []ArtifactFinding{
 			{Fingerprint: "other", File: "a.go", QuestionKey: qk},
 		}}}
 	}
@@ -329,7 +330,9 @@ func TestDerive_VerifiedAddressed(t *testing.T) {
 		{"a later run raises the same question again", pr, later([]string{"a.go"}, q), 0},
 		{"a later run that did not cover the file proves nothing", pr, later([]string{"z.go"}, ""), 0},
 		{"no later run at all", pr, nil, 0},
-		{"a run from before the fix does not count", pr, []Run{{ReviewedAt: t0, Scope: []string{"a.go"}}}, 0},
+		{"a run from before the fix does not count", pr, []Run{{ReviewedAt: t0, ModelRan: true, Scope: []string{"a.go"}}}, 0},
+		{"a later run with no model review could not have asked again", pr,
+			[]Run{{ReviewedAt: fixedAt.Add(time.Hour), Scope: []string{"a.go"}}}, 0},
 		{"without a question key there is nothing to compare", basePR("MERGED", thread(100, "c1", "fp1", "", true)),
 			later([]string{"a.go"}, ""), 0},
 	}
@@ -388,7 +391,7 @@ func TestDerive_ThreadsRedlineDidNotOpen(t *testing.T) {
 	t.Parallel()
 	bot := Thread{Path: "a.go", OrigLine: 50, IsResolved: true, Comments: []ThreadComment{
 		{Body: "Email is not a unique key.", CreatedAt: t0.Add(30 * time.Minute), AuthorIsBot: true},
-		{Body: "**Not fixing (intentional).** Separate hardening change.", CreatedAt: t0.Add(40 * time.Minute)},
+		{Body: "**Not fixing (intentional).** Separate hardening change.", CreatedAt: t0.Add(40 * time.Minute), ByPRAuthor: true},
 	}}
 	human := Thread{Path: "b.go", OrigLine: 10, IsResolved: true, Comments: []ThreadComment{
 		{Body: "this drops the zone", CreatedAt: t0.Add(90 * time.Minute)},
@@ -488,7 +491,7 @@ func basePRLong(state string, ths ...Thread) PR {
 
 func withReplies(th Thread, replies ...string) Thread {
 	for i, r := range replies {
-		th.Comments = append(th.Comments, ThreadComment{Body: r, CreatedAt: t0.Add(time.Duration(i+1) * time.Hour)})
+		th.Comments = append(th.Comments, ThreadComment{Body: r, CreatedAt: t0.Add(time.Duration(i+1) * time.Hour), ByPRAuthor: true})
 	}
 	return th
 }
@@ -577,7 +580,7 @@ func TestDerive_AuthorReplyIsThePrimarySignal(t *testing.T) {
 	})
 	t.Run("an Addressed reply feeds verified-addressed through the commit it names", func(t *testing.T) {
 		t.Parallel()
-		runs := []Run{{ReviewedAt: t0.Add(10 * time.Hour), Scope: []string{"a.go"}}}
+		runs := []Run{{ReviewedAt: t0.Add(10 * time.Hour), ModelRan: true, Scope: []string{"a.go"}}}
 		got := derive1(t, basePRLong("MERGED", withReplies(bare(true), "Addressed in c2c2c2c2: done")), runs, farEdit)
 		if got.VerifiedAddressed != 1 {
 			t.Errorf("VerifiedAddressed = %d, want 1", got.VerifiedAddressed)
@@ -606,5 +609,88 @@ func TestSummarize(t *testing.T) {
 	}
 	if want := "PRs recorded: 0 (bot-authored 0, with an evidence comment 0)\nFindings by disposition: none\n"; Summarize(nil) != want {
 		t.Errorf("empty summary = %q, want %q", Summarize(nil), want)
+	}
+}
+
+func TestReadReply(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		body   string
+		author bool
+		want   reply
+	}{
+		{"the Addressed format", "Addressed in `abc1234`: moved the check", true, reply{kind: ReplyAddressed, sha: "abc1234"}},
+		{"bold and upper case", "**Addressed in ABC1234DEF**", true, reply{kind: ReplyAddressed, sha: "abc1234def"}},
+		{"the Not fixing format", "**Not fixing (intentional).** Same on main.", true, reply{kind: ReplyNotFixing}},
+		{"a later line of the reply", "Thanks.\nAddressed in abc1234", true, reply{kind: ReplyAddressed, sha: "abc1234"}},
+		{"a word that starts with hex letters is not a SHA", "Addressed in feedback round two", true, reply{}},
+		{"a negation is not a fix", "This was not addressed in abc1234", true, reply{}},
+		{"a quoted reply is not a new one", "> **Not fixing (intentional).** no\nI disagree", true, reply{}},
+		{"someone other than the PR author", "Addressed in abc1234", false, reply{}},
+	}
+	for _, tc := range cases {
+		th := &Thread{Comments: []ThreadComment{{Body: "finding"}, {Body: tc.body, ByPRAuthor: tc.author}}}
+		if got := readReply(th); got != tc.want {
+			t.Errorf("%s: readReply = %+v, want %+v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestDerive_ReplyAgainstDeletionAndEndedPRs(t *testing.T) {
+	t.Parallel()
+	q := "caller\x00foo"
+	bare := func(resolved bool) Thread {
+		th := thread(100, "c1", "fp1", q, resolved)
+		th.Comments = th.Comments[:1]
+		return th
+	}
+	deletes := fakeDiff{deleted: map[string]bool{"c3c3c3c3|a.go": true}}
+	cases := []struct {
+		name  string
+		pr    PR
+		d     fakeDiff
+		want  Disposition
+		basis string
+	}{
+		{"a reply wins over a later deletion of the file",
+			basePRLong("MERGED", withReplies(bare(true), "Addressed in c2c2c2c2: done")), deletes, DispFixed, BasisReply},
+		{"a deleted file with no reply is stale",
+			basePRLong("MERGED", withReplies(bare(true), "ok")), deletes, DispStale, ""},
+		{"an unresolved thread on a merged PR with an Addressed reply is fixed",
+			basePRLong("MERGED", withReplies(bare(false), "Addressed in c2c2c2c2: done")), fakeDiff{}, DispFixed, BasisReply},
+		{"an unresolved thread on a closed PR with a Not fixing reply is declined",
+			basePRLong("CLOSED", withReplies(bare(false), "**Not fixing (intentional).** no")), fakeDiff{}, DispDeclined, BasisReply},
+		{"an unresolved thread on a merged PR with no reply is stale",
+			basePRLong("MERGED", withReplies(bare(false), "hmm")), fakeDiff{}, DispStale, ""},
+	}
+	for _, tc := range cases {
+		got := derive1(t, tc.pr, nil, tc.d)
+		if got.Disposition != string(tc.want) || got.Basis != tc.basis {
+			t.Errorf("%s: Disposition, Basis = %q, %q, want %q, %q", tc.name, got.Disposition, got.Basis, tc.want, tc.basis)
+		}
+	}
+}
+
+func TestDerive_FollowsARename(t *testing.T) {
+	t.Parallel()
+	pr := basePR("MERGED", thread(100, "c1", "fp1", "", true))
+	d := fakeDiff{
+		renamed: map[string]string{"c2|a.go": "b.go"},
+		hunks:   map[string][]Hunk{"c3|b.go": edit(100, 1)},
+	}
+	got := derive1(t, pr, nil, d)
+	if got.Disposition != string(DispFixed) || got.FixCommitSha != "c3" {
+		t.Errorf("Disposition, FixCommitSha = %q, %q, want fixed, c3: the edit after the move is on the anchor", got.Disposition, got.FixCommitSha)
+	}
+}
+
+func TestDerive_FixCommitShaIsTheFullSHA(t *testing.T) {
+	t.Parallel()
+	th := thread(100, "c1", "fp1", "", true)
+	th.Comments = th.Comments[:1]
+	got := derive1(t, basePRLong("MERGED", withReplies(th, "Addressed in c3c3c3c: done")), nil, fakeDiff{})
+	if got.FixCommitSha != "c3c3c3c3" {
+		t.Errorf("FixCommitSha = %q, want the full c3c3c3c3", got.FixCommitSha)
 	}
 }

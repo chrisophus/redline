@@ -709,8 +709,9 @@ Reads each pull request's review threads and comments with gh and git and
 says, for every finding, whether it was fixed, declined, left open, went
 stale, or was never posted. That covers Redline's findings and the threads
 other review bots and people opened. A thread's disposition comes from the
-author's reply first ("Addressed in <sha>", "**Not fixing (intentional).**"),
-then from whether a later commit changed the lines it was anchored to.
+PR author's reply first, when a line of it starts with "Addressed in <sha>"
+or "**Not fixing (intentional).**", then from whether a later commit changed
+the lines it was anchored to. A renamed file is followed to its new path.
 Prints a summary. Never writes to GitHub.
 
 flags:

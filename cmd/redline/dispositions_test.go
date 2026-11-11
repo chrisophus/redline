@@ -35,12 +35,12 @@ func (f fakeGH) Run(_ context.Context, name string, args ...string) ([]byte, err
 	return nil, nil
 }
 
-// onePR is a merged PR with one resolved thread a person replied to.
+// onePR is a merged PR with one resolved thread its author replied to.
 const onePR = `{"data":{"repository":{"pullRequest":{
  "number":7,"state":"MERGED","createdAt":"2026-11-01T10:00:00Z","closedAt":"2026-11-02T10:00:00Z","mergedAt":"2026-11-02T11:00:00Z",
- "author":{"__typename":"User"},
+ "author":{"__typename":"User","login":"alice"},
  "commits":{"totalCount":1,"nodes":[{"commit":{"oid":"abc1234","committedDate":"2026-11-01T10:00:00Z","parents":{"totalCount":1}}}]},
- "reviewThreads":{"totalCount":1,"nodes":[{"isResolved":true,"isOutdated":false,"path":"a.go","line":10,"originalLine":9,"comments":{"nodes":[{"body":"a nil map","createdAt":"2026-11-01T11:00:00Z","author":{"__typename":"Bot"},"originalCommit":{"oid":"abc1234"}},{"body":"**Not fixing (intentional).** checked","createdAt":"2026-11-01T11:05:00Z","author":{"__typename":"User"}}]}}]},
+ "reviewThreads":{"totalCount":1,"nodes":[{"isResolved":true,"isOutdated":false,"path":"a.go","line":10,"originalLine":9,"comments":{"nodes":[{"body":"a nil map","createdAt":"2026-11-01T11:00:00Z","author":{"__typename":"Bot"},"originalCommit":{"oid":"abc1234"}},{"body":"**Not fixing (intentional).** checked","createdAt":"2026-11-01T11:05:00Z","author":{"__typename":"User","login":"alice"}}]}}]},
  "reviews":{"totalCount":0,"nodes":[]},
  "comments":{"totalCount":1,"nodes":[{"body":"<!-- evidence -->\n| a | b | Verified |"}]}}}}}`
 
@@ -125,8 +125,24 @@ func TestRunDispositions_WritesJSONL(t *testing.T) {
 		t.Errorf("findings.jsonl has %d rows, want 1: another bot's thread is recorded too", n)
 	}
 	disps := readJSONL(t, filepath.Join(dir, dispositions.FileDispositions))
-	if len(disps) != 1 || disps[0]["Disposition"] != string(dispositions.DispDeclined) {
-		t.Errorf("dispositions.jsonl = %v, want one declined", disps)
+	if len(disps) != 1 || disps[0]["Disposition"] != string(dispositions.DispDeclined) || disps[0]["Basis"] != dispositions.BasisReply {
+		t.Errorf("dispositions.jsonl = %v, want one declined by the author's reply", disps)
+	}
+}
+
+func TestRunDispositions_KeepsFilesWhenEveryPRFails(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, dispositions.FilePRs)
+	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bad := fakeGH{errs: map[string]error{"gh api graphql": errors.New("boom")}}
+	var stdout, stderr strings.Builder
+	if err := runDispositions(context.Background(), opts{pr: "7", repo: "o/n", jsonl: dir}, bad, &stdout, &stderr); err == nil {
+		t.Fatal("a failed PR should fail the run")
+	}
+	if got, _ := os.ReadFile(path); string(got) != "{}\n" {
+		t.Errorf("prs.jsonl = %q, want the earlier run's rows kept", got)
 	}
 }
 
