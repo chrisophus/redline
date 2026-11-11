@@ -161,9 +161,10 @@ left in place on purpose; `redline gc` reclaims it for the current repository
 and says what became of each finding: fixed, declined, left open, stale, or
 never posted. It reads Redline's threads and the threads other review bots and
 people opened, with the caller's own `gh` login, and never writes to GitHub.
-The author's reply decides first (`Addressed in <sha>`, `**Not fixing
-(intentional).**`); without one, a later commit that changed the anchored lines
-counts as a fix. `--artifacts DIR` adds what only the CI artifacts kept (source,
+The PR author's reply decides first, when a line of it starts with
+`Addressed in <sha>` or `**Not fixing (intentional).**`. Without one, a later
+commit that changed the anchored lines counts as a fix, following the file
+through renames. `--artifacts DIR` adds what only the CI artifacts kept (source,
 confidence, the findings Redline never posted), and `--jsonl DIR` writes
 `findings.jsonl`, `dispositions.jsonl` and `prs.jsonl` for a loader to copy
 into a database.

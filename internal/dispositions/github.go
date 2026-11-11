@@ -27,13 +27,13 @@ query($owner:String!, $name:String!, $number:Int!) {
   repository(owner:$owner, name:$name) {
     pullRequest(number:$number) {
       number state createdAt closedAt mergedAt
-      author { __typename }
+      author { __typename login }
       commits(first:100) { totalCount nodes { commit { oid committedDate parents { totalCount } } } }
       reviewThreads(first:100) {
         totalCount
         nodes {
           isResolved isOutdated path line originalLine
-          comments(first:100) { nodes { body createdAt author { __typename } originalCommit { oid } } }
+          comments(first:100) { totalCount nodes { body createdAt author { __typename login } originalCommit { oid } } }
         }
       }
       reviews(first:100) { totalCount nodes { body } }
@@ -48,6 +48,14 @@ type GitHub struct {
 	R           Runner
 }
 
+type author struct {
+	Typename string `json:"__typename"`
+	Login    string `json:"login"`
+}
+
+// isBot is whether the account is a GitHub App. A deleted account has no author and reads as a person.
+func (a author) isBot() bool { return a.Typename == "Bot" }
+
 type gqlPR struct {
 	Data struct {
 		Repository struct {
@@ -57,10 +65,8 @@ type gqlPR struct {
 				CreatedAt time.Time `json:"createdAt"`
 				ClosedAt  time.Time `json:"closedAt"`
 				MergedAt  time.Time `json:"mergedAt"`
-				Author    struct {
-					Typename string `json:"__typename"`
-				} `json:"author"`
-				Commits struct {
+				Author    author    `json:"author"`
+				Commits   struct {
 					TotalCount int `json:"totalCount"`
 					Nodes      []struct {
 						Commit struct {
@@ -81,12 +87,11 @@ type gqlPR struct {
 						Line         int    `json:"line"`
 						OriginalLine int    `json:"originalLine"`
 						Comments     struct {
-							Nodes []struct {
-								Body      string    `json:"body"`
-								CreatedAt time.Time `json:"createdAt"`
-								Author    struct {
-									Typename string `json:"__typename"`
-								} `json:"author"`
+							TotalCount int `json:"totalCount"`
+							Nodes      []struct {
+								Body           string    `json:"body"`
+								CreatedAt      time.Time `json:"createdAt"`
+								Author         author    `json:"author"`
 								OriginalCommit *struct {
 									OID string `json:"oid"`
 								} `json:"originalCommit"`
@@ -116,9 +121,10 @@ type gqlPR struct {
 
 // FetchPR reads one pull request.
 func (g GitHub) FetchPR(ctx context.Context, number int) (PR, error) {
+	// -f sends owner and name as strings. -F would turn a repository called 2048 into a number.
 	out, err := g.R.Run(ctx, "gh", "api", "graphql",
 		"-f", "query="+prQuery,
-		"-F", "owner="+g.Owner, "-F", "name="+g.Name, "-F", "number="+strconv.Itoa(number))
+		"-f", "owner="+g.Owner, "-f", "name="+g.Name, "-F", "number="+strconv.Itoa(number))
 	if err != nil {
 		return PR{}, err
 	}
@@ -145,8 +151,13 @@ func parsePR(raw []byte, number int) (PR, error) {
 			return PR{}, fmt.Errorf("PR %d has %d %s, more than the %d one page reads: %w", number, c[0], name, maxConnection, ErrTooManyRows)
 		}
 	}
+	for _, n := range p.ReviewThreads.Nodes {
+		if c := n.Comments.TotalCount; c > maxConnection {
+			return PR{}, fmt.Errorf("PR %d has a thread on %s with %d comments, more than the %d one page reads: %w", number, n.Path, c, maxConnection, ErrTooManyRows)
+		}
+	}
 
-	pr := PR{Number: p.Number, State: p.State, CreatedAt: p.CreatedAt, AuthorIsBot: p.Author.Typename == "Bot"}
+	pr := PR{Number: p.Number, State: p.State, CreatedAt: p.CreatedAt, AuthorIsBot: p.Author.isBot()}
 	pr.ClosedAt = p.ClosedAt
 	if !p.MergedAt.IsZero() {
 		pr.ClosedAt = p.MergedAt
@@ -157,7 +168,10 @@ func parsePR(raw []byte, number int) (PR, error) {
 	for _, n := range p.ReviewThreads.Nodes {
 		th := Thread{Path: n.Path, Line: n.Line, OrigLine: n.OriginalLine, IsResolved: n.IsResolved, IsOutdated: n.IsOutdated}
 		for _, c := range n.Comments.Nodes {
-			tc := ThreadComment{Body: c.Body, CreatedAt: c.CreatedAt, AuthorIsBot: c.Author.Typename != "" && c.Author.Typename != "User"}
+			tc := ThreadComment{
+				Body: c.Body, CreatedAt: c.CreatedAt, AuthorIsBot: c.Author.isBot(),
+				ByPRAuthor: c.Author.Login != "" && strings.EqualFold(c.Author.Login, p.Author.Login),
+			}
 			if c.OriginalCommit != nil {
 				tc.CommitSHA = strings.ToLower(c.OriginalCommit.OID)
 			}

@@ -36,6 +36,7 @@ type findingsFile struct {
 		Severity    string          `json:"severity"`
 		Source      string          `json:"source"`
 		Confidence  string          `json:"confidence"`
+		Ruling      string          `json:"ruling"`
 		Verdict     json.RawMessage `json:"verdict"`
 		New         *bool           `json:"new"`
 		Question    struct {
@@ -90,7 +91,8 @@ func loadRun(dir string, pr int, runID int64) (Run, bool, error) {
 	if err := json.Unmarshal(raw, &ff); err != nil {
 		return Run{}, false, fmt.Errorf("decode findings.json: %w", err)
 	}
-	run := Run{PRNumber: pr, RunID: runID, Scope: ff.Scope, ReviewedAt: reviewedAt(dir, files[0])}
+	at, modelRan := reviewedAt(dir, files[0])
+	run := Run{PRNumber: pr, RunID: runID, Scope: ff.Scope, ReviewedAt: at, ModelRan: modelRan}
 	for i := range ff.Findings {
 		f := &ff.Findings[i]
 		if f.New != nil && !*f.New {
@@ -101,36 +103,44 @@ func loadRun(dir string, pr int, runID int64) (Run, bool, error) {
 		run.Findings = append(run.Findings, ArtifactFinding{
 			ID: f.ID, Fingerprint: f.Fingerprint, File: f.File, Line: f.Line, StartLine: f.StartLine,
 			Rule: f.Rule, Substrate: f.Substrate, Category: f.Category, Severity: f.Severity,
-			Source: f.Source, Confidence: f.Confidence, Verdict: verdictOf(f.Verdict),
+			Source: f.Source, Confidence: f.Confidence, Verdict: verdictOf(f.Ruling, f.Verdict),
 			QuestionKey: findings.Question{Kind: findings.QuestionKind(f.Question.Kind), Subject: f.Question.Subject}.Key(),
 		})
 	}
 	return run, true, nil
 }
 
-// verdictOf reads the verifying-pass verdict, which is a string in current artifacts and may be an object
-// with a verdict or status field in others. Anything else is recorded as empty, not as a decode error.
-func verdictOf(raw json.RawMessage) string {
+// verdictOf reads the verifying pass's verdict. findings.json writes it as the string field ruling; the
+// verdict field holds the agent's later judgment, an object whose ruling is used when the pass left none.
+// Older shapes (verdict as a string, or an object with a verdict or status field) are read too. Anything
+// else is recorded as empty, not as a decode error.
+func verdictOf(ruling string, raw json.RawMessage) string {
+	if ruling != "" {
+		return ruling
+	}
 	var s string
 	if json.Unmarshal(raw, &s) == nil {
 		return s
 	}
 	var obj struct {
+		Ruling  string `json:"ruling"`
 		Verdict string `json:"verdict"`
 		Status  string `json:"status"`
 	}
 	if json.Unmarshal(raw, &obj) == nil {
-		if obj.Verdict != "" {
-			return obj.Verdict
+		for _, v := range []string{obj.Ruling, obj.Verdict, obj.Status} {
+			if v != "" {
+				return v
+			}
 		}
-		return obj.Status
 	}
 	return ""
 }
 
 // reviewedAt is the time of the run's last model call in reviews.jsonl, falling back to the findings file's
-// modification time when the log is absent (deterministic-only runs write none).
-func reviewedAt(dir, findingsPath string) time.Time {
+// modification time when the log is absent (deterministic-only runs write none). modelRan is whether the log
+// gave the time: a download need not keep modification times, so the fallback may be when it was downloaded.
+func reviewedAt(dir, findingsPath string) (at time.Time, modelRan bool) {
 	var last time.Time
 	if f, err := os.Open(filepath.Join(dir, "reviews.jsonl")); err == nil {
 		defer func() { _ = f.Close() }() // read-only: a close error loses nothing
@@ -148,10 +158,11 @@ func reviewedAt(dir, findingsPath string) time.Time {
 			last = time.Time{} // a log cut short does not say when the run ended; use the fallback
 		}
 	}
-	if last.IsZero() {
-		if st, err := os.Stat(findingsPath); err == nil {
-			last = st.ModTime()
-		}
+	if !last.IsZero() {
+		return last, true
 	}
-	return last
+	if st, err := os.Stat(findingsPath); err == nil {
+		last = st.ModTime()
+	}
+	return last, false
 }
