@@ -1,0 +1,112 @@
+# Reusable: review a pull request with Redline and post the result as one PR review.
+#
+# A repository calls it from its own workflow (see .github/workflows/redline.yml here for the
+# caller this repository uses, and copy it):
+#
+#   jobs:
+#     review:
+#       uses: chrisophus/redline/.github/workflows/review.yml@main
+#       with: {pr: "${{ github.event.pull_request.number || github.event.issue.number }}"}
+#       secrets: {ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}"}
+#
+# The review is posted with the job's GITHUB_TOKEN, so it comes from github-actions[bot]. With a
+# profile (.github/redline-review.yml), the review body carries the gate's hidden verdict marker
+# for the PR's head commit, which a merge gate or the Sandbox Studio ticket loop can read.
+name: redline review
+
+on:
+  workflow_call:
+    inputs:
+      pr:
+        description: the pull request number
+        type: string
+        required: true
+      redline-ref:
+        description: the Redline branch, tag or commit to build and run
+        type: string
+        default: main
+      profile:
+        description: the gate profile; skipped when the file does not exist
+        type: string
+        default: .github/redline-review.yml
+      args:
+        description: extra flags for `redline review`
+        type: string
+        default: ""
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Redline's panes run the repository's own tools (go vet, golangci-lint, eslint), so the
+      # toolchain the repository builds with has to be there.
+      - uses: actions/setup-go@v5
+        if: hashFiles('go.mod') != ''
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        if: hashFiles('package.json') != ''
+        with:
+          node-version: "24"
+      - if: hashFiles('package-lock.json') != ''
+        run: npm ci --no-fund --no-audit
+
+      # Built from source, so a review always runs the Redline the ref names (main: the newest).
+      - uses: actions/setup-go@v5
+        if: hashFiles('go.mod') == ''
+        with:
+          go-version: stable
+      - name: Install Redline at ${{ inputs.redline-ref }}
+        env:
+          REF: ${{ inputs.redline-ref }}
+        run: |
+          GOBIN="$RUNNER_TEMP/redline" go install "github.com/chrisophus/redline/cmd/redline@$REF"
+          echo "$RUNNER_TEMP/redline" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/redline/redline" --version
+
+      - name: Review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR: ${{ inputs.pr }}
+          ARGS: ${{ inputs.args }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::ANTHROPIC_API_KEY is not set for this run (a fork's pull request?); no review."
+            exit 0
+          fi
+          # shellcheck disable=SC2086 # ARGS is a list of flags
+          redline review --run --pr "$PR" $ARGS
+
+      - name: Post
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          PROFILE: ${{ inputs.profile }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -f .redline/session.json ] || [ -d .redline/sessions ] || { echo "no session; nothing to post"; exit 0; }
+          set -- --pr "$PR" --report-url "$RUN_URL"
+          [ -f "$PROFILE" ] && set -- "$@" --profile "$PROFILE"
+          redline post "$@"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: redline-pr-${{ inputs.pr }}
+          path: .redline/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
