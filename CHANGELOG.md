@@ -5,9 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.20.1] - 2026-11-15
 
 ### Fixed
+- **The ruling tool no longer asks the model for its reasoning.** Its required
+  `analysis` input field was described as "Your reasoning", and the tool is
+  sent on every call. The API's `reasoning_extraction` refusal looks for a
+  reasoning field in a tool input, and since 2026-11-14 the findings call in
+  review-bot had intermittently ended with `stop=refusal`. The field is now
+  `check`, and asks for what the looked-up answers show. Saved reviews still
+  load, because the stored `Question.Analysis` keeps its name. This is the
+  likely cause of those refusals, not a confirmed one.
+- **The unpriced-model warning names the right model.** When the model that
+  wrote the walkthrough had no rate, the warning blamed the reviewing model,
+  which sent readers looking for a price that was already there. It now
+  checks each model. It says the `--max-cost` tripwire did not apply only
+  when the reviewing model is the one with no rate.
 - **`redline dispositions` reads the verifying pass's verdict.** It looked for
   a `verdict` field shaped differently from what `findings.json` writes, so
   the `VerifyVerdict` column was always empty. It now reads `ruling`.
@@ -29,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read.** They were sent to `gh api graphql` with `-F`, which converts them.
 - **`--jsonl` keeps the previous files when every PR fails,** instead of
   writing them empty.
+- `gpt-6-luna` is in the price table, at $0.10 in and $0.50 out per million
+  tokens. The rate was given by the person who runs review-bot, not read from
+  a vendor page.
 - `FixCommitSha` holds the full SHA when the reply gave an abbreviation, and a
   comment author counts as a bot only when GitHub says it is one, as the PR
   author already did.
