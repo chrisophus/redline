@@ -67,7 +67,7 @@ func flatCallList(body string) []toolCall {
 		for _, r := range rulings {
 			m := r.(map[string]any)
 			add(CallRule, map[string]any{
-				"finding": str(m, "finding", ""), "analysis": str(m, "analysis", ""),
+				"finding": str(m, "finding", ""), "check": str(m, "check", ""),
 				"verdict": str(m, "verdict", ""), "evidence": str(m, "evidence", ""), "why": str(m, "why", ""),
 			})
 		}

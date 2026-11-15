@@ -147,9 +147,9 @@ func callTools(describes, recaps, pulls bool, looks []string) []callTool {
 			"one check that would confirm or refute it.",
 			commentCallSchema()},
 		{CallRule, "Record your ruling on one finding you were given, by its id. Call it once for every finding. " +
-			"Write the analysis first, then the verdict it leads to, and quote the line the verdict rests on.",
-			flatObject(propsOf(rulingItemSchema(), "finding", "analysis", "verdict", "evidence", "why"),
-				"finding", "analysis", "verdict", "evidence", "why")},
+			"State what the looked-up answers show first, then the verdict, and quote the line the verdict rests on.",
+			flatObject(propsOf(rulingItemSchema(), "finding", "check", "verdict", "evidence", "why"),
+				"finding", "check", "verdict", "evidence", "why")},
 		{CallContext, "Return the full text of context entries by id, from the lists under each file in the diff. " +
 			"A caller entry is code elsewhere that calls something this change touched: when a change alters what a " +
 			"function accepts, returns or does, its callers are where that breaks. A type entry is the definition of a " +

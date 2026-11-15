@@ -1002,7 +1002,7 @@ func TestAReviewLeavesATraceOfAllThreeStages(t *testing.T) {
 				[2]string{review.CallDone, `{}`})
 		case review.StageRuling:
 			writeOACalls(w,
-				[2]string{review.CallRule, `{"analysis":"the tree has one","finding":"c1",
+				[2]string{review.CallRule, `{"check":"the tree has one","finding":"c1",
 					"verdict":"kept","evidence":"func (u *User) Name() string { return u.name }",
 					"why":"the range the lookup filed is a getter"}`},
 				[2]string{review.CallDone, `{}`})

@@ -135,12 +135,12 @@ func ruleSchema() map[string]any {
 	ruling := map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"analysis", "finding", "verdict", "evidence", "why"},
+		"required":             []string{"check", "finding", "verdict", "evidence", "why"},
 		"properties": map[string]any{
-			"analysis": map[string]any{
+			"check": map[string]any{
 				"type": "string",
-				"description": "Work through what the answers show for this finding here, " +
-					"before the verdict. Your reasoning, not a restatement of the finding.",
+				"description": "What the looked-up answers show about this finding, in a sentence or two, " +
+					"before the verdict. Name the answer and what it says, not the finding again.",
 			},
 			"finding": map[string]any{
 				"type":        "string",
@@ -180,11 +180,14 @@ func rulingItemSchema() map[string]any {
 	return ruleSchema()["properties"].(map[string]any)["rulings"].(map[string]any)["items"].(map[string]any)
 }
 
-// rulingItem is one ruling as it comes off the wire. analysis leads so the
-// model reasons before it commits to a verdict rather than justifying one it
-// has already written.
+// rulingItem is one ruling as it comes off the wire. check leads so the model
+// states what the answers show before it commits to a verdict rather than
+// justifying one it has already written. The wire name is "check", not
+// "analysis" or "reasoning": a tool field that asks the model for its reasoning
+// is what the API's reasoning_extraction refusal looks for. The Go field and
+// the stored Question.Analysis keep their names so saved reviews still load.
 type rulingItem struct {
-	Analysis string `json:"analysis"`
+	Analysis string `json:"check"`
 	Finding  string `json:"finding"`
 	Verdict  string `json:"verdict"`
 	Evidence string `json:"evidence"`

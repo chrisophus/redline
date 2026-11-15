@@ -334,7 +334,7 @@ func TestACompletePassEndsWithoutWaitingForDone(t *testing.T) {
 				[2]string{CallFile, `{"path":"internal/queue/q.go","summary":"s"}`}), 2},
 		{"a ruling on every finding", StageRuling,
 			passExpect{findings: []string{"c1"}},
-			reply([2]string{CallRule, `{"finding":"c1","analysis":"a","verdict":"kept","evidence":"e","why":"w"}`}), 1},
+			reply([2]string{CallRule, `{"finding":"c1","check":"a","verdict":"kept","evidence":"e","why":"w"}`}), 1},
 		{"a findings pass, which has no such test", StageFindings,
 			passExpect{},
 			reply([2]string{CallComment, goodComment}), 2},
