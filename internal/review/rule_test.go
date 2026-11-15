@@ -757,7 +757,7 @@ func TestParseRulingsToleratesObjectShapes(t *testing.T) {
 func TestParseRulingsRecoversAStringifiedObjectThatLostEscaping(t *testing.T) {
 	mangled := []byte(`{"rulings":"{\"rulings\":[{\"finding\":\"c1\",\"verdict\":\"kept\",` +
 		`\"evidence\":\"e\",\"why\":\"w\",` +
-		`\"analysis\":\"the query.buyerScopeSQL == \"\" branch is separate\"}]}"}`)
+		`\"check\":\"the query.buyerScopeSQL == \"\" branch is separate\"}]}"}`)
 	got, err := parseRulings(mangled)
 	if err != nil {
 		t.Fatal(err)
@@ -776,7 +776,7 @@ func TestParseRulingsRecoversAStringifiedObjectThatLostEscaping(t *testing.T) {
 // to schema order writes its working first rather than justifying a verdict it
 // already wrote.
 func TestRulingReasonsBeforeItDecides(t *testing.T) {
-	body := []byte(`{"rulings":[{"analysis":"the caller at x.go:10 is updated in this same commit, so the missed-caller claim is false","finding":"c1","verdict":"withdrawn","evidence":"x.go:10 foo(newSig)","why":"caller updated"}]}`)
+	body := []byte(`{"rulings":[{"check":"the caller at x.go:10 is updated in this same commit, so the missed-caller claim is false","finding":"c1","verdict":"withdrawn","evidence":"x.go:10 foo(newSig)","why":"caller updated"}]}`)
 	got, err := parseRulings(body)
 	if err != nil {
 		t.Fatal(err)
@@ -790,9 +790,9 @@ func TestRulingReasonsBeforeItDecides(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(raw)
-	ai, vi := strings.Index(s, `"analysis"`), strings.Index(s, `"verdict"`)
+	ai, vi := strings.Index(s, `"check"`), strings.Index(s, `"verdict"`)
 	if ai < 0 || vi < 0 || ai > vi {
-		t.Fatalf("analysis must be in the schema and serialize before verdict, got analysis@%d verdict@%d", ai, vi)
+		t.Fatalf("check must be in the schema and serialize before verdict, got analysis@%d verdict@%d", ai, vi)
 	}
 }
 

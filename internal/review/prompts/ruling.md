@@ -19,5 +19,5 @@ verdicts.
 
 Only a kept finding is posted. The rest are recorded with your reason.
 
-Write the analysis before the verdict: what the answers show for that
-finding, and the verdict it leads to.
+Give the check before the verdict: what the answers show for that finding,
+then the verdict.
