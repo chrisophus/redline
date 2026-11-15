@@ -46,7 +46,12 @@ var priceTable = map[string]Pricing{
 	// here: a describing call moved to this model pays the same for the
 	// prefix as leaving it on Sonnet and reading the prefix back, so the
 	// whole of what such a move saves is the walkthrough's output tokens.
-	"gpt-5.6-luna":  {InPerM: 0.20, OutPerM: 1.20},
+	"gpt-5.6-luna": {InPerM: 0.20, OutPerM: 1.20},
+	// gpt-6-luna is the name review-bot's gateway uses for the walkthrough
+	// model. Its rate, $0.10 in and $0.50 out per million tokens, was given by
+	// the user who runs that review-bot, not read from a vendor page, so like
+	// the row above nothing public can be checked against it.
+	"gpt-6-luna":    {InPerM: 0.10, OutPerM: 0.50},
 	"gpt-5.4":       {InPerM: 2.50, OutPerM: 15},
 	"gpt-5.3-codex": {InPerM: 1.75, OutPerM: 14},
 	"gpt-5-mini":    {InPerM: 0.25, OutPerM: 2},

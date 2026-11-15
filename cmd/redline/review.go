@@ -337,13 +337,26 @@ func cmdReview(o opts) error {
 					"from the request size rather than counted.\n")
 		}
 		if !out.CostKnown && !o.dryRun && out.Usage.InputTokens > 0 {
-			// A model missing from the price table has no estimate, so the
-			// --max-cost tripwire in review.Run cannot fire and the request
-			// went out with no cost guard at all. Silence here reads as a
-			// priced request that came in under the cap.
-			fmt.Fprintf(os.Stderr,
-				"redline: %s is not in the price table, so the request was sent unpriced "+
-					"and the --max-cost tripwire did not apply.\n", out.Model)
+			// Say which model has no rate. The total goes unknown when either
+			// the reviewing model or the one that wrote the walkthrough is
+			// missing from the price table, and naming only the reviewing
+			// model sent a reader looking for a rate that was already there.
+			if _, ok := review.LookupPricing(out.Model); !ok {
+				// The reviewing model has no estimate, so the --max-cost
+				// tripwire in review.Run cannot fire and the request went
+				// out with no cost guard at all. Silence here reads as a
+				// priced request that came in under the cap.
+				fmt.Fprintf(os.Stderr,
+					"redline: %s is not in the price table, so the request was sent unpriced "+
+						"and the --max-cost tripwire did not apply.\n", out.Model)
+			}
+			if m := out.SynopsisModel; m != "" && m != out.Model {
+				if _, ok := review.LookupPricing(m); !ok {
+					fmt.Fprintf(os.Stderr,
+						"redline: %s, which wrote the walkthrough, is not in the price table, "+
+							"so the total cost is unknown. The --max-cost tripwire still applies to %s.\n", m, out.Model)
+				}
+			}
 		}
 	}
 	// Record before returning the error, so a review that fails after
