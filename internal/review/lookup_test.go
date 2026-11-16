@@ -171,16 +171,18 @@ func TestTheNewLookupsReachTheTree(t *testing.T) {
 }
 
 // The catalogue is fixed for a run and the permission is per pass. Checking a
-// claim is what a judging pass does; a describing pass has nothing to check,
-// and the ruling was assembled around the answers of a lookup pass of its own.
-func TestOnlyTheJudgingPassesMayLookThingsUp(t *testing.T) {
+// claim is what a judging pass does, and the describing pass is given the same
+// lookups because it kept asking for them: a synopsis run sent grep and
+// read_lines, was refused, and lost turns to it. The ruling was assembled
+// around the answers of a lookup pass of its own, so it takes none.
+func TestOnlyTheJudgingAndDescribingPassesMayLookThingsUp(t *testing.T) {
 	for _, tc := range []struct {
 		stage string
 		want  bool
 	}{
 		{StageFindings, true},
 		{StageReview, true},
-		{StageSynopsis, false},
+		{StageSynopsis, true},
 		{StageRuling, false},
 	} {
 		got := strings.Join(callsFor(tc.stage, false, false, LookCalls), ",")
@@ -655,5 +657,37 @@ func TestLeadingIntegerReadsOnlyALeadingInteger(t *testing.T) {
 		if got, ok := leadingInteger(in); ok {
 			t.Errorf("leadingInteger(%q) = %d, true; want no number", in, got)
 		}
+	}
+}
+
+// The describing pass is told what the lookups are, so a model that sees them
+// on the catalogue is not left to guess whether it may use them.
+func TestTheDescribingPassIsToldItMayLookThingsUp(t *testing.T) {
+	block := callsBlock(StageSynopsis, false, false, LookCalls)
+	for _, want := range []string{"grep searches this repository", "read_lines reads a span of one file"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("the describing pass is not told %q:\n%s", want, block)
+		}
+	}
+	if strings.Contains(block, "A claim about code outside the diff") {
+		t.Errorf("the describing pass is told to check claims, which it does not file:\n%s", block)
+	}
+	// With no lookups on the run there is nothing to say.
+	if strings.Contains(callsBlock(StageSynopsis, false, false, nil), "grep") {
+		t.Errorf("the describing pass is told about lookups the run does not have")
+	}
+}
+
+// A lookup called in the describing pass is answered, not refused.
+func TestADescribingPassLookupIsAnswered(t *testing.T) {
+	look := &fakeLooker{answer: "store.go:3-5\n3\tfunc Insert() error {\n"}
+	c := newCollector(StageSynopsis, passExpect{}, nil, look, false)
+	input, err := json.Marshal(map[string]any{"path": "store.go", "start_line": 3, "end_line": 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, done, rejected := c.take([]toolCall{{ID: "t1", Name: CallRead, Input: input}})
+	if rejected != 0 || done || len(results) != 1 || results[0].isError {
+		t.Fatalf("results=%+v done=%v rejected=%d, want the span back", results, done, rejected)
 	}
 }

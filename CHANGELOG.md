@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The describing pass may use the lookups.** `grep`, `read_lines` and the
+  other lookups were on the tool list of every call but refused in the
+  synopsis, so a synopsis run sent them anyway and was told "this pass does
+  not take grep" for each. The pass now takes them and its calls block says so.
+  Each lookup is one more turn in the synopsis loop.
+
 ## [0.20.1] - 2026-11-15
 
 ### Fixed
