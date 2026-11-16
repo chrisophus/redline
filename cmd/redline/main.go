@@ -84,6 +84,14 @@ type opts struct {
 	recent                 int
 	repo, artifacts, jsonl string
 	evidenceMarker         string
+	// head is --head, an archived head of a pull request's session. The
+	// defect* and summary fields are miss's; keepHeads and headsOlderThan are
+	// gc's limits on archived heads, and misses is learnings' --misses.
+	head, defectFile, summary string
+	defectLine, fixPR         int
+	keepHeads                 int
+	headsOlderThan            string
+	misses                    bool
 }
 
 func runMain(args []string) error {
@@ -185,6 +193,7 @@ func cmdRun(o opts) error {
 		return err
 	}
 	recordSession(o)
+	archiveHead(o, res)
 	if o.format == "json" {
 		if err := emitJSON(res.Report); err != nil {
 			return err

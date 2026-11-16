@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Every reviewed head of a pull request is kept.** `redline run --pr N` and
+  `redline review --pr N` copy the session into
+  `.redline/sessions/pr-N/<head-sha>/`, and `pr-N/` still holds the latest.
+  A new push no longer overwrites the review of the commit before it.
+  `redline postmortem` and `redline learnings` take `--pr N --head SHA` to
+  read an older head. `redline gc --keep-heads N` and
+  `--heads-older-than DURATION` remove old heads, and never one that a
+  recorded miss points at.
+- **`redline miss` records a defect a review should have caught.** It takes
+  `--pr`, `--file`, `--line`, `--summary`, and optionally `--head` and
+  `--fix-pr`, and appends to `misses.jsonl`. Given a head that was kept, the
+  entry says whether the line was in the reviewed diff and whether a finding
+  or a lookup touched it. With no session, those fields are null.
+- **`redline learnings --misses` drafts review rules from the misses ledger**
+  instead of from review threads.
+
 ## [0.20.1] - 2026-11-15
 
 ### Fixed

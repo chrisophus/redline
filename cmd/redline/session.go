@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/chrisophus/redline/internal/gitx"
+	"github.com/chrisophus/redline/internal/run"
 )
 
 // A run writes its session, its report and everything a later command reads
@@ -98,7 +99,9 @@ func workingTreeName() string {
 // resolveSession points o.out at the session directory the command works on,
 // before it runs. set holds the flags the caller passed.
 func resolveSession(c command, o *opts, set map[string]bool) error {
-	if c.name == "gc" || c.name == "dispositions" {
+	// miss finds the session it examines itself, from --pr and --head, and
+	// learnings --misses reads the ledger and no session.
+	if c.name == "gc" || c.name == "dispositions" || c.name == "miss" || (c.name == "learnings" && o.misses) {
 		return nil
 	}
 	observes := c.name == "run" || (c.name == "review" && o.observe)
@@ -114,6 +117,10 @@ func resolveSession(c command, o *opts, set map[string]bool) error {
 		if o.session != "" {
 			return errors.New("--out names the session directory itself and --session names one under " +
 				".redline/sessions; pass one of them")
+		}
+		if o.head != "" {
+			return errors.New("--head reads a head archived under .redline/sessions, and --out names a " +
+				"session directory itself; point --out at the head's directory instead")
 		}
 		return nil
 	}
@@ -157,9 +164,38 @@ func resolveSession(c command, o *opts, set map[string]bool) error {
 			return fmt.Errorf("no saved session %q in %s; run `redline run` with the same target first", name, where)
 		}
 	}
+	if o.head != "" {
+		if !strings.HasPrefix(name, "pr-") {
+			return fmt.Errorf("--head reads the archived heads of a pull request's session, and %q is not one", name)
+		}
+		headDir, _, err := run.ResolveHead(dir, o.head)
+		if err != nil {
+			return err
+		}
+		dir = headDir
+	}
 	o.out = dir
 	o.sessionKey = name
 	return nil
+}
+
+// archiveHead keeps the session just written under the commit it reviewed, so
+// the next push to the pull request does not take the review of this one away.
+// Only a pull request's session under the default layout is kept: a working
+// tree has no commit to name, and --out is a directory the caller manages.
+// Best effort, like recordSession: the session itself is already on disk.
+func archiveHead(o opts, res *run.Result) {
+	if o.sessionKey == "" || res == nil || res.Target == nil || res.Target.PR == nil {
+		return
+	}
+	dir, err := run.ArchiveHead(o.out, res)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "redline: could not keep this head's session: %v\n", err)
+		return
+	}
+	if dir != "" {
+		fmt.Fprintf(os.Stderr, "redline: kept head %s in %s\n", filepath.Base(dir)[:7], dir)
+	}
 }
 
 // recordSession marks the session just written as the latest and says where

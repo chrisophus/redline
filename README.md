@@ -142,6 +142,9 @@ go build ./cmd/redline
 ./redline serve --stop            # stop the server for this .redline
 ./redline gc                      # remove this repo's cached review worktrees
 ./redline dispositions --recent 50 --jsonl out/  # what became of each review finding
+./redline postmortem --pr 123 --head abc1234     # read an older head's review
+./redline miss --pr 123 --head abc1234 --file a.go --line 40 --summary "dropped a paren"
+./redline gc --keep-heads 5       # keep the 5 newest reviewed heads per pull request
 ```
 
 `run` writes `findings.json`, `report.md`, `report.html`, and any captured
@@ -150,6 +153,14 @@ artifacts under `evidence/` into the target's session directory,
 the working tree), and prints that path. `findings.json` plus git is the whole machine
 interface: an agent reviewing the change reads it so it does not re-derive
 what Redline measured, and runs git for anything else.
+
+A pull request's session directory holds the latest head. Each head that was
+reviewed is also kept in `.redline/sessions/pr-123/<head-sha>/`, so a later
+push does not take the review of the commit before it. `redline miss` records
+a defect that one of those reviews should have caught, and says whether its
+line was in the reviewed diff and whether a finding or lookup touched it. The
+ledger is `misses.jsonl`, and `redline learnings --misses` drafts review rules
+from it.
 
 Reviewing a `--commit`, `--branch`, `--range`, or `--pr` checks that revision
 out in a detached worktree, cached under `~/.redline/worktrees` and reused
