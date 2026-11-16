@@ -308,7 +308,7 @@ func callsFor(stage string, recaps, pulls bool, looks []string) []string {
 	if pulls {
 		calls = append(calls, CallContext)
 	}
-	if stage == StageFindings || stage == StageReview {
+	if stage == StageFindings || stage == StageReview || stage == StageSynopsis {
 		for _, name := range LookCalls {
 			if slices.Contains(looks, name) {
 				calls = append(calls, name)
@@ -361,7 +361,7 @@ func callsBlock(stage string, recaps, deferred bool, looks []string) string {
 // checkable now, where before it could only be named as a question for a later
 // pass.
 func checksTree(stage string, looks []string) string {
-	if len(looks) == 0 || (stage != StageFindings && stage != StageReview) {
+	if len(looks) == 0 || (stage != StageFindings && stage != StageReview && stage != StageSynopsis) {
 		return ""
 	}
 	var parts []string
@@ -378,6 +378,15 @@ func checksTree(stage string, looks []string) string {
 		case CallHistory:
 			parts = append(parts, "line_history says why a span of lines is there")
 		}
+	}
+	if stage == StageSynopsis {
+		// The describing pass reaches for these whether or not it is told it
+		// may: with them on the catalogue and refused here, a synopsis run
+		// sent grep and read_lines and was told not to send them again. What
+		// a change does often rests on code the diff does not show, so the
+		// walkthrough can be written from the tree rather than from the hunk.
+		return " " + joinWithAnd(parts) + "; they answer with what the tree says and record nothing. " +
+			"What a change does can be read from the code around it before it is described."
 	}
 	return " " + joinWithAnd(parts) + "; they answer with what the tree says and record nothing. " +
 		"A claim about code outside the diff is one you can check here rather than only name."
