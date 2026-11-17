@@ -40,7 +40,11 @@ func cmdGC(o opts) error {
 		fmt.Fprintf(os.Stderr, "redline: cached worktrees not cleaned: %v\n", err)
 	}
 	if trimHeads {
-		n, freed := pruneHeads(o.out, o.keepHeads, headsCutoff)
+		ledger := o.jsonl
+		if ledger == "" {
+			ledger = o.out
+		}
+		n, freed := pruneHeads(o.out, ledger, o.keepHeads, headsCutoff)
 		fmt.Printf("redline: removed %d kept head session(s), freed %s\n", n, humanBytes(freed))
 	}
 	return nil

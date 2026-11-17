@@ -175,13 +175,13 @@ func TestGCTrimsKeptHeadsByCountAndAge(t *testing.T) {
 		return err == nil
 	}
 
-	if n, _ := pruneHeads(root, 2, time.Time{}); n != 1 || exists("1") || !exists("2") || !exists("3") {
+	if n, _ := pruneHeads(root, root, 2, time.Time{}); n != 1 || exists("1") || !exists("2") || !exists("3") {
 		t.Errorf("--keep-heads 2 removed %d, want only the oldest head gone", n)
 	}
-	if n, _ := pruneHeads(root, 0, now.Add(-24*time.Hour)); n != 1 || exists("2") || !exists("3") {
+	if n, _ := pruneHeads(root, root, 0, now.Add(-24*time.Hour)); n != 1 || exists("2") || !exists("3") {
 		t.Errorf("an age cutoff removed %d, want the 48h-old head gone and the newest kept", n)
 	}
-	if n, _ := pruneHeads(root, 0, time.Time{}); n != 0 {
+	if n, _ := pruneHeads(root, root, 0, time.Time{}); n != 0 {
 		t.Errorf("no limit removed %d heads", n)
 	}
 	if _, err := os.Stat(filepath.Join(pr, "session.json")); err != nil {
@@ -274,13 +274,73 @@ func TestGCKeepsHeadsAMissPointsAt(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := miss.Append(root, miss.Entry{PR: 7, File: "a.go", Line: 1, Summary: "s", Session: filepath.Join(pr, headA)}); err != nil {
+	if err := miss.Append(root, miss.Entry{PR: 7, File: "a.go", Line: 1, Summary: "s", Head: headA[:10]}); err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := pruneHeads(root, 0, time.Now().Add(-time.Hour)); n != 1 {
+	if n, _ := pruneHeads(root, root, 0, time.Now().Add(-time.Hour)); n != 1 {
 		t.Errorf("removed %d heads, want 1", n)
 	}
 	if _, err := os.Stat(filepath.Join(pr, headA)); err != nil {
 		t.Errorf("the head a miss points at was removed: %v", err)
+	}
+}
+
+// The ledger can sit in another directory and the pin still holds, and a
+// ledger that cannot be read stops the trim instead of unpinning everything.
+func TestGCPinsFromAnotherLedgerAndStopsOnABadOne(t *testing.T) {
+	root, ledger := t.TempDir(), t.TempDir()
+	pr := filepath.Join(root, sessionsDir, "pr-7")
+	saveSessionAt(t, filepath.Join(pr, headA))
+	if err := miss.Append(ledger, miss.Entry{PR: 7, File: "a.go", Line: 1, Summary: "s", Head: headA}); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := pruneHeads(root, ledger, 0, time.Now().Add(time.Hour)); n != 0 {
+		t.Errorf("removed %d heads a miss in the other ledger names", n)
+	}
+	if err := os.WriteFile(filepath.Join(ledger, miss.File), []byte("not json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := pruneHeads(root, ledger, 0, time.Now().Add(time.Hour)); n != 0 {
+		t.Errorf("removed %d heads with an unreadable ledger", n)
+	}
+	if _, err := os.Stat(filepath.Join(pr, headA)); err != nil {
+		t.Errorf("head removed: %v", err)
+	}
+}
+
+// review.json and the trace of an earlier head are not copied into the
+// archive of a later one.
+func TestArchiveLeavesOutAnotherHeadsReviewAndTrace(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, sessionsDir, "pr-7")
+	o := opts{out: dir, root: root, sessionKey: "pr-7"}
+	res := sessionOf(headB, "second.go")
+	if err := run.SaveSession(dir, res); err != nil {
+		t.Fatal(err)
+	}
+	own := change.ReviewIdentity(res.Report.BaseSHA, res.Change)
+	write := func(name, rev string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(`{"revision":"`+rev+`"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("review.json", "0000000:aaaaaaa")
+	write("postmortem.json", "0000000:aaaaaaa")
+	archiveHead(o, res)
+	for _, name := range []string{"review.json", "postmortem.json"} {
+		if _, err := os.Stat(filepath.Join(dir, headB, name)); err == nil {
+			t.Errorf("%s of another head was archived", name)
+		}
+	}
+	write("review.json", own)
+	write("postmortem.json", own)
+	archiveHead(o, res)
+	for _, name := range []string{"review.json", "postmortem.json"} {
+		if _, err := os.Stat(filepath.Join(dir, headB, name)); err != nil {
+			t.Errorf("%s of this head was dropped: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "review.json")); err != nil {
+		t.Errorf("the session's own review.json was touched: %v", err)
 	}
 }

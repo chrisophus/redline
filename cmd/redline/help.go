@@ -291,6 +291,7 @@ func gcFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.olderThan, "older-than", "", "only remove cached worktrees older than this duration (e.g. 168h)")
 	fs.IntVar(&o.keepHeads, "keep-heads", 0, "keep only this many of the newest reviewed heads of each session")
 	fs.StringVar(&o.headsOlderThan, "heads-older-than", "", "remove kept heads whose session is older than this duration (e.g. 720h)")
+	fs.StringVar(&o.jsonl, "jsonl", "", "directory holding misses.jsonl, whose heads are not trimmed (default: --out)")
 }
 
 const runHelp = `redline run — observe the change and report
@@ -781,6 +782,8 @@ flags:
   --heads-older-than D
                     remove kept heads whose session was written more than D
                     ago (e.g. 720h)
+  --jsonl DIR       where misses.jsonl is; a head a miss names is never
+                    removed (default: --out)
 `
 
 const dispositionsHelp = `redline dispositions — record what became of each review finding

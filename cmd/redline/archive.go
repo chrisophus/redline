@@ -1,16 +1,20 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/miss"
+	"github.com/chrisophus/redline/internal/postmortem"
 	"github.com/chrisophus/redline/internal/run"
 )
 
@@ -37,7 +41,7 @@ func archiveHead(o opts, res *run.Result) {
 	if !headDirRE.MatchString(head) {
 		return
 	}
-	if err := copySession(o.out, filepath.Join(o.out, head)); err != nil {
+	if err := copySession(o.out, filepath.Join(o.out, head), change.ReviewIdentity(res.Report.BaseSHA, res.Change)); err != nil {
 		fmt.Fprintf(os.Stderr, "redline: could not keep the session for %s: %v\n", head, err)
 	}
 }
@@ -49,7 +53,13 @@ func archiveHead(o opts, res *run.Result) {
 // The copy is made in a temporary directory beside dst and renamed into place,
 // so a copy that fails partway leaves the previous archive, or none, and never
 // a half-written head that keptHeads would list.
-func copySession(src, dst string) error {
+//
+// review.json and the postmortem trace outlive a run, so the session can hold
+// those of an earlier head. A copy of either that is stamped with a different
+// change than id is left out, so the archive never shows another commit's
+// review as this head's. A file that carries no stamp, or cannot be read, is
+// kept: it says nothing against this head.
+func copySession(src, dst, id string) error {
 	tmp, err := os.MkdirTemp(src, tmpArchivePrefix)
 	if err != nil {
 		return err
@@ -63,10 +73,33 @@ func copySession(src, dst string) error {
 	if err := copyDir(src, tmp, true); err != nil {
 		return err
 	}
+	for _, name := range []string{"review.json", postmortem.File} {
+		if staleFor(filepath.Join(tmp, name), id) {
+			if err := os.Remove(filepath.Join(tmp, name)); err != nil {
+				return err
+			}
+		}
+	}
 	if err := os.RemoveAll(dst); err != nil {
 		return err
 	}
 	return os.Rename(tmp, dst)
+}
+
+// staleFor reports whether the JSON file at path names a revision other than
+// id.
+func staleFor(path, id string) bool {
+	buf, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var stamp struct {
+		Revision string `json:"revision"`
+	}
+	if json.Unmarshal(buf, &stamp) != nil {
+		return false
+	}
+	return stamp.Revision != "" && stamp.Revision != id
 }
 
 // tmpArchivePrefix names the directory a copy is built in. It is inside the
@@ -188,22 +221,19 @@ func keptHeads(session string) []keptHead {
 
 // pruneHeads removes archived heads under every session in root: all but the
 // newest keep of each session when keep is above zero, and any written before
-// cutoff when it is not zero. A head that a miss in root's misses.jsonl names
+// cutoff when it is not zero. A head that a miss in ledger's misses.jsonl names
 // is kept whatever its age, since the miss is the record of why it matters and
-// its answers can only be checked against that session. It returns how many it
-// removed and their size.
-func pruneHeads(root string, keep int, cutoff time.Time) (int, int64) {
-	sessions, _ := filepath.Glob(filepath.Join(root, sessionsDir, "*"))
-	pinned := map[string]bool{}
-	misses, _ := miss.Read(root)
-	for _, m := range misses {
-		if m.Session != "" {
-			abs, err := filepath.Abs(m.Session)
-			if err == nil {
-				pinned[abs] = true
-			}
-		}
+// its answers can only be checked against that session. A miss names its head
+// by pull request number and commit, which holds wherever the ledger was
+// recorded from. If the ledger cannot be read nothing is removed, because the
+// heads it protects are unknown. It returns how many it removed and their size.
+func pruneHeads(root, ledger string, keep int, cutoff time.Time) (int, int64) {
+	misses, err := miss.Read(ledger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "redline: kept heads not trimmed, %v\n", err)
+		return 0, 0
 	}
+	sessions, _ := filepath.Glob(filepath.Join(root, sessionsDir, "*"))
 	removed := 0
 	var freed int64
 	for _, s := range sessions {
@@ -211,10 +241,10 @@ func pruneHeads(root string, keep int, cutoff time.Time) (int, int64) {
 			if (keep <= 0 || i < keep) && (cutoff.IsZero() || !h.when.Before(cutoff)) {
 				continue
 			}
-			dir := filepath.Join(s, h.sha)
-			if abs, err := filepath.Abs(dir); err == nil && pinned[abs] {
+			if pinnedByMiss(misses, filepath.Base(s), h.sha) {
 				continue
 			}
+			dir := filepath.Join(s, h.sha)
 			size := dirSize(dir)
 			if err := os.RemoveAll(dir); err != nil {
 				fmt.Fprintf(os.Stderr, "redline: could not remove %s: %v\n", dir, err)
@@ -225,4 +255,15 @@ func pruneHeads(root string, keep int, cutoff time.Time) (int, int64) {
 		}
 	}
 	return removed, freed
+}
+
+// pinnedByMiss reports whether a miss on the pull request behind session names
+// the head sha. A head typed short and never matched to a session is a prefix.
+func pinnedByMiss(misses []miss.Entry, session, sha string) bool {
+	for _, m := range misses {
+		if session == "pr-"+strconv.Itoa(m.PR) && len(m.Head) >= 7 && strings.HasPrefix(sha, m.Head) {
+			return true
+		}
+	}
+	return false
 }
