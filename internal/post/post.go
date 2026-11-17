@@ -610,8 +610,8 @@ const maxSummary = 400
 
 // splitAt cuts s to at most max bytes. It cuts at the last sentence end that
 // leaves a useful head, so the rest is the remainder of the text. With no
-// sentence end to use it cuts at a word, adds an ellipsis, and returns all of s
-// as the rest, since the head then ends mid-sentence. A text that fits comes
+// sentence end to use it cuts at a word, adds an ellipsis to the head, and
+// starts the rest with one, so the head's text is not shown twice. A text that fits comes
 // back whole with an empty rest.
 func splitAt(s string, max int) (head, rest string) {
 	s = strings.TrimSpace(s)
@@ -630,10 +630,11 @@ func splitAt(s string, max int) (head, rest string) {
 			return s[:i+1], strings.TrimSpace(s[i+1:])
 		}
 	}
+	cut := len(window)
 	if sp := strings.LastIndexAny(window, " \n"); sp > 0 {
-		window = window[:sp]
+		cut = sp
 	}
-	return strings.TrimRight(window, " \n,;:") + ellipsis, s
+	return strings.TrimRight(window[:cut], " \n,;:") + ellipsis, ellipsis + strings.TrimSpace(s[cut:])
 }
 
 // whyText joins the parts of a finding that did not fit its summary.

@@ -166,7 +166,7 @@ func TestLongFindingIsCutIntoSummaryAndWhy(t *testing.T) {
 
 func TestLongFindingWithNoSentenceEndStillCuts(t *testing.T) {
 	head, rest := splitAt(strings.Repeat("word ", 200), 100)
-	if len(head) > 100 || !strings.HasSuffix(head, "…") || len(rest) < 900 {
+	if len(head) > 100 || !strings.HasSuffix(head, "…") || !strings.HasPrefix(rest, "…word") || len(rest) < 880 {
 		t.Errorf("head %d bytes %q, rest %d bytes", len(head), head, len(rest))
 	}
 }
@@ -224,5 +224,14 @@ func TestDeltaDoesNotCountConversationExchanges(t *testing.T) {
 	p = p.WithDelta(map[string]bool{"conversation:q2:replied": true}, nil)
 	if p.delta.New != 1 || p.delta.Open != 0 {
 		t.Errorf("only the finding counts: %+v", *p.delta)
+	}
+}
+
+func TestMidSentenceCutDoesNotRepeatTheHead(t *testing.T) {
+	msg := strings.Repeat("alpha beta gamma ", 60)
+	head, rest := splitAt(msg, 100)
+	words := func(s string) int { return len(strings.Fields(strings.ReplaceAll(s, "…", " "))) }
+	if words(head)+words(rest) != words(msg) {
+		t.Errorf("head and rest must add up to the message, not repeat it:\n%q\n%q", head, rest)
 	}
 }
