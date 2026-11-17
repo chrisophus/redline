@@ -248,3 +248,12 @@ func TestCutNeverLeavesACodeFenceOrSpanOpen(t *testing.T) {
 		t.Errorf("span left open:\n%s\n--\n%s", head, rest)
 	}
 }
+
+func TestFirstReviewWithARecapStillLeadsWithTheOverview(t *testing.T) {
+	rep := shapeReport("Adds a feed.", warning("one"))
+	p := BuildAttest(rep, prTarget(), "", map[string]map[int]bool{"a.go": {5: true}}, shapeProfile(), changedFiles("a.go")).
+		WithRecap("The loop moved.", "abc1234def5678", nil)
+	if !strings.Contains(withoutDetails(p.Body), "Adds a feed.") {
+		t.Errorf("the visible top needs a summary:\n%s", p.Body)
+	}
+}

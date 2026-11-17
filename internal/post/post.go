@@ -920,7 +920,7 @@ func buildBodyWalkthrough(p Payload) string {
 		fmt.Fprintf(&top, "Reviewed %s: no findings.\n\n", reviewedRef(p.CommitID))
 	default:
 		fmt.Fprintf(&top, "### %s\n\n", walkthroughHeading(p.GateVerdict))
-		if p.recap == "" && p.rep != nil && p.rep.Agent != nil {
+		if p.rep != nil && p.rep.Agent != nil {
 			if ov := strings.TrimSpace(p.rep.Agent.Overview); ov != "" {
 				lead, rest := splitAt(ov, maxLead)
 				leadCut = rest != ""
@@ -961,6 +961,11 @@ func buildBodyWalkthrough(p Payload) string {
 			files = moved
 			title = fmt.Sprintf("Files changed since `%s`", shortSHA12(p.recapSince))
 		}
+		// The top shows the start of the overview; keep the rest of it when cut.
+		if leadCut {
+			ov := strings.TrimSpace(p.rep.Agent.Overview)
+			fmt.Fprintf(&details, "### What this change does\n\n%s\n\n", ov)
+		}
 	} else if p.rep != nil && p.rep.Agent != nil {
 		// The top shows the start of the overview. The full text is here when
 		// that was cut, and always on a later head, whose top is a delta.
@@ -978,7 +983,7 @@ func buildBodyWalkthrough(p Payload) string {
 	// lists files only. Generated totals are for the whole change, so a
 	// recap's list of moved files does not carry them.
 	withGenerated := p.recap == "" || title == "Walkthrough"
-	if s := walkthroughSection(p, files, title, nil, withGenerated, maxNarrative); s != "" {
+	if s := walkthroughSection(p, files, title, withGenerated, maxNarrative); s != "" {
 		details.WriteString(s)
 	}
 	if p.profile.includes("evidence") {
@@ -1062,8 +1067,7 @@ func walkthroughHeading(gateVerdict string) string {
 // dropped, because a flat table interleaved them with the code they test and
 // the rows read as noise; under a heading of their own they are the thing a
 // reviewer wanted to see, which is how much of the change is test.
-func walkthroughSection(p Payload, files []change.File, title string, perFile map[string][]findings.Finding,
-	withGenerated bool, budget int) string {
+func walkthroughSection(p Payload, files []change.File, title string, withGenerated bool, budget int) string {
 	if len(files) == 0 {
 		return ""
 	}
@@ -1087,7 +1091,6 @@ func walkthroughSection(p Payload, files []change.File, title string, perFile ma
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "<details>\n<summary>%s</summary>\n\n", title)
-	var paths []string
 	var omitted int
 	for _, g := range change.CompositionGroups(files) {
 		group := make([]change.File, len(g.Files))
@@ -1154,7 +1157,6 @@ func walkthroughSection(p Payload, files []change.File, title string, perFile ma
 			}
 			sec.WriteString(item)
 			shown++
-			paths = append(paths, f.Path)
 		}
 		if shown == 0 {
 			// A heading over an empty table says less than nothing. The files
@@ -1171,29 +1173,6 @@ func walkthroughSection(p Payload, files []change.File, title string, perFile ma
 	}
 	if omitted > 0 {
 		fmt.Fprintf(&b, "_%d more file(s) on the full report._\n", omitted)
-	}
-	grpOmitted := 0
-	for _, path := range paths {
-		group := perFile[path]
-		if len(group) == 0 {
-			continue
-		}
-		// The file's own findings, each still carrying its fingerprint marker
-		// so a re-post skips it, listed under the file rather than in the flat
-		// section after the walkthrough.
-		var block strings.Builder
-		fmt.Fprintf(&block, "\n**`%s`**\n", path)
-		for _, f := range group {
-			block.WriteString(bodyFindingLine(f, p.CommitID, p.profile))
-		}
-		if b.Len()+block.Len() > budget {
-			grpOmitted += len(group)
-			continue
-		}
-		b.WriteString(block.String())
-	}
-	if grpOmitted > 0 {
-		fmt.Fprintf(&b, "\n_%d more finding(s) on the full report._\n", grpOmitted)
 	}
 	// Each section ends with a blank line, and so does whatever followed it, so
 	// the trailing ones are trimmed rather than left to stack up before the
