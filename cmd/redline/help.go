@@ -29,7 +29,7 @@ var commands = []command{
 	{name: "review", summary: "review a saved session with a model (--run observes first)",
 		flags: reviewFlags, help: reviewHelp, run: cmdReview},
 	{name: "learnings", summary: "draft review rules from what people said about\n              earlier findings on this pull request",
-		flags: outFlag, help: learningsHelp, run: cmdLearnings},
+		flags: learningsFlags, help: learningsHelp, run: cmdLearnings},
 	{name: "post", summary: "post the session's findings as one PR review",
 		flags: postFlags, help: postHelp, run: cmdPost},
 	{name: "postmortem", summary: "read back what the last review did: what it\n              proposed, what the lookups found, what was ruled",
@@ -44,6 +44,8 @@ var commands = []command{
 		flags: gcFlags, help: gcHelp, run: cmdGC},
 	{name: "dispositions", summary: "record what became of each review finding on\n              pull requests, as JSONL",
 		flags: dispositionsFlags, help: dispositionsHelp, run: cmdDispositions},
+	{name: "miss", summary: "record a defect a review should have caught",
+		flags: missFlags, help: missHelp, run: cmdMiss},
 }
 
 func commandNamed(name string) (command, bool) {
@@ -56,9 +58,10 @@ func commandNamed(name string) (command, bool) {
 }
 
 // globalFlags are the flags listed once in `redline help` rather than under
-// each command. --out is every command's but gc's, which works on
-// ~/.redline/worktrees, and dispositions', which reads GitHub; neither has a
-// session to find.
+// each command. --out is every command's but dispositions', which reads
+// GitHub and has no session to find. gc and miss take --out too, but as the
+// directory that holds every session and the ledgers, not as one session, and
+// they say so in their own help. --session is theirs to lack.
 var globalFlags = []string{"out", "session"}
 
 func usage() string {
@@ -90,12 +93,18 @@ global flags:
 }
 
 func commandHelp(c command) string {
+	var globals []string
 	for _, name := range registeredFlags(c) {
-		if slices.Contains(globalFlags, name) {
-			return c.help + "\nGlobal flags (--out, --session) are listed by `redline help`.\n"
+		// A command that lists a global flag itself, because it means
+		// something else there, does not send the reader to the global text.
+		if slices.Contains(globalFlags, name) && !strings.Contains(c.help, "\n  --"+name+" ") {
+			globals = append(globals, "--"+name)
 		}
 	}
-	return c.help
+	if len(globals) == 0 {
+		return c.help
+	}
+	return c.help + "\nGlobal flags (" + strings.Join(globals, ", ") + ") are listed by `redline help`.\n"
 }
 
 func registeredFlags(c command) []string {
@@ -112,8 +121,14 @@ func outFlag(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.session, "session", "", "name of the session under .redline/sessions")
 }
 
-func targetFlags(fs *flag.FlagSet, o *opts) {
+// prFlag is the one target flag the commands that read a kept head take, so
+// --head can be looked up in a pull request's session.
+func prFlag(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.pr, "pr", "", "GitHub pull request number or URL")
+}
+
+func targetFlags(fs *flag.FlagSet, o *opts) {
+	prFlag(fs, o)
 	fs.StringVar(&o.branch, "branch", "", "branch to review")
 	fs.StringVar(&o.commit, "commit", "", "commit to review against its parent")
 	fs.StringVar(&o.revRange, "range", "", "commit range A..B")
@@ -205,9 +220,41 @@ func postFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.since, "since", "", "the previous review's commit, when neither the session nor that review's marker names it")
 }
 
+// headFlag lets a reader open the session kept for one reviewed commit instead
+// of the latest one.
+func headFlag(fs *flag.FlagSet, o *opts) {
+	fs.StringVar(&o.head, "head", "", "commit SHA of a reviewed head whose kept session to read")
+}
+
+// rootFlag is --out for the commands that work across sessions: gc and miss
+// read the directory every session lives under, not one session.
+func rootFlag(fs *flag.FlagSet, o *opts) {
+	fs.StringVar(&o.out, "out", ".redline", "directory holding the sessions and ledgers")
+}
+
 func postmortemFlags(fs *flag.FlagSet, o *opts) {
 	outFlag(fs, o)
+	prFlag(fs, o)
+	headFlag(fs, o)
 	fs.StringVar(&o.format, "format", "report", "report|json")
+}
+
+func learningsFlags(fs *flag.FlagSet, o *opts) {
+	outFlag(fs, o)
+	prFlag(fs, o)
+	headFlag(fs, o)
+	fs.StringVar(&o.jsonl, "jsonl", "", "directory holding misses.jsonl (default: --out)")
+}
+
+func missFlags(fs *flag.FlagSet, o *opts) {
+	rootFlag(fs, o)
+	fs.StringVar(&o.pr, "pr", "", "pull request whose review missed it")
+	headFlag(fs, o)
+	fs.StringVar(&o.missFile, "file", "", "file the defect is in")
+	fs.IntVar(&o.missLine, "line", 0, "line of the defect, in the file at --head")
+	fs.StringVar(&o.missSummary, "summary", "", "what the defect was")
+	fs.IntVar(&o.missFixPR, "fix-pr", 0, "pull request that fixed it")
+	fs.StringVar(&o.jsonl, "jsonl", "", "directory to keep misses.jsonl in (default: --out)")
 }
 
 func replyFlags(fs *flag.FlagSet, o *opts) {
@@ -218,6 +265,8 @@ func replyFlags(fs *flag.FlagSet, o *opts) {
 
 func openFlags(fs *flag.FlagSet, o *opts) {
 	outFlag(fs, o)
+	prFlag(fs, o)
+	headFlag(fs, o)
 	fs.BoolVar(&o.file, "file", false, "open the report as a file:// path, no server")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
 }
@@ -238,7 +287,11 @@ func dispositionsFlags(fs *flag.FlagSet, o *opts) {
 }
 
 func gcFlags(fs *flag.FlagSet, o *opts) {
+	rootFlag(fs, o)
 	fs.StringVar(&o.olderThan, "older-than", "", "only remove cached worktrees older than this duration (e.g. 168h)")
+	fs.IntVar(&o.keepHeads, "keep-heads", 0, "keep only this many of the newest reviewed heads of each session")
+	fs.StringVar(&o.headsOlderThan, "heads-older-than", "", "remove kept heads whose session is older than this duration (e.g. 720h)")
+	fs.StringVar(&o.jsonl, "jsonl", "", "directory holding misses.jsonl, whose heads are not trimmed (default: --out)")
 }
 
 const runHelp = `redline run — observe the change and report
@@ -593,14 +646,23 @@ output:
   --port N          loopback port for the report server (default 8765)
 `
 
-const learningsHelp = `redline learnings — draft review rules from earlier review threads
+const learningsHelp = `redline learnings — draft review rules from earlier review threads and misses
 
 usage:
-  redline learnings
+  redline learnings [flags]
 
 Reads what people said about earlier findings on the pull request the last
-run observed, and drafts review rules from it. Takes no flags beyond the
-global ones.
+run observed, and drafts review rules from it. It also drafts one rule from
+each miss in misses.jsonl (see ` + "`redline help miss`" + `), saying what the review
+let through and where, so the next review of that code is told to look.
+
+flags:
+  --pr N|URL        the pull request whose session to read (default: the
+                    session the last run wrote)
+  --head SHA        read the threads from the session kept for that reviewed
+                    head of the pull request
+  --jsonl DIR       read misses.jsonl from DIR, where redline miss --jsonl
+                    wrote it (default: the evidence directory)
 `
 
 const postHelp = `redline post — post the session's findings as one PR review
@@ -644,6 +706,13 @@ Shows what the last review proposed, what the lookups found, and what was
 ruled.
 
 flags:
+  --pr N|URL        the pull request whose session to read (default: the
+                    session the last run wrote)
+  --head SHA        the review of that head of the pull request instead of the
+                    latest. Every head a run or review saw is kept under the
+                    pull request's session; SHA can be shortened to 7
+                    characters. Use it with --pr N, or the latest session
+                    is searched.
   --format FMT      report|json (default report); json is the whole trace as
                     it was written
 `
@@ -670,6 +739,10 @@ usage:
   redline open [flags]
 
 flags:
+  --pr N|URL        the pull request whose session to open (default: the
+                    session the last run wrote)
+  --head SHA        open the report kept for that reviewed head instead of the
+                    latest
   --file            open the report as a file:// path, no server
   --port N          loopback port for the report server (default 8765; the
                     next free port is used if it is taken)
@@ -696,8 +769,21 @@ usage:
 Removes the worktrees a --commit, --branch, --range or --pr run cached under
 ~/.redline/worktrees for the current repository.
 
+Each run and review also keeps the session of the commit it reviewed, under
+the target's session as <session>/<head-sha>. Those stay until one of the two
+head limits below is given, and then gc removes the ones past it too. The
+session directory itself, which holds the latest, is never touched.
+
 flags:
+  --out DIR         the directory holding the sessions (default .redline)
   --older-than D    only remove cached worktrees older than D (e.g. 168h)
+  --keep-heads N    keep the N newest reviewed heads of each session and
+                    remove the rest
+  --heads-older-than D
+                    remove kept heads whose session was written more than D
+                    ago (e.g. 720h)
+  --jsonl DIR       where misses.jsonl is; a head a miss names is never
+                    removed (default: --out)
 `
 
 const dispositionsHelp = `redline dispositions — record what became of each review finding
@@ -727,4 +813,32 @@ flags:
                     the marker that opens a PR's evidence comment; its
                     Verified, Refuted and Not verified rows are counted
                     on the PR's row. Without it, no evidence is read.
+`
+
+const missHelp = `redline miss — record a defect a review should have caught
+
+usage:
+  redline miss --pr N --head SHA --file F --line L --summary TEXT [--fix-pr M]
+
+Appends one line to misses.jsonl, next to the dispositions files. The line
+says where the defect is and what it was. It also says what the review of
+that head shows about the defect's line, read from the session kept for the
+head: whether the file and the line were in the reviewed diff, and which
+findings and lookups covered the line. Nothing is sent anywhere and no model
+is called.
+
+Without --head, or when no session was kept for it, the entry is written
+with those answers left out. That is how a defect from before Redline goes
+in. A --head that matches no kept session is said on stderr.
+
+flags:
+  --out DIR         the directory holding the sessions (default .redline)
+  --pr N            the pull request whose review missed it
+  --head SHA        the commit that introduced the defect; can be shortened to
+                    7 characters
+  --file F          the file the defect is in
+  --line L          the line, counted in the file at --head
+  --summary TEXT    what the defect was
+  --fix-pr M        the pull request that fixed it
+  --jsonl DIR       where misses.jsonl lives (default: --out)
 `

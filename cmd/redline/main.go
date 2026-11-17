@@ -80,10 +80,22 @@ type opts struct {
 	// caller gave, and sessionKey the session resolveSession chose under it.
 	observe                   bool
 	session, root, sessionKey string
+	// noSession is set when learnings was pointed at a pull request or head with
+	// no saved session, so it drafts from the ledger alone.
+	noSession bool
 	// dispositions' flags. --pr is shared with the commands that take one.
 	recent                 int
 	repo, artifacts, jsonl string
 	evidenceMarker         string
+	// head is --head: a kept head's session under the target's. keepHeads and
+	// headsOlderThan are gc's limits on those. The miss flags follow.
+	head           string
+	keepHeads      int
+	headsOlderThan string
+	missFile       string
+	missLine       int
+	missSummary    string
+	missFixPR      int
 }
 
 func runMain(args []string) error {
@@ -185,6 +197,7 @@ func cmdRun(o opts) error {
 		return err
 	}
 	recordSession(o)
+	archiveHead(o, res)
 	if o.format == "json" {
 		if err := emitJSON(res.Report); err != nil {
 			return err

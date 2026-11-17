@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/chrisophus/redline/internal/feedback"
+	"github.com/chrisophus/redline/internal/miss"
 	"github.com/chrisophus/redline/internal/run"
 )
 
@@ -21,16 +23,42 @@ import (
 // It reads the threads the last run already froze into the session rather than
 // fetching them again. That keeps this command free, and it means the drafts
 // describe the same conversation the review was shown.
+//
+// The ledger of misses (see miss.go) is the second source. A miss is a defect a
+// review let through, recorded by a person, so a rule drawn from it says what
+// went wrong and where and leaves the cure to whoever edits the draft.
+var errNoSession = errors.New("no saved session for this target")
+
 func cmdLearnings(o opts) error {
-	res, err := run.LoadSession(o.out)
-	if err != nil {
-		return err
+	dir := o.jsonl
+	if dir == "" {
+		dir = o.ledgerDir()
 	}
-	if len(res.PriorReview) == 0 {
-		fmt.Fprintln(os.Stderr,
-			"redline: this session carries no earlier review threads. "+
-				"Run `redline run --pr N` on a pull request Redline has already reviewed.")
-		return nil
+	if o.pr != "" {
+		if _, err := missPR(o.pr); err != nil {
+			return err
+		}
+	}
+	misses, err := miss.Read(dir)
+	if err != nil {
+		// The ledger is a second source. The reply-based drafts do not depend on
+		// it, so a bad line in it is said and the rest still runs.
+		fmt.Fprintf(os.Stderr, "redline: misses not drafted, %v\n", err)
+		misses = nil
+	}
+	misses = missesFor(misses, o)
+	res, err := &run.Result{}, errNoSession
+	if !o.noSession {
+		res, err = run.LoadSession(o.out)
+	}
+	if err != nil {
+		// Misses stand on their own: they are not about the session in front of
+		// the command, and a repository with a ledger and no session still has
+		// something to learn from.
+		if len(misses) == 0 {
+			return err
+		}
+		res = &run.Result{}
 	}
 	var drafted int
 	var b strings.Builder
@@ -41,14 +69,26 @@ func cmdLearnings(o opts) error {
 		drafted++
 		b.WriteString(draft(t, res))
 	}
+	for _, m := range misses {
+		drafted++
+		b.WriteString(draftMiss(m))
+	}
 	if drafted == 0 {
+		if len(res.PriorReview) == 0 {
+			fmt.Fprintln(os.Stderr,
+				"redline: this session carries no earlier review threads and no misses are recorded. "+
+					"Run `redline run --pr N` on a pull request Redline has already reviewed, "+
+					"or record one with `redline miss`.")
+			return nil
+		}
 		fmt.Fprintln(os.Stderr,
 			"redline: nothing on this pull request looks like a convention worth writing down. "+
 				"A finding somebody explained in a reply is what this reads; one nobody "+
 				"answered says nothing either way.")
 		return nil
 	}
-	fmt.Println("# Draft review rules, from what people said about earlier findings.")
+	fmt.Println("# Draft review rules, from what people said about earlier findings")
+	fmt.Println("# and from defects a review let through.")
 	fmt.Println("# Nothing is written for you. Read each one, cut what is wrong, keep the")
 	fmt.Println("# rest under `review:` in .redline.yml, and commit it like any other code.")
 	fmt.Println("#")
@@ -59,8 +99,54 @@ func cmdLearnings(o opts) error {
 	fmt.Println("review:")
 	fmt.Println("  instructions:")
 	fmt.Print(b.String())
-	fmt.Fprintf(os.Stderr, "redline: drafted %d rule(s) from %d thread(s)\n", drafted, len(res.PriorReview))
+	fmt.Fprintf(os.Stderr, "redline: drafted %d rule(s) from %d thread(s) and %d miss(es)\n",
+		drafted, len(res.PriorReview), len(misses))
 	return nil
+}
+
+// draftMiss renders one miss as a rule somebody can edit. The scope is the
+// file's directory, for the reason draft gives. The text says whether the
+// review had the line in front of it, because a defect in code the review was
+// shown and a defect in code it never saw call for different rules.
+func draftMiss(m miss.Entry) string {
+	t := feedback.Thread{File: m.File, Line: m.Line}
+	var b strings.Builder
+	b.WriteString("    - scope: [" + scopeFor(t) + "]\n")
+	b.WriteString("      text: |\n")
+	fmt.Fprintf(&b, "        A review of PR #%d let through a defect at %s:\n", m.PR, location(t))
+	for _, line := range strings.Split(strings.TrimSpace(m.Summary), "\n") {
+		fmt.Fprintf(&b, "        %s\n", strings.TrimSpace(line))
+	}
+	var kept, dropped bool
+	for _, f := range m.Findings {
+		switch f.By {
+		case "finding":
+			kept = true
+		case "proposed":
+			dropped = true
+		}
+	}
+	// A proposed finding with no kept one on the line means the reviewer found
+	// it and the ruling dropped it, the miss most worth a rule.
+	switch {
+	case m.LineInDiff != nil && *m.LineInDiff && len(m.Findings) == 0:
+		b.WriteString("        The line was in the reviewed diff and no finding was made on it.\n")
+	case m.LineInDiff != nil && *m.LineInDiff && !kept && dropped:
+		b.WriteString("        The line was in the reviewed diff and the reviewer proposed a finding on it, but the ruling dropped it.\n")
+	case m.LineInDiff != nil && *m.LineInDiff:
+		b.WriteString("        The line was in the reviewed diff and a finding sat on it that did not stop the defect.\n")
+	case m.LineInDiff != nil && m.FileInDiff != nil && *m.FileInDiff:
+		b.WriteString("        The file was in the reviewed diff, but the change did not add this line, so the defect sits in code the change only touched around.\n")
+	case m.LineInDiff != nil:
+		b.WriteString("        The line was not in the reviewed diff, so it was reached through code the diff did not touch.\n")
+	}
+	if m.FixPR > 0 {
+		fmt.Fprintf(&b, "      learned_from: \"fixed in PR #%d\"\n", m.FixPR)
+	} else {
+		b.WriteString("      learned_from: \"\"  # paste the link to the fix\n")
+	}
+	b.WriteString("\n")
+	return b.String()
 }
 
 // worthLearning reports whether a thread taught anything. A reply is the
@@ -128,4 +214,29 @@ func prURL(res *run.Result) string {
 		return ""
 	}
 	return res.Target.PR.URL
+}
+
+// missesFor narrows the ledger to the misses on --pr, and to those on --head
+// when it is given. A ledger is shared across pull requests, so without either
+// flag every miss is drafted.
+func missesFor(all []miss.Entry, o opts) []miss.Entry {
+	if o.pr == "" && o.head == "" {
+		return all
+	}
+	pr := 0
+	if o.pr != "" {
+		pr, _ = missPR(o.pr) // cmdLearnings has already refused a bad value
+	}
+	head := strings.ToLower(o.head)
+	var out []miss.Entry
+	for _, m := range all {
+		if pr > 0 && m.PR != pr {
+			continue
+		}
+		if head != "" && (m.Head == "" || !strings.HasPrefix(m.Head, head) && !strings.HasPrefix(head, m.Head)) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }
