@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The studio's checks use the Go that go.mod names.** On a host with Go 1.27
+  the linter could not read the standard library's export data, so lint failed
+  on every package. `.sandbox/check.sh` now sets `GOTOOLCHAIN` from go.mod, as
+  CI does. golangci-lint moves to v2.15.0 in the Makefile, CI and the script.
+
 ## [0.21.0] - 2026-11-16
 
 ### Changed

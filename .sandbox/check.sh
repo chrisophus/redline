@@ -5,6 +5,12 @@
 set -euo pipefail
 export PATH="/usr/local/go/bin:$PATH"
 export GOCACHE="${SANDBOX_SLOT_DIR:?}/gocache" GOMODCACHE="${SANDBOX_SLOT_DIR}/gomod"
+# Build, lint and test with the Go that go.mod names, as CI does, whatever Go the host has. The
+# host's Go can be newer than the linter understands: golangci-lint v2.15.0 is built for Go 1.26 and
+# cannot decode the export data of Go 1.27, so every package failed to typecheck. `go` downloads
+# this toolchain on first use. The toolchain line wins over the go line, as in the Makefile.
+GOTOOLCHAIN="$(awk '/^toolchain /{t=$2} /^go /{g=$2} END{if (t != "") print t; else {if (split(g, p, ".") == 2) g = g ".0"; print "go" g}}' go.mod)"
+export GOTOOLCHAIN
 case "${1:-}" in
   build)
     bad="$(gofmt -l .)"
@@ -13,7 +19,10 @@ case "${1:-}" in
     go build ./...
     ;;
   lint)
-    go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run ./...
+    # Keep this equal to GOLANGCI_VERSION in the Makefile, ci.yml and bash_allow in sandbox.yaml.
+    # The linter is built with the Go from go.mod (see GOTOOLCHAIN above), not the host's, so it can
+    # read the export data of the standard library it typechecks against.
+    go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
     go test ./internal/boundary/
     ;;
   test) exec go test -race ./... ;;
