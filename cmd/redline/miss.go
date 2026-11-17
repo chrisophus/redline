@@ -36,11 +36,14 @@ func cmdMiss(o opts) error {
 		return errors.New("--summary is required: what the defect was")
 	}
 	e := miss.Entry{
-		Recorded: time.Now().UTC(), PR: pr, Head: strings.ToLower(o.head),
+		Recorded: time.Now().UTC(), PR: pr,
 		File: filepath.ToSlash(o.missFile), Line: o.missLine,
 		Summary: strings.TrimSpace(o.missSummary), FixPR: o.missFixPR,
 	}
 	if o.head != "" {
+		// Head is set by examineHead, from the session it found. A --head that
+		// names no kept session is not written, so the ledger never holds a
+		// head that is not a commit.
 		if err := examineHead(&e, filepath.Join(o.out, sessionsDir, "pr-"+strconv.Itoa(pr)), o.head); err != nil {
 			fmt.Fprintf(os.Stderr, "redline: %v; recording the miss without what the review showed\n", err)
 		}

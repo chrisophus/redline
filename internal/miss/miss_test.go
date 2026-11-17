@@ -116,3 +116,14 @@ func TestExamineWithNoChangeLeavesTheDiffAnswersUnset(t *testing.T) {
 		t.Errorf("file %v line %v, want both unset", e.FileInDiff, e.LineInDiff)
 	}
 }
+
+func TestExamineCountsAKeptFindingOnceWhenTheTraceHasItToo(t *testing.T) {
+	s := session()
+	s.Findings = []findings.Finding{{ID: "f1", File: "web/operator.html", Line: 11}}
+	s.Trace = &postmortem.Trace{Findings: []postmortem.Finding{{ID: "c1", File: "web/operator.html", Line: 11}}}
+	e := Entry{File: "web/operator.html", Line: 11}
+	Examine(&e, s)
+	if len(e.Findings) != 1 {
+		t.Errorf("findings = %+v, want the kept one only", e.Findings)
+	}
+}

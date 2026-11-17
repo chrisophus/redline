@@ -106,7 +106,7 @@ func Examine(e *Entry, s Session) {
 	}
 	t := s.Trace
 	for _, f := range t.Findings {
-		if clean(f.File) == want && f.Line == e.Line {
+		if clean(f.File) == want && f.Line == e.Line && !touchedAt(e.Findings, f.Line) {
 			e.Findings = append(e.Findings, Touch{By: "proposed", ID: f.ID, Line: f.Line, Note: f.Body})
 		}
 	}
@@ -130,6 +130,17 @@ func Examine(e *Entry, s Session) {
 			e.Lookups = append(e.Lookups, Touch{By: "filed", ID: f.Answers, Line: f.StartLine, Note: f.FoundVia})
 		}
 	}
+}
+
+// touchedAt reports whether a finding from the report already sits on line, so
+// the same finding, kept and also in the trace, is counted once.
+func touchedAt(ts []Touch, line int) bool {
+	for _, t := range ts {
+		if t.By == "finding" && t.Line == line {
+			return true
+		}
+	}
+	return false
 }
 
 // covers reports whether line is in the span start..end. A span with no start

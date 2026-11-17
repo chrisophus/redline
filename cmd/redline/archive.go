@@ -80,10 +80,26 @@ func copySession(src, dst, id string) error {
 			}
 		}
 	}
-	if err := os.RemoveAll(dst); err != nil {
+	// The earlier archive is moved aside and removed only once the new one is
+	// in place, so a failed rename leaves it as it was.
+	aside := dst + ".old"
+	if err := os.RemoveAll(aside); err != nil {
 		return err
 	}
-	return os.Rename(tmp, dst)
+	moved := true
+	if err := os.Rename(dst, aside); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		moved = false
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		if moved {
+			_ = os.Rename(aside, dst)
+		}
+		return err
+	}
+	return os.RemoveAll(aside)
 }
 
 // staleFor reports whether the JSON file at path names a revision other than

@@ -228,3 +228,12 @@ func TestDraftMissSeparatesAFileInTheDiffFromOneOutsideIt(t *testing.T) {
 		t.Errorf("file outside the diff:\n%s", out)
 	}
 }
+
+func TestMissDoesNotRecordAHeadThatIsNotACommit(t *testing.T) {
+	root := t.TempDir()
+	recordMiss(t, "--out", root, "--pr", "5", "--head", "xyz", "--file", "a.go", "--line", "1", "--summary", "s")
+	got, _ := miss.Read(root)
+	if len(got) != 1 || got[0].Head != "" {
+		t.Errorf("ledger = %+v, want one entry with no head", got)
+	}
+}
