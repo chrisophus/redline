@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Pull request reviews are short.** With `body_style: walkthrough`, a first
+  review is a summary of about five lines and the verdict, then the findings,
+  then one collapsed Details block holding the walkthrough, evidence and
+  checks. The stated intent is the title line only, and the pull request
+  description is no longer quoted. A review of a later head is one line, "N
+  finding(s) fixed, N new, N still open", plus the new findings. A review with
+  nothing to report is "Reviewed `sha`: no findings". An inline finding shows
+  at most 400 characters; the rest and the context fold into a Why block. The
+  review prompt asks for findings in three sentences. The markers are the
+  same. Findings in the review body no longer sit under their file in the
+  walkthrough table; they follow the summary.
 - **The studio's checks use the Go that go.mod names.** On a host with Go 1.27
   the linter could not read the standard library's export data, so lint failed
   on every package. `.sandbox/check.sh` now sets `GOTOOLCHAIN` from go.mod, as
