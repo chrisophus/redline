@@ -13,7 +13,7 @@ agent:
     - "go build*"
     - "go vet*"
     - "go test*"
-    - "go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2*"
+    - "go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0*"
     - "go mod tidy*"
     - "gofmt*"
 

@@ -53,7 +53,7 @@ jobs:
       # one. internal/toolchain's test fails when the two drift.
       - uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.13.2
+          version: v2.15.0
 
   release-config:
     # The release workflow only runs on a tag, so without this a broken

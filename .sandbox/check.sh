@@ -13,7 +13,11 @@ case "${1:-}" in
     go build ./...
     ;;
   lint)
-    go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run ./...
+    # The version is tied to the host's Go. `go run` builds the linter with the Go on this host, and
+    # a golangci-lint older than that Go cannot read its export data, so every package fails to
+    # typecheck (v2.13.2 on Go 1.27 did). When the host's Go moves up, bump this pin with it, and
+    # keep it equal to GOLANGCI_VERSION in the Makefile, ci.yml and bash_allow in sandbox.yaml.
+    go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
     go test ./internal/boundary/
     ;;
   test) exec go test -race ./... ;;

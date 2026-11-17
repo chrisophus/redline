@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **golangci-lint is pinned at v2.15.0.** v2.13.2 could not read the export
+  data of Go 1.27, so lint failed on every package when run with that Go. The
+  Makefile, CI and the studio's check script use the same version.
+
 ## [0.21.0] - 2026-11-16
 
 ### Changed

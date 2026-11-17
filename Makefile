@@ -69,7 +69,7 @@ GO_TOOLCHAIN := $(shell awk '/^go /{g=$$2} /^toolchain /{t=$$2} END{if (t != "")
 # the gate is worse than no local run: it either passes what CI will fail or
 # fails what CI will pass. internal/toolchain's test holds this and
 # .github/workflows/ci.yml to the same number.
-GOLANGCI_VERSION := v2.13.2
+GOLANGCI_VERSION := v2.15.0
 
 # lint-bin prints the golangci-lint this repository would run: the pinned one
 # `make lint-install` puts in GOPATH/bin when it is there, and whatever is
