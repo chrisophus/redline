@@ -328,3 +328,15 @@ func TestOpenMarkersAreBoundedInBytes(t *testing.T) {
 		t.Errorf("markers are %d bytes, want at most %d and some present", len(got), maxOpenBytes)
 	}
 }
+
+func TestDeltaCountsLowConfidenceFindingsItShows(t *testing.T) {
+	rep := shapeReport("Adds a feed.")
+	p := BuildAttest(rep, prTarget(), "", nil, shapeProfile(), changedFiles("a.go"))
+	a, b := warning("a"), warning("b")
+	a.Fingerprint, b.Fingerprint = "fp-a", "fp-b"
+	p.lowConf = []findings.Finding{a, b}
+	p = p.WithDelta(map[string]bool{"fp-a": true}, map[string]bool{"fp-a": true, "fp-c": true})
+	if *p.delta != (Delta{Fixed: 1, New: 1, Open: 1}) {
+		t.Errorf("got %+v", *p.delta)
+	}
+}

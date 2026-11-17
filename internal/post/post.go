@@ -221,6 +221,11 @@ func (p Payload) WithDelta(posted, previous map[string]bool) Payload {
 	for _, f := range p.bodyFindings {
 		present[f.Fingerprint] = true
 	}
+	// Low-confidence findings are shown folded, but they are shown, so they
+	// count as new or still open like the rest.
+	for _, f := range p.lowConf {
+		present[f.Fingerprint] = true
+	}
 	for fp := range present {
 		// Reviewer exchanges ride in Comments too, and are not findings.
 		if strings.HasPrefix(fp, "conversation:") {
@@ -232,10 +237,6 @@ func (p Payload) WithDelta(posted, previous map[string]bool) Payload {
 		} else {
 			d.New++
 		}
-	}
-	// Low-confidence findings are shown folded, so they are still there.
-	for _, f := range p.lowConf {
-		present[f.Fingerprint] = true
 	}
 	for fp := range previous {
 		if !present[fp] && !strings.HasPrefix(fp, "conversation:") {
