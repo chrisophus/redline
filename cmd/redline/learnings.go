@@ -31,9 +31,17 @@ func cmdLearnings(o opts) error {
 	if dir == "" {
 		dir = o.ledgerDir()
 	}
+	if o.pr != "" {
+		if _, err := missPR(o.pr); err != nil {
+			return err
+		}
+	}
 	misses, err := miss.Read(dir)
 	if err != nil {
-		return err
+		// The ledger is a second source. The reply-based drafts do not depend on
+		// it, so a bad line in it is said and the rest still runs.
+		fmt.Fprintf(os.Stderr, "redline: misses not drafted, %v\n", err)
+		misses = nil
 	}
 	misses = missesFor(misses, o)
 	res, err := run.LoadSession(o.out)
@@ -211,9 +219,7 @@ func missesFor(all []miss.Entry, o opts) []miss.Entry {
 	}
 	pr := 0
 	if o.pr != "" {
-		if n, err := missPR(o.pr); err == nil {
-			pr = n
-		}
+		pr, _ = missPR(o.pr) // cmdLearnings has already refused a bad value
 	}
 	head := strings.ToLower(o.head)
 	var out []miss.Entry

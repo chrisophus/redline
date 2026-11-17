@@ -268,3 +268,19 @@ func TestLearningsNarrowsMissesToPRAndHead(t *testing.T) {
 		t.Errorf("no flags should draft every miss:\n%s", out)
 	}
 }
+
+func TestLearningsRefusesABadPRAndSurvivesABadLedger(t *testing.T) {
+	root := t.TempDir()
+	if err := cmdLearnings(opts{out: root, root: root, pr: "abc"}); err == nil {
+		t.Error("learnings --pr abc was accepted")
+	}
+	if err := os.WriteFile(filepath.Join(root, miss.File), []byte("not json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// With no session either, the session error is what comes back, not the
+	// ledger's; with a session the drafts would still run.
+	err := cmdLearnings(opts{out: root, root: root})
+	if err == nil || strings.Contains(err.Error(), "misses.jsonl") {
+		t.Errorf("err = %v, want the missing session", err)
+	}
+}

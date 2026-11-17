@@ -247,11 +247,10 @@ func keptHeads(session string) []keptHead {
 // by pull request number and commit, which holds wherever the ledger was
 // recorded from. If the ledger cannot be read nothing is removed, because the
 // heads it protects are unknown. It returns how many it removed and their size.
-func pruneHeads(root, ledger string, keep int, cutoff time.Time) (int, int64) {
+func pruneHeads(root, ledger string, keep int, cutoff time.Time) (int, int64, error) {
 	misses, err := miss.Read(ledger)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "redline: kept heads not trimmed, %v\n", err)
-		return 0, 0
+		return 0, 0, fmt.Errorf("kept heads not trimmed: %w", err)
 	}
 	sessions, _ := filepath.Glob(filepath.Join(root, sessionsDir, "*"))
 	removed := 0
@@ -274,7 +273,7 @@ func pruneHeads(root, ledger string, keep int, cutoff time.Time) (int, int64) {
 			removed++
 		}
 	}
-	return removed, freed
+	return removed, freed, nil
 }
 
 // pinnedByMiss reports whether a miss on the pull request behind session names

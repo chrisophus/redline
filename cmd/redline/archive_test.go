@@ -175,13 +175,13 @@ func TestGCTrimsKeptHeadsByCountAndAge(t *testing.T) {
 		return err == nil
 	}
 
-	if n, _ := pruneHeads(root, root, 2, time.Time{}); n != 1 || exists("1") || !exists("2") || !exists("3") {
+	if n, _, _ := pruneHeads(root, root, 2, time.Time{}); n != 1 || exists("1") || !exists("2") || !exists("3") {
 		t.Errorf("--keep-heads 2 removed %d, want only the oldest head gone", n)
 	}
-	if n, _ := pruneHeads(root, root, 0, now.Add(-24*time.Hour)); n != 1 || exists("2") || !exists("3") {
+	if n, _, _ := pruneHeads(root, root, 0, now.Add(-24*time.Hour)); n != 1 || exists("2") || !exists("3") {
 		t.Errorf("an age cutoff removed %d, want the 48h-old head gone and the newest kept", n)
 	}
-	if n, _ := pruneHeads(root, root, 0, time.Time{}); n != 0 {
+	if n, _, _ := pruneHeads(root, root, 0, time.Time{}); n != 0 {
 		t.Errorf("no limit removed %d heads", n)
 	}
 	if _, err := os.Stat(filepath.Join(pr, "session.json")); err != nil {
@@ -277,7 +277,7 @@ func TestGCKeepsHeadsAMissPointsAt(t *testing.T) {
 	if err := miss.Append(root, miss.Entry{PR: 7, File: "a.go", Line: 1, Summary: "s", Head: headA[:10]}); err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := pruneHeads(root, root, 0, time.Now().Add(-time.Hour)); n != 1 {
+	if n, _, _ := pruneHeads(root, root, 0, time.Now().Add(-time.Hour)); n != 1 {
 		t.Errorf("removed %d heads, want 1", n)
 	}
 	if _, err := os.Stat(filepath.Join(pr, headA)); err != nil {
@@ -294,14 +294,17 @@ func TestGCPinsFromAnotherLedgerAndStopsOnABadOne(t *testing.T) {
 	if err := miss.Append(ledger, miss.Entry{PR: 7, File: "a.go", Line: 1, Summary: "s", Head: headA}); err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := pruneHeads(root, ledger, 0, time.Now().Add(time.Hour)); n != 0 {
+	if n, _, _ := pruneHeads(root, ledger, 0, time.Now().Add(time.Hour)); n != 0 {
 		t.Errorf("removed %d heads a miss in the other ledger names", n)
 	}
 	if err := os.WriteFile(filepath.Join(ledger, miss.File), []byte("not json\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := pruneHeads(root, ledger, 0, time.Now().Add(time.Hour)); n != 0 {
-		t.Errorf("removed %d heads with an unreadable ledger", n)
+	if n, _, err := pruneHeads(root, ledger, 0, time.Now().Add(time.Hour)); n != 0 || err == nil {
+		t.Errorf("removed %d heads, err %v, with an unreadable ledger; want none and an error", n, err)
+	}
+	if err := cmdGC(opts{out: root, jsonl: ledger, keepHeads: 1}); err == nil {
+		t.Error("gc exited cleanly though the trim was refused")
 	}
 	if _, err := os.Stat(filepath.Join(pr, headA)); err != nil {
 		t.Errorf("head removed: %v", err)

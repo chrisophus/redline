@@ -44,7 +44,10 @@ func cmdGC(o opts) error {
 		if ledger == "" {
 			ledger = o.out
 		}
-		n, freed := pruneHeads(o.out, ledger, o.keepHeads, headsCutoff)
+		n, freed, err := pruneHeads(o.out, ledger, o.keepHeads, headsCutoff)
+		if err != nil {
+			return err
+		}
 		fmt.Printf("redline: removed %d kept head session(s), freed %s\n", n, humanBytes(freed))
 	}
 	return nil
