@@ -66,7 +66,10 @@ func TestFirstReviewIsShortAndFoldsTheRest(t *testing.T) {
 	}
 	// Nothing is dropped, only folded: the whole overview, the intent title,
 	// the walkthrough, the evidence and the checks are all in the details.
-	inside := p.Body[strings.Index(p.Body, "<summary>Details</summary>"):]
+	_, inside, found := strings.Cut(p.Body, "<summary>Details</summary>")
+	if !found {
+		t.Fatalf("no Details block:\n%s", p.Body)
+	}
 	for _, want := range []string{overview[:200], "**Stated intent.** Add backoff", "<summary>Walkthrough</summary>", "Checks that passed (1)"} {
 		if !strings.Contains(inside, want) {
 			t.Errorf("the details are missing %q", want)
