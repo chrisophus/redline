@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   review prompt asks for findings in three sentences. The markers are the
   same. Findings in the review body no longer sit under their file in the
   walkthrough table; they follow the summary.
+- **Redline's own reviews are shorter.** The gate profile no longer posts the stated
+  intent (the pull request description), confirmations, unknowns or diff links.
+  The review is the verdict, the overview, the per-file table and the folded
+  evidence table.
 - **The studio's checks use the Go that go.mod names.** On a host with Go 1.27
   the linter could not read the standard library's export data, so lint failed
   on every package. `.sandbox/check.sh` now sets `GOTOOLCHAIN` from go.mod, as
