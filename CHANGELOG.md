@@ -8,9 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- **golangci-lint is pinned at v2.15.0.** v2.13.2 could not read the export
-  data of Go 1.27, so lint failed on every package when run with that Go. The
-  Makefile, CI and the studio's check script use the same version.
+- **The studio's checks use the Go that go.mod names.** On a host with Go 1.27
+  the linter could not read the standard library's export data, so lint failed
+  on every package. `.sandbox/check.sh` now sets `GOTOOLCHAIN` from go.mod, as
+  CI does. golangci-lint moves to v2.15.0 in the Makefile, CI and the script.
 
 ## [0.21.0] - 2026-11-16
 
