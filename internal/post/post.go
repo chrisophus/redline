@@ -1515,6 +1515,16 @@ func (p Payload) Unposted(posted map[string]bool) Payload {
 		}
 		out.bodyFindings = append(out.bodyFindings, f)
 	}
+	// The folded low-confidence block carries fingerprint markers like any
+	// other body finding, so one already posted is not posted again.
+	out.lowConf = nil
+	for _, f := range p.lowConf {
+		if posted[f.Fingerprint] {
+			out.dropped++
+			continue
+		}
+		out.lowConf = append(out.lowConf, f)
+	}
 	out.bodyThreads = nil
 	for _, it := range p.bodyThreads {
 		if posted[threadFingerprint(it)] {

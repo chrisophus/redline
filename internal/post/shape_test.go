@@ -273,3 +273,15 @@ func TestBodyFindingWithAFenceStaysOnOneListItem(t *testing.T) {
 		t.Errorf("the Why block must be one closed block:\n%s", after)
 	}
 }
+
+func TestUnpostedDropsLowConfidenceFindingsAlreadySaid(t *testing.T) {
+	rep := shapeReport("Adds a feed.")
+	p := BuildAttest(rep, prTarget(), "", nil, shapeProfile(), changedFiles("a.go"))
+	f := warning("unsure")
+	f.Fingerprint = "fp-unsure"
+	p.lowConf = []findings.Finding{f}
+	p = p.Unposted(map[string]bool{"fp-unsure": true})
+	if len(p.lowConf) != 0 || strings.Contains(p.Body, "Low confidence") || p.dropped != 1 {
+		t.Errorf("a low-confidence finding already posted must not repeat:\n%s", p.Body)
+	}
+}
