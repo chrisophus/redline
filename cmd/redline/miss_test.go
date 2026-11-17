@@ -302,3 +302,12 @@ func TestLearningsForAPRWithNoSessionDraftsItsMisses(t *testing.T) {
 		}
 	}
 }
+
+func TestMissKeepsAWellFormedHeadWithNoKeptSession(t *testing.T) {
+	root := t.TempDir()
+	recordMiss(t, "--out", root, "--pr", "5", "--head", "ABCDEF1234", "--file", "a.go", "--line", "1", "--summary", "s")
+	got, _ := miss.Read(root)
+	if len(got) != 1 || got[0].Head != "abcdef1234" || got[0].Session != "" {
+		t.Errorf("ledger = %+v, want the head as typed and no session", got)
+	}
+}
