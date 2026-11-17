@@ -202,3 +202,16 @@ func TestBodyFindingWhyKeepsWordBreaks(t *testing.T) {
 		t.Errorf("line breaks must become spaces:\n%s", line)
 	}
 }
+
+func TestBodyFindingWhyFollowsTheItemLine(t *testing.T) {
+	f := warning(strings.Repeat("Filler sentence here. ", 30))
+	f.Rule = "r"
+	line := bodyFindingLine(f, "deadbeef", nil)
+	first, after, _ := strings.Cut(line, "\n")
+	if !strings.Contains(first, "redline:fp:deadbeef:") || strings.Contains(first, "<details>") {
+		t.Errorf("the item line must hold the location and marker and no HTML block:\n%s", line)
+	}
+	if !strings.HasPrefix(after, "  <details>\n  <summary>Why</summary>\n\n  ") || !strings.Contains(after, "  </details>") {
+		t.Errorf("the Why block must be indented under the item:\n%s", after)
+	}
+}

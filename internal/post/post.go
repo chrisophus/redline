@@ -1327,13 +1327,20 @@ func bodyFindingLine(f findings.Finding, head string, prof *Profile) string {
 	prefix := fmt.Sprintf("- **%s** — ", findingLabel(f))
 	summary, rest := splitAt(f.Message, maxSummary-len(prefix))
 	b.WriteString(prefix + summary)
-	if rest != "" {
-		b.WriteString(" " + whyBlock(strings.Join(strings.Fields(rest), " ")))
-	}
 	if loc := bodyLocation(f); loc != "" {
 		fmt.Fprintf(&b, " _(%s)_", loc)
 	}
 	fmt.Fprintf(&b, " %s\n", fpMarker(head, f.Fingerprint))
+	if rest != "" {
+		// After the item's own line, indented to stay inside the list item,
+		// so the location and marker above render as ordinary text.
+		for _, line := range strings.Split(whyBlock(strings.Join(strings.Fields(rest), " ")), "\n") {
+			if line != "" {
+				b.WriteString("  " + line)
+			}
+			b.WriteString("\n")
+		}
+	}
 	return b.String()
 }
 
