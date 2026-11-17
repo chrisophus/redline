@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chrisophus/redline/internal/miss"
 	"github.com/chrisophus/redline/internal/run"
 )
 
@@ -187,9 +188,22 @@ func keptHeads(session string) []keptHead {
 
 // pruneHeads removes archived heads under every session in root: all but the
 // newest keep of each session when keep is above zero, and any written before
-// cutoff when it is not zero. It returns how many it removed and their size.
+// cutoff when it is not zero. A head that a miss in root's misses.jsonl names
+// is kept whatever its age, since the miss is the record of why it matters and
+// its answers can only be checked against that session. It returns how many it
+// removed and their size.
 func pruneHeads(root string, keep int, cutoff time.Time) (int, int64) {
 	sessions, _ := filepath.Glob(filepath.Join(root, sessionsDir, "*"))
+	pinned := map[string]bool{}
+	misses, _ := miss.Read(root)
+	for _, m := range misses {
+		if m.Session != "" {
+			abs, err := filepath.Abs(m.Session)
+			if err == nil {
+				pinned[abs] = true
+			}
+		}
+	}
 	removed := 0
 	var freed int64
 	for _, s := range sessions {
@@ -198,6 +212,9 @@ func pruneHeads(root string, keep int, cutoff time.Time) (int, int64) {
 				continue
 			}
 			dir := filepath.Join(s, h.sha)
+			if abs, err := filepath.Abs(dir); err == nil && pinned[abs] {
+				continue
+			}
 			size := dirSize(dir)
 			if err := os.RemoveAll(dir); err != nil {
 				fmt.Fprintf(os.Stderr, "redline: could not remove %s: %v\n", dir, err)

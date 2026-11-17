@@ -163,7 +163,7 @@ A run or review of a committed target also keeps its session under the commit
 it reviewed, in `.redline/sessions/pr-123/<head-sha>/`, while `pr-123/` itself
 stays the latest. `--head SHA` on `postmortem`, `learnings` and `open` reads an
 earlier one. These are kept until `redline gc --keep-heads N` or
-`--heads-older-than 720h` trims them.
+`--heads-older-than 720h` trims them, except a head a recorded miss points at.
 
 `redline miss` records a defect that a review should have caught, as one line
 in `misses.jsonl` beside the dispositions files. From the session kept for

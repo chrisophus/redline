@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/miss"
 	"github.com/chrisophus/redline/internal/run"
 	"github.com/chrisophus/redline/internal/target"
 )
@@ -259,5 +260,27 @@ func TestGCTrimsHeadsOutsideACheckout(t *testing.T) {
 	}
 	if err := cmdGC(opts{out: root}); err == nil {
 		t.Error("gc with no head limit outside a checkout should still fail")
+	}
+}
+
+// A head that a recorded miss points at is not trimmed, however old.
+func TestGCKeepsHeadsAMissPointsAt(t *testing.T) {
+	root := t.TempDir()
+	pr := filepath.Join(root, sessionsDir, "pr-7")
+	for _, h := range []string{headA, headB} {
+		saveSessionAt(t, filepath.Join(pr, h))
+		old := time.Now().Add(-100 * time.Hour)
+		if err := os.Chtimes(filepath.Join(pr, h, "session.json"), old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := miss.Append(root, miss.Entry{PR: 7, File: "a.go", Line: 1, Summary: "s", Session: filepath.Join(pr, headA)}); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := pruneHeads(root, 0, time.Now().Add(-time.Hour)); n != 1 {
+		t.Errorf("removed %d heads, want 1", n)
+	}
+	if _, err := os.Stat(filepath.Join(pr, headA)); err != nil {
+		t.Errorf("the head a miss points at was removed: %v", err)
 	}
 }

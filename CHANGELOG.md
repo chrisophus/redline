@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under the commit it reviewed, as `.redline/sessions/pr-N/<head-sha>/`, and
   `pr-N/` stays the latest. `postmortem`, `learnings` and `open` read an older
   one with `--head SHA`. `redline gc --keep-heads N` and `--heads-older-than D`
-  trim them. The new `redline miss --pr N --head SHA --file F --line L
+  trim them, and leave alone a head a recorded miss points at. The new `redline miss --pr N --head SHA --file F --line L
   --summary TEXT` appends a defect a review should have caught to
   `misses.jsonl`, with whether its line was in the reviewed diff and which
   findings and lookups covered it. `redline learnings` also drafts a rule from
