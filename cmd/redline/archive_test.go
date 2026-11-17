@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -184,5 +185,25 @@ func TestGCTrimsKeptHeadsByCountAndAge(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(pr, "session.json")); err != nil {
 		t.Errorf("gc touched the latest session: %v", err)
+	}
+}
+
+// postmortem, learnings and open take --pr, so --head is looked up in that
+// pull request's session and not in whichever one is latest.
+func TestHeadReadersTakePR(t *testing.T) {
+	for _, name := range []string{"postmortem", "learnings", "open"} {
+		c, ok := commandNamed(name)
+		if !ok {
+			t.Fatalf("no command %s", name)
+		}
+		var o opts
+		fs := flag.NewFlagSet(name, flag.ContinueOnError)
+		c.flags(fs, &o)
+		if err := fs.Parse([]string{"--pr", "123", "--head", "abcdef1"}); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+		if o.targetSession(name) != "pr-123" {
+			t.Errorf("%s: session = %q", name, o.targetSession(name))
+		}
 	}
 }

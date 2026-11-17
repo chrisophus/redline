@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/miss"
 	"github.com/chrisophus/redline/internal/postmortem"
 	"github.com/chrisophus/redline/internal/run"
@@ -71,8 +72,13 @@ func examineHead(e *miss.Entry, session, head string) error {
 		return err
 	}
 	// A review that never ran leaves no trace, and the findings and diff are
-	// still worth reading.
-	tr, _ := postmortem.Load(dir)
+	// still worth reading. A trace outlives the run that wrote it, so one that
+	// names another change than the session's is from an earlier head and is
+	// left out.
+	tr, err := postmortem.Load(dir)
+	if err != nil || tr == nil || tr.Revision != change.ReviewIdentity(res.Report.BaseSHA, res.Change) {
+		tr = nil
+	}
 	miss.Examine(e, miss.Session{Change: res.Change, Findings: res.Report.Findings, Trace: tr})
 	e.Head, e.Session = filepath.Base(dir), dir
 	return nil

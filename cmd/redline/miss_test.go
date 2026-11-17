@@ -9,6 +9,7 @@ import (
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/miss"
+	"github.com/chrisophus/redline/internal/postmortem"
 	"github.com/chrisophus/redline/internal/run"
 	"github.com/chrisophus/redline/internal/target"
 )
@@ -163,5 +164,38 @@ func TestLearningsWithNoSessionAndNoMissesStillFails(t *testing.T) {
 	root := t.TempDir()
 	if err := cmdLearnings(opts{out: root, root: root}); err == nil {
 		t.Error("learnings with no session and no misses returned no error")
+	}
+}
+
+// A postmortem trace outlives the run that wrote it. One left by an earlier
+// head must not credit the review of the head that was missed.
+func TestMissIgnoresATraceFromAnotherHead(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		revision func(res *run.Result) string
+		want     int
+	}{
+		{"stale", func(*run.Result) string { return "0000000:1111111" }, 0},
+		{"own", func(res *run.Result) string { return change.ReviewIdentity(res.Report.BaseSHA, res.Change) }, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			res := &run.Result{
+				Change: &change.Set{
+					Target: &target.Target{Kind: target.KindPR, Head: headA},
+					Files:  []change.File{{Path: "a.html", AddedLines: []int{41}}},
+				},
+			}
+			keepReviewedHead(t, root, "46", headA, res)
+			tr := &postmortem.Trace{Revision: tc.revision(res), Findings: []postmortem.Finding{{ID: "c1", File: "a.html", Line: 41, Body: "x"}}}
+			if err := postmortem.Write(filepath.Join(root, sessionsDir, "pr-46", headA), tr); err != nil {
+				t.Fatal(err)
+			}
+			recordMiss(t, "--out", root, "--pr", "46", "--head", headA, "--file", "a.html", "--line", "41", "--summary", "s")
+			got, _ := miss.Read(root)
+			if len(got) != 1 || len(got[0].Findings) != tc.want {
+				t.Fatalf("ledger = %+v, want %d finding(s) from the trace", got, tc.want)
+			}
+		})
 	}
 }

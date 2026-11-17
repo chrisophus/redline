@@ -121,8 +121,14 @@ func outFlag(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.session, "session", "", "name of the session under .redline/sessions")
 }
 
-func targetFlags(fs *flag.FlagSet, o *opts) {
+// prFlag is the one target flag the commands that read a kept head take, so
+// --head can be looked up in a pull request's session.
+func prFlag(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.pr, "pr", "", "GitHub pull request number or URL")
+}
+
+func targetFlags(fs *flag.FlagSet, o *opts) {
+	prFlag(fs, o)
 	fs.StringVar(&o.branch, "branch", "", "branch to review")
 	fs.StringVar(&o.commit, "commit", "", "commit to review against its parent")
 	fs.StringVar(&o.revRange, "range", "", "commit range A..B")
@@ -228,12 +234,14 @@ func rootFlag(fs *flag.FlagSet, o *opts) {
 
 func postmortemFlags(fs *flag.FlagSet, o *opts) {
 	outFlag(fs, o)
+	prFlag(fs, o)
 	headFlag(fs, o)
 	fs.StringVar(&o.format, "format", "report", "report|json")
 }
 
 func learningsFlags(fs *flag.FlagSet, o *opts) {
 	outFlag(fs, o)
+	prFlag(fs, o)
 	headFlag(fs, o)
 }
 
@@ -256,6 +264,7 @@ func replyFlags(fs *flag.FlagSet, o *opts) {
 
 func openFlags(fs *flag.FlagSet, o *opts) {
 	outFlag(fs, o)
+	prFlag(fs, o)
 	headFlag(fs, o)
 	fs.BoolVar(&o.file, "file", false, "open the report as a file:// path, no server")
 	fs.IntVar(&o.port, "port", report.DefaultPort, "loopback port for the report server")
@@ -646,6 +655,8 @@ each miss in misses.jsonl (see ` + "`redline help miss`" + `), saying what the r
 let through and where, so the next review of that code is told to look.
 
 flags:
+  --pr N|URL        the pull request whose session to read (default: the
+                    session the last run wrote)
   --head SHA        read the threads from the session kept for that reviewed
                     head of the pull request
 `
@@ -691,10 +702,13 @@ Shows what the last review proposed, what the lookups found, and what was
 ruled.
 
 flags:
+  --pr N|URL        the pull request whose session to read (default: the
+                    session the last run wrote)
   --head SHA        the review of that head of the pull request instead of the
                     latest. Every head a run or review saw is kept under the
                     pull request's session; SHA can be shortened to 7
-                    characters. Use it with --pr N.
+                    characters. Use it with --pr N, or the latest session
+                    is searched.
   --format FMT      report|json (default report); json is the whole trace as
                     it was written
 `
@@ -721,6 +735,8 @@ usage:
   redline open [flags]
 
 flags:
+  --pr N|URL        the pull request whose session to open (default: the
+                    session the last run wrote)
   --head SHA        open the report kept for that reviewed head instead of the
                     latest
   --file            open the report as a file:// path, no server
