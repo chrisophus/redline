@@ -68,6 +68,18 @@ const fpMarkerPrefix = "redline:fp:"
 // race with no words in common. The question both would ask is the same.
 const qMarkerPrefix = "redline:q:"
 
+// openMarkerPrefix is written into a walkthrough review body, once per finding
+// that is live at that head, whether or not the finding is shown again. The
+// "redline:fp:" marker is written once, where a finding is first posted, so it
+// cannot say what was still open at a later head; this one can, and the next
+// review's "fixed" count reads it. Rendered "redline:open:<head sha>:<hex>".
+const openMarkerPrefix = "redline:open:"
+
+// maxOpenMarkers bounds how many a review writes, so a change with a great many
+// findings cannot crowd the body. Findings past it are left out, which can only
+// make a later "fixed" count lower.
+const maxOpenMarkers = 50
+
 // reviewMarkerPrefix tags the review body with the head SHA it was posted for,
 // so a re-post against the same commit can tell "already reviewed this commit"
 // from "reviewing a new push."
@@ -81,6 +93,7 @@ var (
 	fpMarkerRe     = regexp.MustCompile(regexp.QuoteMeta(fpMarkerPrefix) + `([0-9a-fA-F]+):([0-9a-fA-F]+)`)
 	reviewMarkerRe = regexp.MustCompile(regexp.QuoteMeta(reviewMarkerPrefix) + `([0-9a-fA-F]+)`)
 	qMarkerRe      = regexp.MustCompile(regexp.QuoteMeta(qMarkerPrefix) + `([0-9a-fA-F]+)`)
+	openMarkerRe   = regexp.MustCompile(regexp.QuoteMeta(openMarkerPrefix) + `([0-9a-fA-F]+):([0-9a-fA-F]+)`)
 )
 
 // Comment is one line-anchored review comment. Body already carries the
@@ -171,6 +184,9 @@ type Payload struct {
 	// from "nothing new".
 	delta   *Delta
 	dropped int
+	// open is the fingerprint of every finding live at this head, taken before
+	// Unposted drops the ones already said. See openMarkerPrefix.
+	open []string
 }
 
 // Delta is what a later head's review reports in place of a summary: how many
@@ -182,16 +198,14 @@ type Delta struct {
 
 // WithDelta marks the review as one of a later head. posted is the set of
 // fingerprints already on the pull request, from Fingerprints, and previous is
-// the set marked at the last reviewed head, from FingerprintsAt. Both must be
+// the set live at the last reviewed head, from OpenAt. Both must be
 // taken before Unposted runs.
 //
 // A finding is still open when it was posted and the report has it again, and
-// new when it was not posted. A finding counts as fixed when it was posted at
-// the previous head and the report no longer has it, so one fixed several
-// heads ago is not counted again. A finding first posted at an older head and
-// fixed now is missed, because a finding is marked once and not on each head.
-// The count is of fingerprints, so a finding reworded between heads reads as
-// one fixed and one new.
+// new when it was not posted. A finding counts as fixed when it was live at the
+// previous head (see OpenAt) and the report no longer has it, so one fixed
+// several heads ago is not counted again. The count is of fingerprints, so a
+// finding reworded between heads reads as one fixed and one new.
 func (p Payload) WithDelta(posted, previous map[string]bool) Payload {
 	d := Delta{}
 	present := map[string]bool{}
@@ -394,6 +408,15 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 		p.prURL = strings.TrimRight(tgt.PR.URL, "/")
 	}
 	p.bodyFindings = inBody
+	for _, c := range p.Comments {
+		p.open = append(p.open, c.Fingerprint)
+	}
+	for _, f := range inBody {
+		p.open = append(p.open, f.Fingerprint)
+	}
+	for _, f := range p.lowConf {
+		p.open = append(p.open, f.Fingerprint)
+	}
 	p.files = files
 	p.Body = p.renderBody()
 	return p
@@ -1007,6 +1030,7 @@ func buildBodyWalkthrough(p Payload) string {
 		lintNote = p.lint
 	}
 	tail := bodyTail(p.reportURL, p.CommitID, p.profile, p.attestedVerdict(), p.withheld, p.hedged, lintNote)
+	tail += p.openMarkers()
 	var folded string
 	if details.Len() > 0 {
 		folded = "<details>\n<summary>Details</summary>\n\n" + details.String() + "</details>\n\n"
@@ -1016,6 +1040,38 @@ func buildBodyWalkthrough(p Payload) string {
 	low := lowConfidenceSection(p.lowConf, p.CommitID, p.profile, budget-len(middle))
 	convo := conversationSection(p.bodyThreads, p.CommitID, budget-len(middle)-len(low))
 	return top.String() + middle + low + convo + folded + tail
+}
+
+// openMarkers renders one hidden marker per finding live at this head.
+func (p Payload) openMarkers() string {
+	var b strings.Builder
+	for i, fp := range p.open {
+		if i == maxOpenMarkers {
+			break
+		}
+		b.WriteString("\n" + marker(openMarkerPrefix+p.CommitID+":"+hex.EncodeToString([]byte(fp))))
+	}
+	return b.String()
+}
+
+// OpenAt is the set of findings that were live when head was reviewed. Review
+// bodies written with open markers answer exactly. A review from before them
+// has none, so the finding markers in every body at that head stand in, which
+// misses a finding that was posted at an earlier head and still open then.
+func OpenAt(reviews, all []string, head string) map[string]bool {
+	out := map[string]bool{}
+	for _, body := range reviews {
+		for _, m := range openMarkerRe.FindAllStringSubmatch(body, -1) {
+			raw, err := hex.DecodeString(m[2])
+			if err == nil && strings.EqualFold(m[1], head) {
+				out[string(raw)] = true
+			}
+		}
+	}
+	if len(out) == 0 {
+		return FingerprintsAt(all, head)
+	}
+	return out
 }
 
 // maxLead bounds the summary a first review opens with, and the stated

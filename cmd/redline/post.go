@@ -167,7 +167,7 @@ func cmdPost(o opts) error {
 	if prev := latestReviewedHead(reviews, me, tgt.Head); prev != "" {
 		// An earlier head was reviewed, so this review reports what moved
 		// since rather than summarising the change again.
-		payload = payload.WithDelta(posted, post.FingerprintsAt(
+		payload = payload.WithDelta(posted, post.OpenAt(reviewBodies,
 			append(append([]string{}, commentBodies...), reviewBodies...), prev))
 	}
 	payload = payload.Unposted(posted)

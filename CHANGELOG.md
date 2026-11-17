@@ -16,8 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finding(s) fixed, N new, N still open", plus the new findings. A review with
   nothing to report is "Reviewed `sha`: no findings". An inline finding shows
   at most 400 characters; the rest and the context fold into a Why block. The
-  review prompt asks for findings in three sentences. The markers are the
-  same. Findings in the review body no longer sit under their file in the
+  review prompt asks for findings in three sentences. The existing markers are
+  the same; a walkthrough review also carries hidden `redline:open:` markers so
+  the next head can count what was fixed. Findings in the review body no longer sit under their file in the
   walkthrough table; they follow the summary.
 - **Redline's own reviews are shorter.** The gate profile no longer posts the stated
   intent (the pull request description), confirmations, unknowns or diff links.

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/target"
 )
 
 // withoutDetails is the body as a reader sees it before opening anything: the
@@ -283,5 +284,36 @@ func TestUnpostedDropsLowConfidenceFindingsAlreadySaid(t *testing.T) {
 	p = p.Unposted(map[string]bool{"fp-unsure": true})
 	if len(p.lowConf) != 0 || strings.Contains(p.Body, "Low confidence") || p.dropped != 1 {
 		t.Errorf("a low-confidence finding already posted must not repeat:\n%s", p.Body)
+	}
+}
+
+// A finding posted at head 1, still open at head 2 and fixed at head 3 is
+// counted as fixed at head 3, because head 2's review marked it open.
+func TestFixedCountSurvivesAFindingOpenAcrossHeads(t *testing.T) {
+	commentable := map[string]map[int]bool{"a.go": {5: true}}
+	head2 := &target.Target{Kind: target.KindPR, Head: "bbbb", PR: prTarget().PR}
+	head3 := &target.Target{Kind: target.KindPR, Head: "cccc", PR: prTarget().PR}
+
+	rep := shapeReport("Adds a feed.", warning("old"))
+	old := rep.Findings[0].Fingerprint
+	first := BuildAttest(rep, prTarget(), "", commentable, shapeProfile(), changedFiles("a.go"))
+	posted := Fingerprints([]string{first.Comments[0].Body})
+
+	// Head 2 still has it. It is not reposted, but it is marked open.
+	second := BuildAttest(rep, head2, "", commentable, shapeProfile(), changedFiles("a.go"))
+	second = second.WithDelta(posted, OpenAt([]string{first.Body}, []string{first.Comments[0].Body, first.Body}, "deadbeef")).Unposted(posted)
+	if len(second.Comments) != 0 || !strings.Contains(second.Body, openMarkerPrefix+"bbbb:") {
+		t.Fatalf("head 2 should repost nothing and mark the finding open:\n%s", second.Body)
+	}
+
+	// Head 3 no longer has it.
+	third := BuildAttest(shapeReport("Adds a feed."), head3, "", commentable, shapeProfile(), changedFiles("a.go"))
+	previous := OpenAt([]string{first.Body, second.Body}, []string{first.Comments[0].Body, first.Body, second.Body}, "bbbb")
+	if !previous[old] {
+		t.Fatalf("head 2's open markers should hold the finding: %v", previous)
+	}
+	third = third.WithDelta(posted, previous)
+	if !strings.Contains(third.Body, "1 finding(s) fixed, 0 new, 0 still open") {
+		t.Errorf("head 3 should report the finding fixed:\n%s", third.Body)
 	}
 }
