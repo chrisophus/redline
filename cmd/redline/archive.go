@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -264,7 +263,7 @@ func pruneHeads(root, ledger string, keep int, cutoff time.Time) (int, int64, er
 			if (keep <= 0 || i < keep) && (cutoff.IsZero() || !h.when.Before(cutoff)) {
 				continue
 			}
-			if pinnedByMiss(misses, filepath.Base(s), h.sha) {
+			if pinnedByMiss(misses, h.sha) {
 				continue
 			}
 			dir := filepath.Join(s, h.sha)
@@ -280,11 +279,13 @@ func pruneHeads(root, ledger string, keep int, cutoff time.Time) (int, int64, er
 	return removed, freed, nil
 }
 
-// pinnedByMiss reports whether a miss on the pull request behind session names
-// the head sha. A head typed short and never matched to a session is a prefix.
-func pinnedByMiss(misses []miss.Entry, session, sha string) bool {
+// pinnedByMiss reports whether a miss names the head sha. It goes by the commit
+// alone, in whatever session directory the head was archived: a session can be
+// named by --session, or by a pull request spelled "007", and the commit is the
+// one thing every miss entry carries. A head typed short is a prefix.
+func pinnedByMiss(misses []miss.Entry, sha string) bool {
 	for _, m := range misses {
-		if session == "pr-"+strconv.Itoa(m.PR) && len(m.Head) >= 7 && strings.HasPrefix(sha, m.Head) {
+		if len(m.Head) >= 7 && strings.HasPrefix(sha, m.Head) {
 			return true
 		}
 	}

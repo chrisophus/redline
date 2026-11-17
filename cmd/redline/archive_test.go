@@ -365,3 +365,17 @@ func TestLeftoverAsideDirIsNotArchived(t *testing.T) {
 		t.Error("a leftover aside directory was archived")
 	}
 }
+
+// A miss pins its head wherever it was archived, including under a session
+// named by --session.
+func TestGCPinsAHeadInACustomSession(t *testing.T) {
+	root := t.TempDir()
+	custom := filepath.Join(root, sessionsDir, "my-review")
+	saveSessionAt(t, filepath.Join(custom, headA))
+	if err := miss.Append(root, miss.Entry{PR: 7, File: "a.go", Line: 1, Summary: "s", Head: headA}); err != nil {
+		t.Fatal(err)
+	}
+	if n, _, err := pruneHeads(root, root, 0, time.Now().Add(time.Hour)); n != 0 || err != nil {
+		t.Errorf("removed %d, err %v; want the pinned head kept", n, err)
+	}
+}
