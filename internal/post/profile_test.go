@@ -124,7 +124,7 @@ func TestAStaleReviewKeepsItsNoticeAndWithholdsOnlyWhenRequired(t *testing.T) {
 }
 
 // The repository's own gate profile must load, keep the markers the studio's
-// review gate reads, and post the lean walkthrough with no echoed sections.
+// review gate reads, and post the lean walkthrough plus the folded evidence table.
 func TestRepositoryReviewProfileIsLean(t *testing.T) {
 	p, err := LoadProfile(filepath.Join("..", "..", ".github", "redline-review.yml"))
 	if err != nil {
@@ -139,9 +139,13 @@ func TestRepositoryReviewProfileIsLean(t *testing.T) {
 	if p.BodyStyle != BodyWalkthrough {
 		t.Fatalf("body_style = %q", p.BodyStyle)
 	}
-	for _, s := range []string{"intent", "evidence", "confirmations", "unknowns", "diff-links"} {
+	for _, s := range []string{"intent", "confirmations", "unknowns", "diff-links"} {
 		if p.Includes(s) {
 			t.Errorf("section %q should not be included", s)
 		}
+	}
+	// A pane that did not run fails the gate, and only this table says which.
+	if !p.Includes("evidence") {
+		t.Error("evidence must stay so a closed-fail gate shows its reason")
 	}
 }

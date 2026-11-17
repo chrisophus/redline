@@ -7,6 +7,8 @@ blocking: [error, warning]
 require_head: true
 fail_closed_pane: true
 body_style: walkthrough
-# No body_include: the review is the verdict, the overview and the per-file table. It
-# does not repeat the pull request description or add evidence, confirmations or unknowns.
-body_include: []
+# The review is the verdict, the overview and the per-file table. It does not repeat the
+# pull request description or add confirmations, unknowns or diff links. The evidence
+# table stays, folded away: with fail_closed_pane a pane that did not run fails the
+# gate, and that table is where the review says which pane it was.
+body_include: [evidence]
