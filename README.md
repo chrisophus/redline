@@ -142,6 +142,8 @@ go build ./cmd/redline
 ./redline serve --stop            # stop the server for this .redline
 ./redline gc                      # remove this repo's cached review worktrees
 ./redline dispositions --recent 50 --jsonl out/  # what became of each review finding
+./redline postmortem --pr 123 --head 3f9a2c1     # the review of an earlier head
+./redline miss --pr 46 --head 3f9a2c1 --file a.html --line 41 --summary "dropped a )"
 ```
 
 `run` writes `findings.json`, `report.md`, `report.html`, and any captured
@@ -156,6 +158,19 @@ out in a detached worktree, cached under `~/.redline/worktrees` and reused
 across runs so a second review of the same commit is instant. The cache is
 left in place on purpose; `redline gc` reclaims it for the current repository
 (`--older-than 168h` keeps recent worktrees).
+
+A run or review of a committed target also keeps its session under the commit
+it reviewed, in `.redline/sessions/pr-123/<head-sha>/`, while `pr-123/` itself
+stays the latest. `--head SHA` on `postmortem`, `learnings` and `open` reads an
+earlier one. These are kept until `redline gc --keep-heads N` or
+`--heads-older-than 720h` trims them.
+
+`redline miss` records a defect that a review should have caught, as one line
+in `misses.jsonl` beside the dispositions files. From the session kept for
+`--head` it works out whether the defect's line was in the reviewed diff and
+which findings and lookups covered it. A miss with no session, such as one from
+before Redline, is recorded with those answers left out. `redline learnings`
+drafts a review rule from each miss as well as from replies.
 
 `redline dispositions` looks back at pull requests that were already reviewed
 and says what became of each finding: fixed, declined, left open, stale, or

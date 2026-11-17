@@ -98,7 +98,7 @@ func workingTreeName() string {
 // resolveSession points o.out at the session directory the command works on,
 // before it runs. set holds the flags the caller passed.
 func resolveSession(c command, o *opts, set map[string]bool) error {
-	if c.name == "gc" || c.name == "dispositions" {
+	if c.name == "gc" || c.name == "dispositions" || c.name == "miss" {
 		return nil
 	}
 	observes := c.name == "run" || (c.name == "review" && o.observe)
@@ -115,7 +115,7 @@ func resolveSession(c command, o *opts, set map[string]bool) error {
 			return errors.New("--out names the session directory itself and --session names one under " +
 				".redline/sessions; pass one of them")
 		}
-		return nil
+		return applyHead(o)
 	}
 	// --stats reads the cost ledger, which every session shares.
 	if c.name == "review" && o.stats && !o.observe {
@@ -137,7 +137,7 @@ func resolveSession(c command, o *opts, set map[string]bool) error {
 			// No run has written a session under this layout. A session an
 			// older Redline wrote straight into --out is still read from
 			// there, and with neither the command says there was no prior run.
-			return nil
+			return applyHead(o)
 		}
 		name = strings.TrimSpace(string(latest))
 	}
@@ -159,7 +159,7 @@ func resolveSession(c command, o *opts, set map[string]bool) error {
 	}
 	o.out = dir
 	o.sessionKey = name
-	return nil
+	return applyHead(o)
 }
 
 // recordSession marks the session just written as the latest and says where

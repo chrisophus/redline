@@ -47,6 +47,7 @@ func cmdReview(o opts) error {
 			return err
 		}
 		recordSession(o)
+		archiveHead(o, res)
 		if runErr != nil {
 			return runErr
 		}
@@ -493,6 +494,7 @@ func cmdReview(o opts) error {
 	if err := write(o, res); err != nil {
 		return err
 	}
+	archiveHead(o, res)
 	fmt.Fprintf(os.Stderr, "redline: wrote %s\n", path)
 	return announce(o.out, o.port, o.open)
 }

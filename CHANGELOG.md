@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Each reviewed head keeps its session, and misses are recorded.** A run or
+  review of a pull request, branch, commit or range now also saves its session
+  under the commit it reviewed, as `.redline/sessions/pr-N/<head-sha>/`, and
+  `pr-N/` stays the latest. `postmortem`, `learnings` and `open` read an older
+  one with `--head SHA`. `redline gc --keep-heads N` and `--heads-older-than D`
+  trim them. The new `redline miss --pr N --head SHA --file F --line L
+  --summary TEXT` appends a defect a review should have caught to
+  `misses.jsonl`, with whether its line was in the reviewed diff and which
+  findings and lookups covered it. `redline learnings` also drafts a rule from
+  each miss.
+
 ### Changed
 - **The studio's checks use the Go that go.mod names.** On a host with Go 1.27
   the linter could not read the standard library's export data, so lint failed

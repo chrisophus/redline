@@ -1,0 +1,167 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/chrisophus/redline/internal/change"
+	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/miss"
+	"github.com/chrisophus/redline/internal/run"
+	"github.com/chrisophus/redline/internal/target"
+)
+
+// keepReviewedHead saves a pull request's review of one head the way a run
+// does, so a miss has a session to read.
+func keepReviewedHead(t *testing.T, root string, pr, head string, res *run.Result) {
+	t.Helper()
+	dir := filepath.Join(root, sessionsDir, "pr-"+pr)
+	if err := run.SaveSession(dir, res); err != nil {
+		t.Fatal(err)
+	}
+	archiveHead(opts{out: dir, sessionKey: "pr-" + pr}, res)
+	if _, err := os.Stat(filepath.Join(dir, head, "session.json")); err != nil {
+		t.Fatalf("head not kept: %v", err)
+	}
+}
+
+func recordMiss(t *testing.T, args ...string) string {
+	t.Helper()
+	var err error
+	out := captureStdout(t, func() { err = runMain(append([]string{"miss"}, args...)) })
+	if err != nil {
+		t.Fatalf("miss %v: %v", args, err)
+	}
+	return out
+}
+
+// The dropped ")" in sandbox-studio #46: the line was added by the reviewed
+// head, and the review wrote a finding elsewhere in the file.
+func TestMissSaysWhetherTheDefectWasInTheReviewedDiff(t *testing.T) {
+	root := t.TempDir()
+	res := &run.Result{
+		Change: &change.Set{
+			Target: &target.Target{Kind: target.KindPR, Head: headA},
+			Files:  []change.File{{Path: "internal/studio/web/operator.html", AddedLines: []int{40, 41, 42}}},
+		},
+		Report: findings.Report{Findings: []findings.Finding{
+			{ID: "f1", File: "internal/studio/web/operator.html", Line: 12, Message: "unrelated"},
+		}},
+	}
+	keepReviewedHead(t, root, "46", headA, res)
+
+	out := recordMiss(t, "--out", root, "--pr", "46", "--head", headA[:10],
+		"--file", "internal/studio/web/operator.html", "--line", "41",
+		"--summary", "a dropped ) blanked the operator page", "--fix-pr", "59")
+	if !strings.Contains(out, "in the reviewed diff") {
+		t.Errorf("the command did not say the line was in the diff:\n%s", out)
+	}
+
+	got, err := miss.Read(root)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("ledger = %v, %v, want one entry", got, err)
+	}
+	e := got[0]
+	if e.PR != 46 || e.Head != headA || e.FixPR != 59 || e.Line != 41 {
+		t.Errorf("entry = %+v", e)
+	}
+	if e.FileInDiff == nil || !*e.FileInDiff || e.LineInDiff == nil || !*e.LineInDiff {
+		t.Errorf("the dropped ) was added by the reviewed head, entry says file %v line %v", e.FileInDiff, e.LineInDiff)
+	}
+	if len(e.Findings) != 0 || len(e.Lookups) != 0 {
+		t.Errorf("nothing covered the line, entry lists %+v and %+v", e.Findings, e.Lookups)
+	}
+	if want := filepath.Join(root, sessionsDir, "pr-46", headA); e.Session != want {
+		t.Errorf("session = %q, want %q", e.Session, want)
+	}
+}
+
+// A defect from before Redline has no session. It is still recorded, with the
+// answers about the review left unknown rather than false.
+func TestMissWithNoSessionIsStillRecorded(t *testing.T) {
+	root := t.TempDir()
+	out := recordMiss(t, "--out", root, "--pr", "12", "--file", "reset.yml", "--line", "3",
+		"--summary", "roles that never existed")
+	if !strings.Contains(out, "no kept session") {
+		t.Errorf("the command did not say there was no session:\n%s", out)
+	}
+	got, _ := miss.Read(root)
+	if len(got) != 1 || got[0].LineInDiff != nil || got[0].FileInDiff != nil || got[0].Session != "" {
+		t.Fatalf("ledger = %+v, want one entry with the review's answers unset", got)
+	}
+	raw, _ := os.ReadFile(filepath.Join(root, miss.File))
+	if strings.Contains(string(raw), "InDiff") {
+		t.Errorf("an unknown answer was written out:\n%s", raw)
+	}
+
+	// A head with no kept session is the same, and a second miss appends.
+	recordMiss(t, "--out", root, "--pr", "12", "--head", strings.Repeat("e", 12), "--file", "reset.yml",
+		"--line", "4", "--summary", "another")
+	if got, _ := miss.Read(root); len(got) != 2 || got[1].LineInDiff != nil {
+		t.Errorf("ledger = %+v, want a second entry with no answers", got)
+	}
+}
+
+func TestMissNeedsWhatItRecords(t *testing.T) {
+	root := t.TempDir()
+	full := []string{"--out", root, "--pr", "1", "--file", "a.go", "--line", "2", "--summary", "s"}
+	for name, drop := range map[string]string{
+		"--pr": "--pr", "--file": "--file", "--line": "--line", "--summary": "--summary",
+	} {
+		var args []string
+		for i := 0; i < len(full); i += 2 {
+			if full[i] != drop {
+				args = append(args, full[i], full[i+1])
+			}
+		}
+		if err := runMain(append([]string{"miss"}, args...)); err == nil {
+			t.Errorf("miss without %s was accepted", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, miss.File)); err == nil {
+		t.Error("a refused miss left a ledger behind")
+	}
+}
+
+func TestMissLedgerGoesBesideTheDispositionsWhenAsked(t *testing.T) {
+	root, jsonl := t.TempDir(), t.TempDir()
+	recordMiss(t, "--out", root, "--jsonl", jsonl, "--pr", "#5", "--file", "a.go", "--line", "2", "--summary", "s")
+	if got, _ := miss.Read(jsonl); len(got) != 1 || got[0].PR != 5 {
+		t.Errorf("ledger in --jsonl = %+v", got)
+	}
+}
+
+func TestLearningsDraftsARuleFromAMiss(t *testing.T) {
+	root := t.TempDir()
+	yes := true
+	if err := miss.Append(root, miss.Entry{PR: 46, File: "internal/studio/web/operator.html", Line: 41,
+		Summary: "a dropped ) blanked the page", FixPR: 59, LineInDiff: &yes}); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	// No session in --out: the misses alone are enough.
+	out := captureStdout(t, func() { err = cmdLearnings(opts{out: root, root: root}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`scope: ["internal/studio/web/**"]`,
+		"PR #46 let through a defect at internal/studio/web/operator.html:41",
+		"a dropped ) blanked the page",
+		"in the reviewed diff and no finding was made",
+		`"fixed in PR #59"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the draft lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestLearningsWithNoSessionAndNoMissesStillFails(t *testing.T) {
+	root := t.TempDir()
+	if err := cmdLearnings(opts{out: root, root: root}); err == nil {
+		t.Error("learnings with no session and no misses returned no error")
+	}
+}

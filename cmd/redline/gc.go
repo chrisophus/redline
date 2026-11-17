@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,7 +15,32 @@ import (
 // reviewed revision is immutable, so a second run against it is instant, which
 // is why nothing prunes it automatically. gc is the manual reclaim, scoped to
 // this repository. Removed worktrees are recreated on demand by the next run.
+//
+// With --keep-heads or --heads-older-than it then trims the sessions kept for
+// each reviewed head, which the worktree cache does not hold.
 func cmdGC(o opts) error {
+	cutoff, err := cutoffFor("--older-than", o.olderThan)
+	if err != nil {
+		return err
+	}
+	headsCutoff, err := cutoffFor("--heads-older-than", o.headsOlderThan)
+	if err != nil {
+		return err
+	}
+	if o.keepHeads < 0 {
+		return errors.New("--keep-heads: give a count of zero or more")
+	}
+	if err := gcWorktrees(cutoff); err != nil {
+		return err
+	}
+	if o.keepHeads > 0 || !headsCutoff.IsZero() {
+		n, freed := pruneHeads(o.out, o.keepHeads, headsCutoff)
+		fmt.Printf("redline: removed %d kept head session(s), freed %s\n", n, humanBytes(freed))
+	}
+	return nil
+}
+
+func gcWorktrees(cutoff time.Time) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -26,14 +52,6 @@ func cmdGC(o opts) error {
 	dirs, err := repo.CachedWorktrees()
 	if err != nil {
 		return err
-	}
-	var cutoff time.Time
-	if o.olderThan != "" {
-		d, err := time.ParseDuration(o.olderThan)
-		if err != nil {
-			return fmt.Errorf("--older-than: %w", err)
-		}
-		cutoff = time.Now().Add(-d)
 	}
 	removed := 0
 	var freed int64
@@ -53,6 +71,19 @@ func cmdGC(o opts) error {
 	}
 	fmt.Printf("redline: removed %d cached worktree(s), freed %s\n", removed, humanBytes(freed))
 	return nil
+}
+
+// cutoffFor turns a duration flag into the time before which things are old,
+// or the zero time when the flag is empty.
+func cutoffFor(flagName, value string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%s: %w", flagName, err)
+	}
+	return time.Now().Add(-d), nil
 }
 
 // dirSize sums the bytes under dir, best effort: an unreadable entry contributes
