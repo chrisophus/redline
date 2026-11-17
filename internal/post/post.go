@@ -181,33 +181,42 @@ type Delta struct {
 }
 
 // WithDelta marks the review as one of a later head. posted is the set of
-// fingerprints already on the pull request, from Fingerprints, and it must be
-// the set from before Unposted runs. A finding is still open when it was
-// posted and the report has it again, new when it was not posted, and a posted
-// finding the report no longer has counts as fixed. The count is of
-// fingerprints, so a finding reworded between heads reads as one fixed and one
-// new.
-func (p Payload) WithDelta(posted map[string]bool) Payload {
+// fingerprints already on the pull request, from Fingerprints, and previous is
+// the set marked at the last reviewed head, from FingerprintsAt. Both must be
+// taken before Unposted runs.
+//
+// A finding is still open when it was posted and the report has it again, and
+// new when it was not posted. A finding counts as fixed when it was posted at
+// the previous head and the report no longer has it, so one fixed several
+// heads ago is not counted again. A finding first posted at an older head and
+// fixed now is missed, because a finding is marked once and not on each head.
+// The count is of fingerprints, so a finding reworded between heads reads as
+// one fixed and one new.
+func (p Payload) WithDelta(posted, previous map[string]bool) Payload {
 	d := Delta{}
-	seen := map[string]bool{}
-	count := func(fp string) {
-		if seen[fp] {
-			return
-		}
-		seen[fp] = true
+	present := map[string]bool{}
+	for _, c := range p.Comments {
+		present[c.Fingerprint] = true
+	}
+	for _, f := range p.bodyFindings {
+		present[f.Fingerprint] = true
+	}
+	for fp := range present {
 		if posted[fp] {
 			d.Open++
 		} else {
 			d.New++
 		}
 	}
-	for _, c := range p.Comments {
-		count(c.Fingerprint)
+	// Low-confidence findings are shown folded, so they are still there.
+	for _, f := range p.lowConf {
+		present[f.Fingerprint] = true
 	}
-	for _, f := range p.bodyFindings {
-		count(f.Fingerprint)
+	for fp := range previous {
+		if !present[fp] && !strings.HasPrefix(fp, "conversation:") {
+			d.Fixed++
+		}
 	}
-	d.Fixed = max(len(posted)-d.Open, 0)
 	p.delta = &d
 	p.Body = p.renderBody()
 	return p
@@ -874,6 +883,11 @@ func buildBodyWalkthrough(p Payload) string {
 	leadCut := false
 	switch {
 	case p.delta != nil:
+		// The heading is the visible sign of a failing gate, so a later head
+		// keeps it when the gate fails.
+		if p.GateVerdict == "fail" {
+			fmt.Fprintf(&top, "### %s\n\n", walkthroughHeading(p.GateVerdict))
+		}
 		top.WriteString(p.delta.line(p.CommitID) + "\n\n")
 	case p.dropped == 0 && p.noFindings() && p.GateVerdict != "fail":
 		fmt.Fprintf(&top, "Reviewed %s: no findings.\n\n", reviewedRef(p.CommitID))
@@ -1314,7 +1328,7 @@ func bodyFindingLine(f findings.Finding, head string, prof *Profile) string {
 	summary, rest := splitAt(f.Message, maxSummary-len(prefix))
 	b.WriteString(prefix + summary)
 	if rest != "" {
-		b.WriteString(" " + strings.ReplaceAll(whyBlock(rest), "\n", ""))
+		b.WriteString(" " + whyBlock(strings.Join(strings.Fields(rest), " ")))
 	}
 	if loc := bodyLocation(f); loc != "" {
 		fmt.Fprintf(&b, " _(%s)_", loc)
@@ -1503,9 +1517,18 @@ func (p Payload) Unposted(posted map[string]bool) Payload {
 // anchored to a line is marked in the body it rode in, and reading only the
 // comments would offer it again on every re-post.
 func Fingerprints(bodies []string) map[string]bool {
+	return FingerprintsAt(bodies, "")
+}
+
+// FingerprintsAt is Fingerprints limited to the markers written for head. An
+// empty head keeps them all.
+func FingerprintsAt(bodies []string, head string) map[string]bool {
 	out := map[string]bool{}
 	for _, body := range bodies {
 		for _, m := range fpMarkerRe.FindAllStringSubmatch(body, -1) {
+			if head != "" && !strings.EqualFold(m[1], head) {
+				continue
+			}
 			raw, err := hex.DecodeString(m[2])
 			if err != nil {
 				continue

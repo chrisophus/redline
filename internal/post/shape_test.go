@@ -82,17 +82,23 @@ func TestLaterHeadReportsOnlyTheDelta(t *testing.T) {
 	still, fresh := rep.Findings[0], rep.Findings[1]
 	commentable := map[string]map[int]bool{"a.go": {5: true}}
 	p := BuildAttest(rep, prTarget(), "", commentable, shapeProfile(), changedFiles("a.go"))
-	posted := map[string]bool{still.Fingerprint: true, "fp-gone-1": true, "fp-gone-2": true}
-	p = p.WithDelta(posted).Unposted(posted)
+	posted := map[string]bool{still.Fingerprint: true, "fp-gone-1": true, "fp-gone-2": true, "fp-old": true}
+	// "fp-old" was fixed at an earlier head and "conversation:x" is not a finding.
+	previous := map[string]bool{still.Fingerprint: true, "fp-gone-1": true, "fp-gone-2": true, "conversation:x:open": true}
+	p = p.WithDelta(posted, previous).Unposted(posted)
 
-	if !strings.HasPrefix(p.Body, "Reviewed `deadbeef`: 2 finding(s) fixed, 1 new, 1 still open.") {
-		t.Errorf("the body should open with the delta:\n%s", p.Body)
+	if !strings.Contains(p.Body, "Reviewed `deadbeef`: 2 finding(s) fixed, 1 new, 1 still open.") {
+		t.Errorf("the body should carry the delta:\n%s", p.Body)
+	}
+	// The gate here fails, so the heading stays above the delta line.
+	if p.GateVerdict != "fail" || !strings.HasPrefix(p.Body, "### Review findings\n\nReviewed ") {
+		t.Errorf("a failing gate keeps its heading on a later head:\n%s", p.Body)
 	}
 	visible := withoutDetails(p.Body)
 	if len(visible) > 800 {
 		t.Errorf("a delta without its details is %d characters, want 800 or fewer:\n%s", len(visible), visible)
 	}
-	if strings.Contains(visible, "Overview that was already said") || strings.Contains(visible, "### Review") {
+	if strings.Contains(visible, "Overview that was already said") || strings.Contains(visible, "### Review complete") {
 		t.Errorf("a later head must not repeat the summary:\n%s", visible)
 	}
 	if len(p.Comments) != 1 || p.Comments[0].Fingerprint != fresh.Fingerprint {
@@ -171,7 +177,7 @@ func TestMarkersAreUnchangedByTheNewShapes(t *testing.T) {
 	prof.FindingMarker = "redline-finding:v1"
 	rep := shapeReport("Adds a feed.", warning("one"))
 	first := BuildAttest(rep, prTarget(), "", map[string]map[int]bool{"a.go": {5: true}}, prof, changedFiles("a.go"))
-	later := first.WithDelta(map[string]bool{})
+	later := first.WithDelta(map[string]bool{}, nil)
 	clean := BuildAttest(shapeReport("Adds a feed."), prTarget(), "", nil, prof, changedFiles("a.go"))
 	for name, p := range map[string]Payload{"first": first, "later": later, "clean": clean} {
 		for _, want := range []string{
@@ -186,5 +192,13 @@ func TestMarkersAreUnchangedByTheNewShapes(t *testing.T) {
 	if !strings.Contains(first.Comments[0].Body, "redline:fp:deadbeef:") ||
 		!strings.Contains(first.Comments[0].Body, "<!-- redline-finding:v1") {
 		t.Errorf("the finding markers moved:\n%s", first.Comments[0].Body)
+	}
+}
+
+func TestBodyFindingWhyKeepsWordBreaks(t *testing.T) {
+	msg := strings.Repeat("Filler sentence here. ", 30) + "foo\nbar\n\nbaz"
+	line := bodyFindingLine(warning(msg), "deadbeef", nil)
+	if !strings.Contains(line, "foo bar baz") {
+		t.Errorf("line breaks must become spaces:\n%s", line)
 	}
 }
