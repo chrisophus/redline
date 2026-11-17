@@ -202,6 +202,11 @@ func (p Payload) WithDelta(posted, previous map[string]bool) Payload {
 		present[f.Fingerprint] = true
 	}
 	for fp := range present {
+		// Reviewer exchanges ride in Comments too, and are not findings.
+		if strings.HasPrefix(fp, "conversation:") {
+			delete(present, fp)
+			continue
+		}
 		if posted[fp] {
 			d.Open++
 		} else {

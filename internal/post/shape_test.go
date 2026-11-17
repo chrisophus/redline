@@ -215,3 +215,14 @@ func TestBodyFindingWhyFollowsTheItemLine(t *testing.T) {
 		t.Errorf("the Why block must be indented under the item:\n%s", after)
 	}
 }
+
+func TestDeltaDoesNotCountConversationExchanges(t *testing.T) {
+	rep := shapeReport("Adds a feed.", warning("one"))
+	p := BuildAttest(rep, prTarget(), "", map[string]map[int]bool{"a.go": {5: true}}, shapeProfile(), changedFiles("a.go"))
+	p.Comments = append(p.Comments, Comment{Path: "a.go", Line: 5, Fingerprint: "conversation:q1:open"},
+		Comment{Path: "a.go", Line: 5, Fingerprint: "conversation:q2:replied"})
+	p = p.WithDelta(map[string]bool{"conversation:q2:replied": true}, nil)
+	if p.delta.New != 1 || p.delta.Open != 0 {
+		t.Errorf("only the finding counts: %+v", *p.delta)
+	}
+}
