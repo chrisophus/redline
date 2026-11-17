@@ -240,3 +240,24 @@ func TestFailedCopyLeavesTheKeptHeadAlone(t *testing.T) {
 		}
 	}
 }
+
+// Trimming kept heads reads only --out, so it works from outside a checkout.
+func TestGCTrimsHeadsOutsideACheckout(t *testing.T) {
+	root := t.TempDir()
+	pr := filepath.Join(root, sessionsDir, "pr-7")
+	for _, h := range []string{headA, headB} {
+		saveSessionAt(t, filepath.Join(pr, h))
+	}
+	t.Chdir(t.TempDir())
+	var err error
+	captureStdout(t, func() { err = cmdGC(opts{out: root, keepHeads: 1}) })
+	if err != nil {
+		t.Fatalf("gc --keep-heads outside a checkout: %v", err)
+	}
+	if got := len(keptHeads(pr)); got != 1 {
+		t.Errorf("%d heads kept, want 1", got)
+	}
+	if err := cmdGC(opts{out: root}); err == nil {
+		t.Error("gc with no head limit outside a checkout should still fail")
+	}
+}

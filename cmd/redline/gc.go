@@ -30,10 +30,16 @@ func cmdGC(o opts) error {
 	if o.keepHeads < 0 {
 		return errors.New("--keep-heads: give a count of zero or more")
 	}
+	trimHeads := o.keepHeads > 0 || !headsCutoff.IsZero()
 	if err := gcWorktrees(cutoff); err != nil {
-		return err
+		// Trimming kept heads reads only --out, so it still works outside a
+		// checkout. Say why the worktrees were skipped and carry on.
+		if !trimHeads {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "redline: cached worktrees not cleaned: %v\n", err)
 	}
-	if o.keepHeads > 0 || !headsCutoff.IsZero() {
+	if trimHeads {
 		n, freed := pruneHeads(o.out, o.keepHeads, headsCutoff)
 		fmt.Printf("redline: removed %d kept head session(s), freed %s\n", n, humanBytes(freed))
 	}

@@ -120,6 +120,8 @@ func draftMiss(m miss.Entry) string {
 		b.WriteString("        The line was in the reviewed diff and the reviewer proposed a finding on it, but the ruling dropped it.\n")
 	case m.LineInDiff != nil && *m.LineInDiff:
 		b.WriteString("        The line was in the reviewed diff and a finding sat on it that did not stop the defect.\n")
+	case m.LineInDiff != nil && m.FileInDiff != nil && *m.FileInDiff:
+		b.WriteString("        The file was in the reviewed diff, but the change did not add this line, so the defect sits in code the change only touched around.\n")
 	case m.LineInDiff != nil:
 		b.WriteString("        The line was not in the reviewed diff, so it was reached through code the diff did not touch.\n")
 	}

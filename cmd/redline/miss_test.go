@@ -216,3 +216,15 @@ func TestLearningsReadsTheLedgerFromJSONLDir(t *testing.T) {
 		t.Errorf("the draft lacks the miss or the dropped finding:\n%s", out)
 	}
 }
+
+func TestDraftMissSeparatesAFileInTheDiffFromOneOutsideIt(t *testing.T) {
+	yes, no := true, false
+	in := draftMiss(miss.Entry{PR: 1, File: "a/b.go", Line: 2, Summary: "s", FileInDiff: &yes, LineInDiff: &no})
+	if !strings.Contains(in, "The file was in the reviewed diff, but the change did not add this line") {
+		t.Errorf("file in the diff, line not added:\n%s", in)
+	}
+	out := draftMiss(miss.Entry{PR: 1, File: "a/b.go", Line: 2, Summary: "s", FileInDiff: &no, LineInDiff: &no})
+	if !strings.Contains(out, "reached through code the diff did not touch") {
+		t.Errorf("file outside the diff:\n%s", out)
+	}
+}

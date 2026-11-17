@@ -54,6 +54,11 @@ func copySession(src, dst string) error {
 		return err
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
+	// MkdirTemp makes the directory owner-only, and the archive should be as
+	// readable as the session it copies.
+	if err := os.Chmod(tmp, 0o755); err != nil { //nolint:gosec // matches the session directory's mode
+		return err
+	}
 	if err := copyDir(src, tmp, true); err != nil {
 		return err
 	}
