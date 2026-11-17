@@ -614,6 +614,27 @@ const maxSummary = 400
 // starts the rest with one, so the head's text is not shown twice. A text that fits comes
 // back whole with an empty rest.
 func splitAt(s string, max int) (head, rest string) {
+	head, rest = cutAt(s, max)
+	return keepMarkdownClosed(head, rest)
+}
+
+// keepMarkdownClosed stops a cut from leaving a code fence or code span open in
+// the head, where it would swallow whatever is posted after it. The head gets
+// the closing mark and the rest gets a matching opening one.
+func keepMarkdownClosed(head, rest string) (string, string) {
+	if rest == "" {
+		return head, rest
+	}
+	if strings.Count(head, "```")%2 == 1 {
+		return head + "\n```", "```\n" + rest
+	}
+	if strings.Count(strings.ReplaceAll(head, "```", ""), "`")%2 == 1 {
+		return head + "`", "`" + rest
+	}
+	return head, rest
+}
+
+func cutAt(s string, max int) (head, rest string) {
 	s = strings.TrimSpace(s)
 	if len(s) <= max {
 		return s, ""

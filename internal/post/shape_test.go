@@ -235,3 +235,16 @@ func TestMidSentenceCutDoesNotRepeatTheHead(t *testing.T) {
 		t.Errorf("head and rest must add up to the message, not repeat it:\n%q\n%q", head, rest)
 	}
 }
+
+func TestCutNeverLeavesACodeFenceOrSpanOpen(t *testing.T) {
+	fenced := "Some words before. " + "```go\n" + strings.Repeat("x := 1\n", 40) + "```\nafter."
+	head, rest := splitAt(fenced, 150)
+	if strings.Count(head, "```")%2 != 0 || !strings.HasPrefix(rest, "```\n") {
+		t.Errorf("fence left open:\n%s\n--\n%s", head, rest)
+	}
+	span := strings.Repeat("word ", 20) + "`" + strings.Repeat("call_with_a_long_name ", 20) + "` end."
+	head, rest = splitAt(span, 150)
+	if strings.Count(head, "`")%2 != 0 || !strings.HasPrefix(rest, "`") {
+		t.Errorf("span left open:\n%s\n--\n%s", head, rest)
+	}
+}
