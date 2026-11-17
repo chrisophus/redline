@@ -84,7 +84,13 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer func() { _ = in.Close() }()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	fi, err := in.Stat()
+	if err != nil {
+		return err
+	}
+	// The copy keeps the original's permissions, so it is as readable as the
+	// session it was taken from.
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fi.Mode().Perm())
 	if err != nil {
 		return err
 	}
@@ -167,7 +173,7 @@ func pruneHeads(root string, keep int, cutoff time.Time) (int, int64) {
 	var freed int64
 	for _, s := range sessions {
 		for i, h := range keptHeads(s) {
-			if !(keep > 0 && i >= keep) && !(!cutoff.IsZero() && h.when.Before(cutoff)) {
+			if (keep <= 0 || i < keep) && (cutoff.IsZero() || !h.when.Before(cutoff)) {
 				continue
 			}
 			dir := filepath.Join(s, h.sha)
