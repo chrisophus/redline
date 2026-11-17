@@ -44,12 +44,28 @@ func archiveHead(o opts, res *run.Result) {
 // copySession replaces dst with the files of src. The debug captures and the
 // per-head archives that live inside src are left out: the first are large and
 // belong to one run, and the second would copy the archive into itself.
+//
+// The copy is made in a temporary directory beside dst and renamed into place,
+// so a copy that fails partway leaves the previous archive, or none, and never
+// a half-written head that keptHeads would list.
 func copySession(src, dst string) error {
+	tmp, err := os.MkdirTemp(src, tmpArchivePrefix)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(tmp) }()
+	if err := copyDir(src, tmp, true); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(dst); err != nil {
 		return err
 	}
-	return copyDir(src, dst, true)
+	return os.Rename(tmp, dst)
 }
+
+// tmpArchivePrefix names the directory a copy is built in. It is inside the
+// session and so is skipped when copying, like the archives.
+const tmpArchivePrefix = ".keep-"
 
 func copyDir(src, dst string, top bool) error {
 	if err := os.MkdirAll(dst, 0o755); err != nil {
@@ -63,7 +79,7 @@ func copyDir(src, dst string, top bool) error {
 		from, to := filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())
 		switch {
 		case e.IsDir():
-			if top && (e.Name() == "debug" || headDirRE.MatchString(e.Name())) {
+			if top && (e.Name() == "debug" || headDirRE.MatchString(e.Name()) || strings.HasPrefix(e.Name(), tmpArchivePrefix)) {
 				continue
 			}
 			if err := copyDir(from, to, false); err != nil {

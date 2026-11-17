@@ -207,3 +207,36 @@ func TestHeadReadersTakePR(t *testing.T) {
 		}
 	}
 }
+
+// A copy that fails partway leaves the earlier archive of the head as it was
+// and no half-written directory or temporary one.
+func TestFailedCopyLeavesTheKeptHeadAlone(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads unreadable files")
+	}
+	root := t.TempDir()
+	dir := filepath.Join(root, sessionsDir, "pr-7")
+	o := opts{out: dir, root: root, sessionKey: "pr-7"}
+	res := sessionOf(headA, "first.go")
+	if err := run.SaveSession(dir, res); err != nil {
+		t.Fatal(err)
+	}
+	archiveHead(o, res)
+
+	bad := filepath.Join(dir, "review.json")
+	if err := os.WriteFile(bad, []byte("{}"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	archiveHead(o, sessionOf(headA, "second.go"))
+
+	got, err := run.LoadSession(filepath.Join(dir, headA))
+	if err != nil || got.Change.Files[0].Path != "first.go" {
+		t.Errorf("the earlier archive was not kept: %v %+v", err, got)
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), tmpArchivePrefix) {
+			t.Errorf("temporary directory %s left behind", e.Name())
+		}
+	}
+}
