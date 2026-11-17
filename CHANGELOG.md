@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Redline's own reviews are shorter.** The gate profile no longer posts the stated
+  intent (the pull request description), the evidence table, confirmations or
+  unknowns. The review is the verdict, the overview and the per-file table.
 - **The studio's checks use the Go that go.mod names.** On a host with Go 1.27
   the linter could not read the standard library's export data, so lint failed
   on every package. `.sandbox/check.sh` now sets `GOTOOLCHAIN` from go.mod, as

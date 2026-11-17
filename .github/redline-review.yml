@@ -7,4 +7,6 @@ blocking: [error, warning]
 require_head: true
 fail_closed_pane: true
 body_style: walkthrough
-body_include: [intent, evidence, confirmations, unknowns, diff-links]
+# No body_include: the review is the verdict, the overview and the per-file table. It
+# does not repeat the pull request description or add evidence, confirmations or unknowns.
+body_include: []

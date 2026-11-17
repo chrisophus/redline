@@ -122,3 +122,26 @@ func TestAStaleReviewKeepsItsNoticeAndWithholdsOnlyWhenRequired(t *testing.T) {
 		})
 	}
 }
+
+// The repository's own gate profile must load, keep the markers the studio's
+// review gate reads, and post the lean walkthrough with no echoed sections.
+func TestRepositoryReviewProfileIsLean(t *testing.T) {
+	p, err := LoadProfile(filepath.Join("..", "..", ".github", "redline-review.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ReviewMarker != "redline-review:v1" || p.FindingMarker != "redline-finding:v1" {
+		t.Fatalf("markers changed: %q %q", p.ReviewMarker, p.FindingMarker)
+	}
+	if !p.RequireHead || !p.FailClosedPane {
+		t.Fatal("require_head and fail_closed_pane must stay on")
+	}
+	if p.BodyStyle != BodyWalkthrough {
+		t.Fatalf("body_style = %q", p.BodyStyle)
+	}
+	for _, s := range []string{"intent", "evidence", "confirmations", "unknowns", "diff-links"} {
+		if p.Includes(s) {
+			t.Errorf("section %q should not be included", s)
+		}
+	}
+}
