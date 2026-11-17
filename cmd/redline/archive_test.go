@@ -344,3 +344,21 @@ func TestArchiveLeavesOutAnotherHeadsReviewAndTrace(t *testing.T) {
 		t.Errorf("the session's own review.json was touched: %v", err)
 	}
 }
+
+// An earlier archive a crash left parked beside the session is not copied into
+// the next head's archive.
+func TestLeftoverAsideDirIsNotArchived(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, sessionsDir, "pr-7")
+	res := sessionOf(headB, "second.go")
+	if err := run.SaveSession(dir, res); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, headA+asideSuffix), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	archiveHead(opts{out: dir, root: root, sessionKey: "pr-7"}, res)
+	if _, err := os.Stat(filepath.Join(dir, headB, headA+asideSuffix)); err == nil {
+		t.Error("a leftover aside directory was archived")
+	}
+}

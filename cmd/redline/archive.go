@@ -82,7 +82,7 @@ func copySession(src, dst, id string) error {
 	}
 	// The earlier archive is moved aside and removed only once the new one is
 	// in place, so a failed rename leaves it as it was.
-	aside := dst + ".old"
+	aside := dst + asideSuffix
 	if err := os.RemoveAll(aside); err != nil {
 		return err
 	}
@@ -120,6 +120,10 @@ func staleFor(path, id string) bool {
 
 // tmpArchivePrefix names the directory a copy is built in. It is inside the
 // session and so is skipped when copying, like the archives.
+// asideSuffix marks the earlier archive while its replacement is renamed in.
+// A copy skips one a crash left behind.
+const asideSuffix = ".old"
+
 const tmpArchivePrefix = ".keep-"
 
 func copyDir(src, dst string, top bool) error {
@@ -134,7 +138,7 @@ func copyDir(src, dst string, top bool) error {
 		from, to := filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())
 		switch {
 		case e.IsDir():
-			if top && (e.Name() == "debug" || headDirRE.MatchString(e.Name()) || strings.HasPrefix(e.Name(), tmpArchivePrefix)) {
+			if top && (e.Name() == "debug" || headDirRE.MatchString(e.Name()) || strings.HasPrefix(e.Name(), tmpArchivePrefix) || strings.HasSuffix(e.Name(), asideSuffix)) {
 				continue
 			}
 			if err := copyDir(from, to, false); err != nil {

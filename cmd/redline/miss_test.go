@@ -237,3 +237,34 @@ func TestMissDoesNotRecordAHeadThatIsNotACommit(t *testing.T) {
 		t.Errorf("ledger = %+v, want one entry with no head", got)
 	}
 }
+
+func TestLearningsNarrowsMissesToPRAndHead(t *testing.T) {
+	root := t.TempDir()
+	for _, e := range []miss.Entry{
+		{PR: 5, Head: headA, File: "a/x.go", Line: 1, Summary: "five a"},
+		{PR: 5, Head: headB, File: "a/x.go", Line: 2, Summary: "five b"},
+		{PR: 6, Head: headA, File: "a/x.go", Line: 3, Summary: "six"},
+	} {
+		if err := miss.Append(root, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	draft := func(o opts) string {
+		o.out, o.root = root, root
+		var err error
+		out := captureStdout(t, func() { err = cmdLearnings(o) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	if out := draft(opts{pr: "5"}); !strings.Contains(out, "five a") || !strings.Contains(out, "five b") || strings.Contains(out, "six") {
+		t.Errorf("--pr 5:\n%s", out)
+	}
+	if out := draft(opts{pr: "5", head: headB[:9]}); strings.Contains(out, "five a") || !strings.Contains(out, "five b") {
+		t.Errorf("--pr 5 --head:\n%s", out)
+	}
+	if out := draft(opts{}); !strings.Contains(out, "six") {
+		t.Errorf("no flags should draft every miss:\n%s", out)
+	}
+}

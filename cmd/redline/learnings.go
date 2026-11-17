@@ -35,6 +35,7 @@ func cmdLearnings(o opts) error {
 	if err != nil {
 		return err
 	}
+	misses = missesFor(misses, o)
 	res, err := run.LoadSession(o.out)
 	if err != nil {
 		// Misses stand on their own: they are not about the session in front of
@@ -199,4 +200,31 @@ func prURL(res *run.Result) string {
 		return ""
 	}
 	return res.Target.PR.URL
+}
+
+// missesFor narrows the ledger to the misses on --pr, and to those on --head
+// when it is given. A ledger is shared across pull requests, so without either
+// flag every miss is drafted.
+func missesFor(all []miss.Entry, o opts) []miss.Entry {
+	if o.pr == "" && o.head == "" {
+		return all
+	}
+	pr := 0
+	if o.pr != "" {
+		if n, err := missPR(o.pr); err == nil {
+			pr = n
+		}
+	}
+	head := strings.ToLower(o.head)
+	var out []miss.Entry
+	for _, m := range all {
+		if pr > 0 && m.PR != pr {
+			continue
+		}
+		if head != "" && (m.Head == "" || !strings.HasPrefix(m.Head, head) && !strings.HasPrefix(head, m.Head)) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }
