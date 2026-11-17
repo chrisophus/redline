@@ -80,6 +80,9 @@ type opts struct {
 	// caller gave, and sessionKey the session resolveSession chose under it.
 	observe                   bool
 	session, root, sessionKey string
+	// noSession is set when learnings was pointed at a pull request or head with
+	// no saved session, so it drafts from the ledger alone.
+	noSession bool
 	// dispositions' flags. --pr is shared with the commands that take one.
 	recent                 int
 	repo, artifacts, jsonl string

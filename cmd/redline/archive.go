@@ -99,7 +99,11 @@ func copySession(src, dst, id string) error {
 		}
 		return err
 	}
-	return os.RemoveAll(aside)
+	// The archive is in place. A leftover aside directory is skipped by later
+	// copies and costs only space, so failing to remove it is not a failure to
+	// keep the session.
+	_ = os.RemoveAll(aside)
+	return nil
 }
 
 // staleFor reports whether the JSON file at path names a revision other than

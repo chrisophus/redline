@@ -115,7 +115,7 @@ func resolveSession(c command, o *opts, set map[string]bool) error {
 			return errors.New("--out names the session directory itself and --session names one under " +
 				".redline/sessions; pass one of them")
 		}
-		return applyHead(o)
+		return applyHeadFor(c, o)
 	}
 	// --stats reads the cost ledger, which every session shares.
 	if c.name == "review" && o.stats && !o.observe {
@@ -137,7 +137,7 @@ func resolveSession(c command, o *opts, set map[string]bool) error {
 			// No run has written a session under this layout. A session an
 			// older Redline wrote straight into --out is still read from
 			// there, and with neither the command says there was no prior run.
-			return applyHead(o)
+			return applyHeadFor(c, o)
 		}
 		name = strings.TrimSpace(string(latest))
 	}
@@ -150,6 +150,11 @@ func resolveSession(c command, o *opts, set map[string]bool) error {
 	dir := filepath.Join(o.root, sessionsDir, name)
 	if !observes {
 		if _, err := os.Stat(filepath.Join(dir, "session.json")); err != nil { //nolint:gosec // G703: name validated above
+			if c.name == "learnings" {
+				// The misses on a pull request stand without its session.
+				o.out, o.sessionKey, o.noSession = dir, name, true
+				return nil
+			}
 			where := filepath.Join(o.root, sessionsDir)
 			if c.name == "review" {
 				return fmt.Errorf("no saved session %q in %s; add --run to observe it first", name, where)
@@ -159,7 +164,19 @@ func resolveSession(c command, o *opts, set map[string]bool) error {
 	}
 	o.out = dir
 	o.sessionKey = name
-	return applyHead(o)
+	return applyHeadFor(c, o)
+}
+
+// applyHeadFor is applyHead, except that learnings given a head nobody kept
+// carries on with the ledger alone.
+func applyHeadFor(c command, o *opts) error {
+	err := applyHead(o)
+	if err != nil && c.name == "learnings" {
+		fmt.Fprintf(os.Stderr, "redline: %v; drafting from the misses alone\n", err)
+		o.noSession = true
+		return nil
+	}
+	return err
 }
 
 // recordSession marks the session just written as the latest and says where

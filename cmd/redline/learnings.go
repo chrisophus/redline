@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -26,6 +27,8 @@ import (
 // The ledger of misses (see miss.go) is the second source. A miss is a defect a
 // review let through, recorded by a person, so a rule drawn from it says what
 // went wrong and where and leaves the cure to whoever edits the draft.
+var errNoSession = errors.New("no saved session for this target")
+
 func cmdLearnings(o opts) error {
 	dir := o.jsonl
 	if dir == "" {
@@ -44,7 +47,10 @@ func cmdLearnings(o opts) error {
 		misses = nil
 	}
 	misses = missesFor(misses, o)
-	res, err := run.LoadSession(o.out)
+	res, err := &run.Result{}, errNoSession
+	if !o.noSession {
+		res, err = run.LoadSession(o.out)
+	}
 	if err != nil {
 		// Misses stand on their own: they are not about the session in front of
 		// the command, and a repository with a ledger and no session still has

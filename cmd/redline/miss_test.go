@@ -284,3 +284,21 @@ func TestLearningsRefusesABadPRAndSurvivesABadLedger(t *testing.T) {
 		t.Errorf("err = %v, want the missing session", err)
 	}
 }
+
+// learnings --pr N on a pull request with a miss and no session drafts the miss.
+func TestLearningsForAPRWithNoSessionDraftsItsMisses(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := miss.Append(".redline", miss.Entry{PR: 46, Head: headA, File: "a/x.go", Line: 3, Summary: "lost a paren"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"learnings", "--pr", "46"},
+		{"learnings", "--pr", "46", "--head", headA[:9]},
+	} {
+		var err error
+		out := captureStdout(t, func() { err = runMain(args) })
+		if err != nil || !strings.Contains(out, "lost a paren") {
+			t.Errorf("%v: err %v\n%s", args, err, out)
+		}
+	}
+}
