@@ -104,9 +104,10 @@ func draftMiss(m miss.Entry) string {
 	}
 	var kept, dropped bool
 	for _, f := range m.Findings {
-		if f.By == "finding" {
+		switch f.By {
+		case "finding":
 			kept = true
-		} else if f.By == "proposed" {
+		case "proposed":
 			dropped = true
 		}
 	}
