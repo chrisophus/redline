@@ -1331,7 +1331,12 @@ func bodyFindingLine(f findings.Finding, head string, prof *Profile) string {
 		fmt.Fprintf(&b, "%s\n", m)
 	}
 	prefix := fmt.Sprintf("- **%s** — ", findingLabel(f))
-	summary, rest := splitAt(f.Message, maxSummary-len(prefix))
+	// One line, and no code fences: a fence in a list item cannot be closed
+	// on the same line as the location and marker that follow, and a cut
+	// inside one would swallow them. Fences become spans, which a cut closes
+	// inline.
+	msg := strings.ReplaceAll(strings.Join(strings.Fields(f.Message), " "), "```", "`")
+	summary, rest := splitAt(msg, maxSummary-len(prefix))
 	b.WriteString(prefix + summary)
 	if loc := bodyLocation(f); loc != "" {
 		fmt.Fprintf(&b, " _(%s)_", loc)

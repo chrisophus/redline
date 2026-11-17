@@ -257,3 +257,19 @@ func TestFirstReviewWithARecapStillLeadsWithTheOverview(t *testing.T) {
 		t.Errorf("the visible top needs a summary:\n%s", p.Body)
 	}
 }
+
+func TestBodyFindingWithAFenceStaysOnOneListItem(t *testing.T) {
+	msg := "Short lead. ```go\n" + strings.Repeat("x := 1\n", 80) + "```\nafter."
+	f := warning(msg)
+	line := bodyFindingLine(f, "deadbeef", nil)
+	first, after, _ := strings.Cut(line, "\n")
+	if strings.Contains(line, "```") || strings.Count(first, "`")%2 != 0 {
+		t.Errorf("no fences, and spans closed on the item line:\n%s", line)
+	}
+	if !strings.Contains(first, "redline:fp:deadbeef:") {
+		t.Errorf("the marker belongs on the item line:\n%s", line)
+	}
+	if strings.Contains(after, "```") || !strings.Contains(after, "</details>") {
+		t.Errorf("the Why block must be one closed block:\n%s", after)
+	}
+}
