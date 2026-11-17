@@ -14,3 +14,8 @@ confidence and severity so they can be ranked.
 
 Each defect is its own comment. A defect the change carries forward from code
 that was already there counts too.
+
+Keep each finding short. Say what goes wrong and what it causes in at most
+three sentences, about 400 characters. Do not retell the code or argue the
+case. The author has the diff open and needs the defect and its consequence,
+not the reasoning that led you there.
