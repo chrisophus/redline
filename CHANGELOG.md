@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each miss.
 
 ### Changed
+- **Pull request reviews are short.** With `body_style: walkthrough`, a first
+  review is a summary of about five lines and the verdict, then the findings,
+  then one collapsed Details block holding the walkthrough, evidence and
+  checks. The stated intent is the title line only, and the pull request
+  description is no longer quoted. A review of a later head is one line, "N
+  finding(s) fixed, N new, N still open", plus the new findings. A review with
+  nothing to report is "Reviewed `sha`: no findings". An inline finding shows
+  at most 400 characters; the rest and the context fold into a Why block. The
+  review prompt asks for findings in three sentences. The existing markers are
+  the same; a walkthrough review also carries hidden `redline:open:` markers so
+  the next head can count what was fixed. Findings in the review body no longer sit under their file in the
+  walkthrough table; they follow the summary.
 - **Redline's own reviews are shorter.** The gate profile no longer posts the stated
   intent (the pull request description), confirmations, unknowns or diff links.
   The review is the verdict, the overview, the per-file table and the folded

@@ -99,7 +99,7 @@ func commentSchema() map[string]any {
 			},
 			"body": map[string]any{
 				"type":        "string",
-				"description": "The defect in one or two sentences: what goes wrong, under what input or condition, and where.",
+				"description": "The defect and its consequence in at most three sentences, about 400 characters: what goes wrong, under what input or condition, and where. No retelling of the code.",
 			},
 			// Required, and required is the point. A model that has to say how
 			// its claim could be checked writes fewer claims that cannot be,

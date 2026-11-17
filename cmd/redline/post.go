@@ -164,6 +164,12 @@ func cmdPost(o opts) error {
 	// off the diff, was marked in the review body it rode in, and reading only
 	// the comment bodies would offer it again on every re-post.
 	posted := post.Fingerprints(append(append([]string{}, commentBodies...), reviewBodies...))
+	if prev := latestReviewedHead(reviews, me, tgt.Head); prev != "" {
+		// An earlier head was reviewed, so this review reports what moved
+		// since rather than summarising the change again.
+		payload = payload.WithDelta(posted, post.OpenAt(reviewBodies,
+			append(append([]string{}, commentBodies...), reviewBodies...), prev))
+	}
 	payload = payload.Unposted(posted)
 	payload, err = withRecap(o, payload, res.Report.Agent, walkthrough, reviews, me, tgt.Head)
 	if err != nil {
