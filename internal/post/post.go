@@ -80,6 +80,12 @@ const openMarkerPrefix = "redline:open:"
 // make a later "fixed" count lower.
 const maxOpenMarkers = 50
 
+// maxOpenBytes bounds the markers' total size as well. A fingerprint is
+// hex-encoded, two bytes per byte of file, rule and message, so a count alone
+// does not keep them small. They are written after the parts of the body that
+// are never cut, and their size comes off the room the findings have.
+const maxOpenBytes = 8 << 10
+
 // reviewMarkerPrefix tags the review body with the head SHA it was posted for,
 // so a re-post against the same commit can tell "already reviewed this commit"
 // from "reviewing a new push."
@@ -1049,7 +1055,11 @@ func (p Payload) openMarkers() string {
 		if i == maxOpenMarkers {
 			break
 		}
-		b.WriteString("\n" + marker(openMarkerPrefix+p.CommitID+":"+hex.EncodeToString([]byte(fp))))
+		m := "\n" + marker(openMarkerPrefix+p.CommitID+":"+hex.EncodeToString([]byte(fp)))
+		if b.Len()+len(m) > maxOpenBytes {
+			break
+		}
+		b.WriteString(m)
 	}
 	return b.String()
 }

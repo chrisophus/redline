@@ -317,3 +317,14 @@ func TestFixedCountSurvivesAFindingOpenAcrossHeads(t *testing.T) {
 		t.Errorf("head 3 should report the finding fixed:\n%s", third.Body)
 	}
 }
+
+func TestOpenMarkersAreBoundedInBytes(t *testing.T) {
+	p := Payload{CommitID: "deadbeef"}
+	for i := 0; i < 40; i++ {
+		p.open = append(p.open, strings.Repeat("long fingerprint text ", 60))
+	}
+	got := p.openMarkers()
+	if len(got) > maxOpenBytes || !strings.Contains(got, openMarkerPrefix) {
+		t.Errorf("markers are %d bytes, want at most %d and some present", len(got), maxOpenBytes)
+	}
+}
