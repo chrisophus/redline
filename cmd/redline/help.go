@@ -243,6 +243,7 @@ func learningsFlags(fs *flag.FlagSet, o *opts) {
 	outFlag(fs, o)
 	prFlag(fs, o)
 	headFlag(fs, o)
+	fs.StringVar(&o.jsonl, "jsonl", "", "directory holding misses.jsonl (default: --out)")
 }
 
 func missFlags(fs *flag.FlagSet, o *opts) {
@@ -659,6 +660,8 @@ flags:
                     session the last run wrote)
   --head SHA        read the threads from the session kept for that reviewed
                     head of the pull request
+  --jsonl DIR       read misses.jsonl from DIR, where redline miss --jsonl
+                    wrote it (default: the evidence directory)
 `
 
 const postHelp = `redline post — post the session's findings as one PR review

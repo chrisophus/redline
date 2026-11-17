@@ -27,7 +27,11 @@ import (
 // review let through, recorded by a person, so a rule drawn from it says what
 // went wrong and where and leaves the cure to whoever edits the draft.
 func cmdLearnings(o opts) error {
-	misses, err := miss.Read(o.ledgerDir())
+	dir := o.jsonl
+	if dir == "" {
+		dir = o.ledgerDir()
+	}
+	misses, err := miss.Read(dir)
 	if err != nil {
 		return err
 	}
@@ -98,9 +102,21 @@ func draftMiss(m miss.Entry) string {
 	for _, line := range strings.Split(strings.TrimSpace(m.Summary), "\n") {
 		fmt.Fprintf(&b, "        %s\n", strings.TrimSpace(line))
 	}
+	var kept, dropped bool
+	for _, f := range m.Findings {
+		if f.By == "finding" {
+			kept = true
+		} else if f.By == "proposed" {
+			dropped = true
+		}
+	}
+	// A proposed finding with no kept one on the line means the reviewer found
+	// it and the ruling dropped it, the miss most worth a rule.
 	switch {
 	case m.LineInDiff != nil && *m.LineInDiff && len(m.Findings) == 0:
 		b.WriteString("        The line was in the reviewed diff and no finding was made on it.\n")
+	case m.LineInDiff != nil && *m.LineInDiff && !kept && dropped:
+		b.WriteString("        The line was in the reviewed diff and the reviewer proposed a finding on it, but the ruling dropped it.\n")
 	case m.LineInDiff != nil && *m.LineInDiff:
 		b.WriteString("        The line was in the reviewed diff and a finding sat on it that did not stop the defect.\n")
 	case m.LineInDiff != nil:

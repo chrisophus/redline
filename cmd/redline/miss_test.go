@@ -199,3 +199,20 @@ func TestMissIgnoresATraceFromAnotherHead(t *testing.T) {
 		})
 	}
 }
+
+func TestLearningsReadsTheLedgerFromJSONLDir(t *testing.T) {
+	root, ledger := t.TempDir(), t.TempDir()
+	yes := true
+	if err := miss.Append(ledger, miss.Entry{PR: 7, File: "a/b.go", Line: 2, Summary: "off by one", LineInDiff: &yes,
+		Findings: []miss.Touch{{By: "proposed", ID: "c1"}}}); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	out := captureStdout(t, func() { err = cmdLearnings(opts{out: root, root: root, jsonl: ledger}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "off by one") || !strings.Contains(out, "the ruling dropped it") {
+		t.Errorf("the draft lacks the miss or the dropped finding:\n%s", out)
+	}
+}

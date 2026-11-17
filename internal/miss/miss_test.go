@@ -108,3 +108,11 @@ func TestTheLedgerAppendsAndReadsBack(t *testing.T) {
 		t.Errorf("read back %+v, want both entries with the unknown answer still unknown", got)
 	}
 }
+
+func TestExamineWithNoChangeLeavesTheDiffAnswersUnset(t *testing.T) {
+	e := Entry{File: "web/operator.html", Line: 11}
+	Examine(&e, Session{})
+	if e.FileInDiff != nil || e.LineInDiff != nil {
+		t.Errorf("file %v line %v, want both unset", e.FileInDiff, e.LineInDiff)
+	}
+}

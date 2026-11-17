@@ -83,8 +83,10 @@ type Session struct {
 // Examine fills the entry's session fields from s.
 func Examine(e *Entry, s Session) {
 	want := clean(e.File)
-	e.FileInDiff, e.LineInDiff = new(bool), new(bool)
+	// A session with no change recorded cannot say either way, so both answers
+	// stay unset.
 	if s.Change != nil {
+		e.FileInDiff, e.LineInDiff = new(bool), new(bool)
 		for _, f := range s.Change.Files {
 			if clean(f.Path) != want {
 				continue
