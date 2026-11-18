@@ -123,30 +123,27 @@ func TestAStaleReviewKeepsItsNoticeAndWithholdsOnlyWhenRequired(t *testing.T) {
 	}
 }
 
-// The repository's own gate profile must load, keep the markers the studio's
-// review gate reads, and post the walkthrough with the operator's chosen extras.
-func TestRepositoryReviewProfileSections(t *testing.T) {
+// The repository's own gate profile must load and keep the fields the studio
+// and the gate depend on. Which body sections reviews show is the operator's
+// choice and is not checked here. LoadProfile rejects a body_include entry
+// Redline does not know, so loading covers that.
+func TestRepositoryReviewProfileKeepsGateFields(t *testing.T) {
 	p, err := LoadProfile(filepath.Join("..", "..", ".github", "redline-review.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	// .sandbox/redline-fresh.sh reads both markers.
 	if p.ReviewMarker != "redline-review:v1" || p.FindingMarker != "redline-finding:v1" {
 		t.Fatalf("markers changed: %q %q", p.ReviewMarker, p.FindingMarker)
 	}
+	blocks := map[findings.Severity]bool{}
+	for _, s := range p.Blocking {
+		blocks[s] = true
+	}
+	if !blocks[findings.SeverityError] || !blocks[findings.SeverityWarning] {
+		t.Errorf("blocking = %v, must include error and warning", p.Blocking)
+	}
 	if !p.RequireHead || !p.FailClosedPane {
 		t.Fatal("require_head and fail_closed_pane must stay on")
-	}
-	if p.BodyStyle != BodyWalkthrough {
-		t.Fatalf("body_style = %q", p.BodyStyle)
-	}
-	for _, s := range []string{"intent", "evidence", "coverage", "lint", "confirmations", "unknowns"} {
-		if p.Includes(s) {
-			t.Errorf("section %q should not be included", s)
-		}
-	}
-	for _, s := range []string{"line-counts", "test-totals", "generated-totals", "low-confidence", "diff-links"} {
-		if !p.Includes(s) {
-			t.Errorf("section %q should be included", s)
-		}
 	}
 }
