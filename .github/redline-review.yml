@@ -7,8 +7,13 @@ blocking: [error, warning]
 require_head: true
 fail_closed_pane: true
 body_style: walkthrough
-# The review is the verdict, the overview and the per-file table. It does not repeat the
-# pull request description or add confirmations, unknowns or diff links. The evidence
-# table stays, folded away: with fail_closed_pane a pane that did not run fails the
-# gate, and that table is where the review says which pane it was.
-body_include: [evidence]
+
+# Optional extras in the walkthrough. intent and evidence are left out: the pull
+# request already shows its description. coverage, lint, confirmations and unknowns
+# are left out too.
+body_include:
+  - line-counts       # +/- beside each file and on each group heading
+  - test-totals       # test files as a heading with totals, no rows
+  - generated-totals  # one heading with the generated files' totals
+  - low-confidence    # unsure and hedged findings, folded instead of withheld
+  - diff-links        # each file links to its diff, except tests
