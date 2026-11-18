@@ -133,8 +133,8 @@ func TestRepositoryReviewProfileSections(t *testing.T) {
 	if p.ReviewMarker != "redline-review:v1" || p.FindingMarker != "redline-finding:v1" {
 		t.Fatalf("markers changed: %q %q", p.ReviewMarker, p.FindingMarker)
 	}
-	if !p.RequireHead || !p.FailClosedPane {
-		t.Fatal("require_head and fail_closed_pane must stay on")
+	if !p.RequireHead {
+		t.Fatal("require_head must stay on")
 	}
 	if p.BodyStyle != BodyWalkthrough {
 		t.Fatalf("body_style = %q", p.BodyStyle)

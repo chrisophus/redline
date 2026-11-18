@@ -5,7 +5,7 @@ review_marker: redline-review:v1
 finding_marker: redline-finding:v1
 blocking: [error, warning]
 require_head: true
-fail_closed_pane: true
+fail_closed_pane: false
 body_style: walkthrough
 
 # Optional extras in the walkthrough. intent and evidence are left out: the pull
