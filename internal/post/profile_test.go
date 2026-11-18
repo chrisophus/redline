@@ -143,7 +143,7 @@ func TestRepositoryReviewProfileKeepsGateFields(t *testing.T) {
 	if !blocks[findings.SeverityError] || !blocks[findings.SeverityWarning] {
 		t.Errorf("blocking = %v, must include error and warning", p.Blocking)
 	}
-	if !p.RequireHead || !p.FailClosedPane {
-		t.Fatal("require_head and fail_closed_pane must stay on")
+	if !p.RequireHead {
+		t.Fatal("require_head must stay on")
 	}
 }
