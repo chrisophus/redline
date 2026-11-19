@@ -1353,6 +1353,13 @@ func (p Payload) Unposted(posted map[string]bool) Payload {
 		}
 		out.bodyFindings = append(out.bodyFindings, f)
 	}
+	out.lowConf = nil
+	for _, f := range p.lowConf {
+		if posted[f.Fingerprint] {
+			continue
+		}
+		out.lowConf = append(out.lowConf, f)
+	}
 	out.bodyThreads = nil
 	for _, it := range p.bodyThreads {
 		if posted[threadFingerprint(it)] {

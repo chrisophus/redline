@@ -159,3 +159,17 @@ func TestRepositoryReviewProfileKeepsGateFields(t *testing.T) {
 		}
 	}
 }
+
+// A finding already posted in the folded low-confidence block is not written
+// again when the review is posted a second time.
+func TestUnpostedDropsPostedLowConfidenceFindings(t *testing.T) {
+	f := findings.Finding{Fingerprint: "fp-low", File: "a.go", Line: 3, Rule: "r",
+		Severity: findings.SeverityInfo, Message: "maybe a problem"}
+	p := Payload{CommitID: "deadbeef", lowConf: []findings.Finding{f}}
+	if got := p.Unposted(map[string]bool{}); len(got.lowConf) != 1 {
+		t.Fatalf("unposted finding was dropped: %d", len(got.lowConf))
+	}
+	if got := p.Unposted(map[string]bool{"fp-low": true}); len(got.lowConf) != 0 {
+		t.Fatalf("posted low-confidence finding was kept: %d", len(got.lowConf))
+	}
+}
