@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/conversation"
@@ -767,7 +768,7 @@ func buildBodyWalkthrough(p Payload) string {
 	if p.recap != "" {
 		recap := p.recap
 		if len(recap) > maxNarrative {
-			recap = recap[:maxNarrative] + "\n\n_(truncated; the full walkthrough is on the report)_"
+			recap = cutRunes(recap, maxNarrative) + "\n\n_(truncated; the full walkthrough is on the report)_"
 		}
 		// A heading of its own, the same level as the evidence body's "What
 		// this change does", because it is the part a reader came for.
@@ -782,7 +783,7 @@ func buildBodyWalkthrough(p Payload) string {
 	} else if p.rep != nil && p.rep.Agent != nil {
 		if ov := strings.TrimSpace(p.rep.Agent.Overview); ov != "" {
 			if len(ov) > maxNarrative {
-				ov = ov[:maxNarrative] + "\n\n_(truncated; the full overview is on the report)_"
+				ov = cutRunes(ov, maxNarrative) + "\n\n_(truncated; the full overview is on the report)_"
 			}
 			fmt.Fprintf(&head0, "### What this change does\n\n%s\n\n", ov)
 		}
@@ -835,6 +836,15 @@ func buildBodyWalkthrough(p Payload) string {
 	low := lowConfidenceSection(p.lowConf, p.CommitID, p.profile, budget-len(middle))
 	convo := conversationSection(p.bodyThreads, p.CommitID, budget-len(middle)-len(low))
 	return head0.String() + middle + low + convo + tail
+}
+
+// cutRunes returns the first n bytes of s, moved back to the nearest
+// character boundary so a multibyte character is never split.
+func cutRunes(s string, n int) string {
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // filesIn keeps the files whose path is in paths, in their original order.
@@ -1009,6 +1019,17 @@ func walkthroughSection(p Payload, files []change.File, title string, perFile ma
 		fmt.Fprintf(&b, "_%d more file(s) on the full report._\n", omitted)
 	}
 	grpOmitted := 0
+	// Findings on a file whose row was left out for budget have no place to
+	// ride, and they are no longer in the flat list, so they are counted here.
+	rowShown := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		rowShown[path] = true
+	}
+	for path, group := range perFile {
+		if !rowShown[path] {
+			grpOmitted += len(group)
+		}
+	}
 	for _, path := range paths {
 		group := perFile[path]
 		if len(group) == 0 {
@@ -1221,7 +1242,7 @@ func overviewSection(rep *findings.Report) string {
 		return ""
 	}
 	if len(overview) > maxNarrative {
-		overview = overview[:maxNarrative] + "\n\n_(truncated; the full overview is on the report)_"
+		overview = cutRunes(overview, maxNarrative) + "\n\n_(truncated; the full overview is on the report)_"
 	}
 	return "### What this change does\n\n" + overview + "\n\n_Written by the reviewing agent, not measured._\n\n"
 }

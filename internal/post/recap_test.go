@@ -164,3 +164,23 @@ func TestOverviewAndRecapAreVisibleAboveDetails(t *testing.T) {
 		}
 	}
 }
+
+// A file whose row is dropped for budget cannot carry its findings, and they
+// are already out of the flat list, so the section has to count them.
+func TestFindingsOnAnOmittedRowAreCounted(t *testing.T) {
+	p := recapPayload(t)
+	perFile := map[string][]findings.Finding{
+		"a.go": {{File: "a.go", Line: 1, Rule: "r", Severity: findings.SeverityError, Message: "m"}},
+	}
+	got := walkthroughSection(p, p.files, "Walkthrough", perFile, false, 1)
+	if !strings.Contains(got, "1 more finding(s) on the full report") {
+		t.Errorf("the finding on an omitted row is not counted:\n%s", got)
+	}
+}
+
+func TestCutRunesKeepsMultibyteCharactersWhole(t *testing.T) {
+	got := cutRunes("aé", 2)
+	if got != "a" {
+		t.Errorf("cutRunes split a character: %q", got)
+	}
+}
