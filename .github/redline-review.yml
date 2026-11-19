@@ -8,10 +8,12 @@ require_head: true
 fail_closed_pane: false
 body_style: walkthrough
 
-# Optional extras in the walkthrough. intent and evidence are left out: the pull
-# request already shows its description. coverage, lint, confirmations and unknowns
-# are left out too.
+# Optional extras in the walkthrough.
 body_include:
+  - intent            # the stated intent, quoted in full
+  - evidence          # the evidence table
+  - confirmations
+  - unknowns
   - line-counts       # +/- beside each file and on each group heading
   - test-totals       # test files as a heading with totals, no rows
   - generated-totals  # one heading with the generated files' totals

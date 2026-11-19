@@ -144,3 +144,23 @@ func TestARecapDoesNothingToTheEvidenceBody(t *testing.T) {
 		t.Error("the evidence body rendered a recap, so cmdPost need not refuse one")
 	}
 }
+
+// The overview and the recap are what a reader comes for, so each sits in the
+// open, above any collapsed block.
+func TestOverviewAndRecapAreVisibleAboveDetails(t *testing.T) {
+	p := recapPayload(t)
+	first := p.renderBody()
+	recap := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678", []string{"b.go"}).Body
+	for name, c := range map[string]struct{ body, heading string }{
+		"first review": {first, "### What this change does\n\nThis change batches the recompute."},
+		"later head":   {recap, "### Since the last review"},
+	} {
+		h := strings.Index(c.body, c.heading)
+		d := strings.Index(c.body, "<details>")
+		if h < 0 {
+			t.Errorf("%s: missing %q in:\n%s", name, c.heading, c.body)
+		} else if d >= 0 && d < h {
+			t.Errorf("%s: heading is inside or after a <details> block:\n%s", name, c.body)
+		}
+	}
+}

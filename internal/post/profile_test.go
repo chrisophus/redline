@@ -146,4 +146,16 @@ func TestRepositoryReviewProfileKeepsGateFields(t *testing.T) {
 	if !p.RequireHead {
 		t.Fatal("require_head must stay on")
 	}
+	if p.FailClosedPane {
+		t.Error("fail_closed_pane must stay off")
+	}
+	if p.BodyStyle != BodyWalkthrough {
+		t.Errorf("body_style = %q", p.BodyStyle)
+	}
+	for _, s := range []string{"intent", "evidence", "confirmations", "unknowns",
+		"line-counts", "test-totals", "generated-totals", "low-confidence", "diff-links"} {
+		if !p.Includes(s) {
+			t.Errorf("body_include is missing %q", s)
+		}
+	}
 }

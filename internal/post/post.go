@@ -21,7 +21,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/conversation"
@@ -68,24 +67,6 @@ const fpMarkerPrefix = "redline:fp:"
 // race with no words in common. The question both would ask is the same.
 const qMarkerPrefix = "redline:q:"
 
-// openMarkerPrefix is written into a walkthrough review body, once per finding
-// that is live at that head, whether or not the finding is shown again. The
-// "redline:fp:" marker is written once, where a finding is first posted, so it
-// cannot say what was still open at a later head; this one can, and the next
-// review's "fixed" count reads it. Rendered "redline:open:<head sha>:<hex>".
-const openMarkerPrefix = "redline:open:"
-
-// maxOpenMarkers bounds how many a review writes, so a change with a great many
-// findings cannot crowd the body. Findings past it are left out, which can only
-// make a later "fixed" count lower.
-const maxOpenMarkers = 50
-
-// maxOpenBytes bounds the markers' total size as well. A fingerprint is
-// hex-encoded, two bytes per byte of file, rule and message, so a count alone
-// does not keep them small. They are written after the parts of the body that
-// are never cut, and their size comes off the room the findings have.
-const maxOpenBytes = 8 << 10
-
 // reviewMarkerPrefix tags the review body with the head SHA it was posted for,
 // so a re-post against the same commit can tell "already reviewed this commit"
 // from "reviewing a new push."
@@ -99,7 +80,6 @@ var (
 	fpMarkerRe     = regexp.MustCompile(regexp.QuoteMeta(fpMarkerPrefix) + `([0-9a-fA-F]+):([0-9a-fA-F]+)`)
 	reviewMarkerRe = regexp.MustCompile(regexp.QuoteMeta(reviewMarkerPrefix) + `([0-9a-fA-F]+)`)
 	qMarkerRe      = regexp.MustCompile(regexp.QuoteMeta(qMarkerPrefix) + `([0-9a-fA-F]+)`)
-	openMarkerRe   = regexp.MustCompile(regexp.QuoteMeta(openMarkerPrefix) + `([0-9a-fA-F]+):([0-9a-fA-F]+)`)
 )
 
 // Comment is one line-anchored review comment. Body already carries the
@@ -184,82 +164,6 @@ type Payload struct {
 	// anchored to a line; see WithConversation. Tracked like bodyFindings so
 	// Unposted can drop the ones already on the pull request.
 	bodyThreads []conversation.Item
-	// delta is set for a review of a later head, so the body reports what
-	// moved since the earlier reviews and repeats nothing. dropped counts the
-	// findings Unposted removed as already said, which tells "no findings"
-	// from "nothing new".
-	delta   *Delta
-	dropped int
-	// open is the fingerprint of every finding live at this head, taken before
-	// Unposted drops the ones already said. See openMarkerPrefix.
-	open []string
-}
-
-// Delta is what a later head's review reports in place of a summary: how many
-// of the findings already on the pull request are gone, how many are new, and
-// how many are still there.
-type Delta struct {
-	Fixed, New, Open int
-}
-
-// WithDelta marks the review as one of a later head. posted is the set of
-// fingerprints already on the pull request, from Fingerprints, and previous is
-// the set live at the last reviewed head, from OpenAt. Both must be
-// taken before Unposted runs.
-//
-// A finding is still open when it was posted and the report has it again, and
-// new when it was not posted. A finding counts as fixed when it was live at the
-// previous head (see OpenAt) and the report no longer has it, so one fixed
-// several heads ago is not counted again. The count is of fingerprints, so a
-// finding reworded between heads reads as one fixed and one new.
-func (p Payload) WithDelta(posted, previous map[string]bool) Payload {
-	d := Delta{}
-	present := map[string]bool{}
-	for _, c := range p.Comments {
-		present[c.Fingerprint] = true
-	}
-	for _, f := range p.bodyFindings {
-		present[f.Fingerprint] = true
-	}
-	// Low-confidence findings are shown folded, but they are shown, so they
-	// count as new or still open like the rest.
-	for _, f := range p.lowConf {
-		present[f.Fingerprint] = true
-	}
-	for fp := range present {
-		// Reviewer exchanges ride in Comments too, and are not findings.
-		if strings.HasPrefix(fp, "conversation:") {
-			delete(present, fp)
-			continue
-		}
-		if posted[fp] {
-			d.Open++
-		} else {
-			d.New++
-		}
-	}
-	for fp := range previous {
-		if !present[fp] && !strings.HasPrefix(fp, "conversation:") {
-			d.Fixed++
-		}
-	}
-	p.delta = &d
-	p.Body = p.renderBody()
-	return p
-}
-
-func (d Delta) line(head string) string {
-	return fmt.Sprintf("Reviewed %s: %d finding(s) fixed, %d new, %d still open.",
-		reviewedRef(head), d.Fixed, d.New, d.Open)
-}
-
-// reviewedRef names the commit a one-line review is of, empty-safe for the
-// offline preview, which has no head.
-func reviewedRef(head string) string {
-	if head == "" {
-		return "this change"
-	}
-	return "`" + shortSHA12(head) + "`"
 }
 
 // Stale records that the pull request's head has moved past the commit this
@@ -415,15 +319,6 @@ func BuildAttest(rep *findings.Report, tgt *target.Target, reportURL string, com
 		p.prURL = strings.TrimRight(tgt.PR.URL, "/")
 	}
 	p.bodyFindings = inBody
-	for _, c := range p.Comments {
-		p.open = append(p.open, c.Fingerprint)
-	}
-	for _, f := range inBody {
-		p.open = append(p.open, f.Fingerprint)
-	}
-	for _, f := range p.lowConf {
-		p.open = append(p.open, f.Fingerprint)
-	}
 	p.files = files
 	p.Body = p.renderBody()
 	return p
@@ -606,15 +501,10 @@ func commentBody(f findings.Finding, head string, prof *Profile) string {
 		b.WriteString(m)
 		b.WriteByte('\n')
 	}
-	prefix := fmt.Sprintf("**%s** — ", findingLabel(f))
-	summary, rest := splitAt(f.Message, maxSummary-len(prefix))
-	b.WriteString(prefix)
-	b.WriteString(summary)
-	// What does not fit the summary, and the finding's context, ride in a
-	// collapsed block so the comment stays a few lines long.
-	if why := whyText(rest, f.Context); why != "" {
+	fmt.Fprintf(&b, "**%s** — %s", findingLabel(f), f.Message)
+	if ctx := strings.TrimSpace(f.Context); ctx != "" {
 		b.WriteString("\n\n")
-		b.WriteString(whyBlock(why))
+		b.WriteString(ctx)
 	}
 	if sug := strings.TrimSpace(f.Suggestion); sug != "" {
 		b.WriteString("\n\n```suggestion\n")
@@ -630,77 +520,6 @@ func commentBody(f findings.Finding, head string, prof *Profile) string {
 		b.WriteString(m)
 	}
 	return b.String()
-}
-
-// maxSummary is the most characters a finding's visible text may take,
-// severity label included. About three sentences: the defect and what it
-// causes. Anything longer is cut at a sentence end and the rest is folded into
-// a Why block, so a long finding is never posted whole.
-const maxSummary = 400
-
-// splitAt cuts s to at most max bytes. It cuts at the last sentence end that
-// leaves a useful head, so the rest is the remainder of the text. With no
-// sentence end to use it cuts at a word, adds an ellipsis to the head, and
-// starts the rest with one, so the head's text is not shown twice. A text that fits comes
-// back whole with an empty rest.
-func splitAt(s string, max int) (head, rest string) {
-	head, rest = cutAt(s, max)
-	return keepMarkdownClosed(head, rest)
-}
-
-// keepMarkdownClosed stops a cut from leaving a code fence or code span open in
-// the head, where it would swallow whatever is posted after it. The head gets
-// the closing mark and the rest gets a matching opening one.
-func keepMarkdownClosed(head, rest string) (string, string) {
-	if rest == "" {
-		return head, rest
-	}
-	if strings.Count(head, "```")%2 == 1 {
-		return head + "\n```", "```\n" + rest
-	}
-	if strings.Count(strings.ReplaceAll(head, "```", ""), "`")%2 == 1 {
-		return head + "`", "`" + rest
-	}
-	return head, rest
-}
-
-func cutAt(s string, max int) (head, rest string) {
-	s = strings.TrimSpace(s)
-	if len(s) <= max {
-		return s, ""
-	}
-	const ellipsis = "…"
-	end := max - len(ellipsis)
-	for end > 0 && !utf8.RuneStart(s[end]) {
-		end--
-	}
-	window := s[:end]
-	for i := len(window) - 1; i >= max/4; i-- {
-		if (window[i] == '.' || window[i] == '!' || window[i] == '?') &&
-			(s[i+1] == ' ' || s[i+1] == '\n') {
-			return s[:i+1], strings.TrimSpace(s[i+1:])
-		}
-	}
-	cut := len(window)
-	if sp := strings.LastIndexAny(window, " \n"); sp > 0 {
-		cut = sp
-	}
-	return strings.TrimRight(window[:cut], " \n,;:") + ellipsis, ellipsis + strings.TrimSpace(s[cut:])
-}
-
-// whyText joins the parts of a finding that did not fit its summary.
-func whyText(parts ...string) string {
-	var keep []string
-	for _, part := range parts {
-		if part = strings.TrimSpace(part); part != "" {
-			keep = append(keep, part)
-		}
-	}
-	return strings.Join(keep, "\n\n")
-}
-
-func whyBlock(why string) string {
-	return "<details>\n<summary>Why</summary>\n\n" + why + "\n\n</details>"
 }
 
 // qMarker renders the question a finding asked, when it asked one. Hex-encoded
@@ -932,46 +751,13 @@ func (p Payload) WithMeta(intent, reviewedBy string) Payload {
 // and the rest, and every part of it comes from the session the run already
 // wrote, so this observes nothing.
 func buildBodyWalkthrough(p Payload) string {
-	// The part a reader sees without opening anything: a summary and the
-	// verdict on a first review, one line on a later head, one line when
-	// there is nothing to report.
-	var top strings.Builder
-	var details strings.Builder
-	leadCut := false
-	switch {
-	case p.delta != nil:
-		// The heading is the visible sign of a failing gate, so a later head
-		// keeps it when the gate fails.
-		if p.GateVerdict == "fail" {
-			fmt.Fprintf(&top, "### %s\n\n", walkthroughHeading(p.GateVerdict))
-		}
-		top.WriteString(p.delta.line(p.CommitID) + "\n\n")
-	case p.dropped == 0 && p.noFindings() && p.GateVerdict != "fail":
-		fmt.Fprintf(&top, "Reviewed %s: no findings.\n\n", reviewedRef(p.CommitID))
-	default:
-		fmt.Fprintf(&top, "### %s\n\n", walkthroughHeading(p.GateVerdict))
-		if p.rep != nil && p.rep.Agent != nil {
-			if ov := strings.TrimSpace(p.rep.Agent.Overview); ov != "" {
-				lead, rest := splitAt(ov, maxLead)
-				leadCut = rest != ""
-				top.WriteString(lead + "\n\n")
-			}
-		}
-		if p.reviewedBy != "" {
-			fmt.Fprintf(&top, "Reviewed by %s on `%s`.\n\n", p.reviewedBy, shortSHA12(p.CommitID))
-		}
-	}
-	if p.delta != nil || (p.dropped == 0 && p.noFindings() && p.GateVerdict != "fail") {
-		if p.reviewedBy != "" {
-			fmt.Fprintf(&details, "**Reviewed by.** %s on `%s`.\n\n", p.reviewedBy, shortSHA12(p.CommitID))
-		}
+	var head0 strings.Builder
+	fmt.Fprintf(&head0, "### %s\n\n", walkthroughHeading(p.GateVerdict))
+	if p.reviewedBy != "" {
+		fmt.Fprintf(&head0, "**Reviewed by.** %s on `%s`.\n\n", p.reviewedBy, shortSHA12(p.CommitID))
 	}
 	if p.intent != "" && p.profile.includes("intent") {
-		// The title line only. The description is on the pull request, and
-		// quoting it in every review is most of what made them long.
-		title, _, _ := strings.Cut(p.intent, "\n")
-		title, _ = splitAt(title, maxLead)
-		fmt.Fprintf(&details, "**Stated intent.** %s\n\n", title)
+		fmt.Fprintf(&head0, "**Stated intent.** %s\n\n", p.intent)
 	}
 	// The recap replaces the overview rather than joining it, and the file
 	// list under it is only the files that moved since that review. Repeating
@@ -983,7 +769,9 @@ func buildBodyWalkthrough(p Payload) string {
 		if len(recap) > maxNarrative {
 			recap = recap[:maxNarrative] + "\n\n_(truncated; the full walkthrough is on the report)_"
 		}
-		fmt.Fprintf(&details, "### Since the last review (`%s`)\n\n%s\n\n", shortSHA12(p.recapSince), recap)
+		// A heading of its own, the same level as the evidence body's "What
+		// this change does", because it is the part a reader came for.
+		fmt.Fprintf(&head0, "### Since the last review (`%s`)\n\n%s\n\n", shortSHA12(p.recapSince), recap)
 		// Only when the moved files are known and some are in this change.
 		// Otherwise the list would be empty, and an empty list reads as
 		// "nothing to show" when it means "not known".
@@ -991,43 +779,48 @@ func buildBodyWalkthrough(p Payload) string {
 			files = moved
 			title = fmt.Sprintf("Files changed since `%s`", shortSHA12(p.recapSince))
 		}
-		// The top shows the start of the overview; keep the rest of it when cut.
-		if leadCut {
-			ov := strings.TrimSpace(p.rep.Agent.Overview)
-			fmt.Fprintf(&details, "### What this change does\n\n%s\n\n", ov)
-		}
 	} else if p.rep != nil && p.rep.Agent != nil {
-		// The top shows the start of the overview. The full text is here when
-		// that was cut, and always on a later head, whose top is a delta.
-		if ov := strings.TrimSpace(p.rep.Agent.Overview); ov != "" && (leadCut || p.delta != nil || (p.noFindings() && p.dropped == 0 && p.GateVerdict != "fail")) {
+		if ov := strings.TrimSpace(p.rep.Agent.Overview); ov != "" {
 			if len(ov) > maxNarrative {
 				ov = ov[:maxNarrative] + "\n\n_(truncated; the full overview is on the report)_"
 			}
-			fmt.Fprintf(&details, "### What this change does\n\n%s\n\n", ov)
+			fmt.Fprintf(&head0, "### What this change does\n\n%s\n\n", ov)
 		}
 	}
 	if p.profile.includes("composition") {
-		details.WriteString(compositionSection(p.files))
+		head0.WriteString(compositionSection(p.files))
 	}
-	// Findings stay outside the collapsed block, so the walkthrough table
-	// lists files only. Generated totals are for the whole change, so a
-	// recap's list of moved files does not carry them.
+	// A finding on a listed file rides under it; the rest, including one on
+	// a file a recap leaves out of the list or a test file under
+	// test-totals, go in the flat list after.
+	listed := files
+	if p.profile.includes("test-totals") {
+		listed = nil
+		for _, f := range files {
+			if !change.IsTest(f.Path) {
+				listed = append(listed, f)
+			}
+		}
+	}
+	perFile, leftover := splitBodyFindingsByFile(listed, p.bodyFindings)
+	// Generated totals are for the whole change, so a recap's list of moved
+	// files does not carry them.
 	withGenerated := p.recap == "" || title == "Walkthrough"
-	if s := walkthroughSection(p, files, title, withGenerated, maxNarrative); s != "" {
-		details.WriteString(s)
+	if s := walkthroughSection(p, files, title, perFile, withGenerated, maxNarrative); s != "" {
+		head0.WriteString(s)
 	}
 	if p.profile.includes("evidence") {
 		if table := evidenceTable(p.rep); table != "" {
-			details.WriteString("<details>\n<summary>Evidence</summary>\n\n")
-			details.WriteString(table)
-			details.WriteString("\n</details>\n\n")
+			head0.WriteString("<details>\n<summary>Evidence</summary>\n\n")
+			head0.WriteString(table)
+			head0.WriteString("\n</details>\n\n")
 		}
 	}
 	if p.profile.includes("confirmations") {
-		details.WriteString(confirmationsSection(p.rep))
+		head0.WriteString(confirmationsSection(p.rep))
 	}
 	if p.profile.includes("unknowns") {
-		details.WriteString(unknownsSection(p.rep))
+		head0.WriteString(unknownsSection(p.rep))
 	}
 	// The lint note rides with the lint key. The walkthrough has no evidence
 	// table unless asked for one, and a line about findings kept off the pull
@@ -1037,61 +830,11 @@ func buildBodyWalkthrough(p Payload) string {
 		lintNote = p.lint
 	}
 	tail := bodyTail(p.reportURL, p.CommitID, p.profile, p.attestedVerdict(), p.withheld, p.hedged, lintNote)
-	tail += p.openMarkers()
-	var folded string
-	if details.Len() > 0 {
-		folded = "<details>\n<summary>Details</summary>\n\n" + details.String() + "</details>\n\n"
-	}
-	budget := maxBody - top.Len() - len(folded) - len(tail)
-	middle := notShownSection(p.bodyFindings, p.CommitID, p.profile, budget)
+	budget := maxBody - head0.Len() - len(tail)
+	middle := notShownSection(leftover, p.CommitID, p.profile, budget)
 	low := lowConfidenceSection(p.lowConf, p.CommitID, p.profile, budget-len(middle))
 	convo := conversationSection(p.bodyThreads, p.CommitID, budget-len(middle)-len(low))
-	return top.String() + middle + low + convo + folded + tail
-}
-
-// openMarkers renders one hidden marker per finding live at this head.
-func (p Payload) openMarkers() string {
-	var b strings.Builder
-	for i, fp := range p.open {
-		if i == maxOpenMarkers {
-			break
-		}
-		m := "\n" + marker(openMarkerPrefix+p.CommitID+":"+hex.EncodeToString([]byte(fp)))
-		if b.Len()+len(m) > maxOpenBytes {
-			break
-		}
-		b.WriteString(m)
-	}
-	return b.String()
-}
-
-// OpenAt is the set of findings that were live when head was reviewed. Review
-// bodies written with open markers answer exactly. A review from before them
-// has none, so the finding markers in every body at that head stand in, which
-// misses a finding that was posted at an earlier head and still open then.
-func OpenAt(reviews, all []string, head string) map[string]bool {
-	out := map[string]bool{}
-	for _, body := range reviews {
-		for _, m := range openMarkerRe.FindAllStringSubmatch(body, -1) {
-			raw, err := hex.DecodeString(m[2])
-			if err == nil && strings.EqualFold(m[1], head) {
-				out[string(raw)] = true
-			}
-		}
-	}
-	if len(out) == 0 {
-		return FingerprintsAt(all, head)
-	}
-	return out
-}
-
-// maxLead bounds the summary a first review opens with, and the stated
-// intent line. About five lines on a pull request page.
-const maxLead = 600
-
-// noFindings reports that nothing of this review's would be shown as a finding.
-func (p Payload) noFindings() bool {
-	return p.NothingNew() && len(p.lowConf) == 0
+	return head0.String() + middle + low + convo + tail
 }
 
 // filesIn keeps the files whose path is in paths, in their original order.
@@ -1107,6 +850,27 @@ func filesIn(files []change.File, paths []string) []change.File {
 		}
 	}
 	return out
+}
+
+// splitBodyFindingsByFile groups the body findings that name a file the
+// walkthrough shows, so they render with that file instead of in a flat list
+// after it, and returns the rest. A finding with no file, or one on a file
+// the walkthrough does not list, has no row to ride with and stays in the list.
+func splitBodyFindingsByFile(files []change.File, bodyFindings []findings.Finding) (map[string][]findings.Finding, []findings.Finding) {
+	shown := map[string]bool{}
+	for _, f := range files {
+		shown[f.Path] = true
+	}
+	perFile := map[string][]findings.Finding{}
+	var leftover []findings.Finding
+	for _, f := range bodyFindings {
+		if f.File != "" && shown[f.File] {
+			perFile[f.File] = append(perFile[f.File], f)
+		} else {
+			leftover = append(leftover, f)
+		}
+	}
+	return perFile, leftover
 }
 
 // walkthroughHeading matches the author-published reviews: a failing gate reads
@@ -1134,7 +898,8 @@ func walkthroughHeading(gateVerdict string) string {
 // dropped, because a flat table interleaved them with the code they test and
 // the rows read as noise; under a heading of their own they are the thing a
 // reviewer wanted to see, which is how much of the change is test.
-func walkthroughSection(p Payload, files []change.File, title string, withGenerated bool, budget int) string {
+func walkthroughSection(p Payload, files []change.File, title string, perFile map[string][]findings.Finding,
+	withGenerated bool, budget int) string {
 	if len(files) == 0 {
 		return ""
 	}
@@ -1158,6 +923,7 @@ func walkthroughSection(p Payload, files []change.File, title string, withGenera
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "<details>\n<summary>%s</summary>\n\n", title)
+	var paths []string
 	var omitted int
 	for _, g := range change.CompositionGroups(files) {
 		group := make([]change.File, len(g.Files))
@@ -1224,6 +990,7 @@ func walkthroughSection(p Payload, files []change.File, title string, withGenera
 			}
 			sec.WriteString(item)
 			shown++
+			paths = append(paths, f.Path)
 		}
 		if shown == 0 {
 			// A heading over an empty table says less than nothing. The files
@@ -1240,6 +1007,29 @@ func walkthroughSection(p Payload, files []change.File, title string, withGenera
 	}
 	if omitted > 0 {
 		fmt.Fprintf(&b, "_%d more file(s) on the full report._\n", omitted)
+	}
+	grpOmitted := 0
+	for _, path := range paths {
+		group := perFile[path]
+		if len(group) == 0 {
+			continue
+		}
+		// The file's own findings, each still carrying its fingerprint marker
+		// so a re-post skips it, listed under the file rather than in the flat
+		// section after the walkthrough.
+		var block strings.Builder
+		fmt.Fprintf(&block, "\n**`%s`**\n", path)
+		for _, f := range group {
+			block.WriteString(bodyFindingLine(f, p.CommitID, p.profile))
+		}
+		if b.Len()+block.Len() > budget {
+			grpOmitted += len(group)
+			continue
+		}
+		b.WriteString(block.String())
+	}
+	if grpOmitted > 0 {
+		fmt.Fprintf(&b, "\n_%d more finding(s) on the full report._\n", grpOmitted)
 	}
 	// Each section ends with a blank line, and so does whatever followed it, so
 	// the trailing ones are trimmed rather than left to stack up before the
@@ -1397,28 +1187,11 @@ func bodyFindingLine(f findings.Finding, head string, prof *Profile) string {
 	if m := findingAttestMarker(prof, f); m != "" {
 		fmt.Fprintf(&b, "%s\n", m)
 	}
-	prefix := fmt.Sprintf("- **%s** — ", findingLabel(f))
-	// One line, and no code fences: a fence in a list item cannot be closed
-	// on the same line as the location and marker that follow, and a cut
-	// inside one would swallow them. Fences become spans, which a cut closes
-	// inline.
-	msg := strings.ReplaceAll(strings.Join(strings.Fields(f.Message), " "), "```", "`")
-	summary, rest := splitAt(msg, maxSummary-len(prefix))
-	b.WriteString(prefix + summary)
+	fmt.Fprintf(&b, "- **%s** — %s", findingLabel(f), f.Message)
 	if loc := bodyLocation(f); loc != "" {
 		fmt.Fprintf(&b, " _(%s)_", loc)
 	}
 	fmt.Fprintf(&b, " %s\n", fpMarker(head, f.Fingerprint))
-	if rest != "" {
-		// After the item's own line, indented to stay inside the list item,
-		// so the location and marker above render as ordinary text.
-		for _, line := range strings.Split(whyBlock(strings.Join(strings.Fields(rest), " ")), "\n") {
-			if line != "" {
-				b.WriteString("  " + line)
-			}
-			b.WriteString("\n")
-		}
-	}
 	return b.String()
 }
 
@@ -1569,7 +1342,6 @@ func (p Payload) Unposted(posted map[string]bool) Payload {
 	out.Comments = nil
 	for _, c := range p.Comments {
 		if posted[c.Fingerprint] {
-			out.dropped++
 			continue
 		}
 		out.Comments = append(out.Comments, c)
@@ -1577,25 +1349,13 @@ func (p Payload) Unposted(posted map[string]bool) Payload {
 	out.bodyFindings = nil
 	for _, f := range p.bodyFindings {
 		if posted[f.Fingerprint] {
-			out.dropped++
 			continue
 		}
 		out.bodyFindings = append(out.bodyFindings, f)
 	}
-	// The folded low-confidence block carries fingerprint markers like any
-	// other body finding, so one already posted is not posted again.
-	out.lowConf = nil
-	for _, f := range p.lowConf {
-		if posted[f.Fingerprint] {
-			out.dropped++
-			continue
-		}
-		out.lowConf = append(out.lowConf, f)
-	}
 	out.bodyThreads = nil
 	for _, it := range p.bodyThreads {
 		if posted[threadFingerprint(it)] {
-			out.dropped++
 			continue
 		}
 		out.bodyThreads = append(out.bodyThreads, it)
@@ -1612,18 +1372,9 @@ func (p Payload) Unposted(posted map[string]bool) Payload {
 // anchored to a line is marked in the body it rode in, and reading only the
 // comments would offer it again on every re-post.
 func Fingerprints(bodies []string) map[string]bool {
-	return FingerprintsAt(bodies, "")
-}
-
-// FingerprintsAt is Fingerprints limited to the markers written for head. An
-// empty head keeps them all.
-func FingerprintsAt(bodies []string, head string) map[string]bool {
 	out := map[string]bool{}
 	for _, body := range bodies {
 		for _, m := range fpMarkerRe.FindAllStringSubmatch(body, -1) {
-			if head != "" && !strings.EqualFold(m[1], head) {
-				continue
-			}
 			raw, err := hex.DecodeString(m[2])
 			if err != nil {
 				continue
