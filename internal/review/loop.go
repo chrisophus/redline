@@ -55,6 +55,24 @@ const DefaultCallTurns = 30
 // rather than spend a request on a truncated one.
 const minTurnTokens int64 = 1024
 
+// writeReserveTokens is the output a pass needs for the turn that writes: an
+// overview, the file descriptions and a done are a few thousand tokens. A
+// pass that can look spends turns before it writes anything, so unless the
+// last affordable turn is kept for writing, a pass that keeps looking is cut
+// off with nothing recorded. On a large pull request that is how a synopsis
+// ended: seven turns of grep and read_lines, the cost cap, an empty overview,
+// and a review that failed for want of a walkthrough.
+const writeReserveTokens int64 = 4096
+
+// closeNotice is appended to the answer to the last call a pass may look up
+// before the turn that has to write.
+const closeNotice = "Budget notice: you can afford about one more reply. Nothing else will be looked up. " +
+	"Record what you have found now with the calls this pass takes, then call done."
+
+// closedLookupAnswer answers a lookup made after closeNotice.
+const closedLookupAnswer = "No more lookups: the budget for this pass is nearly spent. " +
+	"Record what you have found now with the calls this pass takes, then call done."
+
 // Why a pass stopped before it called done.
 const (
 	StoppedTurnCap = "turn cap"
@@ -114,6 +132,10 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 	var total Usage
 	var thinking strings.Builder
 	nudged := false
+	closed := false
+	// peak is the most output any one turn has used, thinking included: what
+	// one more lookup turn can be expected to cost.
+	var peak int64
 	gov := newGovernor(opts, res)
 	began := time.Now()
 	for turn := 1; ; turn++ {
@@ -131,6 +153,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 		}
 		r, err := sendTurn(ctx, opts, conv, remaining, stage, turn, &total)
 		gov.sent(r)
+		peak = max(peak, r.usage.OutputTokens)
 		total = total.plus(r.usage)
 		c.turns = turn
 		if r.model != "" {
@@ -255,8 +278,24 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 			c.stopped = StoppedNoCalls
 			break
 		}
-		conv.answer(r, results)
 		gov.answered(results)
+		if !closed && col.canLook() && len(results) > 0 {
+			// One more lookup turn would leave too little for the turn that
+			// writes, or the next turn is the last the cap allows: say so, and
+			// stop answering lookups, so that turn is spent writing and not
+			// on one more search. What a lookup turn costs is measured, not
+			// assumed, so a pass with a small cap still gets to look.
+			next, _ := gov.allowance(turn+1, opts.MaxTokens-total.OutputTokens, total)
+			if next-peak < writeReserveTokens || turn+1 >= opts.callTurns() {
+				closed = true
+				col.closeLookups()
+				results[len(results)-1].content += "\n\n" + closeNotice
+				if opts.Debug != nil {
+					opts.Debug(fmt.Sprintf("%s turn %d: lookups closed, the next turn is kept for writing", stage, turn))
+				}
+			}
+		}
+		conv.answer(r, results)
 	}
 	c.usage, c.thinking, c.rejected, c.fetched, c.looked = total, thinking.String(), col.rejected, col.fetched, col.looked
 	c.lookups, c.refusals = col.lookups, col.refusals

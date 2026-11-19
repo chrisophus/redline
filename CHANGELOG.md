@@ -41,6 +41,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on every package. `.sandbox/check.sh` now sets `GOTOOLCHAIN` from go.mod, as
   CI does. golangci-lint moves to v2.15.0 in the Makefile, CI and the script.
 
+### Fixed
+- **A pass that can look keeps its last turn for writing.** A synopsis (or
+  any pass with lookups) on a large change could spend every turn on grep and
+  read_lines, hit the cost or turn cap before it wrote anything, and leave an
+  empty overview, which failed the review with "the describing call returned
+  no overview". When one more lookup turn would leave too little for the
+  turn that writes, or the next turn is the last the turn cap allows, the
+  answer to the pass's last lookup now says so, lookups after that are refused
+  without being counted as rejected, and the final turn is spent recording
+  what it found. A stage that takes no lookups is not told this.
+
 ## [0.21.0] - 2026-11-16
 
 ### Changed

@@ -351,3 +351,90 @@ func TestACompletePassEndsWithoutWaitingForDone(t *testing.T) {
 		})
 	}
 }
+
+// A pass that can look is told, on the answer to the last lookup it can afford,
+// that the next turn is for writing, and its lookups after that are refused.
+// Without it a synopsis on a large change spent every turn on grep and
+// read_lines, hit the cost cap with nothing recorded, and the review failed for
+// want of an overview.
+func TestALookingPassKeepsItsLastTurnForWriting(t *testing.T) {
+	api := serveSSE(t,
+		reply([2]string{CallGrep, `{"pattern":"process","glob":"*.go"}`}),
+		reply([2]string{CallGrep, `{"pattern":"again","glob":"*.go"}`}),
+		reply([2]string{CallOverview, `{"overview":"What the change does."}`}),
+	)
+	opts := loopOpts(api)
+	// A budget on which one more lookup turn would leave less than the
+	// writing turn needs.
+	opts.MaxTokens = 4000
+	look := &fakeLooker{answer: "found"}
+	opts.Look = look
+	res := &Result{System: "s", Prompt: "p", Stage: StageSynopsis}
+	out, err := runOnce(context.Background(), exploreInput(), opts, res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := api.seen()
+	if len(seen) < 2 {
+		t.Fatalf("want at least two turns, got %d", len(seen))
+	}
+	if !strings.Contains(string(seen[1]), "Budget notice") {
+		t.Errorf("the answer to the last lookup should carry the budget notice: %s", seen[1])
+	}
+	if len(seen) < 3 || !strings.Contains(string(seen[2]), "No more lookups") {
+		t.Errorf("a lookup after the notice should be refused with its reason")
+	}
+	if len(look.greps) != 1 {
+		t.Errorf("the tree was searched %d times, want once: the second grep came after the notice", len(look.greps))
+	}
+	if strings.TrimSpace(out.Review.Overview) == "" {
+		t.Errorf("the turn kept for writing must record the overview: %+v", out.Review)
+	}
+	if len(out.Stopped) != 0 {
+		t.Errorf("the pass should end with nothing cut off, stopped = %v", out.Stopped)
+	}
+}
+
+// Only a stage that may look is told its lookups are closing: having a Looker
+// is not the same thing, and a pass with only get_context still looks.
+func TestOnlyAStageThatMayLookCanLook(t *testing.T) {
+	look := &fakeLooker{}
+	deferred := []deferredEntry{{}}
+	for _, tc := range []struct {
+		name     string
+		stage    string
+		look     Looker
+		deferred []deferredEntry
+		want     bool
+	}{
+		{"a synopsis with a Looker", StageSynopsis, look, nil, true},
+		{"a ruling pass with a Looker takes no lookups", StageRuling, look, nil, false},
+		{"a synopsis with only deferred context", StageSynopsis, nil, deferred, true},
+		{"a synopsis with nothing to look up", StageSynopsis, nil, nil, false},
+	} {
+		if got := newCollector(tc.stage, passExpect{}, tc.deferred, tc.look, false).canLook(); got != tc.want {
+			t.Errorf("%s: canLook = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// A pass with a small cap still gets to look: lookups close when one more
+// lookup turn would leave too little to write with, not when the cap is under
+// a fixed size, so a cohort pass at its floor is not shut out after one turn.
+func TestASmallCapDoesNotCloseLookupsWhileThereIsRoomToWrite(t *testing.T) {
+	api := serveSSE(t,
+		reply([2]string{CallGrep, `{"pattern":"process","glob":"*.go"}`}),
+		reply([2]string{CallOverview, `{"overview":"What the change does."}`}),
+	)
+	opts := loopOpts(api)
+	opts.MaxTokens = 8000
+	opts.Look = &fakeLooker{answer: "found"}
+	res := &Result{System: "s", Prompt: "p", Stage: StageSynopsis}
+	if _, err := runOnce(context.Background(), exploreInput(), opts, res); err != nil {
+		t.Fatal(err)
+	}
+	seen := api.seen()
+	if len(seen) != 2 || strings.Contains(string(seen[1]), "Budget notice") {
+		t.Errorf("an 8,000-token cap with cheap turns must not close lookups after one turn (turns=%d)", len(seen))
+	}
+}
