@@ -144,3 +144,43 @@ func TestARecapDoesNothingToTheEvidenceBody(t *testing.T) {
 		t.Error("the evidence body rendered a recap, so cmdPost need not refuse one")
 	}
 }
+
+// The overview and the recap are what a reader comes for, so each sits in the
+// open, above any collapsed block.
+func TestOverviewAndRecapAreVisibleAboveDetails(t *testing.T) {
+	p := recapPayload(t)
+	first := p.renderBody()
+	recap := p.WithRecap("The transaction boundary moved inside the loop.", "abc1234def5678", []string{"b.go"}).Body
+	for name, c := range map[string]struct{ body, heading string }{
+		"first review": {first, "### What this change does\n\nThis change batches the recompute."},
+		"later head":   {recap, "### Since the last review"},
+	} {
+		h := strings.Index(c.body, c.heading)
+		d := strings.Index(c.body, "<details>")
+		if h < 0 {
+			t.Errorf("%s: missing %q in:\n%s", name, c.heading, c.body)
+		} else if d >= 0 && d < h {
+			t.Errorf("%s: heading is inside or after a <details> block:\n%s", name, c.body)
+		}
+	}
+}
+
+// A file whose row is dropped for budget cannot carry its findings, and they
+// are already out of the flat list, so the section has to count them.
+func TestFindingsOnAnOmittedRowAreCounted(t *testing.T) {
+	p := recapPayload(t)
+	perFile := map[string][]findings.Finding{
+		"a.go": {{File: "a.go", Line: 1, Rule: "r", Severity: findings.SeverityError, Message: "m"}},
+	}
+	got := walkthroughSection(p, p.files, "Walkthrough", perFile, false, 1)
+	if !strings.Contains(got, "1 more finding(s) on the full report") {
+		t.Errorf("the finding on an omitted row is not counted:\n%s", got)
+	}
+}
+
+func TestCutRunesKeepsMultibyteCharactersWhole(t *testing.T) {
+	got := cutRunes("aé", 2)
+	if got != "a" {
+		t.Errorf("cutRunes split a character: %q", got)
+	}
+}

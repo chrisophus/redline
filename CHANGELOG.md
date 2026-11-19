@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The v0.22.0 short review layout is reverted.** It came from a misread: the
+  complaint about long output was about the Sandbox Studio chat box, not
+  Redline's pull request reviews. With `body_style: walkthrough`, a first
+  review shows "What this change does" in full again, a later head shows
+  "Since the last review" with its file list, the stated intent is quoted in
+  full when `intent` is included, and findings are no longer cut at 400
+  characters. The review prompt no longer asks for three sentences. Findings in
+  the review body sit under their file in the walkthrough table again. This
+  repository's own profile includes `intent`, `evidence`, `confirmations` and
+  `unknowns` again. Per-head sessions, `redline miss` and `gc --keep-heads` stay.
+
 ## [0.22.0] - 2026-11-19
 
 ### Added

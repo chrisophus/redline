@@ -146,4 +146,30 @@ func TestRepositoryReviewProfileKeepsGateFields(t *testing.T) {
 	if !p.RequireHead {
 		t.Fatal("require_head must stay on")
 	}
+	if p.FailClosedPane {
+		t.Error("fail_closed_pane must stay off")
+	}
+	if p.BodyStyle != BodyWalkthrough {
+		t.Errorf("body_style = %q", p.BodyStyle)
+	}
+	for _, s := range []string{"intent", "evidence", "confirmations", "unknowns",
+		"line-counts", "test-totals", "generated-totals", "low-confidence", "diff-links"} {
+		if !p.Includes(s) {
+			t.Errorf("body_include is missing %q", s)
+		}
+	}
+}
+
+// A finding already posted in the folded low-confidence block is not written
+// again when the review is posted a second time.
+func TestUnpostedDropsPostedLowConfidenceFindings(t *testing.T) {
+	f := findings.Finding{Fingerprint: "fp-low", File: "a.go", Line: 3, Rule: "r",
+		Severity: findings.SeverityInfo, Message: "maybe a problem"}
+	p := Payload{CommitID: "deadbeef", lowConf: []findings.Finding{f}}
+	if got := p.Unposted(map[string]bool{}); len(got.lowConf) != 1 {
+		t.Fatalf("unposted finding was dropped: %d", len(got.lowConf))
+	}
+	if got := p.Unposted(map[string]bool{"fp-low": true}); len(got.lowConf) != 0 {
+		t.Fatalf("posted low-confidence finding was kept: %d", len(got.lowConf))
+	}
 }

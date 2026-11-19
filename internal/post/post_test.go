@@ -880,9 +880,9 @@ func TestWalkthroughBodyMatchesCopilotOrder(t *testing.T) {
 		WithMeta("TICKET-1: do a thing", "bot[bot]")
 	for _, want := range []string{
 		"### Review findings",
-		"Reviewed by bot[bot] on `deadbeef`.",
+		"**Reviewed by.** bot[bot] on `deadbeef`.",
 		"**Stated intent.** TICKET-1: do a thing",
-		"### Review findings\n\nAdds a feed.",
+		"### What this change does\n\nAdds a feed.",
 		"<summary>Walkthrough</summary>",
 		"| `a.go` +10\u00a0−0 | 2 | 1 warning | Staging. |",
 		"| `b.go` +11\u00a0−1 | — | — | — |\n",
@@ -962,9 +962,10 @@ func TestWalkthroughGroupsTestFilesOfTheirOwn(t *testing.T) {
 	}
 }
 
-// Body findings stay outside the collapsed details, so a reader sees them
-// without opening anything. The walkthrough table lists files only.
-func TestWalkthroughKeepsBodyFindingsOutsideTheDetails(t *testing.T) {
+// A body finding that names a shown file rides under that file inside the
+// walkthrough; a fileless one stays in the flat not-shown list, and the file
+// finding is not duplicated there.
+func TestWalkthroughAttachesFileFindingsToTheFile(t *testing.T) {
 	rep := &findings.Report{
 		Findings: []findings.Finding{
 			{File: "a.go", Rule: "source-without-test", Substrate: "redline/test-delta",
@@ -977,15 +978,15 @@ func TestWalkthroughKeepsBodyFindingsOutsideTheDetails(t *testing.T) {
 	rep.Finalize()
 	p := BuildAttest(rep, prTarget(), "", nil, walkthroughProfile(), changedFiles("a.go"))
 	body := p.Body
-	details := strings.Index(body, "<summary>Details</summary>")
-	for _, want := range []string{"complexity 16 here", "no test in that package"} {
-		at := strings.Index(body, want)
-		if at < 0 || details < 0 || at > details {
-			t.Fatalf("%q must sit before the collapsed details:\n%s", want, body)
-		}
-		if strings.Count(body, want) != 1 {
-			t.Fatalf("%q must appear once:\n%s", want, body)
-		}
+	if !strings.Contains(body, "**`a.go`**") || !strings.Contains(body, "complexity 16 here") {
+		t.Fatalf("a file finding must ride under its file in the walkthrough:\n%s", body)
+	}
+	idx := strings.Index(body, "### Findings not shown inline")
+	if idx < 0 || !strings.Contains(body[idx:], "no test in that package") {
+		t.Fatalf("a fileless finding stays in the not-shown list:\n%s", body)
+	}
+	if idx >= 0 && strings.Contains(body[idx:], "complexity 16 here") {
+		t.Fatalf("a file finding must not also appear in the not-shown list:\n%s", body[idx:])
 	}
 }
 
@@ -1219,7 +1220,7 @@ func TestWalkthroughLeavesOutWhatItWasNotAskedFor(t *testing.T) {
 			t.Errorf("the lean walkthrough should not carry %q:\n%s", gone, p.Body)
 		}
 	}
-	for _, want := range []string{"\n\nAdds a feed.", "**go source** (1 file(s))", "| `a.go` | Staging. |"} {
+	for _, want := range []string{"### What this change does\n\nAdds a feed.", "**go source** (1 file(s))", "| `a.go` | Staging. |"} {
 		if !strings.Contains(p.Body, want) {
 			t.Errorf("the lean walkthrough is missing %q:\n%s", want, p.Body)
 		}
