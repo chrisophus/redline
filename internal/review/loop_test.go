@@ -364,8 +364,9 @@ func TestALookingPassKeepsItsLastTurnForWriting(t *testing.T) {
 		reply([2]string{CallOverview, `{"overview":"What the change does."}`}),
 	)
 	opts := loopOpts(api)
-	// A budget the first turn leaves under two writing turns' worth.
-	opts.MaxTokens = 8000
+	// A budget on which one more lookup turn would leave less than the
+	// writing turn needs.
+	opts.MaxTokens = 4000
 	look := &fakeLooker{answer: "found"}
 	opts.Look = look
 	res := &Result{System: "s", Prompt: "p", Stage: StageSynopsis}
@@ -414,5 +415,26 @@ func TestOnlyAStageThatMayLookCanLook(t *testing.T) {
 		if got := newCollector(tc.stage, passExpect{}, tc.deferred, tc.look, false).canLook(); got != tc.want {
 			t.Errorf("%s: canLook = %v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// A pass with a small cap still gets to look: lookups close when one more
+// lookup turn would leave too little to write with, not when the cap is under
+// a fixed size, so a cohort pass at its floor is not shut out after one turn.
+func TestASmallCapDoesNotCloseLookupsWhileThereIsRoomToWrite(t *testing.T) {
+	api := serveSSE(t,
+		reply([2]string{CallGrep, `{"pattern":"process","glob":"*.go"}`}),
+		reply([2]string{CallOverview, `{"overview":"What the change does."}`}),
+	)
+	opts := loopOpts(api)
+	opts.MaxTokens = 8000
+	opts.Look = &fakeLooker{answer: "found"}
+	res := &Result{System: "s", Prompt: "p", Stage: StageSynopsis}
+	if _, err := runOnce(context.Background(), exploreInput(), opts, res); err != nil {
+		t.Fatal(err)
+	}
+	seen := api.seen()
+	if len(seen) != 2 || strings.Contains(string(seen[1]), "Budget notice") {
+		t.Errorf("an 8,000-token cap with cheap turns must not close lookups after one turn (turns=%d)", len(seen))
 	}
 }

@@ -133,6 +133,9 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 	var thinking strings.Builder
 	nudged := false
 	closed := false
+	// peak is the most output any one turn has used, thinking included: what
+	// one more lookup turn can be expected to cost.
+	var peak int64
 	gov := newGovernor(opts, res)
 	began := time.Now()
 	for turn := 1; ; turn++ {
@@ -150,6 +153,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 		}
 		r, err := sendTurn(ctx, opts, conv, remaining, stage, turn, &total)
 		gov.sent(r)
+		peak = max(peak, r.usage.OutputTokens)
 		total = total.plus(r.usage)
 		c.turns = turn
 		if r.model != "" {
@@ -276,11 +280,13 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 		}
 		gov.answered(results)
 		if !closed && col.canLook() && len(results) > 0 {
-			// The next turn is the last this pass can pay for, or the last
-			// the turn cap allows: say so, and stop answering lookups, so the
-			// turn is spent writing and not on one more search.
+			// One more lookup turn would leave too little for the turn that
+			// writes, or the next turn is the last the cap allows: say so, and
+			// stop answering lookups, so that turn is spent writing and not
+			// on one more search. What a lookup turn costs is measured, not
+			// assumed, so a pass with a small cap still gets to look.
 			next, _ := gov.allowance(turn+1, opts.MaxTokens-total.OutputTokens, total)
-			if next < 2*writeReserveTokens || turn+1 >= opts.callTurns() {
+			if next-peak < writeReserveTokens || turn+1 >= opts.callTurns() {
 				closed = true
 				col.closeLookups()
 				results[len(results)-1].content += "\n\n" + closeNotice

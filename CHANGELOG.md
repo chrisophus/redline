@@ -46,10 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   any pass with lookups) on a large change could spend every turn on grep and
   read_lines, hit the cost or turn cap before it wrote anything, and leave an
   empty overview, which failed the review with "the describing call returned
-  no overview". When the next turn is the last the pass can pay for, or the
-  last the turn cap allows, the answer to its last lookup now says so, lookups
-  after that are refused without being counted as rejected, and the final
-  turn is spent recording what it found.
+  no overview". When one more lookup turn would leave too little for the
+  turn that writes, or the next turn is the last the turn cap allows, the
+  answer to the pass's last lookup now says so, lookups after that are refused
+  without being counted as rejected, and the final turn is spent recording
+  what it found. A stage that takes no lookups is not told this.
 
 ## [0.21.0] - 2026-11-16
 
