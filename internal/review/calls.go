@@ -486,6 +486,18 @@ type collector struct {
 	lookupsClosed bool
 }
 
+// canLook reports whether this stage may look anything up: a lookup of the
+// tree, or get_context. Having a Looker is not enough, because a stage takes
+// only the calls callsFor gives it, and a ruling pass takes no lookups.
+func (c *collector) canLook() bool {
+	for _, name := range callsFor(c.stage, c.recaps, len(c.deferred) > 0, c.lookCalls) {
+		if name == CallContext || isLookCall(name) {
+			return true
+		}
+	}
+	return false
+}
+
 // closeLookups ends the pass's lookups. See lookupsClosed.
 func (c *collector) closeLookups() { c.lookupsClosed = true }
 

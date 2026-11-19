@@ -393,3 +393,26 @@ func TestALookingPassKeepsItsLastTurnForWriting(t *testing.T) {
 		t.Errorf("the pass should end with nothing cut off, stopped = %v", out.Stopped)
 	}
 }
+
+// Only a stage that may look is told its lookups are closing: having a Looker
+// is not the same thing, and a pass with only get_context still looks.
+func TestOnlyAStageThatMayLookCanLook(t *testing.T) {
+	look := &fakeLooker{}
+	deferred := []deferredEntry{{}}
+	for _, tc := range []struct {
+		name     string
+		stage    string
+		look     Looker
+		deferred []deferredEntry
+		want     bool
+	}{
+		{"a synopsis with a Looker", StageSynopsis, look, nil, true},
+		{"a ruling pass with a Looker takes no lookups", StageRuling, look, nil, false},
+		{"a synopsis with only deferred context", StageSynopsis, nil, deferred, true},
+		{"a synopsis with nothing to look up", StageSynopsis, nil, nil, false},
+	} {
+		if got := newCollector(tc.stage, passExpect{}, tc.deferred, tc.look, false).canLook(); got != tc.want {
+			t.Errorf("%s: canLook = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

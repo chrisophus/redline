@@ -275,7 +275,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 			break
 		}
 		gov.answered(results)
-		if !closed && len(col.lookCalls) > 0 && len(results) > 0 {
+		if !closed && col.canLook() && len(results) > 0 {
 			// The next turn is the last this pass can pay for, or the last
 			// the turn cap allows: say so, and stop answering lookups, so the
 			// turn is spent writing and not on one more search.
