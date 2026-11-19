@@ -479,7 +479,15 @@ type collector struct {
 	// lookCalls does: take() decides what a pass may call, and it has to
 	// decide it the same way the catalogue that went out was built.
 	recaps bool
+	// lookupsClosed is set when the pass has been told its next turn is the
+	// last it can afford. From then on a lookup is answered with a refusal
+	// and not with the tree, so a pass that would go on looking has no way to
+	// spend the turn that is left for writing.
+	lookupsClosed bool
 }
+
+// closeLookups ends the pass's lookups. See lookupsClosed.
+func (c *collector) closeLookups() { c.lookupsClosed = true }
 
 func newCollector(stage string, expect passExpect, deferred []deferredEntry, look Looker, recaps bool) *collector {
 	looks := lookCallsFor(look)
@@ -569,6 +577,14 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 			c.refuse(call, why)
 			results = append(results, callResult{id: call.ID, isError: true,
 				content: "Not recorded: " + why + ". Send this call again with that fixed."})
+			continue
+		}
+		if c.lookupsClosed && (call.Name == CallContext || isLookCall(call.Name)) {
+			// Not a malformed call and not counted as rejected: a done in
+			// the same reply must still end the pass. It is only too late
+			// to look.
+			c.refuse(call, "lookups are closed")
+			results = append(results, callResult{id: call.ID, isError: true, content: closedLookupAnswer})
 			continue
 		}
 		if call.Name == CallContext {

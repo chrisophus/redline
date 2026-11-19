@@ -351,3 +351,45 @@ func TestACompletePassEndsWithoutWaitingForDone(t *testing.T) {
 		})
 	}
 }
+
+// A pass that can look is told, on the answer to the last lookup it can afford,
+// that the next turn is for writing, and its lookups after that are refused.
+// Without it a synopsis on a large change spent every turn on grep and
+// read_lines, hit the cost cap with nothing recorded, and the review failed for
+// want of an overview.
+func TestALookingPassKeepsItsLastTurnForWriting(t *testing.T) {
+	api := serveSSE(t,
+		reply([2]string{CallGrep, `{"pattern":"process","glob":"*.go"}`}),
+		reply([2]string{CallGrep, `{"pattern":"again","glob":"*.go"}`}),
+		reply([2]string{CallOverview, `{"overview":"What the change does."}`}),
+	)
+	opts := loopOpts(api)
+	// A budget the first turn leaves under two writing turns' worth.
+	opts.MaxTokens = 8000
+	look := &fakeLooker{answer: "found"}
+	opts.Look = look
+	res := &Result{System: "s", Prompt: "p", Stage: StageSynopsis}
+	out, err := runOnce(context.Background(), exploreInput(), opts, res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := api.seen()
+	if len(seen) < 2 {
+		t.Fatalf("want at least two turns, got %d", len(seen))
+	}
+	if !strings.Contains(string(seen[1]), "Budget notice") {
+		t.Errorf("the answer to the last lookup should carry the budget notice: %s", seen[1])
+	}
+	if len(seen) < 3 || !strings.Contains(string(seen[2]), "No more lookups") {
+		t.Errorf("a lookup after the notice should be refused with its reason")
+	}
+	if len(look.greps) != 1 {
+		t.Errorf("the tree was searched %d times, want once: the second grep came after the notice", len(look.greps))
+	}
+	if strings.TrimSpace(out.Review.Overview) == "" {
+		t.Errorf("the turn kept for writing must record the overview: %+v", out.Review)
+	}
+	if len(out.Stopped) != 0 {
+		t.Errorf("the pass should end with nothing cut off, stopped = %v", out.Stopped)
+	}
+}
