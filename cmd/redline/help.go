@@ -46,6 +46,8 @@ var commands = []command{
 		flags: dispositionsFlags, help: dispositionsHelp, run: cmdDispositions},
 	{name: "miss", summary: "record a defect a review should have caught",
 		flags: missFlags, help: missHelp, run: cmdMiss},
+	{name: "history", summary: "compare every saved review: size, cost, limits\n              hit and what the lookups found",
+		flags: historyFlags, help: historyHelp, run: cmdHistory},
 }
 
 func commandNamed(name string) (command, bool) {
@@ -244,6 +246,12 @@ func learningsFlags(fs *flag.FlagSet, o *opts) {
 	prFlag(fs, o)
 	headFlag(fs, o)
 	fs.StringVar(&o.jsonl, "jsonl", "", "directory holding misses.jsonl (default: --out)")
+}
+
+func historyFlags(fs *flag.FlagSet, o *opts) {
+	rootFlag(fs, o)
+	fs.StringVar(&o.format, "format", "report", "report|json")
+	fs.StringVar(&o.jsonl, "jsonl", "", "directory holding reviews.jsonl and misses.jsonl (default: --out)")
 }
 
 func missFlags(fs *flag.FlagSet, o *opts) {
@@ -715,6 +723,45 @@ flags:
                     is searched.
   --format FMT      report|json (default report); json is the whole trace as
                     it was written
+`
+
+const historyHelp = `redline history - compare every saved review
+
+usage:
+  redline history [flags]
+
+Reads every review saved under .redline and calls no model. Each review is
+joined from three files: the saved session (how big the change was), the
+postmortem trace (turns, lookups, findings) and the cost ledger (how the
+change was split, what size the prompt was, what a limit cut).
+
+It is there to answer three questions about past reviews before changing how
+a review decides them:
+
+  Was the change too big for the way it was reviewed? Reviews are grouped by
+  size, and every review that ran into a size, token, turn or cost limit is
+  listed with the limit.
+
+  Did splitting the change help? Reviews judged in one call are set beside
+  the ones that were split.
+
+  Did the lookups pay for themselves? Lookups that came back empty or
+  repeated an earlier one are counted against the ones that named a file the
+  review filed a finding on.
+
+The comparisons are between different changes, so a difference between two
+groups can come from the changes and not from how they were reviewed.
+
+Kept heads are read too, so a pull request reviewed at three commits is three
+reviews. A review needs its postmortem.json to be counted.
+
+flags:
+  --out DIR         the directory holding the sessions and ledgers (default
+                    .redline)
+  --format FMT      report|json (default report); json is one record per
+                    review, for a script to read
+  --jsonl DIR       directory holding reviews.jsonl and misses.jsonl
+                    (default: --out)
 `
 
 const replyHelp = `redline reply — record an agent's reply to a comment sent from the report

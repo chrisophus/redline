@@ -98,7 +98,7 @@ func workingTreeName() string {
 // resolveSession points o.out at the session directory the command works on,
 // before it runs. set holds the flags the caller passed.
 func resolveSession(c command, o *opts, set map[string]bool) error {
-	if c.name == "gc" || c.name == "dispositions" || c.name == "miss" {
+	if c.name == "gc" || c.name == "dispositions" || c.name == "miss" || c.name == "history" {
 		return nil
 	}
 	observes := c.name == "run" || (c.name == "review" && o.observe)

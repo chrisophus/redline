@@ -89,6 +89,7 @@ release changed.
 | the judging pass looking things up in the tree while it writes | shipped, on by default; `--no-look` turns it off |
 | A `diff` question's claim checked against what the prompt carried | shipped |
 | `redline postmortem`: what the review proposed, what the lookups found, what was ruled | shipped |
+| `redline history`: every saved review side by side, by size, cost, limits hit and lookups | shipped |
 | Migration adds a NOT NULL column with no default | shipped |
 | Provider parity: a capability added to one of a set of parallel implementations | shipped |
 | Regeneration verification (run the generator, diff) | not started |
@@ -144,6 +145,7 @@ go build ./cmd/redline
 ./redline dispositions --recent 50 --jsonl out/  # what became of each review finding
 ./redline postmortem --pr 123 --head 3f9a2c1     # the review of an earlier head
 ./redline miss --pr 46 --head 3f9a2c1 --file a.html --line 41 --summary "dropped a )"
+./redline history                 # every saved review side by side, no model call
 ```
 
 `run` writes `findings.json`, `report.md`, `report.html`, and any captured
@@ -171,6 +173,16 @@ in `misses.jsonl` beside the dispositions files. From the session kept for
 which findings and lookups covered it. A miss with no session, such as one from
 before Redline, is recorded with those answers left out. `redline learnings`
 drafts a review rule from each miss as well as from replies.
+
+`redline history` reads every review saved under `.redline`, kept heads
+included, and calls no model. It groups the reviews by the size of the change
+and lists each one that ran into a size, token, turn or cost limit. It sets
+reviews judged in one call beside the ones that were split. It counts the
+lookups that came back empty or repeated an earlier one against the lookups
+that named a file the review filed a finding on. Use it before changing how a
+review decides to split a change or to stop looking things up, to see how
+often past reviews gave that decision anything to change. `--format json`
+prints one record per review.
 
 `redline dispositions` looks back at pull requests that were already reviewed
 and says what became of each finding: fixed, declined, left open, stale, or

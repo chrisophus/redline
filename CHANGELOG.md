@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`redline history` compares every saved review.** It reads the sessions,
+  postmortem traces and cost ledger under `.redline`, kept heads included, and
+  calls no model. The report groups reviews by the size of the change, lists
+  each review that ran into a size, token, turn or cost limit, sets reviews
+  judged in one call beside split ones, and counts lookups that came back empty
+  or repeated an earlier one. `--format json` prints one record per review.
+
 ## [0.22.1] - 2026-11-19
 
 ### Changed
