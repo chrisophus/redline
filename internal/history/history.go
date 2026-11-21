@@ -113,6 +113,9 @@ type Looked struct {
 	// Said is the model's answer for this lookup, look or stop, and empty
 	// when it was not asked or did not answer.
 	Said string `json:"said,omitempty"`
+	// StopP is the probability the model gave to stop, nil from an endpoint
+	// that gives none.
+	StopP *float64 `json:"stopP,omitempty"`
 }
 
 // Lines is the size of the change: lines added plus lines removed.

@@ -50,7 +50,13 @@ func cmdHistory(o opts) error {
 // and to what before the first one goes.
 func askHistory(o opts, rep *history.Report) error {
 	e := history.Endpoint{API: o.api, Model: o.model, BaseURL: o.baseURL, APIUser: o.apiUser}
-	if e.API == review.APIOpenAI {
+	switch e.API {
+	case history.APIJev:
+		e.APIKey = os.Getenv("TYPESAFE_API_KEY")
+		if e.Model == "" {
+			e.Model = history.DefaultJevModel
+		}
+	case review.APIOpenAI:
 		e.APIKey = os.Getenv("OPENAI_API_KEY")
 		if e.BaseURL == "" {
 			e.BaseURL = os.Getenv("OPENAI_BASE_URL")
@@ -58,8 +64,10 @@ func askHistory(o opts, rep *history.Report) error {
 		if e.Model == "" {
 			e.Model = review.DefaultOpenAIModel
 		}
-	} else if e.Model == "" {
-		e.Model = review.DefaultModel
+	default:
+		if e.Model == "" {
+			e.Model = review.DefaultModel
+		}
 	}
 	asker, err := history.NewAsker(e)
 	if err != nil {

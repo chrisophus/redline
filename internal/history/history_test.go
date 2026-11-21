@@ -274,27 +274,33 @@ type fakeAsker struct {
 	mu    sync.Mutex
 	asked int
 	fail  bool
+	// probs makes it answer with a probability, as a decision model does.
+	probs bool
 }
 
-func (f *fakeAsker) Ask(_ context.Context, _, prompt string, choices []string) (string, review.Usage, error) {
+func (f *fakeAsker) Ask(_ context.Context, q Question) (Answer, error) {
 	f.mu.Lock()
 	f.asked++
 	f.mu.Unlock()
-	usage := review.Usage{InputTokens: 100, OutputTokens: 1}
+	ans := Answer{Said: q.No, Usage: review.Usage{InputTokens: 100, OutputTokens: 1}}
 	if f.fail {
-		return "", usage, errors.New("401 bad key")
+		return ans, errors.New("401 bad key")
 	}
-	if choices[0] == SaidSingle {
-		if strings.Contains(prompt, "1,305 lines added") {
-			return SaidSplit, usage, nil
+	if q.Yes == SaidSplit {
+		if strings.Contains(q.State, "1,305 lines added") {
+			ans.Said = q.Yes
 		}
-		return SaidSingle, usage, nil
+	} else if _, next, _ := strings.Cut(q.State, "wants to make next:"); strings.Contains(next, `"Reset"`) &&
+		strings.Contains(q.State, "nothing found") {
+		ans.Said = q.Yes
 	}
-	_, next, _ := strings.Cut(prompt, "wants to make next:")
-	if strings.Contains(next, `"Reset"`) && strings.Contains(prompt, "nothing found") {
-		return SaidStop, usage, nil
+	if f.probs {
+		ans.HasP, ans.P = true, 0.2
+		if ans.Said == q.Yes {
+			ans.P = 0.8
+		}
 	}
-	return SaidLook, usage, nil
+	return ans, nil
 }
 
 func TestAskRecordsAnswersAgainstOutcomes(t *testing.T) {
@@ -361,7 +367,7 @@ func TestAskFailsWhenNothingAnswers(t *testing.T) {
 // answering with the outcome in front of it.
 func TestShapePromptHoldsOnlyWhatWasKnownBefore(t *testing.T) {
 	b := collect(t).Runs[1]
-	p := shapePrompt(b)
+	p := shapeQuestion(b).prompt()
 	for _, leak := range []string{"judging", "cost cap", "token cap", "cohort", "1.10", "off by one"} {
 		if strings.Contains(p, leak) {
 			t.Errorf("split question mentions %q:\n%s", leak, p)
@@ -408,14 +414,89 @@ func TestOpenAIAsker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	said, usage, err := a.Ask(context.Background(), "sys", "prompt", []string{SaidSingle, SaidSplit})
-	if err != nil || said != SaidSplit || usage.InputTokens != 42 {
-		t.Errorf("Ask = %q, %+v, %v", said, usage, err)
+	q := Question{System: "sys", State: "the files", Ask: "Split it?", Yes: SaidSplit, No: SaidSingle}
+	ans, err := a.Ask(context.Background(), q)
+	if err != nil || ans.Said != SaidSplit || ans.HasP || ans.Usage.InputTokens != 42 {
+		t.Errorf("Ask = %+v, %v", ans, err)
 	}
-	if got.Model != "m" || len(got.Messages) != 2 || got.Messages[1].Content != "prompt" {
+	if got.Model != "m" || len(got.Messages) != 2 || !strings.Contains(got.Messages[1].Content, "Split it?") {
 		t.Errorf("request body = %+v", got)
 	}
 	if _, err := NewAsker(Endpoint{API: review.APIOpenAI}); err == nil {
 		t.Errorf("the vendor endpoint with no key was accepted")
+	}
+}
+
+// The Jev wire sends the state and one noul question apart, and reads the
+// probability of yes back from under the question's id.
+func TestJevAsker(t *testing.T) {
+	var got struct {
+		Model     string `json:"model"`
+		State     string `json:"state"`
+		Questions map[string]struct {
+			Type         string `json:"type"`
+			Instructions string `json:"instructions"`
+		} `json:"questions"`
+	}
+	reply := `{"model":"jev-1.14.0","answers":{"answer":{"type":"noul","noul":0.91}},` +
+		`"usage":{"input_tokens":360,"output_tokens":39}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer k" || r.URL.Path != "/systemone" {
+			http.Error(w, `{"error":"bad key"}`, http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(reply))
+	}))
+	defer srv.Close()
+	a, err := NewAsker(Endpoint{API: APIJev, Model: DefaultJevModel, BaseURL: srv.URL, APIKey: "k"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := Question{State: "the lookups", Ask: "Stop?", Yes: SaidStop, No: SaidLook}
+	ans, err := a.Ask(context.Background(), q)
+	if err != nil || ans.Said != SaidStop || !ans.HasP || ans.P != 0.91 || ans.Usage.InputTokens != 360 {
+		t.Errorf("Ask = %+v, %v", ans, err)
+	}
+	asked := got.Questions["answer"]
+	if got.Model != DefaultJevModel || got.State != "the lookups" || asked.Type != "noul" || asked.Instructions != "Stop?" {
+		t.Errorf("request body = %+v", got)
+	}
+	reply = `{"answers":{"answer":{"type":"noul","noul":0.2}},"usage":{"input_tokens":1}}`
+	if ans, err := a.Ask(context.Background(), q); err != nil || ans.Said != SaidLook {
+		t.Errorf("a low probability read as %+v, %v", ans, err)
+	}
+	reply = `{"answers":{}}`
+	if _, err := a.Ask(context.Background(), q); err == nil {
+		t.Errorf("a reply with no answer was accepted")
+	}
+	if _, err := NewAsker(Endpoint{API: APIJev}); err == nil {
+		t.Errorf("jev with no key was accepted")
+	}
+	if cost, ok := askCost("jev-latest", review.Usage{InputTokens: 1_000_000, OutputTokens: 500}); !ok || cost != jevPerMtok {
+		t.Errorf("a million Jev input tokens priced at %v, %v", cost, ok)
+	}
+}
+
+func TestProbabilitiesGiveAThresholdTable(t *testing.T) {
+	rep := collect(t)
+	if err := rep.Ask(context.Background(), &fakeAsker{probs: true}, "jev-latest", 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	if p := rep.Runs[1].Asked.SplitP; p == nil || *p != 0.8 {
+		t.Errorf("split probability = %v", p)
+	}
+	out := rep.Render()
+	for _, want := range []string{"Stopping only when its probability of stop is at least:", "0.7       1 ", "0.9       0 ", "$0.0000"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("report is missing %q:\n%s", want, out)
+		}
+	}
+	plain := collect(t)
+	if err := plain.Ask(context.Background(), &fakeAsker{}, model, 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plain.Render(), "probability of stop") {
+		t.Errorf("a model that gave no probabilities got a threshold table")
 	}
 }

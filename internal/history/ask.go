@@ -31,9 +31,36 @@ const (
 	askWorkers = 4
 )
 
-// Asker puts one question to a model and returns the one word it chose.
+// Question is one yes/no question about a past review. It is kept in parts
+// because the endpoints take it differently: a chat model gets one prompt and
+// answers with a word, and a decision model gets the state and the question
+// apart and answers with a probability.
+type Question struct {
+	// System says what kind of decision this is, for an endpoint that takes
+	// a system prompt.
+	System string
+	// State is everything the answer depends on, and Ask the question about
+	// it, written so that yes and no are whole answers.
+	State string
+	Ask   string
+	// Yes and No are the words the two answers are recorded as.
+	Yes, No string
+}
+
+// Answer is what a model said to one question.
+type Answer struct {
+	// Said is the question's Yes or No word.
+	Said string
+	// P is the probability of yes, and HasP whether the endpoint gave one. A
+	// chat model answers with a word and gives none.
+	P     float64
+	HasP  bool
+	Usage review.Usage
+}
+
+// Asker puts one question to a model.
 type Asker interface {
-	Ask(ctx context.Context, system, prompt string, choices []string) (string, review.Usage, error)
+	Ask(ctx context.Context, q Question) (Answer, error)
 }
 
 // Asked is what the model said about one review.
@@ -41,6 +68,9 @@ type Asked struct {
 	// Shape is single or split, and empty when the review's change is not
 	// known or the model did not answer.
 	Shape string `json:"shape,omitempty"`
+	// SplitP is the probability it gave to split, nil from an endpoint that
+	// gives none.
+	SplitP *float64 `json:"splitP,omitempty"`
 }
 
 // Replay is one model's answers over every review, and what asking cost.
@@ -64,9 +94,7 @@ type Replay struct {
 type job struct {
 	run    int
 	lookup int // -1 for the split question
-	system string
-	prompt string
-	pick   []string
+	q      Question
 }
 
 // Ask puts each past review's choices to a model: whether the change should
@@ -81,14 +109,12 @@ func (rep *Report) Ask(ctx context.Context, a Asker, model string, limit int, pr
 	var jobs []job
 	for i, r := range rep.Runs {
 		if r.SizeKnown && r.set != nil && r.Files > 0 {
-			jobs = append(jobs, job{run: i, lookup: -1, system: shapeSystem, prompt: shapePrompt(r),
-				pick: []string{SaidSingle, SaidSplit}})
+			jobs = append(jobs, job{run: i, lookup: -1, q: shapeQuestion(r)})
 		}
 	}
 	for i, r := range rep.Runs {
 		for j := range r.Each {
-			jobs = append(jobs, job{run: i, lookup: j, system: lookSystem, prompt: lookPrompt(r, j),
-				pick: []string{SaidLook, SaidStop}})
+			jobs = append(jobs, job{run: i, lookup: j, q: lookQuestion(r, j)})
 		}
 	}
 	rp := &Replay{Model: model}
@@ -107,9 +133,9 @@ func (rep *Report) Ask(ctx context.Context, a Asker, model string, limit int, pr
 		go func() {
 			defer wg.Done()
 			for j := range next {
-				said, usage, err := a.Ask(ctx, j.system, j.prompt, j.pick)
+				ans, err := a.Ask(ctx, j.q)
 				mu.Lock()
-				rp.Usage = sum(rp.Usage, usage)
+				rp.Usage = sum(rp.Usage, ans.Usage)
 				if err != nil {
 					rp.Failed++
 					if rp.FirstError == "" {
@@ -117,7 +143,7 @@ func (rep *Report) Ask(ctx context.Context, a Asker, model string, limit int, pr
 					}
 				} else {
 					rp.Asks++
-					rep.record(j, said)
+					rep.record(j, ans)
 				}
 				done++
 				if progress != nil {
@@ -133,23 +159,24 @@ func (rep *Report) Ask(ctx context.Context, a Asker, model string, limit int, pr
 	close(next)
 	wg.Wait()
 
-	rp.CostUSD, rp.CostKnown = rp.Usage.Cost(model)
+	rp.CostUSD, rp.CostKnown = askCost(model, rp.Usage)
 	if rp.Asks == 0 && rp.Failed > 0 {
 		return fmt.Errorf("no question was answered: %s", rp.FirstError)
 	}
 	return nil
 }
 
-func (rep *Report) record(j job, said string) {
+func (rep *Report) record(j job, ans Answer) {
+	var p *float64
+	if ans.HasP {
+		p = &ans.P
+	}
 	r := &rep.Runs[j.run]
 	if j.lookup < 0 {
-		if r.Asked == nil {
-			r.Asked = &Asked{}
-		}
-		r.Asked.Shape = said
+		r.Asked = &Asked{Shape: ans.Said, SplitP: p}
 		return
 	}
-	r.Each[j.lookup].Said = said
+	r.Each[j.lookup].Said, r.Each[j.lookup].StopP = ans.Said, p
 }
 
 func sum(a, b review.Usage) review.Usage {
@@ -164,13 +191,14 @@ func sum(a, b review.Usage) review.Usage {
 const shapeSystem = "You decide how a code change is sent to a model that reviews it. " +
 	"Reply with one word and nothing else."
 
-const lookSystem = "You decide whether a model that is reviewing a code change should make its next lookup. " +
+const lookSystem = "You decide whether a model that is reviewing a code change should keep looking things up. " +
 	"Reply with one word and nothing else."
 
-// shapePrompt is what was known before the review ran: the files, their
-// sizes and the start of each diff. Nothing about how the review went is in
-// it, since the point is to see what the model would have chosen beforehand.
-func shapePrompt(r Run) string {
+// shapeQuestion carries what was known before the review ran: the files,
+// their sizes and the start of each diff. Nothing about how the review went
+// is in it, since the point is to see what the model would have chosen
+// beforehand.
+func shapeQuestion(r Run) Question {
 	var b strings.Builder
 	b.WriteString("A code change is about to be reviewed by a model. It can go in a single call that reads " +
 		"every file together, or be split into groups of files that are each judged in their own call.\n\n" +
@@ -194,15 +222,16 @@ func shapePrompt(r Run) string {
 		left -= len(d)
 		fmt.Fprintf(&b, "\n--- %s\n%s\n", f.Path, d)
 	}
-	fmt.Fprintf(&b, "\nAnswer `%s` if one call should review this change, or `%s` if it should be split.\n",
-		SaidSingle, SaidSplit)
-	return b.String()
+	return Question{System: shapeSystem, State: b.String(), Yes: SaidSplit, No: SaidSingle,
+		Ask: "Should this change be split into groups of files that are judged in separate calls, " +
+			"instead of being reviewed in a single call?"}
 }
 
-// lookPrompt is what the reviewer had when it made lookup j: the change, the
-// lookups before it with how much each returned, and the one it is about to
-// make. What the earlier lookups returned is not saved, only its size.
-func lookPrompt(r Run, j int) string {
+// lookQuestion carries what the reviewer had when it made lookup j: the
+// change, the lookups before it with how much each returned, and the one it
+// is about to make. What the earlier lookups returned is not saved, only its
+// size.
+func lookQuestion(r Run, j int) Question {
 	var b strings.Builder
 	b.WriteString("A model is reviewing a code change and can look things up in the repository while it " +
 		"works. Each lookup costs a turn of the review.\n\n")
@@ -223,9 +252,14 @@ func lookPrompt(r Run, j int) string {
 		}
 	}
 	fmt.Fprintf(&b, "\nThe lookup it wants to make next:\n  %s %s\n", r.Each[j].Tool, r.Each[j].Input)
-	fmt.Fprintf(&b, "\nAnswer `%s` if this lookup is likely to tell the reviewer something it needs, "+
-		"or `%s` if the reviewer should stop looking and write up what it has.\n", SaidLook, SaidStop)
-	return b.String()
+	return Question{System: lookSystem, State: b.String(), Yes: SaidStop, No: SaidLook,
+		Ask: "Should the reviewer stop looking things up now and write up what it has, because that " +
+			"next lookup is unlikely to tell it anything it needs?"}
+}
+
+// prompt is the question as one text, for an endpoint that answers in words.
+func (q Question) prompt() string {
+	return fmt.Sprintf("%s\n%s\n\nAnswer `%s` for yes or `%s` for no.\n", q.State, q.Ask, q.Yes, q.No)
 }
 
 func fileList(r Run) string {

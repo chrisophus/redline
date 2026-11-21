@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each lookup whether it was worth making, with only what was known at the
   time. The report compares the answers with what happened. `--api`, `--model`
   and `--base-url` choose the model, and `--max-asks` caps the questions.
+  `--api jev` asks TypeSafe's Jev over its own endpoint and reports what
+  stopping a lookup only above a given probability would have skipped.
 
 ## [0.22.1] - 2026-11-19
 

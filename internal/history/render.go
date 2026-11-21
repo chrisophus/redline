@@ -523,6 +523,47 @@ func (rep *Report) replayLookups(b *strings.Builder) {
 	fmt.Fprintf(b, "    Stopping where it said would have skipped %s empty or repeated lookups\n"+
 		"    and %s lookups on a file the review filed a finding on.\n",
 		share(stop.wasted, all.wasted), share(stop.onFinding, all.onFinding))
+	rep.stopThresholds(b)
 	b.WriteString("    Each lookup was asked about on its own. In a real review the first stop would\n" +
 		"    have ended the looking, so the lookups after it would not have been made either.\n")
+}
+
+// stopBars are the probabilities of stop the threshold table tries. A higher
+// bar stops fewer lookups and is surer about the ones it stops.
+var stopBars = []float64{0.5, 0.7, 0.9}
+
+// stopThresholds shows what stopping only above a given probability would
+// have skipped. It prints only when the model gave probabilities.
+func (rep *Report) stopThresholds(b *strings.Builder) {
+	var with []Looked
+	for _, r := range rep.Runs {
+		for _, l := range r.Each {
+			if l.StopP != nil {
+				with = append(with, l)
+			}
+		}
+	}
+	if len(with) == 0 {
+		return
+	}
+	b.WriteString("    Stopping only when its probability of stop is at least:\n")
+	w := tabwriter.NewWriter(b, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "      at least\tlookups stopped\tempty or repeated\ton a file with a finding")
+	for _, bar := range stopBars {
+		var n, wasted, onFinding int
+		for _, l := range with {
+			if *l.StopP < bar {
+				continue
+			}
+			n++
+			if l.Empty || l.Repeated {
+				wasted++
+			}
+			if l.OnFinding {
+				onFinding++
+			}
+		}
+		_, _ = fmt.Fprintf(w, "      %.1f\t%d\t%d\t%d\n", bar, n, wasted, onFinding)
+	}
+	_ = w.Flush()
 }

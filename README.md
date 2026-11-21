@@ -196,6 +196,12 @@ earlier one, or were on a file the review filed a finding on. `--api`,
 `--model` and `--base-url` choose the model as they do on `review`, and
 `--max-asks` caps the number of questions.
 
+`--api jev` sends the same questions to TypeSafe's Jev, with the key in
+`TYPESAFE_API_KEY`. Jev answers a yes/no question with a probability, so the
+report also shows what stopping a lookup only at 0.5, 0.7 or 0.9 would have
+skipped. Run it once with a general model and once with Jev to see whether
+Jev's answers hold up against the same past reviews.
+
 `redline dispositions` looks back at pull requests that were already reviewed
 and says what became of each finding: fixed, declined, left open, stale, or
 never posted. It reads Redline's threads and the threads other review bots and

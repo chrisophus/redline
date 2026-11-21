@@ -254,7 +254,7 @@ func historyFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.jsonl, "jsonl", "", "directory holding reviews.jsonl and misses.jsonl (default: --out)")
 	fs.BoolVar(&o.ask, "ask", false, "put each past review's choices to a model and compare its answers with what happened")
 	fs.IntVar(&o.maxAsks, "max-asks", 500, "with --ask: the most questions to send; 0 is no limit")
-	fs.StringVar(&o.api, "api", "", "with --ask: anthropic or openai")
+	fs.StringVar(&o.api, "api", "", "with --ask: anthropic, openai or jev")
 	fs.StringVar(&o.baseURL, "base-url", "", "with --ask: endpoint to send the questions to, for a proxy")
 	fs.StringVar(&o.apiUser, "api-user", "", "with --ask and --api openai: caller name for a proxy that wants one beside the key")
 	fs.StringVar(&o.model, "model", "", "with --ask: the model that answers")
@@ -777,8 +777,13 @@ happened:
   and how many were on a file the review filed a finding on.
 
 A question is a few hundred tokens for a lookup and up to about twelve
-thousand for a split. The key is read from ANTHROPIC_API_KEY, or
-OPENAI_API_KEY with --api openai.
+thousand for a split. The key is read from ANTHROPIC_API_KEY, from
+OPENAI_API_KEY with --api openai, or from TYPESAFE_API_KEY with --api jev.
+
+--api jev asks TypeSafe's Jev, a model that answers a yes/no question with a
+probability and writes no text. Each question goes as one request, and the
+report adds a table of what stopping a lookup only above a given probability
+would have skipped.
 
 flags:
   --out DIR         the directory holding the sessions and ledgers (default
@@ -791,14 +796,15 @@ flags:
                     answers with what happened
   --max-asks N      with --ask: the most questions to send (default 500; 0 is
                     no limit). Split questions are sent before lookup ones.
-  --api NAME        with --ask: anthropic (default) or openai. openai is any
-                    endpoint that speaks chat completions
+  --api NAME        with --ask: anthropic (default), openai or jev. openai
+                    is any endpoint that speaks chat completions
   --base-url URL    with --ask: endpoint to send the questions to, for a
                     proxy (default: the vendor's own, or OPENAI_BASE_URL)
   --api-user NAME   with --ask and --api openai: name the caller to a proxy
                     that wants one beside the key
   --model ID        with --ask: the model that answers (default
-                    claude-sonnet-5, or gpt-5 with --api openai)
+                    claude-sonnet-5, gpt-5 with --api openai, or jev-latest
+                    with --api jev)
 `
 
 const replyHelp = `redline reply — record an agent's reply to a comment sent from the report
