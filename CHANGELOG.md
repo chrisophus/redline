@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`redline history` compares every saved review.** It reads the sessions,
+  postmortem traces and cost ledger under `.redline`, kept heads included, and
+  calls no model. The report groups reviews by the size of the change, lists
+  each review that ran into a size, token, turn or cost limit, sets reviews
+  judged in one call beside split ones, and counts lookups that came back empty
+  or repeated an earlier one. `--format json` prints one record per review.
+- **`redline history --ask` replays a review's choices against a model.** For
+  each saved review it asks whether the change should have been split, and for
+  each lookup whether it was worth making, with only what was known at the
+  time. The report compares the answers with what happened. `--api`, `--model`
+  and `--base-url` choose the model, and `--max-asks` caps the questions.
+  `--api jev` asks TypeSafe's Jev over its own endpoint and reports what
+  stopping a lookup only above a given probability would have skipped.
+
 ### Fixed
 - **A review is now shown the findings an earlier review wrote into its
   summary.** `post` puts an info finding, a low-confidence one and one whose

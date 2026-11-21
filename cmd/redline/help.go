@@ -46,6 +46,8 @@ var commands = []command{
 		flags: dispositionsFlags, help: dispositionsHelp, run: cmdDispositions},
 	{name: "miss", summary: "record a defect a review should have caught",
 		flags: missFlags, help: missHelp, run: cmdMiss},
+	{name: "history", summary: "compare every saved review: size, cost, limits\n              hit and what the lookups found",
+		flags: historyFlags, help: historyHelp, run: cmdHistory},
 }
 
 func commandNamed(name string) (command, bool) {
@@ -244,6 +246,18 @@ func learningsFlags(fs *flag.FlagSet, o *opts) {
 	prFlag(fs, o)
 	headFlag(fs, o)
 	fs.StringVar(&o.jsonl, "jsonl", "", "directory holding misses.jsonl (default: --out)")
+}
+
+func historyFlags(fs *flag.FlagSet, o *opts) {
+	rootFlag(fs, o)
+	fs.StringVar(&o.format, "format", "report", "report|json")
+	fs.StringVar(&o.jsonl, "jsonl", "", "directory holding reviews.jsonl and misses.jsonl (default: --out)")
+	fs.BoolVar(&o.ask, "ask", false, "put each past review's choices to a model and compare its answers with what happened")
+	fs.IntVar(&o.maxAsks, "max-asks", 500, "with --ask: the most questions to send; 0 is no limit")
+	fs.StringVar(&o.api, "api", "", "with --ask: anthropic, openai or jev")
+	fs.StringVar(&o.baseURL, "base-url", "", "with --ask: endpoint to send the questions to, for a proxy")
+	fs.StringVar(&o.apiUser, "api-user", "", "with --ask and --api openai: caller name for a proxy that wants one beside the key")
+	fs.StringVar(&o.model, "model", "", "with --ask: the model that answers")
 }
 
 func missFlags(fs *flag.FlagSet, o *opts) {
@@ -715,6 +729,82 @@ flags:
                     is searched.
   --format FMT      report|json (default report); json is the whole trace as
                     it was written
+`
+
+const historyHelp = `redline history - compare every saved review
+
+usage:
+  redline history [flags]
+
+Reads every review saved under .redline and calls no model. Each review is
+joined from three files: the saved session (how big the change was), the
+postmortem trace (turns, lookups, findings) and the cost ledger (how the
+change was split, what size the prompt was, what a limit cut).
+
+It is there to answer three questions about past reviews before changing how
+a review decides them:
+
+  Was the change too big for the way it was reviewed? Reviews are grouped by
+  size, and every review that ran into a size, token, turn or cost limit is
+  listed with the limit.
+
+  Did splitting the change help? Reviews judged in one call are set beside
+  the ones that were split.
+
+  Did the lookups pay for themselves? Lookups that came back empty or
+  repeated an earlier one are counted against the ones that named a file the
+  review filed a finding on.
+
+The comparisons are between different changes, so a difference between two
+groups can come from the changes and not from how they were reviewed.
+
+Kept heads are read too, so a pull request reviewed at three commits is three
+reviews. A review needs its postmortem.json to be counted.
+
+With --ask it also calls a model, which is the only thing here that costs
+money. Two of a review's choices are put to the model for every past review,
+with only what was known at the time, and its answers are set against what
+happened:
+
+  One call or a split. The model gets the file list and the start of each
+  file's diff and answers single or split. The report shows how many of the
+  reviews it would have split ran into a limit or had a miss recorded, and
+  how many reviews that were split it would have sent in one call.
+
+  Each lookup. The model gets the lookups made before it, with how much each
+  returned, and answers look or stop. The report shows how many of the
+  lookups it would have stopped came back empty or repeated an earlier one,
+  and how many were on a file the review filed a finding on.
+
+A question is a few hundred tokens for a lookup and up to about twelve
+thousand for a split. The key is read from ANTHROPIC_API_KEY, from
+OPENAI_API_KEY with --api openai, or from TYPESAFE_API_KEY with --api jev.
+
+--api jev asks TypeSafe's Jev, a model that answers a yes/no question with a
+probability and writes no text. Each question goes as one request, and the
+report adds a table of what stopping a lookup only above a given probability
+would have skipped.
+
+flags:
+  --out DIR         the directory holding the sessions and ledgers (default
+                    .redline)
+  --format FMT      report|json (default report); json is one record per
+                    review, for a script to read
+  --jsonl DIR       directory holding reviews.jsonl and misses.jsonl
+                    (default: --out)
+  --ask             put each past review's choices to a model and compare its
+                    answers with what happened
+  --max-asks N      with --ask: the most questions to send (default 500; 0 is
+                    no limit). Split questions are sent before lookup ones.
+  --api NAME        with --ask: anthropic (default), openai or jev. openai
+                    is any endpoint that speaks chat completions
+  --base-url URL    with --ask: endpoint to send the questions to, for a
+                    proxy (default: the vendor's own, or OPENAI_BASE_URL)
+  --api-user NAME   with --ask and --api openai: name the caller to a proxy
+                    that wants one beside the key
+  --model ID        with --ask: the model that answers (default
+                    claude-sonnet-5, gpt-5 with --api openai, or jev-latest
+                    with --api jev)
 `
 
 const replyHelp = `redline reply — record an agent's reply to a comment sent from the report

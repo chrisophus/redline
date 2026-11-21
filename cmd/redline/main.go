@@ -96,6 +96,9 @@ type opts struct {
 	missLine       int
 	missSummary    string
 	missFixPR      int
+	// history's --ask and --max-asks.
+	ask     bool
+	maxAsks int
 }
 
 func runMain(args []string) error {
