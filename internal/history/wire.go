@@ -14,6 +14,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
+	"github.com/chrisophus/redline/internal/jev"
 	"github.com/chrisophus/redline/internal/review"
 )
 
@@ -37,21 +38,13 @@ type Endpoint struct {
 const APIJev = "jev"
 
 // DefaultJevModel is the alias TypeSafe's own examples use.
-const DefaultJevModel = "jev-latest"
-
-// jevBaseURL is TypeSafe's endpoint, and jevPerMtok its price per million
-// input tokens as docs.typesafe.ai/models listed it for Jev 1.13 and 1.14 on
-// 2026-11-21. Output tokens are free.
-const (
-	jevBaseURL = "https://api.typesafe.ai/v1"
-	jevPerMtok = 0.042
-)
+const DefaultJevModel = jev.DefaultModel
 
 // askCost prices what the questions used. Jev is not in review's price
 // table, since nothing reviews with it.
 func askCost(model string, u review.Usage) (float64, bool) {
 	if strings.HasPrefix(strings.ToLower(model), "jev-") {
-		return float64(u.InputTokens) * jevPerMtok / 1e6, true
+		return jev.Usage{InputTokens: u.InputTokens}.CostUSD(), true
 	}
 	return u.Cost(model)
 }
@@ -61,15 +54,11 @@ func askCost(model string, u review.Usage) (float64, bool) {
 func NewAsker(e Endpoint) (Asker, error) {
 	switch e.API {
 	case APIJev:
-		if e.APIKey == "" {
-			return nil, errors.New("TYPESAFE_API_KEY is not set")
+		client, err := jev.New(e.BaseURL, e.Model, e.APIKey)
+		if err != nil {
+			return nil, fmt.Errorf("--api jev: %w", err)
 		}
-		base := strings.TrimRight(e.BaseURL, "/")
-		if base == "" {
-			base = jevBaseURL
-		}
-		return &jevAsker{url: base + "/systemone", model: e.Model, token: e.APIKey,
-			client: &http.Client{Timeout: 2 * time.Minute}}, nil
+		return &jevAsker{client: client}, nil
 	case "", review.APIAnthropic:
 		var opts []option.RequestOption
 		if e.APIKey != "" {
@@ -166,15 +155,10 @@ func (o *openAIAsker) Ask(ctx context.Context, q Question) (Answer, error) {
 	return ans, err
 }
 
-// jevAsker asks TypeSafe's System One endpoint. The question goes as one
-// noul, which is its yes/no type, and the answer is the probability of yes.
-// The request and response shapes are the ones docs.typesafe.ai/primitives/noul
-// gives.
+// jevAsker asks TypeSafe's Jev. The question goes as one noul, which is its
+// yes/no type, and the answer is the probability of yes.
 type jevAsker struct {
-	client *http.Client
-	url    string
-	model  string
-	token  string
+	client *jev.Client
 }
 
 // jevQuestionID names the one question in a request. The id is not sent to
@@ -182,32 +166,17 @@ type jevAsker struct {
 const jevQuestionID = "answer"
 
 func (j *jevAsker) Ask(ctx context.Context, q Question) (Answer, error) {
-	var out struct {
-		Answers map[string]struct {
-			Noul *float64 `json:"noul"`
-		} `json:"answers"`
-		Usage struct {
-			InputTokens  int64 `json:"input_tokens"`
-			OutputTokens int64 `json:"output_tokens"`
-		} `json:"usage"`
-	}
-	err := postJSON(ctx, j.client, j.url, j.token, map[string]any{
-		"model": j.model,
-		"state": q.State,
-		"questions": map[string]any{
-			jevQuestionID: map[string]string{"type": "noul", "instructions": q.Ask},
-		},
-	}, &out)
+	got, usage, err := j.client.Ask(ctx, q.State, map[string]jev.Noul{jevQuestionID: {Instructions: q.Ask}})
+	ans := Answer{Usage: review.Usage{InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens}}
 	if err != nil {
-		return Answer{}, err
+		return ans, fmt.Errorf("asking Jev: %w", err)
 	}
-	ans := Answer{Usage: review.Usage{InputTokens: out.Usage.InputTokens, OutputTokens: out.Usage.OutputTokens}}
-	p := out.Answers[jevQuestionID].Noul
-	if p == nil {
+	p, ok := got[jevQuestionID]
+	if !ok {
 		return ans, errors.New("reply carried no answer to the question")
 	}
-	ans.P, ans.HasP, ans.Said = *p, true, q.No
-	if *p >= 0.5 {
+	ans.P, ans.HasP, ans.Said = p, true, q.No
+	if p >= 0.5 {
 		ans.Said = q.Yes
 	}
 	return ans, nil

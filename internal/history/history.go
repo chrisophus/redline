@@ -97,6 +97,9 @@ type Run struct {
 	// Report.Ask has run.
 	Each  []Looked `json:"each,omitempty"`
 	Asked *Asked   `json:"asked,omitempty"`
+	// Replayed is what the repeats pass would have done on this review, nil
+	// until Report.ReplayRepeats has run and for a pull request's first review.
+	Replayed *Replayed `json:"replayed,omitempty"`
 
 	// set is the change, kept for the questions Ask builds from it.
 	set *change.Set
@@ -164,6 +167,9 @@ type Report struct {
 	Notes []string `json:"notes,omitempty"`
 	// Replay is the model run over these reviews, nil until Ask has run.
 	Replay *Replay `json:"replay,omitempty"`
+	// Repeats is the repeats pass replayed over these reviews, nil until
+	// ReplayRepeats has run.
+	Repeats *RepeatTotals `json:"repeats,omitempty"`
 }
 
 // Collect reads every review saved under root. ledgerDir holds reviews.jsonl
@@ -256,7 +262,10 @@ func fromTrace(t *postmortem.Trace) Run {
 	}
 	files := map[string]bool{}
 	for _, f := range t.Findings {
-		if !t.Verified || f.Ruling.Posts() {
+		// A finding nobody ruled on posts, so this also counts a review that
+		// ran no ruling. The repeats pass rules without the checking pass,
+		// which is why Verified is not what is asked here.
+		if f.Ruling.Posts() {
 			r.Kept++
 		}
 		if f.File != "" {

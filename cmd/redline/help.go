@@ -193,6 +193,7 @@ func reviewFlags(fs *flag.FlagSet, o *opts) {
 	fs.BoolVar(&o.noLook, "no-look", false, "the judging pass writes from the material it was sent, looking nothing up")
 	fs.BoolVar(&o.showModifiedTests, "show-modified-tests", false, "send the diffs of existing test files the change modified, so the review can check whether a test was edited to fit new behavior")
 	fs.BoolVar(&o.verify, "verify", false, "check each finding against the repository before posting it")
+	fs.BoolVar(&o.repeats, "repeats", false, "hold back a finding that says an earlier comment on this pull request again; asks TypeSafe's Jev, key in TYPESAFE_API_KEY")
 	fs.BoolVar(&o.noCache, "no-cache", false, "send every call at full input rate")
 	fs.StringVar(&o.cacheTTL, "cache-ttl", "", "how long the cached prefix lives, 5m or 1h")
 	fs.BoolVar(&o.noSynopsis, "no-synopsis", false, "one call writes the walkthrough and the findings together")
@@ -253,6 +254,7 @@ func historyFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.format, "format", "report", "report|json")
 	fs.StringVar(&o.jsonl, "jsonl", "", "directory holding reviews.jsonl and misses.jsonl (default: --out)")
 	fs.BoolVar(&o.ask, "ask", false, "put each past review's choices to a model and compare its answers with what happened")
+	fs.BoolVar(&o.repeats, "repeats", false, "replay review --repeats over every saved review of a pull request already reviewed; asks TypeSafe's Jev")
 	fs.IntVar(&o.maxAsks, "max-asks", 500, "with --ask: the most questions to send; 0 is no limit")
 	fs.StringVar(&o.api, "api", "", "with --ask: anthropic, openai or jev")
 	fs.StringVar(&o.baseURL, "base-url", "", "with --ask: endpoint to send the questions to, for a proxy")
@@ -538,6 +540,19 @@ shape:
                     nine of the ten findings that never reached the reader
                     came back unverifiable from the ruling, six of those on
                     questions the review had certified itself.
+  --repeats         hold back a finding that says an earlier comment on this
+                    pull request again. After the review is written, each
+                    finding is compared with every comment Redline already
+                    left, on a thread or in a review's summary, by asking
+                    TypeSafe's Jev whether the two are about the same code
+                    and describe the same failure. A finding that scores 0.85
+                    or more is ruled already raised and is not posted, unless
+                    the earlier one was answered as fixed: saying that one
+                    again means the fix did not land, so it posts. The key is
+                    read from TYPESAFE_API_KEY. It sends the finding text and
+                    the earlier comments to TypeSafe, and costs well under a
+                    cent a review. Off by default. A failure leaves the
+                    review as written.
   --no-synopsis     one call writes the walkthrough and the findings
                     together. Describing and judging in two calls is the
                     default: they share a prefix, so the second reads what the
@@ -792,6 +807,11 @@ flags:
                     review, for a script to read
   --jsonl DIR       directory holding reviews.jsonl and misses.jsonl
                     (default: --out)
+  --repeats         replay review --repeats over every saved review of a pull
+                    request that had been reviewed before, and report how
+                    many findings said an earlier one again. Asks TypeSafe's
+                    Jev, key in TYPESAFE_API_KEY; about four cents per
+                    hundred findings
   --ask             put each past review's choices to a model and compare its
                     answers with what happened
   --max-asks N      with --ask: the most questions to send (default 500; 0 is

@@ -307,6 +307,9 @@ type Options struct {
 	// ruling. Nil skips stage two: the ruling still runs, over no answers, and
 	// anything that needed one comes back unverifiable rather than confirmed.
 	Answer Answerer
+	// Repeats judges whether a finding says an earlier comment on this pull
+	// request again. Nil skips the pass, and the review posts what it wrote.
+	Repeats RepeatJudge
 	// Look lets the judging pass search and read the tree while it is writing
 	// findings, rather than naming a question for a later pass to answer.
 	//
@@ -822,6 +825,9 @@ type Result struct {
 	// and only one of them looks like it worked.
 	Verified     bool   `json:"verified,omitempty"`
 	VerifyFailed string `json:"verifyFailed,omitempty"`
+	// Repeats is what the pass that looks for repeated findings did, zero
+	// when it did not run.
+	Repeats Repeats `json:"repeats,omitzero"`
 	// RulingOutputTokens is what the verifying pass wrote. Kept out of Usage
 	// so the ledger's output median stays a claim about reviews and not
 	// rulings, and added into CostUSD directly because it was billed.
@@ -1290,8 +1296,14 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	default:
 		out, err = runJudged(ctx, in, opts, res)
 	}
-	if err != nil || !opts.Verify {
+	if err != nil {
 		return out, err
+	}
+	// Before the checking pass, so its lookups are not spent on a finding
+	// that is about to be held back as already said.
+	markRepeats(ctx, in, opts, out)
+	if !opts.Verify {
+		return out, nil
 	}
 	// The checking pass. It never fails the review: everything it can go
 	// wrong on leaves the findings as stage one wrote them and records that

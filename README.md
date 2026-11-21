@@ -202,6 +202,17 @@ report also shows what stopping a lookup only at 0.5, 0.7 or 0.9 would have
 skipped. Run it once with a general model and once with Jev to see whether
 Jev's answers hold up against the same past reviews.
 
+`redline review --repeats` uses Jev inside a review. A second review of one
+pull request often says an earlier finding again in different words, and
+nothing keyed on the wording can catch that. With `--repeats`, each finding is
+compared with every comment Redline already left on the pull request, and one
+that reports the same defect is ruled already raised and not posted. A finding
+whose earlier version was answered as fixed still posts, because a reviewer
+that read the new code and reports the defect again is saying the fix did not
+land. The pass sends the finding text and the earlier comments to TypeSafe, so
+it is off unless asked for. `redline history --repeats` replays it over the
+saved reviews, to see what it would have held before turning it on.
+
 `redline dispositions` looks back at pull requests that were already reviewed
 and says what became of each finding: fixed, declined, left open, stale, or
 never posted. It reads Redline's threads and the threads other review bots and
