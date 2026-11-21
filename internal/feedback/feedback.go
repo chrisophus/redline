@@ -28,7 +28,9 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/chrisophus/redline/internal/post"
@@ -62,6 +64,12 @@ type Thread struct {
 	// list, and the cheapest for a reader to give.
 	Up   int `json:"up,omitempty"`
 	Down int `json:"down,omitempty"`
+	// InBody says the finding was written into a review's summary and never
+	// had a thread of its own, which is where `post` puts an info finding, a
+	// low-confidence one, and one whose line is not in the diff. Nobody can
+	// reply to it or close it there, so Replies, Resolved and Outdated are
+	// always empty for one.
+	InBody bool `json:"inBody,omitempty"`
 }
 
 // Reply is one person's answer to a finding.
@@ -134,6 +142,9 @@ const maxThreads = 100
 const threadQuery = `query($owner:String!, $repo:String!, $number:Int!) {
   repository(owner:$owner, name:$repo) {
     pullRequest(number:$number) {
+      reviews(first:100) {
+        nodes { body }
+      }
       reviewThreads(first:100) {
         nodes {
           isResolved
@@ -158,6 +169,11 @@ type wire struct {
 	Data struct {
 		Repository struct {
 			PullRequest struct {
+				Reviews struct {
+					Nodes []struct {
+						Body string `json:"body"`
+					} `json:"nodes"`
+				} `json:"reviews"`
 				ReviewThreads struct {
 					Nodes []struct {
 						IsResolved bool   `json:"isResolved"`
@@ -185,7 +201,14 @@ type wire struct {
 	} `json:"data"`
 }
 
-// Parse reads the query's response into the threads Redline itself started.
+// Parse reads the query's response into what Redline itself said: the threads
+// it started, then the reviewer findings it wrote into a review's summary.
+//
+// The second half was missing until the saved reviews were laid side by side.
+// On the pull requests reviewed more than once, 19 of the 22 findings that
+// said an earlier finding over again were repeating one that had only ever
+// been in a summary. The next review was never shown those, so it had no way
+// to know.
 //
 // A thread whose first comment carries no Redline marker is somebody else's
 // conversation. Carrying those would put a human reviewer's discussion into a
@@ -237,6 +260,18 @@ func Parse(raw []byte) ([]Thread, error) {
 		}
 		out = append(out, t)
 	}
+	said := map[string]bool{}
+	for _, t := range out {
+		said[t.Fingerprint] = true
+	}
+	for _, r := range w.Data.Repository.PullRequest.Reviews.Nodes {
+		for _, t := range inBody(r.Body) {
+			if !said[t.Fingerprint] {
+				said[t.Fingerprint] = true
+				out = append(out, t)
+			}
+		}
+	}
 	// Stable order, so a session written twice from the same pull request is
 	// the same session and a fixture built from one replays.
 	sort.SliceStable(out, func(i, j int) bool {
@@ -249,4 +284,45 @@ func Parse(raw []byte) ([]Thread, error) {
 		return out[i].Fingerprint < out[j].Fingerprint
 	})
 	return out, nil
+}
+
+// agentRule is the rule a reviewer's own finding is fingerprinted under. A
+// summary also lists what the panes measured, and those are measured again on
+// every run, so only the reviewer's are carried.
+const agentRule = "agent-comment"
+
+// bodyWhereRE matches the location `post` writes after a finding it could not
+// put on a line, and captures the line number.
+var bodyWhereRE = regexp.MustCompile(`\s*_\(\S+:(\d+) — [^)]*\)_\s*$`)
+
+// bodyLabelRE matches the "- **Info · agent** — " a summary finding opens with.
+var bodyLabelRE = regexp.MustCompile(`^-\s*\*\*[^*]*\*\*\s*—\s*`)
+
+// inBody reads the reviewer findings a review summary carries. Each is one
+// list line ending in the hidden marker `post` wrote, and the marker is what
+// makes a line one of them: nothing else in a summary is read.
+func inBody(body string) []Thread {
+	var out []Thread
+	for _, line := range strings.Split(body, "\n") {
+		fp, ok := post.FindingFingerprint(line)
+		if !ok {
+			continue
+		}
+		parts := strings.SplitN(fp, "\x00", 3)
+		if len(parts) != 3 || parts[1] != agentRule {
+			continue
+		}
+		text := post.StripMarkers(line)
+		t := Thread{Fingerprint: fp, File: parts[0], InBody: true}
+		if m := bodyWhereRE.FindStringSubmatch(text); m != nil {
+			t.Line, _ = strconv.Atoi(m[1])
+			text = strings.TrimSpace(text[:len(text)-len(m[0])])
+		}
+		t.Said = strings.TrimSpace(bodyLabelRE.ReplaceAllString(text, ""))
+		if t.Said == "" {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
 }
