@@ -586,6 +586,9 @@ func (in Input) heardSection() string {
 func outcomeOf(t feedback.Thread) string {
 	var parts []string
 	switch {
+	case t.InBody:
+		// A summary finding has no thread, so silence about it means nothing.
+		return "written into an earlier review's summary, where nobody can reply to it or close it"
 	case t.Resolved && len(t.Replies) > 0:
 		parts = append(parts, "answered and the thread closed")
 	case t.Resolved:
