@@ -106,6 +106,7 @@ func TestClaimedFixed(t *testing.T) {
 		{"in a summary", feedback.Thread{InBody: true}, false},
 		{"nobody answered", feedback.Thread{}, false},
 		{"closed without a word", feedback.Thread{Resolved: true}, true},
+		{"unanswered, and its lines have changed", feedback.Thread{Outdated: true}, true},
 		{"answered as fixed", feedback.Thread{Resolved: true, Replies: reply("Addressed in abc1234.")}, true},
 		{"turned down", feedback.Thread{Replies: reply("**Not fixing (intentional).** It mirrors staging.")}, false},
 		{"answered some other way", feedback.Thread{Replies: reply("Good catch.")}, true},

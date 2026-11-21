@@ -201,6 +201,10 @@ func (c *Client) post(ctx context.Context, body []byte, out any) error {
 		if status != http.StatusTooManyRequests && status != 529 {
 			return last
 		}
+		if attempt == attempts-1 {
+			// Nothing is sent after this, so there is nothing to wait for.
+			break
+		}
 		pause := c.pause(attempt, retryAfter)
 		select {
 		case <-ctx.Done():

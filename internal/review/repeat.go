@@ -169,7 +169,8 @@ var declinedRE = regexp.MustCompile(`(?i)^\s*(\*\*)?\s*not fixing`)
 
 // claimedFixed reports whether somebody answered the earlier comment in a way
 // that says it was dealt with. A summary finding and an unanswered thread were
-// not. A thread whose last reply turns the finding down was not either: the
+// not, unless the thread was closed or its lines have changed since. A thread
+// whose last reply turns the finding down was not either: the
 // author's position is on the record and saying the finding again does not
 // change it. Anything else that was answered or closed counts as a claim that
 // it was fixed, because that is the case where holding the finding back could
@@ -179,7 +180,9 @@ func claimedFixed(t feedback.Thread) bool {
 		return false
 	}
 	if len(t.Replies) == 0 {
-		return t.Resolved
+		// Closed without a word, or the lines it sat on have changed since:
+		// either may be the author's fix, made without saying so.
+		return t.Resolved || t.Outdated
 	}
 	return !declinedRE.MatchString(t.Replies[len(t.Replies)-1].Body)
 }

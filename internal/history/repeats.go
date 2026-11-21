@@ -83,40 +83,49 @@ func (rep *Report) ReplayRepeats(ctx context.Context, judge review.RepeatJudge, 
 	tot := &RepeatTotals{}
 	rep.Repeats = tot
 	for n, l := range later {
-		r := &rep.Runs[l[0]]
-		trace, err := postmortem.Load(r.Dir)
-		if err != nil || len(trace.Findings) == 0 {
-			continue
-		}
-		var before []postmortem.Finding
-		for _, i := range bySession[r.Session][:l[1]] {
-			if t, err := postmortem.Load(rep.Runs[i].Dir); err == nil {
-				before = append(before, t.Findings...)
-			}
-		}
-		prior, unshown := priorFor(r.Dir, before)
-		if len(prior) == 0 {
-			continue
-		}
-		rev := findings.Review{}
-		text := map[string]string{}
-		for i, f := range trace.Findings {
-			rev.Comments = append(rev.Comments, findings.ReviewComment{
-				File: f.File, Line: f.Line, Severity: f.Severity, Confidence: f.Confidence, Body: f.Body})
-			text[fmt.Sprintf("c%d", i+1)] = f.Body
-		}
-		_, did := review.MarkRepeats(ctx, judge, rev, prior)
-		r.Replayed = &Replayed{Earlier: len(prior), Unshown: unshown, Repeats: did, Findings: text}
-		tot.Reviews++
-		tot.Findings += did.Checked
-		tot.Held += did.Held
-		tot.FollowUps += did.FollowUps
-		if did.Failed != "" && tot.Failed == "" {
-			tot.Failed = did.Failed
-		}
+		rep.replayOne(ctx, judge, l[0], bySession[rep.Runs[l[0]].Session][:l[1]], tot)
+		// After every review, replayed or not, so the last call always says
+		// the replay is done.
 		if progress != nil {
 			progress(n+1, len(later))
 		}
+	}
+}
+
+// replayOne runs the pass over one later review, given the runs of the same
+// pull request that came before it. A review with no findings or nothing
+// earlier to compare with is left alone.
+func (rep *Report) replayOne(ctx context.Context, judge review.RepeatJudge, at int, earlier []int, tot *RepeatTotals) {
+	r := &rep.Runs[at]
+	trace, err := postmortem.Load(r.Dir)
+	if err != nil || len(trace.Findings) == 0 {
+		return
+	}
+	var before []postmortem.Finding
+	for _, i := range earlier {
+		if t, err := postmortem.Load(rep.Runs[i].Dir); err == nil {
+			before = append(before, t.Findings...)
+		}
+	}
+	prior, unshown := priorFor(r.Dir, before)
+	if len(prior) == 0 {
+		return
+	}
+	rev := findings.Review{}
+	text := map[string]string{}
+	for i, f := range trace.Findings {
+		rev.Comments = append(rev.Comments, findings.ReviewComment{
+			File: f.File, Line: f.Line, Severity: f.Severity, Confidence: f.Confidence, Body: f.Body})
+		text[fmt.Sprintf("c%d", i+1)] = f.Body
+	}
+	_, did := review.MarkRepeats(ctx, judge, rev, prior)
+	r.Replayed = &Replayed{Earlier: len(prior), Unshown: unshown, Repeats: did, Findings: text}
+	tot.Reviews++
+	tot.Findings += did.Checked
+	tot.Held += did.Held
+	tot.FollowUps += did.FollowUps
+	if did.Failed != "" && tot.Failed == "" {
+		tot.Failed = did.Failed
 	}
 }
 
@@ -184,5 +193,5 @@ func (rep *Report) repeats(b *strings.Builder) {
 	if tot.Failed != "" {
 		fmt.Fprintf(b, "  The replay stopped early on at least one review: %s\n", tot.Failed)
 	}
-	fmt.Fprintf(b, "  A finding is held at a probability of %.1f or more that it is the same defect.\n", review.RepeatBar)
+	fmt.Fprintf(b, "  A finding is held at a score of %.2f or more that it says an earlier one again.\n", review.RepeatBar)
 }

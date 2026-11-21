@@ -1281,7 +1281,13 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 				"same question - one spends the budget on breadth, the other on turns; pick one")
 		}
 		res.Turns = 0
-		return runExplore(ctx, in, opts, res)
+		out, err := runExplore(ctx, in, opts, res)
+		if err == nil {
+			// The repeats pass does not depend on how the review was
+			// written, so an explore review gets it too.
+			markRepeats(ctx, in, opts, out)
+		}
+		return out, err
 	}
 	// One path for every shape: each decides how the review is written, and
 	// the checking pass behind them is the same.

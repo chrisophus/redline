@@ -105,6 +105,7 @@ func TestReplayRepeats(t *testing.T) {
 		"2 of 4 (50%) said again something nobody had answered as fixed",
 		"1 of 4 (25%) said again something answered as fixed",
 		"2 of 2 (100%) of the held findings repeat one that was only in a review's summary",
+		"held at a score of 0.85 or more",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the report is missing %q:\n%s", want, text)
