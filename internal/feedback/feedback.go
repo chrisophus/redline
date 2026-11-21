@@ -27,8 +27,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/chrisophus/redline/internal/post"
@@ -62,6 +65,12 @@ type Thread struct {
 	// list, and the cheapest for a reader to give.
 	Up   int `json:"up,omitempty"`
 	Down int `json:"down,omitempty"`
+	// InBody says the finding was written into a review's summary and never
+	// had a thread of its own, which is where `post` puts an info finding, a
+	// low-confidence one, and one whose line is not in the diff. Nobody can
+	// reply to it or close it there, so Replies, Resolved and Outdated are
+	// always empty for one.
+	InBody bool `json:"inBody,omitempty"`
 }
 
 // Reply is one person's answer to a finding.
@@ -132,8 +141,12 @@ const maxThreads = 100
 // state, its comments in order, and their reactions. The REST equivalent is
 // three calls and cannot answer whether a thread is resolved at all.
 const threadQuery = `query($owner:String!, $repo:String!, $number:Int!) {
+  viewer { login }
   repository(owner:$owner, name:$repo) {
     pullRequest(number:$number) {
+      reviews(last:100) {
+        nodes { body author { login } }
+      }
       reviewThreads(first:100) {
         nodes {
           isResolved
@@ -156,8 +169,19 @@ const threadQuery = `query($owner:String!, $repo:String!, $number:Int!) {
 // wire is the shape the query returns.
 type wire struct {
 	Data struct {
+		Viewer struct {
+			Login string `json:"login"`
+		} `json:"viewer"`
 		Repository struct {
 			PullRequest struct {
+				Reviews struct {
+					Nodes []struct {
+						Body   string `json:"body"`
+						Author struct {
+							Login string `json:"login"`
+						} `json:"author"`
+					} `json:"nodes"`
+				} `json:"reviews"`
 				ReviewThreads struct {
 					Nodes []struct {
 						IsResolved bool   `json:"isResolved"`
@@ -185,7 +209,14 @@ type wire struct {
 	} `json:"data"`
 }
 
-// Parse reads the query's response into the threads Redline itself started.
+// Parse reads the query's response into what Redline itself said: the threads
+// it started, then the reviewer findings it wrote into a review's summary.
+//
+// The second half was missing until the saved reviews were laid side by side.
+// On the pull requests reviewed more than once, 19 of the 22 findings that
+// said an earlier finding over again were repeating one that had only ever
+// been in a summary. The next review was never shown those, so it had no way
+// to know.
 //
 // A thread whose first comment carries no Redline marker is somebody else's
 // conversation. Carrying those would put a human reviewer's discussion into a
@@ -237,6 +268,29 @@ func Parse(raw []byte) ([]Thread, error) {
 		}
 		out = append(out, t)
 	}
+	said := map[string]bool{}
+	for _, t := range out {
+		said[t.Fingerprint] = true
+	}
+	// A summary is read only when the login Redline posts as wrote it. The
+	// marker that makes a line a finding is a hidden comment anyone could
+	// paste into a review of their own, and a pasted one would be carried as
+	// something Redline had said. `post` reads its own markers back under the
+	// same rule. The query asks for the newest hundred reviews, since the
+	// newest summaries hold the findings a new review is most likely to say
+	// again.
+	login := postingLogin(w.Data.Viewer.Login)
+	for _, r := range w.Data.Repository.PullRequest.Reviews.Nodes {
+		if login == "" || !sameLogin(r.Author.Login, login) {
+			continue
+		}
+		for _, t := range inBody(r.Body) {
+			if !said[t.Fingerprint] {
+				said[t.Fingerprint] = true
+				out = append(out, t)
+			}
+		}
+	}
 	// Stable order, so a session written twice from the same pull request is
 	// the same session and a fixture built from one replays.
 	sort.SliceStable(out, func(i, j int) bool {
@@ -249,4 +303,88 @@ func Parse(raw []byte) ([]Thread, error) {
 		return out[i].Fingerprint < out[j].Fingerprint
 	})
 	return out, nil
+}
+
+// reviewerRules are the rules a reviewer's own finding is fingerprinted under:
+// a plain comment, and one that connects two other findings. A summary also
+// lists what the panes measured, and those are measured again on every run,
+// so only the reviewer's are carried.
+var reviewerRules = map[string]bool{"agent-comment": true, "correlation": true}
+
+// loginEnv names the login Redline posts as, for a token that cannot say.
+// `post` reads the same variable.
+const loginEnv = "REDLINE_GH_LOGIN"
+
+// postingLogin is the login whose summaries are Redline's own: the one the
+// environment names, and otherwise the one the token answers to.
+func postingLogin(viewer string) string {
+	if login := strings.TrimSpace(os.Getenv(loginEnv)); login != "" {
+		return login
+	}
+	return viewer
+}
+
+// sameLogin compares two GitHub logins. GitHub spells a bot's login with a
+// "[bot]" suffix in some places and without it in others: REST and
+// REDLINE_GH_LOGIN have it, and GraphQL can leave it off an author. Case is
+// ignored too, since GitHub logins are not case-sensitive.
+func sameLogin(a, b string) bool {
+	trim := func(s string) string {
+		return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(s)), "[bot]")
+	}
+	return trim(a) != "" && trim(a) == trim(b)
+}
+
+// bodyWhereRE matches what `post` writes after a finding it could not put on
+// a line: the file and line, or the name of what produced the finding when it
+// had no line. It captures what is inside the brackets.
+var bodyWhereRE = regexp.MustCompile(`\s*_\(([^()]*)\)_\s*$`)
+
+// bodyLineRE reads the line number out of the file-and-line form.
+var bodyLineRE = regexp.MustCompile(`^\S+:(\d+) — `)
+
+// bodyLabelRE matches the "- **Info · agent** — " a summary finding opens with.
+var bodyLabelRE = regexp.MustCompile(`^-\s*\*\*[^*]*\*\*\s*—\s*`)
+
+// inBody reads the reviewer findings a review summary carries. Each starts on
+// a list line with a label and ends on the line carrying the hidden marker
+// `post` wrote. A reviewer's comment can run over several lines, so the two
+// are not always the same line. The marker is what makes an entry a finding:
+// nothing else in a summary is read.
+func inBody(body string) []Thread {
+	var out []Thread
+	lines := strings.Split(body, "\n")
+	start := -1
+	for i, line := range lines {
+		if bodyLabelRE.MatchString(line) {
+			start = i
+		}
+		fp, ok := post.FindingFingerprint(line)
+		if !ok {
+			continue
+		}
+		entry := line
+		if start >= 0 {
+			entry = strings.Join(lines[start:i+1], "\n")
+		}
+		start = -1
+		parts := strings.SplitN(fp, "\x00", 3)
+		if len(parts) != 3 || !reviewerRules[parts[1]] {
+			continue
+		}
+		text := post.StripMarkers(entry)
+		t := Thread{Fingerprint: fp, File: parts[0], InBody: true}
+		if m := bodyWhereRE.FindStringSubmatch(text); m != nil {
+			if n := bodyLineRE.FindStringSubmatch(m[1]); n != nil {
+				t.Line, _ = strconv.Atoi(n[1])
+			}
+			text = strings.TrimSpace(text[:len(text)-len(m[0])])
+		}
+		t.Said = strings.TrimSpace(bodyLabelRE.ReplaceAllString(text, ""))
+		if t.Said == "" {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
 }
