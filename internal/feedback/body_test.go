@@ -128,3 +128,20 @@ func TestASummaryFromAnotherAuthorIsNotRead(t *testing.T) {
 		t.Errorf("the login the environment names should be the one read: %+v", got)
 	}
 }
+
+// A bot's login has a "[bot]" suffix in REST and may not in GraphQL, so a
+// setup that posts as an app must still find its own summaries.
+func TestABotLoginMatchesWithOrWithoutItsSuffix(t *testing.T) {
+	for _, c := range []struct{ a, b string }{
+		{"review-bot[bot]", "review-bot"},
+		{"review-bot", "review-bot[bot]"},
+		{"Review-Bot", "review-bot"},
+	} {
+		if !sameLogin(c.a, c.b) {
+			t.Errorf("%q and %q are the same login", c.a, c.b)
+		}
+	}
+	if sameLogin("review-bot", "other-bot[bot]") || sameLogin("", "") || sameLogin("[bot]", "") {
+		t.Error("different or empty logins matched")
+	}
+}

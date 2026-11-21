@@ -281,7 +281,7 @@ func Parse(raw []byte) ([]Thread, error) {
 	// again.
 	login := postingLogin(w.Data.Viewer.Login)
 	for _, r := range w.Data.Repository.PullRequest.Reviews.Nodes {
-		if login == "" || r.Author.Login != login {
+		if login == "" || !sameLogin(r.Author.Login, login) {
 			continue
 		}
 		for _, t := range inBody(r.Body) {
@@ -322,6 +322,17 @@ func postingLogin(viewer string) string {
 		return login
 	}
 	return viewer
+}
+
+// sameLogin compares two GitHub logins. GitHub spells a bot's login with a
+// "[bot]" suffix in some places and without it in others: REST and
+// REDLINE_GH_LOGIN have it, and GraphQL can leave it off an author. Case is
+// ignored too, since GitHub logins are not case-sensitive.
+func sameLogin(a, b string) bool {
+	trim := func(s string) string {
+		return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(s)), "[bot]")
+	}
+	return trim(a) != "" && trim(a) == trim(b)
 }
 
 // bodyWhereRE matches what `post` writes after a finding it could not put on
