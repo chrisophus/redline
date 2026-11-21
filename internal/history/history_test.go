@@ -516,6 +516,8 @@ func TestNamesFileNeedsTheWholePath(t *testing.T) {
 		{`{"path":"b/y.go.orig"}`, "b/y.go", false},
 		{`{"pattern":"Reset","glob":"b/y.go"}`, "b/y.go", true},
 		{`{"path":"data.go"} then a.go:12`, "a.go", true},
+		{`{"path":"./b/y.go"}`, "b/y.go", true},
+		{`{"path":"../b/y.go"}`, "b/y.go", false},
 		{`{"path":"a.go"}`, "", false},
 	}
 	for _, c := range cases {
@@ -533,5 +535,25 @@ func TestCutEndsOnAWholeCharacter(t *testing.T) {
 		if got != want || !utf8.ValidString(got) {
 			t.Errorf("cut(%q, %d) = %q, want %q", s, n, got, want)
 		}
+	}
+}
+
+// Two reviews on one model that finish within the window of each other each
+// get the row nearest to them, whichever is read first.
+func TestMatchLedgerTakesTheClosestPairsFirst(t *testing.T) {
+	at := func(sec int) time.Time { return day.Add(time.Duration(sec) * time.Second) }
+	ledger := []review.Entry{{At: at(11), Model: model}, {At: at(1), Model: model}, {At: at(5), Model: "other"}}
+	// The first trace is 9s from row 0 and 1s from row 1. The second is 1s
+	// from row 0 and 11s from row 1.
+	traces := []*postmortem.Trace{{Wrote: at(2), Model: model}, {Wrote: at(12), Model: model},
+		{Wrote: at(500), Model: model}}
+	got := matchLedger(ledger, traces)
+	if len(got) != 2 || got[0] != 1 || got[1] != 0 {
+		t.Fatalf("got %v", got)
+	}
+	// Read the other way round, the pairing is the same.
+	got = matchLedger(ledger, []*postmortem.Trace{traces[1], traces[0]})
+	if got[0] != 0 || got[1] != 1 {
+		t.Fatalf("reversed: got %v", got)
 	}
 }
