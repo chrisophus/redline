@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/chrisophus/redline/internal/review"
 )
@@ -214,10 +215,10 @@ func shapeQuestion(r Run) Question {
 		}
 		d := f.Diff
 		if len(d) > diffPerFile {
-			d = d[:diffPerFile] + "\n(cut)"
+			d = cut(d, diffPerFile) + "\n(cut)"
 		}
 		if len(d) > left {
-			d = d[:left] + "\n(cut)"
+			d = cut(d, left) + "\n(cut)"
 		}
 		left -= len(d)
 		fmt.Fprintf(&b, "\n--- %s\n%s\n", f.Path, d)
@@ -299,6 +300,19 @@ func choose(reply string, choices []string) (string, error) {
 		return "", fmt.Errorf("%w: %q", errNoChoice, truncate(reply, 80))
 	}
 	return found[0], nil
+}
+
+// cut returns at most the first n bytes of s, ending on a whole character. A
+// cut inside a multi-byte character leaves bytes that are not text, which the
+// JSON encoder replaces and some endpoints refuse.
+func cut(s string, n int) string {
+	if n >= len(s) {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 func truncate(s string, n int) string {

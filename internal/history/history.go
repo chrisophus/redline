@@ -289,7 +289,7 @@ func fromTrace(t *postmortem.Trace) Run {
 		e.Repeated = asked[k]
 		asked[k] = true
 		for f := range files {
-			if strings.Contains(l.Input, f) {
+			if namesFile(l.Input, f) {
 				e.OnFinding = true
 				break
 			}
@@ -328,6 +328,33 @@ func fromTrace(t *postmortem.Trace) Run {
 		r.Limits = append(r.Limits, "the lookups behind --verify stopped at their cost cap")
 	}
 	return r
+}
+
+// namesFile reports whether a lookup's input names the file. The path has to
+// stand as a whole path: a finding on a.go is not named by a lookup of
+// data.go, and one on x/a.go is not named by a lookup of vendor/x/a.go.
+func namesFile(input, file string) bool {
+	if file == "" {
+		return false
+	}
+	for from := 0; ; {
+		i := strings.Index(input[from:], file)
+		if i < 0 {
+			return false
+		}
+		start, end := from+i, from+i+len(file)
+		if (start == 0 || !inPath(input[start-1])) && (end == len(input) || !inPath(input[end])) {
+			return true
+		}
+		from = start + 1
+	}
+}
+
+// inPath reports whether a byte can be part of a file path, so that a path
+// with one on either side of it is a piece of a longer path.
+func inPath(c byte) bool {
+	return c == '/' || c == '.' || c == '_' || c == '-' ||
+		(c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 // normalize makes two spellings of one lookup compare equal. The input is the
