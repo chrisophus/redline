@@ -179,7 +179,7 @@ func Collect(root, ledgerDir string) (*Report, error) {
 	if err != nil {
 		rep.Notes = append(rep.Notes, "misses not read: "+err.Error())
 	}
-	used := make([]bool, len(ledger))
+	var traces []*postmortem.Trace
 	seen := map[string]bool{}
 	for _, c := range candidates(root) {
 		t, err := postmortem.Load(c.dir)
@@ -206,16 +206,16 @@ func Collect(root, ledgerDir string) (*Report, error) {
 				}
 			}
 		}
-		if i := matchLedger(ledger, used, t); i >= 0 {
-			used[i] = true
-			fromLedger(&r, ledger[i])
-		}
 		for _, m := range misses {
 			if len(m.Head) >= 7 && r.Head != "" && strings.HasPrefix(r.Head, m.Head) {
 				r.Misses++
 			}
 		}
 		rep.Runs = append(rep.Runs, r)
+		traces = append(traces, t)
+	}
+	for run, row := range matchLedger(ledger, traces) {
+		fromLedger(&rep.Runs[run], ledger[row])
 	}
 	sort.SliceStable(rep.Runs, func(i, j int) bool { return rep.Runs[i].When.Before(rep.Runs[j].When) })
 	return rep, nil
@@ -334,11 +334,21 @@ func namesFile(input, file string) bool {
 			return false
 		}
 		start, end := from+i, from+i+len(file)
-		if (start == 0 || !inPath(input[start-1])) && (end == len(input) || !inPath(input[end])) {
+		if (start == 0 || !inPath(input[start-1]) || fromHere(input[:start])) && (end == len(input) || !inPath(input[end])) {
 			return true
 		}
 		from = start + 1
 	}
+}
+
+// fromHere reports whether what comes before a path is a "./", which names
+// the same file as the path without it.
+func fromHere(before string) bool {
+	if !strings.HasSuffix(before, "./") {
+		return false
+	}
+	rest := before[:len(before)-2]
+	return rest == "" || !inPath(rest[len(rest)-1])
 }
 
 // inPath reports whether a byte can be part of a file path, so that a path
@@ -375,24 +385,46 @@ func sizeOf(r *Run, set *change.Set) {
 	r.Dirs = len(dirs)
 }
 
-// matchLedger finds the cost row written by the same review as the trace: the
-// nearest unused row for the same model inside the window. The ledger does
-// not name the change a row is about, so the time is all there is to join on.
-func matchLedger(ledger []review.Entry, used []bool, t *postmortem.Trace) int {
-	best, bestGap := -1, ledgerWindow+1
-	for i, e := range ledger {
-		if used[i] || e.Model != t.Model {
-			continue
-		}
-		gap := t.Wrote.Sub(e.At)
-		if gap < 0 {
-			gap = -gap
-		}
-		if gap < bestGap {
-			best, bestGap = i, gap
+// matchLedger pairs each trace with the cost row written by the same review,
+// and returns the row's index for each trace that has one. The ledger does
+// not name the change a row is about, so a row belongs to a trace when it is
+// for the same model and was written inside the window.
+//
+// The pairs are taken closest first across every trace and row. Taking the
+// nearest free row one trace at a time got it wrong when two reviews on one
+// model finished within the window of each other: the first trace visited
+// could take the row that was nearer to the other.
+func matchLedger(ledger []review.Entry, traces []*postmortem.Trace) map[int]int {
+	type pair struct {
+		trace, row int
+		gap        time.Duration
+	}
+	var pairs []pair
+	for ti, t := range traces {
+		for ri, e := range ledger {
+			if e.Model != t.Model {
+				continue
+			}
+			gap := t.Wrote.Sub(e.At)
+			if gap < 0 {
+				gap = -gap
+			}
+			if gap <= ledgerWindow {
+				pairs = append(pairs, pair{ti, ri, gap})
+			}
 		}
 	}
-	return best
+	sort.SliceStable(pairs, func(i, j int) bool { return pairs[i].gap < pairs[j].gap })
+	out := map[int]int{}
+	taken := map[int]bool{}
+	for _, p := range pairs {
+		if _, done := out[p.trace]; done || taken[p.row] {
+			continue
+		}
+		out[p.trace] = p.row
+		taken[p.row] = true
+	}
+	return out
 }
 
 func fromLedger(r *Run, e review.Entry) {
