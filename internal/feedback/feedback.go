@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"sort"
@@ -140,10 +141,11 @@ const maxThreads = 100
 // state, its comments in order, and their reactions. The REST equivalent is
 // three calls and cannot answer whether a thread is resolved at all.
 const threadQuery = `query($owner:String!, $repo:String!, $number:Int!) {
+  viewer { login }
   repository(owner:$owner, name:$repo) {
     pullRequest(number:$number) {
-      reviews(first:100) {
-        nodes { body }
+      reviews(last:100) {
+        nodes { body author { login } }
       }
       reviewThreads(first:100) {
         nodes {
@@ -167,11 +169,17 @@ const threadQuery = `query($owner:String!, $repo:String!, $number:Int!) {
 // wire is the shape the query returns.
 type wire struct {
 	Data struct {
+		Viewer struct {
+			Login string `json:"login"`
+		} `json:"viewer"`
 		Repository struct {
 			PullRequest struct {
 				Reviews struct {
 					Nodes []struct {
-						Body string `json:"body"`
+						Body   string `json:"body"`
+						Author struct {
+							Login string `json:"login"`
+						} `json:"author"`
 					} `json:"nodes"`
 				} `json:"reviews"`
 				ReviewThreads struct {
@@ -264,7 +272,18 @@ func Parse(raw []byte) ([]Thread, error) {
 	for _, t := range out {
 		said[t.Fingerprint] = true
 	}
+	// A summary is read only when the login Redline posts as wrote it. The
+	// marker that makes a line a finding is a hidden comment anyone could
+	// paste into a review of their own, and a pasted one would be carried as
+	// something Redline had said. `post` reads its own markers back under the
+	// same rule. The query asks for the newest hundred reviews, since the
+	// newest summaries hold the findings a new review is most likely to say
+	// again.
+	login := postingLogin(w.Data.Viewer.Login)
 	for _, r := range w.Data.Repository.PullRequest.Reviews.Nodes {
+		if login == "" || r.Author.Login != login {
+			continue
+		}
 		for _, t := range inBody(r.Body) {
 			if !said[t.Fingerprint] {
 				said[t.Fingerprint] = true
@@ -286,36 +305,68 @@ func Parse(raw []byte) ([]Thread, error) {
 	return out, nil
 }
 
-// agentRule is the rule a reviewer's own finding is fingerprinted under. A
-// summary also lists what the panes measured, and those are measured again on
-// every run, so only the reviewer's are carried.
-const agentRule = "agent-comment"
+// reviewerRules are the rules a reviewer's own finding is fingerprinted under:
+// a plain comment, and one that connects two other findings. A summary also
+// lists what the panes measured, and those are measured again on every run,
+// so only the reviewer's are carried.
+var reviewerRules = map[string]bool{"agent-comment": true, "correlation": true}
 
-// bodyWhereRE matches the location `post` writes after a finding it could not
-// put on a line, and captures the line number.
-var bodyWhereRE = regexp.MustCompile(`\s*_\(\S+:(\d+) — [^)]*\)_\s*$`)
+// loginEnv names the login Redline posts as, for a token that cannot say.
+// `post` reads the same variable.
+const loginEnv = "REDLINE_GH_LOGIN"
+
+// postingLogin is the login whose summaries are Redline's own: the one the
+// environment names, and otherwise the one the token answers to.
+func postingLogin(viewer string) string {
+	if login := strings.TrimSpace(os.Getenv(loginEnv)); login != "" {
+		return login
+	}
+	return viewer
+}
+
+// bodyWhereRE matches what `post` writes after a finding it could not put on
+// a line: the file and line, or the name of what produced the finding when it
+// had no line. It captures what is inside the brackets.
+var bodyWhereRE = regexp.MustCompile(`\s*_\(([^()]*)\)_\s*$`)
+
+// bodyLineRE reads the line number out of the file-and-line form.
+var bodyLineRE = regexp.MustCompile(`^\S+:(\d+) — `)
 
 // bodyLabelRE matches the "- **Info · agent** — " a summary finding opens with.
 var bodyLabelRE = regexp.MustCompile(`^-\s*\*\*[^*]*\*\*\s*—\s*`)
 
-// inBody reads the reviewer findings a review summary carries. Each is one
-// list line ending in the hidden marker `post` wrote, and the marker is what
-// makes a line one of them: nothing else in a summary is read.
+// inBody reads the reviewer findings a review summary carries. Each starts on
+// a list line with a label and ends on the line carrying the hidden marker
+// `post` wrote. A reviewer's comment can run over several lines, so the two
+// are not always the same line. The marker is what makes an entry a finding:
+// nothing else in a summary is read.
 func inBody(body string) []Thread {
 	var out []Thread
-	for _, line := range strings.Split(body, "\n") {
+	lines := strings.Split(body, "\n")
+	start := -1
+	for i, line := range lines {
+		if bodyLabelRE.MatchString(line) {
+			start = i
+		}
 		fp, ok := post.FindingFingerprint(line)
 		if !ok {
 			continue
 		}
+		entry := line
+		if start >= 0 {
+			entry = strings.Join(lines[start:i+1], "\n")
+		}
+		start = -1
 		parts := strings.SplitN(fp, "\x00", 3)
-		if len(parts) != 3 || parts[1] != agentRule {
+		if len(parts) != 3 || !reviewerRules[parts[1]] {
 			continue
 		}
-		text := post.StripMarkers(line)
+		text := post.StripMarkers(entry)
 		t := Thread{Fingerprint: fp, File: parts[0], InBody: true}
 		if m := bodyWhereRE.FindStringSubmatch(text); m != nil {
-			t.Line, _ = strconv.Atoi(m[1])
+			if n := bodyLineRE.FindStringSubmatch(m[1]); n != nil {
+				t.Line, _ = strconv.Atoi(n[1])
+			}
 			text = strings.TrimSpace(text[:len(text)-len(m[0])])
 		}
 		t.Said = strings.TrimSpace(bodyLabelRE.ReplaceAllString(text, ""))
