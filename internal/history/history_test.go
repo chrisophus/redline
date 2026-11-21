@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/findings"
@@ -498,5 +499,38 @@ func TestProbabilitiesGiveAThresholdTable(t *testing.T) {
 	}
 	if strings.Contains(plain.Render(), "probability of stop") {
 		t.Errorf("a model that gave no probabilities got a threshold table")
+	}
+}
+
+// A finding on a.go was counted against a lookup of data.go, because the
+// path was looked for anywhere in the lookup's input.
+func TestNamesFileNeedsTheWholePath(t *testing.T) {
+	cases := []struct {
+		input, file string
+		want        bool
+	}{
+		{`{"path":"b/y.go","start":1}`, "b/y.go", true},
+		{`{"path":"data.go"}`, "a.go", false},
+		{`{"path":"vendor/b/y.go"}`, "b/y.go", false},
+		{`{"path":"b/y.go.orig"}`, "b/y.go", false},
+		{`{"pattern":"Reset","glob":"b/y.go"}`, "b/y.go", true},
+		{`{"path":"data.go"} then a.go:12`, "a.go", true},
+		{`{"path":"a.go"}`, "", false},
+	}
+	for _, c := range cases {
+		if got := namesFile(c.input, c.file); got != c.want {
+			t.Errorf("namesFile(%s, %q) = %v, want %v", c.input, c.file, got, c.want)
+		}
+	}
+}
+
+// A diff is cut by bytes, and the cut must not land inside a character.
+func TestCutEndsOnAWholeCharacter(t *testing.T) {
+	s := "ab" + "\u00e9" + "cd" // the e-acute is two bytes, at 2 and 3
+	for n, want := range map[int]string{0: "", 2: "ab", 3: "ab", 4: "ab\u00e9", 99: s} {
+		got := cut(s, n)
+		if got != want || !utf8.ValidString(got) {
+			t.Errorf("cut(%q, %d) = %q, want %q", s, n, got, want)
+		}
 	}
 }

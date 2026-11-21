@@ -46,8 +46,8 @@ func cmdHistory(o opts) error {
 }
 
 // askHistory puts the past reviews' choices to a model. This is the one part
-// of history that costs money, so it says how many questions it is sending
-// and to what before the first one goes.
+// of history that costs money, so it says which model it is asking and about
+// how many reviews before the first question goes.
 func askHistory(o opts, rep *history.Report) error {
 	e := history.Endpoint{API: o.api, Model: o.model, BaseURL: o.baseURL, APIUser: o.apiUser}
 	switch e.API {
