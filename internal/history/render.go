@@ -143,6 +143,7 @@ func (rep *Report) Render() string {
 	rep.shapes(&b)
 	rep.lookups(&b)
 	rep.scout(&b)
+	rep.replay(&b)
 	rep.notes(&b)
 	return b.String()
 }
@@ -392,4 +393,136 @@ func comma(n int) string {
 		s = s[:i] + "," + s[i:]
 	}
 	return s
+}
+
+// replay is what the model said, set against what happened.
+func (rep *Report) replay(b *strings.Builder) {
+	rp := rep.Replay
+	if rp == nil {
+		return
+	}
+	fmt.Fprintf(b, "\nWhat %s would have decided\n", rp.Model)
+	cost := "cost unknown, the model is not in the price table"
+	if rp.CostKnown {
+		cost = fmt.Sprintf("$%.4f", rp.CostUSD)
+	}
+	fmt.Fprintf(b, "  %s answered, %s input tokens, %s\n", plural(rp.Asks, "question"), comma(int(rp.Usage.InputTokens)), cost)
+	if rp.Failed > 0 {
+		fmt.Fprintf(b, "  %s got no usable answer. The first: %s\n", plural(rp.Failed, "question"), rp.FirstError)
+	}
+	if rp.Skipped > 0 {
+		fmt.Fprintf(b, "  %s were not asked because of --max-asks\n", plural(rp.Skipped, "question"))
+	}
+	rep.replayShape(b)
+	rep.replayLookups(b)
+}
+
+func (rep *Report) replayShape(b *strings.Builder) {
+	said := map[string][]Run{}
+	for _, r := range rep.Runs {
+		if r.Asked != nil && r.Asked.Shape != "" {
+			said[r.Asked.Shape] = append(said[r.Asked.Shape], r)
+		}
+	}
+	if len(said) == 0 {
+		return
+	}
+	b.WriteString("\n  One call or a split, asked with the file list and the start of each diff\n")
+	w := tabwriter.NewWriter(b, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "    it said\treviews\tran in one call\tran split\thit a limit\tmisses\tmedian lines\tmedian cost")
+	for _, word := range []string{SaidSingle, SaidSplit} {
+		runs := said[word]
+		if len(runs) == 0 {
+			continue
+		}
+		g := groupOf(word, runs)
+		var one, split int
+		for _, r := range runs {
+			if r.InLedger && r.Split() {
+				split++
+			} else if r.InLedger {
+				one++
+			}
+		}
+		cost := "unknown"
+		if g.Priced > 0 {
+			cost = money(g.MedianCost)
+		}
+		_, _ = fmt.Fprintf(w, "    %s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\n",
+			word, g.Runs, one, split, g.HitLimit, g.Misses, comma(g.MedianLines), cost)
+	}
+	_ = w.Flush()
+
+	// The two cases where its answer differs from what was done.
+	var limited, limitedSplit, wasSplit, wasSplitSingle int
+	for word, runs := range said {
+		for _, r := range runs {
+			if r.InLedger && !r.Split() && len(r.Limits) > 0 {
+				limited++
+				if word == SaidSplit {
+					limitedSplit++
+				}
+			}
+			if r.Split() {
+				wasSplit++
+				if word == SaidSingle {
+					wasSplitSingle++
+				}
+			}
+		}
+	}
+	if limited > 0 {
+		fmt.Fprintf(b, "    Reviews that ran in one call and hit a limit: %d. It would have split %d of them.\n",
+			limited, limitedSplit)
+	}
+	if wasSplit > 0 {
+		fmt.Fprintf(b, "    Reviews that were split: %d. It would have sent %d of them in one call.\n",
+			wasSplit, wasSplitSingle)
+	}
+}
+
+func (rep *Report) replayLookups(b *strings.Builder) {
+	type tally struct{ n, empty, repeated, wasted, onFinding int }
+	said := map[string]*tally{SaidLook: {}, SaidStop: {}}
+	var all tally
+	for _, r := range rep.Runs {
+		for _, l := range r.Each {
+			t := said[l.Said]
+			if t == nil {
+				continue
+			}
+			for _, c := range []*tally{t, &all} {
+				c.n++
+				if l.Empty {
+					c.empty++
+				}
+				if l.Repeated {
+					c.repeated++
+				}
+				if l.Empty || l.Repeated {
+					c.wasted++
+				}
+				if l.OnFinding {
+					c.onFinding++
+				}
+			}
+		}
+	}
+	if all.n == 0 {
+		return
+	}
+	b.WriteString("\n  Each lookup, asked before it was made with the lookups before it\n")
+	w := tabwriter.NewWriter(b, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "    it said\tlookups\tcame back empty\trepeated\ton a file with a finding")
+	for _, word := range []string{SaidLook, SaidStop} {
+		t := said[word]
+		_, _ = fmt.Fprintf(w, "    %s\t%d\t%d\t%d\t%d\n", word, t.n, t.empty, t.repeated, t.onFinding)
+	}
+	_ = w.Flush()
+	stop := said[SaidStop]
+	fmt.Fprintf(b, "    Stopping where it said would have skipped %s empty or repeated lookups\n"+
+		"    and %s lookups on a file the review filed a finding on.\n",
+		share(stop.wasted, all.wasted), share(stop.onFinding, all.onFinding))
+	b.WriteString("    Each lookup was asked about on its own. In a real review the first stop would\n" +
+		"    have ended the looking, so the lookups after it would not have been made either.\n")
 }

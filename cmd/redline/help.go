@@ -252,6 +252,12 @@ func historyFlags(fs *flag.FlagSet, o *opts) {
 	rootFlag(fs, o)
 	fs.StringVar(&o.format, "format", "report", "report|json")
 	fs.StringVar(&o.jsonl, "jsonl", "", "directory holding reviews.jsonl and misses.jsonl (default: --out)")
+	fs.BoolVar(&o.ask, "ask", false, "put each past review's choices to a model and compare its answers with what happened")
+	fs.IntVar(&o.maxAsks, "max-asks", 500, "with --ask: the most questions to send; 0 is no limit")
+	fs.StringVar(&o.api, "api", "", "with --ask: anthropic or openai")
+	fs.StringVar(&o.baseURL, "base-url", "", "with --ask: endpoint to send the questions to, for a proxy")
+	fs.StringVar(&o.apiUser, "api-user", "", "with --ask and --api openai: caller name for a proxy that wants one beside the key")
+	fs.StringVar(&o.model, "model", "", "with --ask: the model that answers")
 }
 
 func missFlags(fs *flag.FlagSet, o *opts) {
@@ -755,6 +761,25 @@ groups can come from the changes and not from how they were reviewed.
 Kept heads are read too, so a pull request reviewed at three commits is three
 reviews. A review needs its postmortem.json to be counted.
 
+With --ask it also calls a model, which is the only thing here that costs
+money. Two of a review's choices are put to the model for every past review,
+with only what was known at the time, and its answers are set against what
+happened:
+
+  One call or a split. The model gets the file list and the start of each
+  file's diff and answers single or split. The report shows how many of the
+  reviews it would have split ran into a limit or had a miss recorded, and
+  how many reviews that were split it would have sent in one call.
+
+  Each lookup. The model gets the lookups made before it, with how much each
+  returned, and answers look or stop. The report shows how many of the
+  lookups it would have stopped came back empty or repeated an earlier one,
+  and how many were on a file the review filed a finding on.
+
+A question is a few hundred tokens for a lookup and up to about twelve
+thousand for a split. The key is read from ANTHROPIC_API_KEY, or
+OPENAI_API_KEY with --api openai.
+
 flags:
   --out DIR         the directory holding the sessions and ledgers (default
                     .redline)
@@ -762,6 +787,18 @@ flags:
                     review, for a script to read
   --jsonl DIR       directory holding reviews.jsonl and misses.jsonl
                     (default: --out)
+  --ask             put each past review's choices to a model and compare its
+                    answers with what happened
+  --max-asks N      with --ask: the most questions to send (default 500; 0 is
+                    no limit). Split questions are sent before lookup ones.
+  --api NAME        with --ask: anthropic (default) or openai. openai is any
+                    endpoint that speaks chat completions
+  --base-url URL    with --ask: endpoint to send the questions to, for a
+                    proxy (default: the vendor's own, or OPENAI_BASE_URL)
+  --api-user NAME   with --ask and --api openai: name the caller to a proxy
+                    that wants one beside the key
+  --model ID        with --ask: the model that answers (default
+                    claude-sonnet-5, or gpt-5 with --api openai)
 `
 
 const replyHelp = `redline reply — record an agent's reply to a comment sent from the report

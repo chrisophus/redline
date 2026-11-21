@@ -1,10 +1,15 @@
 package history
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -260,5 +265,157 @@ func TestEmptyDirectory(t *testing.T) {
 	}
 	if got := rep.Render(); !strings.Contains(got, "No saved reviews under") {
 		t.Errorf("empty directory rendered as:\n%s", got)
+	}
+}
+
+// fakeAsker splits anything over 1,000 lines and stops any lookup that an
+// earlier lookup in the prompt already made. It counts what it was asked.
+type fakeAsker struct {
+	mu    sync.Mutex
+	asked int
+	fail  bool
+}
+
+func (f *fakeAsker) Ask(_ context.Context, _, prompt string, choices []string) (string, review.Usage, error) {
+	f.mu.Lock()
+	f.asked++
+	f.mu.Unlock()
+	usage := review.Usage{InputTokens: 100, OutputTokens: 1}
+	if f.fail {
+		return "", usage, errors.New("401 bad key")
+	}
+	if choices[0] == SaidSingle {
+		if strings.Contains(prompt, "1,305 lines added") {
+			return SaidSplit, usage, nil
+		}
+		return SaidSingle, usage, nil
+	}
+	_, next, _ := strings.Cut(prompt, "wants to make next:")
+	if strings.Contains(next, `"Reset"`) && strings.Contains(prompt, "nothing found") {
+		return SaidStop, usage, nil
+	}
+	return SaidLook, usage, nil
+}
+
+func TestAskRecordsAnswersAgainstOutcomes(t *testing.T) {
+	rep := collect(t)
+	f := &fakeAsker{}
+	if err := rep.Ask(context.Background(), f, model, 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Two reviews have a known change, and one of them made four lookups.
+	if f.asked != 6 || rep.Replay.Asks != 6 || rep.Replay.Usage.InputTokens != 600 {
+		t.Fatalf("asked %d, recorded %+v", f.asked, rep.Replay)
+	}
+	a, b, stale := rep.Runs[0], rep.Runs[1], rep.Runs[2]
+	if a.Asked == nil || a.Asked.Shape != SaidSingle || b.Asked == nil || b.Asked.Shape != SaidSplit {
+		t.Errorf("shape answers = %+v and %+v", a.Asked, b.Asked)
+	}
+	if stale.Asked != nil {
+		t.Errorf("a review whose change is unknown was asked about")
+	}
+	var said []string
+	for _, l := range b.Each {
+		said = append(said, l.Said)
+	}
+	if got := strings.Join(said, " "); got != "look stop look look" {
+		t.Errorf("lookup answers = %q", got)
+	}
+	out := rep.Render()
+	for _, want := range []string{
+		"What claude-sonnet-5 would have decided",
+		"6 questions answered, 600 input tokens",
+		"Reviews that were split: 1. It would have sent 0 of them in one call.",
+		"Stopping where it said would have skipped 1 of 2 (50%) empty or repeated lookups",
+		"and 0 of 1 (0%) lookups on a file",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("report is missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestAskLimitSendsSplitQuestionsFirst(t *testing.T) {
+	rep := collect(t)
+	f := &fakeAsker{}
+	if err := rep.Ask(context.Background(), f, model, 3, nil); err != nil {
+		t.Fatal(err)
+	}
+	if f.asked != 3 || rep.Replay.Skipped != 3 {
+		t.Errorf("asked %d, skipped %d, want 3 and 3", f.asked, rep.Replay.Skipped)
+	}
+	if rep.Runs[0].Asked == nil || rep.Runs[1].Asked == nil {
+		t.Errorf("the limit cut a split question before a lookup question")
+	}
+}
+
+func TestAskFailsWhenNothingAnswers(t *testing.T) {
+	rep := collect(t)
+	err := rep.Ask(context.Background(), &fakeAsker{fail: true}, model, 0, nil)
+	if err == nil || !strings.Contains(err.Error(), "401 bad key") {
+		t.Errorf("every question failing gave %v", err)
+	}
+}
+
+// The split question must not say how the review went, or the model would be
+// answering with the outcome in front of it.
+func TestShapePromptHoldsOnlyWhatWasKnownBefore(t *testing.T) {
+	b := collect(t).Runs[1]
+	p := shapePrompt(b)
+	for _, leak := range []string{"judging", "cost cap", "token cap", "cohort", "1.10", "off by one"} {
+		if strings.Contains(p, leak) {
+			t.Errorf("split question mentions %q:\n%s", leak, p)
+		}
+	}
+	if !strings.Contains(p, "b/y.go  +400 -0") {
+		t.Errorf("split question does not list the files:\n%s", p)
+	}
+}
+
+func TestChoose(t *testing.T) {
+	pick := []string{SaidLook, SaidStop}
+	for reply, want := range map[string]string{
+		"stop": SaidStop, " `Look`.\n": SaidLook, "I would stop here.": SaidStop,
+		"**stop**": SaidStop,
+	} {
+		if got, err := choose(reply, pick); err != nil || got != want {
+			t.Errorf("choose(%q) = %q, %v, want %q", reply, got, err, want)
+		}
+	}
+	for _, reply := range []string{"", "maybe", "look, or stop if it repeats"} {
+		if got, err := choose(reply, pick); err == nil {
+			t.Errorf("choose(%q) = %q, want an error", reply, got)
+		}
+	}
+}
+
+func TestOpenAIAsker(t *testing.T) {
+	var got struct {
+		Model    string        `json:"model"`
+		Messages []chatMessage `json:"messages"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer k" || r.URL.Path != "/chat/completions" {
+			http.Error(w, "bad request", http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"split"}}],` +
+			`"usage":{"prompt_tokens":42,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+	a, err := NewAsker(Endpoint{API: review.APIOpenAI, Model: "m", BaseURL: srv.URL, APIKey: "k"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	said, usage, err := a.Ask(context.Background(), "sys", "prompt", []string{SaidSingle, SaidSplit})
+	if err != nil || said != SaidSplit || usage.InputTokens != 42 {
+		t.Errorf("Ask = %q, %+v, %v", said, usage, err)
+	}
+	if got.Model != "m" || len(got.Messages) != 2 || got.Messages[1].Content != "prompt" {
+		t.Errorf("request body = %+v", got)
+	}
+	if _, err := NewAsker(Endpoint{API: review.APIOpenAI}); err == nil {
+		t.Errorf("the vendor endpoint with no key was accepted")
 	}
 }

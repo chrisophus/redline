@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each review that ran into a size, token, turn or cost limit, sets reviews
   judged in one call beside split ones, and counts lookups that came back empty
   or repeated an earlier one. `--format json` prints one record per review.
+- **`redline history --ask` replays a review's choices against a model.** For
+  each saved review it asks whether the change should have been split, and for
+  each lookup whether it was worth making, with only what was known at the
+  time. The report compares the answers with what happened. `--api`, `--model`
+  and `--base-url` choose the model, and `--max-asks` caps the questions.
 
 ## [0.22.1] - 2026-11-19
 

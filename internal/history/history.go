@@ -7,8 +7,10 @@
 // choice would have changed anything is a question about past reviews, and
 // the answer is already on disk: the saved session has the change, the
 // postmortem trace has what the review did, and the cost ledger has what it
-// was allowed and what it spent. This package joins the three per review. It
-// calls no model and reads nothing outside the directory it is given.
+// was allowed and what it spent. This package joins the three per review, and
+// reads nothing outside the directory it is given. Collect calls no model.
+// Report.Ask does: it puts the same choices to a model with only what was
+// known at the time, so its answers can be set against what happened.
 package history
 
 import (
@@ -89,6 +91,28 @@ type Run struct {
 
 	Lookups Lookups `json:"lookups,omitzero"`
 	Scout   Scout   `json:"scout,omitzero"`
+
+	// Each is every lookup in the order the review made it, and Asked what a
+	// model said when the review's choices were put to it. Asked is nil until
+	// Report.Ask has run.
+	Each  []Looked `json:"each,omitempty"`
+	Asked *Asked   `json:"asked,omitempty"`
+
+	// set is the change, kept for the questions Ask builds from it.
+	set *change.Set
+}
+
+// Looked is one lookup a review made and what is known about how it went.
+type Looked struct {
+	Tool      string `json:"tool"`
+	Input     string `json:"input,omitempty"`
+	Bytes     int    `json:"bytes"`
+	Empty     bool   `json:"empty,omitempty"`
+	Repeated  bool   `json:"repeated,omitempty"`
+	OnFinding bool   `json:"onFinding,omitempty"`
+	// Said is the model's answer for this lookup, look or stop, and empty
+	// when it was not asked or did not answer.
+	Said string `json:"said,omitempty"`
 }
 
 // Lines is the size of the change: lines added plus lines removed.
@@ -135,6 +159,8 @@ type Report struct {
 	NoReview int `json:"noReview,omitempty"`
 	// Notes are problems reading the directory that did not stop the rest.
 	Notes []string `json:"notes,omitempty"`
+	// Replay is the model run over these reviews, nil until Ask has run.
+	Replay *Replay `json:"replay,omitempty"`
 }
 
 // Collect reads every review saved under root. ledgerDir holds reviews.jsonl
@@ -246,21 +272,27 @@ func fromTrace(t *postmortem.Trace) Run {
 
 	asked := map[string]bool{}
 	for _, l := range t.Lookups {
-		r.Lookups.Made++
-		if l.Empty {
-			r.Lookups.Empty++
-		}
+		e := Looked{Tool: l.Tool, Input: l.Input, Bytes: l.Bytes, Empty: l.Empty}
 		k := l.Tool + "\x00" + normalize(l.Input)
-		if asked[k] {
-			r.Lookups.Repeated++
-		}
+		e.Repeated = asked[k]
 		asked[k] = true
 		for f := range files {
 			if strings.Contains(l.Input, f) {
-				r.Lookups.OnFinding++
+				e.OnFinding = true
 				break
 			}
 		}
+		r.Lookups.Made++
+		if e.Empty {
+			r.Lookups.Empty++
+		}
+		if e.Repeated {
+			r.Lookups.Repeated++
+		}
+		if e.OnFinding {
+			r.Lookups.OnFinding++
+		}
+		r.Each = append(r.Each, e)
 	}
 
 	s := t.Lookup
@@ -302,6 +334,7 @@ func normalize(s string) string {
 
 func sizeOf(r *Run, set *change.Set) {
 	r.SizeKnown = true
+	r.set = set
 	dirs := map[string]bool{}
 	for _, f := range set.Files {
 		r.Files++

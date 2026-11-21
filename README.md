@@ -146,6 +146,7 @@ go build ./cmd/redline
 ./redline postmortem --pr 123 --head 3f9a2c1     # the review of an earlier head
 ./redline miss --pr 46 --head 3f9a2c1 --file a.html --line 41 --summary "dropped a )"
 ./redline history                 # every saved review side by side, no model call
+./redline history --ask           # and what a model would have decided for each
 ```
 
 `run` writes `findings.json`, `report.md`, `report.html`, and any captured
@@ -183,6 +184,17 @@ that named a file the review filed a finding on. Use it before changing how a
 review decides to split a change or to stop looking things up, to see how
 often past reviews gave that decision anything to change. `--format json`
 prints one record per review.
+
+`redline history --ask` also calls a model, and is the only part of `history`
+that costs money. For each past review it asks whether the change should have
+gone in one call or been split, given the file list and the start of each
+diff. For each lookup a review made it asks whether that lookup was worth
+making, given the lookups before it. The report sets the answers against what
+happened: how many of the reviews it would have split ran into a limit, and
+how many of the lookups it would have stopped came back empty, repeated an
+earlier one, or were on a file the review filed a finding on. `--api`,
+`--model` and `--base-url` choose the model as they do on `review`, and
+`--max-asks` caps the number of questions.
 
 `redline dispositions` looks back at pull requests that were already reviewed
 and says what became of each finding: fixed, declined, left open, stale, or
