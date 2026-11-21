@@ -13,6 +13,7 @@ import (
 	"github.com/chrisophus/redline/internal/envelope"
 	"github.com/chrisophus/redline/internal/findings"
 	"github.com/chrisophus/redline/internal/gitx"
+	"github.com/chrisophus/redline/internal/jev"
 	"github.com/chrisophus/redline/internal/postmortem"
 	"github.com/chrisophus/redline/internal/review"
 	"github.com/chrisophus/redline/internal/run"
@@ -271,6 +272,17 @@ func cmdReview(o opts) error {
 	if ropts.Verify {
 		ropts.Answer = scoutAnswerer(res, ropts, o.scoutSettings(), &tally)
 	}
+	// Off unless asked for, because it sends each finding's text and the
+	// earlier comments on the pull request to a second vendor.
+	var repeats *jev.Repeats
+	if o.repeats && !o.dryRun {
+		client, err := jev.New("", "", os.Getenv(jev.KeyEnv))
+		if err != nil {
+			return fmt.Errorf("--repeats: %w", err)
+		}
+		repeats = &jev.Repeats{Client: client}
+		ropts.Repeats = repeats
+	}
 	// On unless it is turned off. A reviewer that pulls what it needs beats
 	// one working from a guess made in advance about what it would want, and
 	// a claim it can check while it writes is one that does not have to
@@ -316,6 +328,9 @@ func cmdReview(o opts) error {
 		if out.CostKnown && tally.known {
 			out.CostUSD += tally.cost
 		}
+	}
+	if out != nil && repeats != nil {
+		reportRepeats(out, repeats, len(in.Prior))
 	}
 	if out != nil {
 		if s := out.Budget.Summary(); s != "" {
@@ -829,4 +844,26 @@ func lookerFor(res *run.Result) review.Looker {
 		return nil
 	}
 	return scout.NewLooker(root, res.Report.BaseSHA)
+}
+
+// reportRepeats says what the pass that looks for repeated findings did and
+// adds what it cost to the review's total. A review with no earlier comments
+// to compare against says so, because otherwise --repeats on a first review
+// looks like a flag that did nothing.
+func reportRepeats(out *review.Result, repeats *jev.Repeats, earlier int) {
+	usage, calls := repeats.Spent()
+	if out.CostKnown {
+		out.CostUSD += usage.CostUSD()
+	}
+	r := out.Repeats
+	switch {
+	case earlier == 0:
+		fmt.Fprintln(os.Stderr, "redline: --repeats had nothing to compare against: this pull request has no earlier Redline comments")
+	case r.Failed != "":
+		fmt.Fprintf(os.Stderr, "redline: --repeats stopped after %d finding(s), the rest post as written: %s\n", r.Checked, r.Failed)
+	default:
+		fmt.Fprintf(os.Stderr, "redline: --repeats compared %d finding(s) with %d earlier comment(s) in %d request(s) for $%.4f: "+
+			"%d held back as already said, %d kept that say again something answered as fixed\n",
+			r.Checked, earlier, calls, usage.CostUSD(), r.Held, r.FollowUps)
+	}
 }

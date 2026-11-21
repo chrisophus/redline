@@ -21,6 +21,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `--base-url` choose the model, and `--max-asks` caps the questions.
   `--api jev` asks TypeSafe's Jev over its own endpoint and reports what
   stopping a lookup only above a given probability would have skipped.
+- **`redline review --repeats` holds back a finding that was already said.**
+  After the review is written, each finding is compared with every comment
+  Redline already left on the pull request by asking TypeSafe's Jev two
+  questions about each pair: whether they are about the same piece of code,
+  and whether they describe the same failure. A finding that scores 0.85 or
+  more is ruled already raised and is not posted. The exception is a finding
+  whose earlier version was answered as fixed: that one posts, because saying
+  it again means the fix did not land. Replayed over 49 saved re-reviews, the
+  pass held 17 of 105 findings and kept 3 more as answered-as-fixed. Against
+  56 of those labelled by hand, it recognised 19 of the 24 that said an
+  earlier one again and held none of the 32 that did not. It costs about
+  $0.0004 per finding. Off by default, key in `TYPESAFE_API_KEY`.
+- **`redline history --repeats` replays that pass over every saved review** of
+  a pull request that had been reviewed before, and reports how many findings
+  said an earlier one again.
 
 ### Fixed
 - **A review is now shown the findings an earlier review wrote into its

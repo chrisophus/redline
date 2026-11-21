@@ -399,6 +399,16 @@ func Verify(ctx context.Context, in Input, opts Options, stageOne *Result) (*Res
 	// ruling, and settling that first is what stops the scout spending its
 	// loop on a question whose finding is about to be discarded.
 	settled := alreadyRaised(cands, in.Prior)
+	for _, c := range cands {
+		// What the repeats pass already ruled stays ruled, and is not looked
+		// up or sent to the ruling.
+		if c.Comment.Ruling.Verdict == findings.VerifiedAlreadyRaised {
+			if settled == nil {
+				settled = map[string]findings.Ruling{}
+			}
+			settled[c.ID] = c.Comment.Ruling
+		}
+	}
 	pending := make([]Candidate, 0, len(cands))
 	for _, c := range cands {
 		if _, done := settled[c.ID]; !done {

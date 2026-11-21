@@ -99,6 +99,8 @@ type opts struct {
 	// history's --ask and --max-asks.
 	ask     bool
 	maxAsks int
+	// review's --repeats, and history's flag of the same name.
+	repeats bool
 }
 
 func runMain(args []string) error {

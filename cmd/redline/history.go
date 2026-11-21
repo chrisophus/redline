@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/chrisophus/redline/internal/history"
+	"github.com/chrisophus/redline/internal/jev"
 	"github.com/chrisophus/redline/internal/review"
 )
 
@@ -34,6 +35,20 @@ func cmdHistory(o opts) error {
 		if err := askHistory(o, rep); err != nil {
 			return err
 		}
+	}
+	if o.repeats {
+		client, err := jev.New("", "", os.Getenv(jev.KeyEnv))
+		if err != nil {
+			return fmt.Errorf("--repeats: %w", err)
+		}
+		judge := &jev.Repeats{Client: client}
+		rep.ReplayRepeats(context.Background(), judge, func(done, total int) {
+			if done%20 == 0 || done == total {
+				fmt.Fprintf(os.Stderr, "redline: %d of %d later reviews replayed\n", done, total)
+			}
+		})
+		usage, calls := judge.Spent()
+		fmt.Fprintf(os.Stderr, "redline: the replay sent %d request(s) to %s for $%.4f\n", calls, client.Model, usage.CostUSD())
 	}
 	if o.format == "json" {
 		enc := json.NewEncoder(os.Stdout)

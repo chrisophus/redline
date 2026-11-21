@@ -16,6 +16,7 @@ import (
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/findings"
+	"github.com/chrisophus/redline/internal/jev"
 	"github.com/chrisophus/redline/internal/miss"
 	"github.com/chrisophus/redline/internal/postmortem"
 	"github.com/chrisophus/redline/internal/review"
@@ -474,7 +475,7 @@ func TestJevAsker(t *testing.T) {
 	if _, err := NewAsker(Endpoint{API: APIJev}); err == nil {
 		t.Errorf("jev with no key was accepted")
 	}
-	if cost, ok := askCost("jev-latest", review.Usage{InputTokens: 1_000_000, OutputTokens: 500}); !ok || cost != jevPerMtok {
+	if cost, ok := askCost("jev-latest", review.Usage{InputTokens: 1_000_000, OutputTokens: 500}); !ok || cost != jev.PerMtok {
 		t.Errorf("a million Jev input tokens priced at %v, %v", cost, ok)
 	}
 }

@@ -72,6 +72,10 @@ type Trace struct {
 	// broke are both unchecked, and only one of them looks like it worked.
 	Verified     bool   `json:"verified,omitempty"`
 	VerifyFailed string `json:"verifyFailed,omitempty"`
+	// Repeats is what the pass that holds back a finding said before did:
+	// how many findings it compared, how many it held, and the closest
+	// earlier comment for each. Zero when the pass did not run.
+	Repeats review.Repeats `json:"repeats,omitzero"`
 	// CallTurns, Rejected and Stopped are the turn loop's: turns taken, calls
 	// sent back for failing their schema, and passes that ended before the
 	// reviewer said it was done.
@@ -228,6 +232,7 @@ func Of(res *review.Result, look Lookup) *Trace {
 		Samples:       res.Samples,
 		Verified:      res.Verified,
 		VerifyFailed:  res.VerifyFailed,
+		Repeats:       res.Repeats,
 		CallTurns:     res.CallTurns,
 		Rejected:      res.Rejected,
 		Stopped:       res.Stopped,

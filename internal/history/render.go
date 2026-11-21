@@ -144,6 +144,7 @@ func (rep *Report) Render() string {
 	rep.lookups(&b)
 	rep.scout(&b)
 	rep.replay(&b)
+	rep.repeats(&b)
 	rep.notes(&b)
 	return b.String()
 }
