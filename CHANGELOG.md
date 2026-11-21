@@ -42,8 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   summary.** `post` puts an info finding, a low-confidence one and one whose
   line is not in the diff into the review summary, with no thread. The next
   review was only ever shown threads, so it had no way to know those had been
-  said, and said them again. In the saved reviews, 19 of the 22 findings that
-  restated an earlier one were restating a summary finding.
+  said, and said them again. In the saved reviews of one repository, 19 of the
+  22 findings that restated an earlier one were restating a summary finding.
 
 ## [0.22.1] - 2026-11-19
 
