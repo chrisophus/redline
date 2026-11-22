@@ -77,7 +77,7 @@ type Replies struct {
 // Read asks the four reply questions in one request and returns each averaged
 // over the repeated askings.
 func (j *Replies) Read(ctx context.Context, c ReplyCase) (ReplyScores, error) {
-	c.Finding, c.Reply = clipRunes(c.Finding, findingChars), clipRunes(c.Reply, replyChars)
+	c.Finding, c.Reply = clipRunes(c.Finding, findingChars), clipTail(c.Reply, replyChars)
 	asks := []struct {
 		name string
 		q    Noul
@@ -109,6 +109,22 @@ func (j *Replies) Read(ctx context.Context, c ReplyCase) (ReplyScores, error) {
 		return sum / copies
 	}
 	return ReplyScores{Changed: mean("changed"), Wrong: mean("wrong"), WontFix: mean("wontfix"), Open: mean("open")}, nil
+}
+
+// clipTail keeps the last n bytes of s, without splitting a character. Replies
+// are ordered oldest first, so the end holds the newest position.
+func clipTail(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	if len(s) <= n {
+		return s
+	}
+	start := len(s) - n
+	for start < len(s) && s[start]&0xC0 == 0x80 {
+		start++
+	}
+	return s[start:]
 }
 
 // Fixes asks whether a named commit fixes a finding.

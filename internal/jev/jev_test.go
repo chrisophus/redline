@@ -367,3 +367,16 @@ func TestFixesSendsTheCodeAndTheChange(t *testing.T) {
 		t.Errorf("%d questions, want %d", len(questions), copies)
 	}
 }
+
+func TestClipTailKeepsNewestReply(t *testing.T) {
+	got := clipTail("old reply, new reply", 9)
+	if got != "new reply" {
+		t.Errorf("clipTail = %q, want the end of the string", got)
+	}
+	if got := clipTail("aé", 2); got != "é" {
+		t.Errorf("clipTail split a character: %q", got)
+	}
+	if got := clipTail("short", 10); got != "short" {
+		t.Errorf("clipTail changed a short string: %q", got)
+	}
+}
