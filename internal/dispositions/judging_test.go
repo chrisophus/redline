@@ -224,7 +224,7 @@ func TestPickChange(t *testing.T) {
 }
 
 func TestJudged_TypeSafeDownMeansOneNoteAndNoAnswers(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "down", 500) }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "down", http.StatusInternalServerError) }))
 	t.Cleanup(srv.Close)
 	c, _ := jev.New(srv.URL, "", "k")
 	jd := &Judging{Ctx: context.Background(), Replies: &jev.Replies{Client: c}, Fixes: &jev.Fixes{Client: c}, Code: fakeSource{}}

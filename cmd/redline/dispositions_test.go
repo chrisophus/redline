@@ -181,7 +181,7 @@ func TestDispositionsJevNeedsAKey(t *testing.T) {
 
 // With TypeSafe down, --jev still writes the summary and says once that it could not be reached.
 func TestDispositionsJevDownCarriesOn(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "down", 500) }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "down", http.StatusInternalServerError) }))
 	defer srv.Close()
 	old := newJevClient
 	newJevClient = func() (*jev.Client, error) { return jev.New(srv.URL, "", "k") }
