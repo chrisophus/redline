@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chrisophus/redline/internal/jev"
 	"github.com/chrisophus/redline/internal/post"
 )
 
@@ -45,6 +46,11 @@ type posted struct {
 // markers that decode to its head commit, fingerprint and question. Artifacts add what GitHub does not hold
 // (source, confidence, scope, findings that were never posted) and are optional.
 func Derive(pr PR, runs []Run, diff Differ, now time.Time) (Result, error) {
+	return DeriveJudged(pr, runs, diff, now, nil)
+}
+
+// DeriveJudged is Derive with Jev reading the author's replies. A nil jd is Derive.
+func DeriveJudged(pr PR, runs []Run, diff Differ, now time.Time, jd *Judging) (Result, error) {
 	kind := authorKind(pr.AuthorIsBot)
 	res := Result{PR: PRRow{
 		PrNumber:   pr.Number,
@@ -69,7 +75,7 @@ func Derive(pr PR, runs []Run, diff Differ, now time.Time) (Result, error) {
 	for i := range items {
 		it := &items[i]
 		af, hasArtifact := byFP[it.markers.Fingerprint]
-		row, drow, err := buildRows(pr, *it, af, hasArtifact, runs, diff, kind, now)
+		row, drow, err := buildRows(pr, *it, af, hasArtifact, runs, diff, kind, now, jd)
 		if err != nil {
 			return Result{}, err
 		}
@@ -304,7 +310,7 @@ func findingDetails(it posted, af ArtifactFinding, hasArtifact bool, runs []Run)
 	return d
 }
 
-func buildRows(pr PR, it posted, af ArtifactFinding, hasArtifact bool, runs []Run, diff Differ, kind string, now time.Time) (FindingRow, DispositionRow, error) {
+func buildRows(pr PR, it posted, af ArtifactFinding, hasArtifact bool, runs []Run, diff Differ, kind string, now time.Time, jd *Judging) (FindingRow, DispositionRow, error) {
 	d := findingDetails(it, af, hasArtifact, runs)
 	key, qid, fid := keysFor(d.qkey, it.markers.Fingerprint)
 	frow := FindingRow{
@@ -330,7 +336,8 @@ func buildRows(pr PR, it posted, af ArtifactFinding, hasArtifact bool, runs []Ru
 	if err != nil {
 		return frow, drow, err
 	}
-	decideThread(&drow, pr.State, th, fix)
+	scores := jd.readReply(th, d.file)
+	decideThread(&drow, pr.State, th, fix, scores)
 	if drow.Disposition == string(DispFixed) {
 		fixedAt := fix.time
 		if drow.FixCommitSha != fix.sha {
@@ -340,6 +347,9 @@ func buildRows(pr PR, it posted, af ArtifactFinding, hasArtifact bool, runs []Ru
 			if full != "" {
 				drow.FixCommitSha = full
 			}
+		}
+		if readReply(th).sha != "" {
+			jd.verifyFix(&drow, th, d.line)
 		}
 		if !fixedAt.IsZero() && verifiedAddressed(runs, d.file, d.qkey, fixedAt) {
 			drow.VerifiedAddressed = 1
@@ -352,9 +362,16 @@ func buildRows(pr PR, it posted, af ArtifactFinding, hasArtifact bool, runs []Ru
 // thread, and any thread on a PR that has ended, since many authors reply without clicking resolve. The anchor
 // check (geometry) decides a resolved thread only when there is no recognisable reply, and is recorded either
 // way. FixCommitSha is set only for a fixed finding: the commit the author cited, else the one geometry found.
-func decideThread(drow *DispositionRow, state string, th *Thread, fix fixResult) {
+//
+// scores, when not nil, are Jev's answers about the author's replies. They decide a reply that carries no
+// marker line, and say why a Not fixing reply declined.
+func decideThread(drow *DispositionRow, state string, th *Thread, fix fixResult, scores *jev.ReplyScores) {
 	reply := readReply(th)
 	drow.ReplyKind = reply.kind
+	if scores != nil {
+		drow.ReplyFixed, drow.ReplyWrong = &scores.Changed, &scores.Wrong
+		drow.ReplyWontFix, drow.ReplyOpen = &scores.WontFix, &scores.Open
+	}
 	geometry := DispUnknown
 	switch {
 	case !fix.mapped:
@@ -368,6 +385,10 @@ func decideThread(drow *DispositionRow, state string, th *Thread, fix fixResult)
 	ended := state == "MERGED" || state == "CLOSED"
 	replyDecides := th.IsResolved || ended
 	switch {
+	case reply.later && scores != nil && decideFromScores(drow, *scores, fix):
+		if drow.Disposition == string(DispFixed) && reply.sha != "" {
+			drow.FixCommitSha = reply.sha
+		}
 	case replyDecides && reply.kind == ReplyAddressed:
 		drow.Disposition, drow.Basis = string(DispFixed), BasisReply
 		drow.FixCommitSha = reply.sha
@@ -376,6 +397,10 @@ func decideThread(drow *DispositionRow, state string, th *Thread, fix fixResult)
 		}
 	case replyDecides && reply.kind == ReplyNotFixing:
 		drow.Disposition, drow.Basis = string(DispDeclined), BasisReply
+		if scores != nil {
+			drow.DeclineReason = declineReason(*scores)
+		}
+	case reply.kind == "" && scores != nil && decideFromScores(drow, *scores, fix):
 	case fix.deleted, !th.IsResolved && ended:
 		drow.Disposition = string(DispStale)
 	case !th.IsResolved:
@@ -418,6 +443,9 @@ func verifiedAddressed(runs []Run, file, qkey string, fixedAt time.Time) bool {
 type reply struct {
 	kind string
 	sha  string
+	// later is set when the PR author wrote a reply with no marker line after the one that set kind. That
+	// reply may have changed the author's position, so Jev's answers get to overrule the marker.
+	later bool
 }
 
 // Both reply formats open a line. Anchoring there keeps "this was not addressed in abc1234" and a quoted
@@ -442,6 +470,8 @@ func readReply(th *Thread) reply {
 			out = reply{kind: ReplyAddressed, sha: strings.ToLower(m[1])}
 		} else if notFixingRe.MatchString(c.Body) {
 			out = reply{kind: ReplyNotFixing}
+		} else {
+			out.later = out.kind != ""
 		}
 	}
 	return out

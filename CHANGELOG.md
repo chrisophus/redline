@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`redline dispositions --jev` reads free-text replies and checks named fix
+  commits.** A reply with no `Addressed in` or `Not fixing` line is decided as
+  fixed, declined or open from TypeSafe's Jev. A declined finding is marked
+  `wrong` (the claim is mistaken) or `wont-fix`, and a commit a reply names is
+  checked against the finding. `dispositions.jsonl` keeps the raw
+  probabilities, and the summary counts findings disputed as wrong. It is off
+  by default, needs `TYPESAFE_API_KEY`, and costs about two cents per hundred
+  threads.
 - **`redline history --misses`, `--evidence` and `--context` replay three
   more decisions against TypeSafe's Jev.** `--misses` asks whether a finding
   of a review described each defect recorded against it, and says which

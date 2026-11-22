@@ -127,9 +127,20 @@ const (
 
 	BasisReply    = "reply"
 	BasisGeometry = "geometry"
+	BasisJev      = "jev"
 
 	ReplyAddressed = "addressed"
 	ReplyNotFixing = "not-fixing"
+
+	// Reasons a finding was declined. Unsure is a Not fixing reply Jev could not place.
+	DeclineWrong   = "wrong"
+	DeclineWontFix = "wont-fix"
+	DeclineUnsure  = "unsure"
+
+	// FixVerified answers: Jev's reading of whether the named commit fixes the finding.
+	FixYes    = "yes"
+	FixNo     = "no"
+	FixUnsure = "unsure"
 
 	ChannelThread     = "thread"
 	ChannelReviewBody = "review-body"
@@ -167,23 +178,36 @@ type DispositionRow struct {
 	FindingID   string `json:"FindingId"`
 	Disposition string `json:"Disposition"`
 	// Basis says what decided Disposition for a resolved thread: "reply" (the author's Addressed in <sha> or
-	// Not fixing reply) or "geometry" (a later commit changed the anchor). Empty for other dispositions.
+	// Not fixing reply), "jev" (Jev's reading of a reply with no such line) or "geometry" (a later commit
+	// changed the anchor). Empty for other dispositions.
 	Basis string `json:"Basis"`
 	// ReplyKind is what the author's reply said (addressed, not-fixing) or empty. GeometryDisposition is what
 	// the anchor check alone concluded. Keeping both lets the dashboard show how often they disagree.
-	ReplyKind           string    `json:"ReplyKind"`
-	GeometryDisposition string    `json:"GeometryDisposition"`
-	VerifiedAddressed   uint8     `json:"VerifiedAddressed"`
-	AnchorKind          string    `json:"AnchorKind"`
-	Channel             string    `json:"Channel"`
-	Severity            string    `json:"Severity"`
-	Source              string    `json:"Source"`
-	FirstHeadSha        string    `json:"FirstHeadSha"`
-	FixCommitSha        string    `json:"FixCommitSha"`
-	LastActivityAt      Timestamp `json:"LastActivityAt"`
-	PrState             string    `json:"PrState"`
-	AuthorKind          string    `json:"AuthorKind"`
-	DerivedAt           Timestamp `json:"DerivedAt"`
+	ReplyKind           string `json:"ReplyKind"`
+	GeometryDisposition string `json:"GeometryDisposition"`
+	VerifiedAddressed   uint8  `json:"VerifiedAddressed"`
+	// The rest of the Jev fields are set only by --jev. DeclineReason is wrong, wont-fix or unsure for a
+	// declined finding that has replies. The Reply* fields are the raw probabilities that the author's
+	// replies say the code was changed, the claim is wrong, the problem is real but left, and the problem
+	// remains. FixScore is the probability that the named commit fixes the finding, and FixVerified reads it:
+	// yes, no or unsure. Null and empty mean the question was not asked.
+	DeclineReason  string    `json:"DeclineReason"`
+	ReplyFixed     *float64  `json:"ReplyFixed"`
+	ReplyWrong     *float64  `json:"ReplyWrong"`
+	ReplyWontFix   *float64  `json:"ReplyWontFix"`
+	ReplyOpen      *float64  `json:"ReplyOpen"`
+	FixScore       *float64  `json:"FixScore"`
+	FixVerified    string    `json:"FixVerified"`
+	AnchorKind     string    `json:"AnchorKind"`
+	Channel        string    `json:"Channel"`
+	Severity       string    `json:"Severity"`
+	Source         string    `json:"Source"`
+	FirstHeadSha   string    `json:"FirstHeadSha"`
+	FixCommitSha   string    `json:"FixCommitSha"`
+	LastActivityAt Timestamp `json:"LastActivityAt"`
+	PrState        string    `json:"PrState"`
+	AuthorKind     string    `json:"AuthorKind"`
+	DerivedAt      Timestamp `json:"DerivedAt"`
 }
 
 // PRRow is one PR (prs.jsonl). HasEvidence is whether the PR carried an evidence comment (see RecordEvidence).

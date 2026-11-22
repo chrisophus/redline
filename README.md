@@ -251,6 +251,24 @@ confidence, the findings Redline never posted), and `--jsonl DIR` writes
 `findings.jsonl`, `dispositions.jsonl` and `prs.jsonl` for a loader to copy
 into a database.
 
+`redline dispositions --jev` also reads replies that have no marker line, such
+as "This remains open" or "Already fixed in the previous commit", by asking
+TypeSafe's Jev four yes/no questions about each reply: was the code changed,
+is the finding's claim wrong, is the problem real but left alone, and is it
+still there. The answers decide such a reply as fixed, declined or open (basis
+`jev`), and say whether a declined finding was wrong or a won't-fix. A fix
+reply that explains the bug does not count as a dispute. When a reply names a
+commit, Jev is also asked whether that commit fixes the finding, which is
+recorded beside the existing check that a later review did not raise the
+question again. `dispositions.jsonl` keeps the raw probabilities, and the
+summary adds a line such as "8 of 98 answered findings disputed as wrong (8%);
+73 of 80 named fixes confirmed, 2 doubted". `--jev` is off by default and
+needs `TYPESAFE_API_KEY`. It sends TypeSafe the finding text, the author's
+replies, 12 lines of code either side of the finding, and the named commit's
+diff (the whole diff under 9 KB, otherwise the finding's file first, cut to
+9 KB). That costs about two cents per hundred threads. If TypeSafe cannot be
+reached, the run goes on with the older rules and says so once.
+
 Target (`run`, `review`, and `--pr` on `post`; pass only one): the working tree by default,
 `--commit REF` for that commit against its parent (`HEAD` for the latest),
 `--range A..B` for a set of commits, `--branch REF` for a branch tip,

@@ -324,3 +324,59 @@ func TestJudgeRefusesAPartialReply(t *testing.T) {
 		t.Error("a reply missing answers was read as a score")
 	}
 }
+
+func TestRepliesAsksFourQuestionsInOneRequest(t *testing.T) {
+	var questions map[string]json.RawMessage
+	var state json.RawMessage
+	n := 0
+	c := client(t, answerAll(t, &n, &questions, &state, func(name string) float64 {
+		if strings.HasPrefix(name, "open.") {
+			return 0.9
+		}
+		return 0.1
+	}))
+	j := &Replies{Client: c}
+	got, err := j.Read(context.Background(), ReplyCase{File: "a.go", Finding: "leaks", Reply: "This remains open"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || len(questions) != 4*copies {
+		t.Errorf("%d requests with %d questions, want one with %d", n, len(questions), 4*copies)
+	}
+	if got.Open < 0.899 || got.Open > 0.901 || got.Changed > 0.101 || got.Wrong > 0.101 || got.WontFix > 0.101 {
+		t.Errorf("scores = %+v", got)
+	}
+	if want := `{"file":"a.go","finding":"leaks","reply":"This remains open"}`; string(state) != want {
+		t.Errorf("state = %s", state)
+	}
+}
+
+func TestFixesSendsTheCodeAndTheChange(t *testing.T) {
+	var questions map[string]json.RawMessage
+	var state json.RawMessage
+	n := 0
+	c := client(t, answerAll(t, &n, &questions, &state, func(string) float64 { return 0.8 }))
+	p, err := (&Fixes{Client: c}).Fixed(context.Background(), FixCase{File: "a.go", Finding: "f", CodeBefore: "x := 1", Change: "+x := 2"})
+	if err != nil || p < 0.799 || p > 0.801 {
+		t.Fatalf("Fixed = %v, %v", p, err)
+	}
+	if want := `{"file":"a.go","finding":"f","code_before":"x := 1","change":"+x := 2"}`; string(state) != want {
+		t.Errorf("state = %s", state)
+	}
+	if len(questions) != copies {
+		t.Errorf("%d questions, want %d", len(questions), copies)
+	}
+}
+
+func TestClipTailKeepsNewestReply(t *testing.T) {
+	got := clipTail("old reply, new reply", 9)
+	if got != "new reply" {
+		t.Errorf("clipTail = %q, want the end of the string", got)
+	}
+	if got := clipTail("aé", 2); got != "é" {
+		t.Errorf("clipTail split a character: %q", got)
+	}
+	if got := clipTail("short", 10); got != "short" {
+		t.Errorf("clipTail changed a short string: %q", got)
+	}
+}

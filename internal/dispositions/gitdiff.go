@@ -62,6 +62,39 @@ func (g *GitDiffer) Change(commit, path string) (FileChange, error) {
 	return c, nil
 }
 
+// FileAt returns a file's content at a commit.
+func (g *GitDiffer) FileAt(commit, path string) (string, error) {
+	out, err := g.git("show", commit+":"+path)
+	return string(out), err
+}
+
+// CommitFiles returns what a commit changed against its first parent, split by file.
+func (g *GitDiffer) CommitFiles(commit string) ([]FileDiff, error) {
+	out, err := g.git("diff", "-M", "--no-color", commit+"^1", commit)
+	if err != nil {
+		return nil, err
+	}
+	return splitDiff(string(out)), nil
+}
+
+// splitDiff cuts a `git diff` into one piece per file. The path is the new one, after " b/".
+func splitDiff(diff string) []FileDiff {
+	var out []FileDiff
+	for _, part := range strings.Split("\n"+diff, "\ndiff --git ")[1:] {
+		text := "diff --git " + part
+		if !strings.HasSuffix(text, "\n") {
+			text += "\n"
+		}
+		head, _, _ := strings.Cut(part, "\n")
+		path := head
+		if i := strings.LastIndex(head, " b/"); i >= 0 {
+			path = head[i+3:]
+		}
+		out = append(out, FileDiff{Path: path, Text: text})
+	}
+	return out
+}
+
 // status reads every path the commit touched, by its old path. Rename detection needs the whole commit in
 // view: limited to one path, git cannot see where the file went and reports a delete.
 func (g *GitDiffer) status(commit string) (map[string]fileStatus, error) {
