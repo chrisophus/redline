@@ -21,9 +21,18 @@ import (
 // reviews that already ran, whether the model's answer is worth acting on
 // before anything is built that acts on it.
 
-// MissBar and EvidenceBar are where a probability is read as yes. Neither has
-// been set against labelled cases, so each report prints the scores beside
-// the verdicts for a reader to check.
+// MissBar and EvidenceBar are where a probability is read as yes. MissBar was
+// scored on 2026-11-22 against 17 confirmed fixes, with the fix reply as the
+// defect: the right finding ranked first in 17 of 17, and at 0.5 it was found
+// in 14 of 17. The only other findings over 0.5 were duplicates of the same
+// defect. That supports 0.5. A miss summary has to name the defect, though: a
+// commit title such as "Address the review comments" made the score useless.
+//
+// EvidenceBar is still unscored. The question checks whether the quote
+// matches the claim, not whether the finding is right, and wrong findings
+// whose line really says what they claim scored high. Reviews run without --verify
+// have no ruling, so there is nothing to ask about them.
+// Each report prints the scores beside the verdicts for a reader to check.
 const (
 	MissBar     = 0.5
 	EvidenceBar = 0.5
@@ -441,7 +450,7 @@ func (rep *Report) evidence(b *strings.Builder) {
 	}
 	b.WriteString("\nWhether a ruling's quoted evidence shows what the finding claims\n")
 	if len(tot.Seen) == 0 {
-		b.WriteString("  No saved finding has a ruling that quoted evidence. Rulings come from review --verify.\n")
+		b.WriteString("  No saved finding has a ruling that quoted evidence (reviews run without --verify have none).\n")
 	} else {
 		byVerdict := map[string][]float64{}
 		for _, s := range tot.Seen {
@@ -496,8 +505,7 @@ func (rep *Report) contextSection(b *strings.Builder) {
 	}
 	b.WriteString("\nWhether a model can tell which context a review needs\n")
 	if tot.Reviews == 0 {
-		b.WriteString("  No saved review had both a context entry a finding used and one none did, so there was\n" +
-			"  nothing to compare.\n")
+		b.WriteString("  No review had both used and unused context entries, so there was nothing to compare.\n")
 	} else {
 		fmt.Fprintf(b, "  %s had %s, and a finding used %d of them.\n",
 			plural(tot.Reviews, "review"), counted(tot.Entries, "context entry", "context entries"), tot.Used)

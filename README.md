@@ -235,9 +235,21 @@ it, and each sends finding text or code to TypeSafe.
   named. It answers whether ranking context by Jev's score, in place of by
   role, would have kept what the review used.
 
-The wording of these three questions and the 0.5 bars have not been scored
-against labelled cases the way the `--repeats` questions were. The reports
-print the scores so they can be.
+Only `--misses` has been scored against labelled cases, on 2026-11-22. On 17
+confirmed fixes, with the fix reply as the defect, the right finding ranked
+first in 17 of 17. At 0.5, 14 of the 17 were found, and the only other
+findings over 0.5 were duplicates of the same defect, so the bar is supported
+by that test. The summary of a miss should name the defect: a commit title
+like "Address the review comments" made the score useless.
+
+`--evidence` is still unscored. Reviews run without `--verify` have no
+ruling, so it has nothing to ask about them. It checks whether the quote
+matches the claim, not whether the finding is right: wrong findings whose
+line really says what they claim scored high.
+
+`--context` is still unscored. A context entry counts as used only from
+ruling quotes and symbol names, so few reviews have both used and unused
+entries. The reports print the scores so a reader can check them.
 
 `redline dispositions` looks back at pull requests that were already reviewed
 and says what became of each finding: fixed, declined, left open, stale, or
