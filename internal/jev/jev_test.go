@@ -219,3 +219,108 @@ func TestRepeatsSplitsALongList(t *testing.T) {
 		t.Fatalf("got %d answers in %d request(s): %v", len(got), n, err)
 	}
 }
+
+// Each judge sends one item per question, asked copies times, and returns
+// the average for each item.
+func TestMissesAsksAboutEachFindingOnItsOwn(t *testing.T) {
+	var questions map[string]json.RawMessage
+	var state json.RawMessage
+	n := 0
+	c := client(t, answerAll(t, &n, &questions, &state, func(name string) float64 {
+		if strings.HasPrefix(name, "q1.") {
+			return 0.8
+		}
+		return 0.2
+	}))
+	j := &Misses{Client: c}
+	got, err := j.Describes(context.Background(), Defect{File: "a.go", Line: 4, Summary: "index into an empty list"},
+		[]Said{{File: "b.go", Text: "the lock is held"}, {File: "a.go", Line: 6, Text: "users[0] with no length check"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] < 0.199 || got[0] > 0.201 || got[1] < 0.799 || got[1] > 0.801 {
+		t.Fatalf("got %v", got)
+	}
+	if want := `{"defect":{"file":"a.go","line":4,"summary":"index into an empty list"}}`; string(state) != want {
+		t.Errorf("state = %s", state)
+	}
+	if len(questions) != 2*copies {
+		t.Fatalf("want each finding asked about %d times, got %d questions", copies, len(questions))
+	}
+	q := string(questions["q1.0"])
+	if !strings.Contains(q, `"finding":{"file":"a.go","line":6,"text":"users[0] with no length check"}`) || strings.Contains(q, "the lock is held") {
+		t.Errorf("a question should carry its own finding and no other: %s", q)
+	}
+	if usage, calls := j.Spent(); usage.InputTokens != 700 || calls != 1 {
+		t.Errorf("spent %+v in %d", usage, calls)
+	}
+}
+
+func TestEvidenceSendsOneClaimAsTheState(t *testing.T) {
+	var questions map[string]json.RawMessage
+	var state json.RawMessage
+	n := 0
+	c := client(t, answerAll(t, &n, &questions, &state, func(string) float64 { return 0.6 }))
+	j := &Evidence{Client: c}
+	p, err := j.Supports(context.Background(), Claim{Finding: Said{File: "a.go", Text: "never closed"}, Evidence: "f, _ := os.Open(p)"})
+	if err != nil || p < 0.599 || p > 0.601 {
+		t.Fatalf("Supports = %v, %v", p, err)
+	}
+	if !strings.Contains(string(state), `"evidence":"f, _ := os.Open(p)"`) || !strings.Contains(string(state), "never closed") {
+		t.Errorf("state = %s", state)
+	}
+	if len(questions) != copies {
+		t.Errorf("want the question asked %d times, got %d", copies, len(questions))
+	}
+}
+
+func TestContextCutsToFitAndBatches(t *testing.T) {
+	var state json.RawMessage
+	var questions map[string]json.RawMessage
+	n := 0
+	c := client(t, answerAll(t, &n, &questions, &state, func(string) float64 { return 0.5 }))
+	j := &Context{Client: c}
+	entries := make([]Entry, contextPerRequest+1)
+	for i := range entries {
+		entries[i] = Entry{Role: "caller", Symbol: "F", Content: strings.Repeat("é", contextEntryChars)}
+	}
+	got, err := j.Needed(context.Background(),
+		[]Changed{{Path: "a.go", Added: 1, Diff: strings.Repeat("x", contextDiffPerFile*2)}}, entries)
+	if err != nil || len(got) != len(entries) {
+		t.Fatalf("Needed = %d scores, %v", len(got), err)
+	}
+	if n != 2 {
+		t.Errorf("%d entries went in %d requests, want 2", len(entries), n)
+	}
+	var st struct {
+		Change []Changed `json:"change"`
+	}
+	if err := json.Unmarshal(state, &st); err != nil || len(st.Change[0].Diff) != contextDiffPerFile {
+		t.Errorf("diff sent at %d bytes, want it cut to %d (%v)", len(st.Change[0].Diff), contextDiffPerFile, err)
+	}
+	// The last request holds the one entry left over. Its content is cut to
+	// the limit without splitting a two-byte character.
+	var q struct {
+		Instructions struct {
+			Entry Entry `json:"context_entry"`
+		} `json:"instructions"`
+	}
+	for _, raw := range questions {
+		if err := json.Unmarshal(raw, &q); err != nil {
+			t.Fatal(err)
+		}
+		break
+	}
+	if got := len(q.Instructions.Entry.Content); got > contextEntryChars || got%2 != 0 {
+		t.Errorf("entry content sent at %d bytes", got)
+	}
+}
+
+func TestJudgeRefusesAPartialReply(t *testing.T) {
+	c := client(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"answers":{"q0.0":{"noul":0.9}},"usage":{"input_tokens":10}}`)
+	})
+	if _, err := (&Misses{Client: c}).Describes(context.Background(), Defect{Summary: "x"}, []Said{{Text: "y"}}); err == nil {
+		t.Error("a reply missing answers was read as a score")
+	}
+}

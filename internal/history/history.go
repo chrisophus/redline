@@ -170,6 +170,11 @@ type Report struct {
 	// Repeats is the repeats pass replayed over these reviews, nil until
 	// ReplayRepeats has run.
 	Repeats *RepeatTotals `json:"repeats,omitempty"`
+	// Misses, Evidence and Context are the three replays in judged.go, each
+	// nil until its replay has run.
+	Misses   *MissTotals     `json:"misses,omitempty"`
+	Evidence *EvidenceTotals `json:"evidence,omitempty"`
+	Context  *ContextTotals  `json:"context,omitempty"`
 }
 
 // Collect reads every review saved under root. ledgerDir holds reviews.jsonl

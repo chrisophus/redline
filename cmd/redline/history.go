@@ -8,6 +8,7 @@ import (
 
 	"github.com/chrisophus/redline/internal/history"
 	"github.com/chrisophus/redline/internal/jev"
+	"github.com/chrisophus/redline/internal/miss"
 	"github.com/chrisophus/redline/internal/review"
 )
 
@@ -49,6 +50,11 @@ func cmdHistory(o opts) error {
 		})
 		usage, calls := judge.Spent()
 		fmt.Fprintf(os.Stderr, "redline: the replay sent %d request(s) to %s for $%.4f\n", calls, client.Model, usage.CostUSD())
+	}
+	if o.replayMisses || o.replayEvidence || o.replayContext {
+		if err := judgeHistory(o, rep, ledger); err != nil {
+			return err
+		}
 	}
 	if o.format == "json" {
 		enc := json.NewEncoder(os.Stdout)
@@ -94,4 +100,50 @@ func askHistory(o opts, rep *history.Report) error {
 			fmt.Fprintf(os.Stderr, "redline: %d of %d questions answered\n", done, total)
 		}
 	})
+}
+
+// judgeHistory runs the replays that put a yes/no question to Jev about what
+// a saved review already holds. They share one client, and each says what it
+// spent.
+func judgeHistory(o opts, rep *history.Report, ledger string) error {
+	client, err := jev.New("", "", os.Getenv(jev.KeyEnv))
+	if err != nil {
+		return fmt.Errorf("--misses, --evidence and --context ask TypeSafe's Jev: %w", err)
+	}
+	ctx := context.Background()
+	spent := func(what string, usage jev.Usage, calls int) {
+		fmt.Fprintf(os.Stderr, "redline: %s sent %d request(s) to %s for $%.4f\n", what, calls, client.Model, usage.CostUSD())
+	}
+	if o.replayMisses {
+		misses, err := miss.Read(ledger)
+		if err != nil {
+			return fmt.Errorf("--misses: %w", err)
+		}
+		judge := &jev.Misses{Client: client}
+		rep.ReplayMisses(ctx, judge, misses, nil)
+		usage, calls := judge.Spent()
+		spent("--misses", usage, calls)
+	}
+	if o.replayEvidence {
+		judge := &jev.Evidence{Client: client}
+		rep.ReplayEvidence(ctx, judge, progressEvery(20, "reviews checked for evidence"))
+		usage, calls := judge.Spent()
+		spent("--evidence", usage, calls)
+	}
+	if o.replayContext {
+		judge := &jev.Context{Client: client}
+		rep.ReplayContext(ctx, judge, progressEvery(10, "reviews checked for context"))
+		usage, calls := judge.Spent()
+		spent("--context", usage, calls)
+	}
+	return nil
+}
+
+// progressEvery reports on stderr after every n reviews and after the last.
+func progressEvery(n int, what string) func(done, total int) {
+	return func(done, total int) {
+		if done%n == 0 || done == total {
+			fmt.Fprintf(os.Stderr, "redline: %d of %d %s\n", done, total, what)
+		}
+	}
 }
