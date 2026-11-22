@@ -269,3 +269,13 @@ func TestSplitDiff(t *testing.T) {
 		t.Errorf("splitDiff = %+v", got)
 	}
 }
+
+func TestJudged_LaterFreeTextReplyOverrulesAnEarlierMarker(t *testing.T) {
+	jd := judging(t, &fakeJev{}, fakeSource{})
+	// The marker says fixed, but the newer reply says the problem remains open.
+	row := deriveJudged(t, basePRLong("MERGED", replyThread(true, "Addressed in c2c2c2c2: guarded the map", "This remains open")), jd,
+		fakeDiff{hunks: map[string][]Hunk{"c2c2c2c2|a.go": edit(20, 1)}})
+	if row.Disposition != string(DispOpen) || row.Basis != BasisJev {
+		t.Errorf("got %q basis %q, want open from jev", row.Disposition, row.Basis)
+	}
+}

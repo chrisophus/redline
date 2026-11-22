@@ -385,6 +385,10 @@ func decideThread(drow *DispositionRow, state string, th *Thread, fix fixResult,
 	ended := state == "MERGED" || state == "CLOSED"
 	replyDecides := th.IsResolved || ended
 	switch {
+	case reply.later && scores != nil && decideFromScores(drow, *scores, fix):
+		if drow.Disposition == string(DispFixed) && reply.sha != "" {
+			drow.FixCommitSha = reply.sha
+		}
 	case replyDecides && reply.kind == ReplyAddressed:
 		drow.Disposition, drow.Basis = string(DispFixed), BasisReply
 		drow.FixCommitSha = reply.sha
@@ -439,6 +443,9 @@ func verifiedAddressed(runs []Run, file, qkey string, fixedAt time.Time) bool {
 type reply struct {
 	kind string
 	sha  string
+	// later is set when the PR author wrote a reply with no marker line after the one that set kind. That
+	// reply may have changed the author's position, so Jev's answers get to overrule the marker.
+	later bool
 }
 
 // Both reply formats open a line. Anchoring there keeps "this was not addressed in abc1234" and a quoted
@@ -463,6 +470,8 @@ func readReply(th *Thread) reply {
 			out = reply{kind: ReplyAddressed, sha: strings.ToLower(m[1])}
 		} else if notFixingRe.MatchString(c.Body) {
 			out = reply{kind: ReplyNotFixing}
+		} else {
+			out.later = out.kind != ""
 		}
 	}
 	return out
