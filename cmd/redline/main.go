@@ -101,6 +101,8 @@ type opts struct {
 	maxAsks int
 	// review's --repeats, and history's flag of the same name.
 	repeats bool
+	// history's --misses, --evidence and --context.
+	replayMisses, replayEvidence, replayContext bool
 }
 
 func runMain(args []string) error {

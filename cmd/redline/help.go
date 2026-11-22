@@ -255,6 +255,9 @@ func historyFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.jsonl, "jsonl", "", "directory holding reviews.jsonl and misses.jsonl (default: --out)")
 	fs.BoolVar(&o.ask, "ask", false, "put each past review's choices to a model and compare its answers with what happened")
 	fs.BoolVar(&o.repeats, "repeats", false, "replay review --repeats over every saved review of a pull request already reviewed; asks TypeSafe's Jev")
+	fs.BoolVar(&o.replayMisses, "misses", false, "ask whether a finding of the review described each recorded miss; asks TypeSafe's Jev")
+	fs.BoolVar(&o.replayEvidence, "evidence", false, "ask whether each ruling's quoted evidence shows what its finding claims; asks TypeSafe's Jev")
+	fs.BoolVar(&o.replayContext, "context", false, "ask which context entries each review needed and compare with the ones it used; asks TypeSafe's Jev")
 	fs.IntVar(&o.maxAsks, "max-asks", 500, "with --ask: the most questions to send; 0 is no limit")
 	fs.StringVar(&o.api, "api", "", "with --ask: anthropic, openai or jev")
 	fs.StringVar(&o.baseURL, "base-url", "", "with --ask: endpoint to send the questions to, for a proxy")
@@ -812,6 +815,20 @@ flags:
                     many findings said an earlier one again. Asks TypeSafe's
                     Jev, key in TYPESAFE_API_KEY; about four cents per
                     hundred findings
+  --misses          for each miss recorded with redline miss, ask whether a
+                    finding of the review it was recorded against described
+                    the defect. Says which misses nobody proposed, which the
+                    ruling withdrew, and which passed the ruling and still
+                    did not reach the author. Asks TypeSafe's Jev.
+  --evidence        for each saved finding whose ruling quoted a line, ask
+                    whether that line shows what the finding claims. Lists
+                    the kept findings whose evidence scored lowest. Asks
+                    TypeSafe's Jev.
+  --context         for each saved review, ask which of its context entries
+                    a reviewer would need, and compare with the entries a
+                    ruling quoted or a finding named. Shows whether ranking
+                    context by the answer would have kept what was used.
+                    Asks TypeSafe's Jev.
   --ask             put each past review's choices to a model and compare its
                     answers with what happened
   --max-asks N      with --ask: the most questions to send (default 500; 0 is

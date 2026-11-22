@@ -147,6 +147,7 @@ go build ./cmd/redline
 ./redline miss --pr 46 --head 3f9a2c1 --file a.html --line 41 --summary "dropped a )"
 ./redline history                 # every saved review side by side, no model call
 ./redline history --ask           # and what a model would have decided for each
+./redline history --misses --evidence --context  # three questions put to Jev about saved reviews
 ```
 
 `run` writes `findings.json`, `report.md`, `report.html`, and any captured
@@ -212,6 +213,31 @@ that read the new code and reports the defect again is saying the fix did not
 land. The pass sends the finding text and the earlier comments to TypeSafe, so
 it is off unless asked for. `redline history --repeats` replays it over the
 saved reviews, to see what it would have held before turning it on.
+
+Three more `history` flags put a yes/no question to Jev about what saved
+reviews already hold. None of them changes a review. Each is there to show
+whether Jev's answer is worth acting on before anything is built that acts on
+it, and each sends finding text or code to TypeSafe.
+
+- `--misses` takes each defect recorded with `redline miss` and asks whether
+  a finding of that review described it. `redline miss` matches by file and
+  line, so it counts a finding on the right line about something else and
+  skips one two lines away about the defect. The report says which misses
+  nobody proposed, which the ruling withdrew, and which passed the ruling and
+  still did not reach the author.
+- `--evidence` takes each finding whose ruling quoted a line and asks whether
+  that line shows what the finding claims. A ruling counts as grounded when
+  its quote was in the material, which is also true of a real line that says
+  something else. The report lists the kept findings whose evidence scored
+  lowest.
+- `--context` asks which of a review's context entries a reviewer would need,
+  and compares the scores with the entries a ruling quoted or a finding
+  named. It answers whether ranking context by Jev's score, in place of by
+  role, would have kept what the review used.
+
+The wording of these three questions and the 0.5 bars have not been scored
+against labelled cases the way the `--repeats` questions were. The reports
+print the scores so they can be.
 
 `redline dispositions` looks back at pull requests that were already reviewed
 and says what became of each finding: fixed, declined, left open, stale, or

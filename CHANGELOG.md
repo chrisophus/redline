@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`redline history --misses`, `--evidence` and `--context` replay three
+  more decisions against TypeSafe's Jev.** `--misses` asks whether a finding
+  of a review described each defect recorded against it, and says which
+  misses nobody proposed, which the ruling withdrew and which passed the
+  ruling. `--evidence` asks whether the line a ruling quoted shows what the
+  finding claims, and lists the kept findings whose evidence scored lowest.
+  `--context` asks which context entries a review needed and compares the
+  scores with the entries it used. None of them changes a review, and their
+  questions have not yet been scored against labelled cases.
+
 ## [0.23.0] - 2026-11-21
 
 ### Added
