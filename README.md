@@ -242,7 +242,7 @@ findings over 0.5 were duplicates of the same defect, so the bar is supported
 by that test. The summary of a miss should name the defect: a commit title
 like "Address the review comments" made the score useless.
 
-`--evidence` is still unscored. Reviews from the `oneshot` pipeline have no
+`--evidence` is still unscored. Reviews run without `--verify` have no
 ruling, so it has nothing to ask about them. It checks whether the quote
 matches the claim, not whether the finding is right: wrong findings whose
 line really says what they claim scored high.

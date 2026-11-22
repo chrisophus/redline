@@ -30,8 +30,8 @@ import (
 //
 // EvidenceBar is still unscored. The question checks whether the quote
 // matches the claim, not whether the finding is right, and wrong findings
-// whose line really says what they claim scored high. Reviews from the
-// oneshot pipeline have no ruling, so there is nothing to ask about them.
+// whose line really says what they claim scored high. Reviews run without --verify
+// have no ruling, so there is nothing to ask about them.
 // Each report prints the scores beside the verdicts for a reader to check.
 const (
 	MissBar     = 0.5
@@ -450,7 +450,7 @@ func (rep *Report) evidence(b *strings.Builder) {
 	}
 	b.WriteString("\nWhether a ruling's quoted evidence shows what the finding claims\n")
 	if len(tot.Seen) == 0 {
-		b.WriteString("  No saved finding has a ruling that quoted evidence (reviews from the oneshot pipeline have none).\n")
+		b.WriteString("  No saved finding has a ruling that quoted evidence (reviews run without --verify have none).\n")
 	} else {
 		byVerdict := map[string][]float64{}
 		for _, s := range tot.Seen {

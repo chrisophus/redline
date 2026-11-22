@@ -16,7 +16,7 @@ import (
 // only the misses question has been, on 2026-11-22: on 17 confirmed fixes it
 // ranked the right finding first every time, and 14 of 17 scored 0.5 or more.
 // A miss summary has to name the defect for that to hold. The evidence
-// question is unscored: reviews from the oneshot pipeline have no ruling to
+// question is unscored: reviews run without --verify have no ruling to
 // ask about, and it checks whether a quote matches a claim, not whether the
 // finding is right. The context question is unscored too: "used" is judged
 // only from ruling quotes and symbol names, so few reviews have both used and

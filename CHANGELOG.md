@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scored 0.5 or more, so the bar holds, provided the miss summary names the
   defect. `--evidence` and `--context` are still unscored. `--evidence` checks
   whether the quote matches the claim, not whether the finding is right, and
-  has nothing to ask about reviews from the `oneshot` pipeline. When either
+  has nothing to ask about reviews run without `--verify`. When either
   report has nothing to compare, it now says why.
 
 ## [0.23.0] - 2026-11-21

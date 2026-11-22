@@ -230,7 +230,7 @@ func TestReportsSayWhyAReplayHadNothingToAsk(t *testing.T) {
 	rep.ReplayContext(context.Background(), &fakeJudge{}, nil)
 	out := rep.Render()
 	for _, want := range []string{
-		"no saved finding has a ruling that quoted evidence (reviews from the oneshot pipeline have none)",
+		"no saved finding has a ruling that quoted evidence (reviews run without --verify have none)",
 		"no review had both used and unused context entries",
 	} {
 		if !strings.Contains(strings.ToLower(out), want) {
