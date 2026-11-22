@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/chrisophus/redline/internal/dispositions"
+	"github.com/chrisophus/redline/internal/jev"
 )
 
 // fakeGH answers gh and git by command-line prefix.
@@ -163,5 +167,34 @@ func TestRunDispositions_OneBadPRDoesNotHideTheRest(t *testing.T) {
 	}
 	if err := runDispositions(context.Background(), opts{pr: "7", repo: "o/n", artifacts: filepath.Join(t.TempDir(), "missing")}, gh, &stdout, &stderr); err == nil {
 		t.Error("a missing --artifacts directory should fail")
+	}
+}
+
+// With --jev and no key the command stops before reading anything, and says which flag asked.
+func TestDispositionsJevNeedsAKey(t *testing.T) {
+	t.Setenv("TYPESAFE_API_KEY", "")
+	err := runDispositions(context.Background(), opts{pr: "7", repo: "o/n", jev: true}, fakeGH{}, io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "--jev") || !strings.Contains(err.Error(), "TYPESAFE_API_KEY") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// With TypeSafe down, --jev still writes the summary and says once that it could not be reached.
+func TestDispositionsJevDownCarriesOn(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "down", 500) }))
+	defer srv.Close()
+	old := newJevClient
+	newJevClient = func() (*jev.Client, error) { return jev.New(srv.URL, "", "k") }
+	defer func() { newJevClient = old }()
+	runner := fakeGH{answers: map[string]string{"gh api graphql": onePR}}
+	var out, errs strings.Builder
+	if err := runDispositions(context.Background(), opts{pr: "7", repo: "o/n", jev: true}, runner, &out, &errs); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "declined=1") || strings.Contains(out.String(), "Jev:") {
+		t.Errorf("summary = %q", out.String())
+	}
+	if n := strings.Count(errs.String(), "TypeSafe could not be reached"); n != 1 {
+		t.Errorf("stderr says so %d times: %q", n, errs.String())
 	}
 }

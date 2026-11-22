@@ -11,7 +11,11 @@ import (
 	"strings"
 
 	"github.com/chrisophus/redline/internal/dispositions"
+	"github.com/chrisophus/redline/internal/jev"
 )
+
+// newJevClient makes the TypeSafe client for --jev. Tests point it at a fake server.
+var newJevClient = func() (*jev.Client, error) { return jev.New("", "", os.Getenv(jev.KeyEnv)) }
 
 // cmdDispositions records what became of each review finding on the named
 // pull requests: fixed, declined, open, stale, or never posted. It covers
@@ -43,6 +47,16 @@ func runDispositions(ctx context.Context, o opts, runner dispositions.Runner, st
 		}
 	}
 	rec := dispositions.Recorder{GH: gh, Git: runner, EvidenceMarker: o.evidenceMarker}
+	var replies *jev.Replies
+	var fixes *jev.Fixes
+	if o.jev {
+		client, err := newJevClient()
+		if err != nil {
+			return fmt.Errorf("--jev: %w", err)
+		}
+		replies, fixes = &jev.Replies{Client: client}, &jev.Fixes{Client: client}
+		rec.Jev = &dispositions.Judging{Replies: replies, Fixes: fixes}
+	}
 	var results []dispositions.Result
 	failed := 0
 	// One PR that cannot be read must not hide the rest.
@@ -57,6 +71,14 @@ func runDispositions(ctx context.Context, o opts, runner dispositions.Runner, st
 	}
 	if _, err := fmt.Fprint(stdout, dispositions.Summarize(results)); err != nil {
 		return err
+	}
+	if o.jev {
+		for _, n := range rec.Jev.Notes() {
+			_, _ = fmt.Fprintf(stderr, "redline: %s\n", n)
+		}
+		ru, rc := replies.Spent()
+		fu, fc := fixes.Spent()
+		_, _ = fmt.Fprintf(stderr, "redline: --jev sent %d request(s) to TypeSafe for $%.4f\n", rc+fc, ru.Add(fu).CostUSD())
 	}
 	// When every PR failed there is nothing to write, and writing would empty the files a previous run left.
 	if o.jsonl != "" && len(results) > 0 {

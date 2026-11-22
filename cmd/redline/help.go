@@ -303,6 +303,7 @@ func dispositionsFlags(fs *flag.FlagSet, o *opts) {
 	fs.StringVar(&o.artifacts, "artifacts", "", "directory of downloaded Redline CI artifacts")
 	fs.StringVar(&o.jsonl, "jsonl", "", "directory to write the JSONL files into")
 	fs.StringVar(&o.evidenceMarker, "evidence-marker", "", "marker that opens a PR's evidence comment")
+	fs.BoolVar(&o.jev, "jev", false, "read the author's replies, and check named fix commits, with TypeSafe's Jev")
 }
 
 func gcFlags(fs *flag.FlagSet, o *opts) {
@@ -940,6 +941,19 @@ flags:
                     the marker that opens a PR's evidence comment; its
                     Verified, Refuted and Not verified rows are counted
                     on the PR's row. Without it, no evidence is read.
+  --jev             read replies with TypeSafe's Jev (needs TYPESAFE_API_KEY).
+                    A reply with no "Addressed in" or "Not fixing" line is
+                    decided from Jev's answers: fixed, declined or open.
+                    A declined finding is marked wrong (the claim is
+                    mistaken) or wont-fix (real, left as is). A commit a
+                    reply names is checked against the finding. The raw
+                    probabilities go into dispositions.jsonl, and the summary
+                    counts findings disputed as wrong and fixes confirmed.
+                    Sent to TypeSafe: the finding text, the author's replies,
+                    12 lines of code either side of the finding, and the
+                    named commit's diff (up to 9 KB). Costs about two cents
+                    per hundred threads. If TypeSafe cannot be reached, the
+                    run goes on without Jev and says so.
 `
 
 const missHelp = `redline miss — record a defect a review should have caught

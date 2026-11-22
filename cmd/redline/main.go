@@ -87,6 +87,7 @@ type opts struct {
 	recent                 int
 	repo, artifacts, jsonl string
 	evidenceMarker         string
+	jev                    bool
 	// head is --head: a kept head's session under the target's. keepHeads and
 	// headsOlderThan are gc's limits on those. The miss flags follow.
 	head           string

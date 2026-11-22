@@ -17,6 +17,8 @@ type Recorder struct {
 	Now func() time.Time
 	// EvidenceMarker finds the PR comment that reports what the change was checked against. Empty skips it.
 	EvidenceMarker string
+	// Jev, when set, reads the author's replies with TypeSafe's Jev. Its Ctx and Code are filled in per PR.
+	Jev *Judging
 }
 
 // Record fetches the PR and its commits, then derives its rows. runs may be nil.
@@ -33,7 +35,11 @@ func (r Recorder) Record(ctx context.Context, number int, runs []Run) (Result, e
 	if r.Now != nil {
 		now = r.Now
 	}
-	res, err := Derive(pr, runs, NewGitDiffer(ctx, r.Git), now())
+	diff := NewGitDiffer(ctx, r.Git)
+	if r.Jev != nil {
+		r.Jev.Ctx, r.Jev.Code = ctx, diff
+	}
+	res, err := DeriveJudged(pr, runs, diff, now(), r.Jev)
 	if err != nil {
 		return Result{}, err
 	}
@@ -95,7 +101,40 @@ func Summarize(results []Result) string {
 	if withReply > 0 {
 		fmt.Fprintf(&b, "Author reply vs anchor check: reply and geometry agree on %d of %d threads that have both\n", agree, withReply)
 	}
+	b.WriteString(jevSummary(results))
 	return b.String()
+}
+
+// jevSummary is the line --jev adds: how many answered findings were disputed as wrong, and how many named
+// fixes Jev confirmed. It is empty when no reply was scored.
+func jevSummary(results []Result) string {
+	answered, wrong, checked, confirmed, doubted := 0, 0, 0, 0, 0
+	for i := range results {
+		for j := range results[i].Dispositions {
+			d := &results[i].Dispositions[j]
+			if d.ReplyFixed != nil {
+				answered++
+			}
+			if d.DeclineReason == DeclineWrong {
+				wrong++
+			}
+			switch d.FixVerified {
+			case FixYes:
+				checked++
+				confirmed++
+			case FixNo:
+				checked++
+				doubted++
+			case FixUnsure:
+				checked++
+			}
+		}
+	}
+	if answered == 0 {
+		return ""
+	}
+	return fmt.Sprintf("Jev: %d of %d answered findings disputed as wrong (%.0f%%); %d of %d named fixes confirmed, %d doubted\n",
+		wrong, answered, 100*float64(wrong)/float64(answered), confirmed, checked, doubted)
 }
 
 func counts(m map[string]int) string {
