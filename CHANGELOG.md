@@ -15,8 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ruling. `--evidence` asks whether the line a ruling quoted shows what the
   finding claims, and lists the kept findings whose evidence scored lowest.
   `--context` asks which context entries a review needed and compares the
-  scores with the entries it used. None of them changes a review, and their
-  questions have not yet been scored against labelled cases.
+  scores with the entries it used. None of them changes a review. `--misses` was
+  scored on 17 confirmed fixes: the right finding ranked first in 17 and 14
+  scored 0.5 or more, so the bar holds, provided the miss summary names the
+  defect. `--evidence` and `--context` are still unscored. `--evidence` checks
+  whether the quote matches the claim, not whether the finding is right, and
+  has nothing to ask about reviews from the `oneshot` pipeline. When either
+  report has nothing to compare, it now says why.
 
 ## [0.23.0] - 2026-11-21
 

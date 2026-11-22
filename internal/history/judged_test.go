@@ -211,3 +211,30 @@ func TestReplayContextSkipsAReviewWithNothingToCompare(t *testing.T) {
 		t.Errorf("asked about %d entries, totals %+v", len(f.entries), rep.Context)
 	}
 }
+
+// A report with nothing to compare says why in one line instead of printing
+// zeros.
+func TestReportsSayWhyAReplayHadNothingToAsk(t *testing.T) {
+	rep := judged(t)
+	for _, r := range rep.Runs {
+		tr, err := postmortem.Load(r.Dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tr.Findings = nil
+		if err := postmortem.Write(r.Dir, tr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rep.ReplayEvidence(context.Background(), &fakeJudge{}, nil)
+	rep.ReplayContext(context.Background(), &fakeJudge{}, nil)
+	out := rep.Render()
+	for _, want := range []string{
+		"no saved finding has a ruling that quoted evidence (reviews from the oneshot pipeline have none)",
+		"no review had both used and unused context entries",
+	} {
+		if !strings.Contains(strings.ToLower(out), want) {
+			t.Errorf("report is missing %q:\n%s", want, out)
+		}
+	}
+}

@@ -12,9 +12,15 @@ import (
 // question can move the answer, and each question is asked a few times and
 // averaged because one answer moves by a few hundredths between askings.
 //
-// The wording of these questions has not been scored against labelled cases,
-// which the repeats questions were. They are a first version, and `redline
-// history` replays them over saved reviews so that they can be.
+// The repeats questions were scored against labelled cases. Of these three,
+// only the misses question has been, on 2026-11-22: on 17 confirmed fixes it
+// ranked the right finding first every time, and 14 of 17 scored 0.5 or more.
+// A miss summary has to name the defect for that to hold. The evidence
+// question is unscored: reviews from the oneshot pipeline have no ruling to
+// ask about, and it checks whether a quote matches a claim, not whether the
+// finding is right. The context question is unscored too: "used" is judged
+// only from ruling quotes and symbol names, so few reviews have both used and
+// unused entries. `redline history` replays them over saved reviews.
 
 // meter counts what a judge's requests used.
 type meter struct {
