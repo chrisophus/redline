@@ -642,9 +642,16 @@ cost and caching:
                     minutes' 1.25x, and is worth it only when the gap between
                     the two calls runs past five minutes.
   --ceiling N       token ceiling for the whole request (default 250000). A
-                    tail bound, not a per-review budget: a change whose diff
-                    and findings alone exceed it is refused, not reviewed
-                    with the context dropped.
+                    tail bound, not a per-review budget. A change whose diff
+                    and findings alone exceed it is still reviewed: context
+                    is deferred, every file is listed with its line counts,
+                    as many diffs as fit are shown (non-test files first,
+                    then files the description names, then larger diffs),
+                    and the reviewer reads the rest with get_diff. The
+                    posted review says how many diffs were held back and
+                    how many were read. It is refused only when the file
+                    list and the fixed parts of the prompt are over the
+                    ceiling by themselves.
   --max-tokens N    cap on the response (default 64000)
   --max-cost USD    refuse to send a request estimated above this (default
                     3.00). A tripwire, not a governor: it sits above what an

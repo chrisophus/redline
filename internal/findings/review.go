@@ -68,6 +68,37 @@ type Review struct {
 	// the walkthrough still leaves nothing to fan the judging calls out over.
 	// Empty on a run that judged the change in one call.
 	Cohorts []Cohort `json:"cohorts,omitempty"`
+	// HeldBack says which files' diffs the reviewer was not shown, and which
+	// of those it read afterwards. Nil when every diff was in the prompt.
+	HeldBack *HeldBack `json:"heldBack,omitempty"`
+}
+
+// HeldBack is the account of a review made with some diffs held back to fit
+// the size ceiling. Total is the files that had a diff, Held the paths whose
+// diffs were left out, and Read the held paths the reviewer asked for. A held
+// path not in Read had no look from the reviewer at all.
+type HeldBack struct {
+	Total int      `json:"total"`
+	Held  []string `json:"held"`
+	Read  []string `json:"read,omitempty"`
+}
+
+// Unread is the held paths the reviewer never read.
+func (h *HeldBack) Unread() []string {
+	if h == nil {
+		return nil
+	}
+	read := map[string]bool{}
+	for _, p := range h.Read {
+		read[p] = true
+	}
+	var out []string
+	for _, p := range h.Held {
+		if !read[p] {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // Cohort is one group of files a split review's describing call drew, and
@@ -129,6 +160,7 @@ type reviewWire struct {
 	Note             string             `json:"note"`
 	Incomplete       []string           `json:"incomplete"`
 	Cohorts          []Cohort           `json:"cohorts"`
+	HeldBack         *HeldBack          `json:"heldBack"`
 }
 
 type reviewCommentWire struct {
@@ -221,6 +253,7 @@ func LoadReview(path string) (*Review, error) {
 	r.Note = strings.TrimSpace(wire.Note)
 	r.Incomplete = wire.Incomplete
 	r.Cohorts = wire.Cohorts
+	r.HeldBack = wire.HeldBack
 	r.Overview = strings.TrimSpace(wire.Overview)
 	if r.Overview == "" {
 		r.Overview = strings.TrimSpace(wire.WhatItDoes)

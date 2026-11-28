@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file is sent whole, so the count can be well above the size of the raw diff.
 
 ### Added
+- **A change over the ceiling is reviewed with diffs held back, not refused.**
+  Context is deferred, every changed file is listed with its line counts, and
+  as many diffs as fit are shown: non-test files first, then files the
+  description names, then larger diffs. The reviewer reads the others with a
+  new `get_diff` lookup. The posted review says how many diffs were held back
+  and how many were read, and lists the files nobody read. The run is refused
+  only when the file list alone is over the ceiling, and `--cohorts` above 1
+  and `--mode explore` still refuse.
 - **`redline dispositions --jev` reads free-text replies and checks named fix
   commits.** A reply with no `Addressed in` or `Not fixing` line is decided as
   fixed, declined or open from TypeSafe's Jev. A declined finding is marked

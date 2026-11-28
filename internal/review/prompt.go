@@ -318,7 +318,9 @@ func (in Input) cohortContextTail(room int, othersFiles []string) string {
 // The exception is a change that is only tests. There the tests are the
 // change, and a review shown nothing is not a review, so they are sent.
 func (in Input) hidesTests() bool {
-	if in.Change == nil {
+	if in.Change == nil || in.held != nil {
+		// With diffs held back by size, tests are held back or shown by the
+		// same ordering as every other file, and named on the held list.
 		return false
 	}
 	for _, f := range in.Change.Files {
@@ -363,6 +365,9 @@ func (in Input) ShownFiles() map[string]bool {
 			continue
 		}
 		if hideTests && in.holdsBack(f) {
+			continue
+		}
+		if in.held[f.Path] {
 			continue
 		}
 		shown[f.Path] = true
@@ -1136,6 +1141,7 @@ func (in Input) diffSectionWith(after func(file string) string) string {
 	b.WriteString("A small file is given whole, as it is after the change, with the changed " +
 		"line ranges named and any removed lines listed above it. Larger files are shown " +
 		"as a diff.\n\n")
+	b.WriteString(in.heldList())
 	shown := in.ShownFiles()
 	for _, f := range in.Change.Files {
 		if !shown[f.Path] {
@@ -1144,38 +1150,47 @@ func (in Input) diffSectionWith(after func(file string) string) string {
 			// code under test needs from it.
 			continue
 		}
-		fmt.Fprintf(&b, "### %s\n\n", f.Path)
-		if f.Head == "" {
-			// No whole file, so the diff is the only view of this one.
-			if f.Diff != "" {
-				fmt.Fprintf(&b, "```diff\n%s\n```\n\n", strings.TrimRight(f.Diff, "\n"))
-			}
-			if after != nil {
-				b.WriteString(after(f.Path))
-			}
-			continue
+		b.WriteString(fileSection(f, after))
+	}
+	return b.String()
+}
+
+// fileSection is one file as the diff section shows it: its diff, or the whole
+// file with the changed ranges named when it is small. get_diff returns the
+// same text for a file whose diff was held back.
+func fileSection(f change.File, after func(file string) string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "### %s\n\n", f.Path)
+	if f.Head == "" {
+		// No whole file, so the diff is the only view of this one.
+		if f.Diff != "" {
+			fmt.Fprintf(&b, "```diff\n%s\n```\n\n", strings.TrimRight(f.Diff, "\n"))
 		}
-		// The whole file is below, so every added line is already about to
-		// be sent. Repeating the unified diff sends it twice, which on a
-		// change that is mostly additions is most of the prompt. What the
-		// file cannot show is what left and which lines the edits touched,
-		// so that is what the diff is reduced to.
-		ranges, removed := changeShape(f.Diff)
-		if len(ranges) > 0 {
-			fmt.Fprintf(&b, "Changed lines: %s.\n", strings.Join(ranges, ", "))
-		}
-		if len(removed) > 0 {
-			b.WriteString("\nRemoved by this change, so no longer in the file below:\n\n```\n")
-			for _, r := range removed {
-				b.WriteString(r + "\n")
-			}
-			b.WriteString("```\n")
-		}
-		fmt.Fprintf(&b, "\nThe file after the change:\n\n```%s\n%s\n```\n\n",
-			f.Language, strings.TrimRight(f.Head, "\n"))
 		if after != nil {
 			b.WriteString(after(f.Path))
 		}
+		return b.String()
+	}
+	// The whole file is below, so every added line is already about to
+	// be sent. Repeating the unified diff sends it twice, which on a
+	// change that is mostly additions is most of the prompt. What the
+	// file cannot show is what left and which lines the edits touched,
+	// so that is what the diff is reduced to.
+	ranges, removed := changeShape(f.Diff)
+	if len(ranges) > 0 {
+		fmt.Fprintf(&b, "Changed lines: %s.\n", strings.Join(ranges, ", "))
+	}
+	if len(removed) > 0 {
+		b.WriteString("\nRemoved by this change, so no longer in the file below:\n\n```\n")
+		for _, r := range removed {
+			b.WriteString(r + "\n")
+		}
+		b.WriteString("```\n")
+	}
+	fmt.Fprintf(&b, "\nThe file after the change:\n\n```%s\n%s\n```\n\n",
+		f.Language, strings.TrimRight(f.Head, "\n"))
+	if after != nil {
+		b.WriteString(after(f.Path))
 	}
 	return b.String()
 }

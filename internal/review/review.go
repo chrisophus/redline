@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -130,6 +131,10 @@ type Input struct {
 	// change gets past the checks: coverage and mutation still pass, because
 	// the test now asserts the wrong thing. Only the diff shows that.
 	ShowModifiedTests bool
+
+	// held is the files whose diffs were left out of the prompt to fit the
+	// ceiling, set by holdBack and nil on every other run. See heldback.go.
+	held map[string]bool
 }
 
 // Looker answers the lookups a pass makes for itself while it writes.
@@ -209,6 +214,9 @@ type Options struct {
 	// beside each file's diff, and lets every pass read an entry with
 	// get_context. See deferred.go.
 	DeferContext bool
+	// heldDiffs is set by holdBack when some diffs are left out of the prompt,
+	// which puts get_diff on the catalogue. Not a flag: the run decides it.
+	heldDiffs bool
 	// CallTurns bounds one pass of the turn loop every other call runs, and
 	// DefaultCallTurns applies when it is zero. See loop.go.
 	CallTurns int
@@ -768,6 +776,10 @@ type Result struct {
 	// interactive average: a sweep of eleven half-price fixtures would
 	// otherwise report the tool as having got cheaper.
 	Batched bool `json:"batched,omitempty"`
+	// Held says which files' diffs were left out of the prompt to fit the
+	// ceiling, and which of those the reviewer read with get_diff. Nil when
+	// every diff was shown.
+	Held *HeldDiffs `json:"held,omitempty"`
 	// Fetched is how many context entries the reviewer asked for.
 	Fetched int `json:"fetched,omitempty"`
 	// Looked is how many lookups a --look pass made against the tree, the
@@ -919,6 +931,9 @@ type Result struct {
 	// deferred is the context held back behind get_context, in id order, and
 	// nil when the context went into the prompt.
 	deferred []deferredEntry
+	// diffs is the held-back diffs get_diff reads from, by path, and nil when
+	// every diff went into the prompt.
+	diffs map[string]string
 	// lookCalls is which lookups this run's Looker can answer, which decides
 	// which of them are on the catalogue. Fixed for the whole run, like
 	// deferred, so every call of a run sends the same bytes.
@@ -1005,27 +1020,16 @@ func (r *Result) Summary() string {
 	return s
 }
 
-// Assemble builds the prompt and prices it without calling anything. It is
-// the whole of --dry-run, and it is what the eval freezes.
-//
-// The ceiling bounds the whole request, not just the context block. That is
-// the only reading under which cost per review is a constant you can quote:
-// a ceiling that governed the context alone would let a large diff carry the
-// total anywhere, which is exactly what happened the first time this was
-// wired to a real provider.
-//
-// So the parts a review cannot do without are priced first, and the context
-// competes for what is left. A change whose own diff exceeds the ceiling is
-// reported as such rather than silently trimmed, because a review of a diff
-// with the middle cut out is worse than an honest refusal.
-//
-// The system block is priced with the fixed parts, fragments included, and
-// kept on the result so that what was priced is what is sent. A provider's
-// promptFragment is real input on every call, and leaving it out admitted
-// and quoted a request against a system prompt smaller than the one that
-// actually went out.
-func Assemble(in Input, opts Options) (*Result, error) {
-	opts = opts.withDefaults()
+// fixedParts is the text of the parts of a request a review cannot do without,
+// and what they cost together.
+type fixedParts struct {
+	system, tail, note, describe, calls string
+	fixed                               int
+}
+
+// fixedFor prices the parts a review cannot do without, for Assemble and for
+// holdBack, which has to ask the same question of several candidate prompts.
+func (in Input) fixedFor(opts Options) fixedParts {
 	// No line saying the material below is everything there is: a pass can
 	// ask for held-back context, and the scout's answers arrive later still.
 	system := systemFor(opts, StageReview) + languageFragments(in.Envelopes)
@@ -1051,7 +1055,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	describe := describingTail
 	// The block that says which calls answer the pass goes out with every
 	// request, so it is priced with the fixed parts.
-	calls := callsBlock(StageReview, opts.SinceReview != "", opts.DeferContext, lookCallsFor(opts.Look))
+	calls := callsBlock(StageReview, opts.SinceReview != "", opts.DeferContext, opts.looks())
 	// Every stage sends the catalogue on both wires, so it is reserved for
 	// unconditionally. This was once zeroed for a brief run, which was right on
 	// the one wire that dropped the tools and wrong on the other: the OpenAI
@@ -1063,7 +1067,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// would otherwise read this block unscoped - gets none of it either. See
 	// Options.CohortContext.
 	scoped := opts.CohortContext && opts.Shape() == PipelineStaged
-	fixed := toolsTokens(opts.judgingCatalogueDescribes(), opts.recapable(), opts.DeferContext, lookCallsFor(opts.Look)) + envelope.EstimateTokens(system) +
+	fixed := toolsTokens(opts.judgingCatalogueDescribes(), opts.recapable(), opts.DeferContext, opts.looks()) + envelope.EstimateTokens(system) +
 		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
 		envelope.EstimateTokens(calls) + envelope.EstimateTokens(in.fixed())
 	if len(in.Envelopes) > 0 && !scoped {
@@ -1074,7 +1078,26 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		// harmless direction for a bound.
 		fixed += envelope.EstimateTokens(in.contextHeader(envelopeRoles(in.Envelopes)))
 	}
-	room := opts.Ceiling - fixed
+	return fixedParts{system: system, tail: tail, note: note, describe: describe, calls: calls, fixed: fixed}
+}
+
+// pricedPrompt is a prompt built for a set of options and what it costs.
+type pricedPrompt struct {
+	fp       fixedParts
+	room     int
+	budget   envelope.Budgeted
+	deferred []deferredEntry
+	prompt   string
+	est      int
+}
+
+// priced builds the prompt the way Assemble does and prices the whole request,
+// so holdBack can test a candidate against the same number the ceiling is
+// checked with, deferred-context indexes included.
+func (in Input) priced(opts Options) pricedPrompt {
+	fp := in.fixedFor(opts)
+	scoped := opts.CohortContext && opts.Shape() == PipelineStaged
+	room := opts.Ceiling - fp.fixed
 	if room < 0 {
 		room = 0
 	}
@@ -1088,7 +1111,6 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		deferred = deferEntries(in, budget.Kept)
 		prompt = in.buildDeferred(deferred)
 	}
-	parts := promptParts(in, opts, system, budget)
 	// The catalogue is counted here for the reason ruleRequest counts it
 	// there: it rides on every call, so an estimate without it is short by
 	// the whole tool array against a request that carries it. The ruling was
@@ -1096,10 +1118,40 @@ func Assemble(in Input, opts Options) (*Result, error) {
 	// review by between 2800 and 4400 tokens depending on how many lookups
 	// were offered, and promptParts had been listing a `tools` line the total
 	// it sits beside did not include.
-	est := toolsTokens(opts.judgingCatalogueDescribes(), opts.recapable(), opts.DeferContext, lookCallsFor(opts.Look)) +
-		envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
-		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
-		envelope.EstimateTokens(calls)
+	est := toolsTokens(opts.judgingCatalogueDescribes(), opts.recapable(), opts.DeferContext, opts.looks()) +
+		envelope.EstimateTokens(fp.system) + envelope.EstimateTokens(prompt) +
+		envelope.EstimateTokens(fp.tail) + envelope.EstimateTokens(fp.describe) + envelope.EstimateTokens(fp.note) +
+		envelope.EstimateTokens(fp.calls)
+	return pricedPrompt{fp: fp, room: room, budget: budget, deferred: deferred, prompt: prompt, est: est}
+}
+
+// Assemble builds the prompt and prices it without calling anything. It is
+// the whole of --dry-run, and it is what the eval freezes.
+//
+// The ceiling bounds the whole request, not just the context block. That is
+// the only reading under which cost per review is a constant you can quote:
+// a ceiling that governed the context alone would let a large diff carry the
+// total anywhere, which is exactly what happened the first time this was
+// wired to a real provider.
+//
+// So the parts a review cannot do without are priced first, and the context
+// competes for what is left. A change whose own diff exceeds the ceiling is
+// reported as such rather than silently trimmed, because a review of a diff
+// with the middle cut out is worse than an honest refusal.
+//
+// The system block is priced with the fixed parts, fragments included, and
+// kept on the result so that what was priced is what is sent. A provider's
+// promptFragment is real input on every call, and leaving it out admitted
+// and quoted a request against a system prompt smaller than the one that
+// actually went out.
+func Assemble(in Input, opts Options) (*Result, error) {
+	opts = opts.withDefaults()
+	in, opts = holdBack(in, opts)
+	pr := in.priced(opts)
+	fp, room, budget, deferred, prompt := pr.fp, pr.room, pr.budget, pr.deferred, pr.prompt
+	system, tail, note, describe, fixed := fp.system, fp.tail, fp.note, fp.describe, fp.fixed
+	parts := promptParts(in, opts, system, budget)
+	est := pr.est
 	expected := opts.ExpectedOutput
 	if expected <= 0 {
 		expected = ExpectedOutputTokens
@@ -1125,7 +1177,9 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		Pipeline:           opts.Shape(),
 		Budget:             budget,
 		deferred:           deferred,
-		lookCalls:          lookCallsFor(opts.Look),
+		lookCalls:          opts.looks(),
+		diffs:              in.heldDiffs(slices.Contains(opts.looks(), CallRead)),
+		Held:               in.heldSummary(),
 		catalogueDescribes: opts.judgingCatalogueDescribes(),
 		catalogueRecaps:    opts.recapable(),
 		FilesShown:         len(in.ShownFiles()),
@@ -1173,9 +1227,22 @@ func verifyCeilingCost(opts Options, res *Result) float64 {
 	return cost
 }
 
+// looks is the lookups this run offers: what its Looker can answer, and
+// get_diff when some diffs were held back.
+func (o Options) looks() []string {
+	out := lookCallsFor(o.Look)
+	if o.heldDiffs {
+		out = append([]string{CallDiff}, out...)
+	}
+	return out
+}
+
 // Run performs the review: one call, no tools, structured output.
 func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
+	// Before anything reads the input, so every later stage sees the same
+	// files shown as the prompt did.
+	in, opts = holdBack(in, opts)
 	switch opts.API {
 	case APIAnthropic, APIOpenAI:
 	default:
@@ -1439,6 +1506,7 @@ func runOnce(ctx context.Context, in Input, opts Options, res *Result) (*Result,
 	res.Fetched += c.fetched
 	res.Looked += c.looked
 	res.Lookups = append(res.Lookups, c.lookups...)
+	res.noteDiffsRead(c.diffsRead)
 	res.Refusals = append(res.Refusals, c.refusals...)
 	if strings.TrimSpace(c.thinking) != "" {
 		pass := stage
