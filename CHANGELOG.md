@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **The over-ceiling refusal says what the diff is made of.** It now gives the
+  token count of the diff section, how many files and test files it covers,
+  how many were sent whole, and how many test files were held back. A small
+  file is sent whole, so the count can be well above the size of the raw diff.
+
 ### Added
 - **`redline dispositions --jev` reads free-text replies and checks named fix
   commits.** A reply with no `Addressed in` or `Not fixing` line is decided as

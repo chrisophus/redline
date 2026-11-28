@@ -1259,9 +1259,9 @@ func Run(ctx context.Context, in Input, opts Options) (*Result, error) {
 	// it; a real one refuses.
 	if res.OverCeiling {
 		return res, fmt.Errorf(
-			"the diff and findings alone are %d tokens against a %d-token ceiling. "+
+			"the diff and findings alone are %d tokens against a %d-token ceiling (%s). "+
 				"Raise --ceiling to proceed, or review a smaller range",
-			res.FixedEstimate, opts.Ceiling)
+			res.FixedEstimate, opts.Ceiling, in.diffBreakdown())
 	}
 	if opts.Mode == ModeExplore {
 		if opts.API != APIAnthropic {
