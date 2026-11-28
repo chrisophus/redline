@@ -346,6 +346,9 @@ type AgentReview struct {
 	RecapFiles []string `json:"recapFiles,omitempty"`
 	// Note is what the person asking for the review told the reviewer.
 	Note string `json:"note,omitempty"`
+	// HeldBack is the account of diffs the reviewer was not shown. See
+	// findings.Review.
+	HeldBack *HeldBack `json:"heldBack,omitempty"`
 }
 
 // FailedSubstrates returns panes that applied but did not run. Redline is

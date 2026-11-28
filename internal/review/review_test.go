@@ -332,9 +332,11 @@ func TestCeilingBoundsTheWholeRequestNotJustTheContext(t *testing.T) {
 	}
 }
 
-// A diff bigger than the whole ceiling is reported. It is not silently
+// A request bigger than the whole ceiling is reported. It is not silently
 // trimmed. A review of a diff with the middle cut out is worse than an honest
-// refusal.
+// refusal. The ceiling here is below the tool catalogue and file list alone,
+// so holding the diffs back cannot save it; see heldback_test.go for the
+// requests it can.
 func TestADiffLargerThanTheCeilingIsReported(t *testing.T) {
 	in := Input{
 		Change: &change.Set{Files: []change.File{{Path: "a.go", Diff: strings.Repeat("+line\n", 20000)}}},
@@ -342,7 +344,7 @@ func TestADiffLargerThanTheCeilingIsReported(t *testing.T) {
 			{Role: envelope.RoleEnclosing, Content: "func F() {}"},
 		}}},
 	}
-	got, err := Assemble(in, Options{Ceiling: 5000})
+	got, err := Assemble(in, Options{Ceiling: 500})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +369,7 @@ func TestAnOverCeilingRequestIsRefusedRatherThanSent(t *testing.T) {
 	in := Input{
 		Change: &change.Set{Files: []change.File{{Path: "a.go", Diff: strings.Repeat("+line\n", 20000)}}},
 	}
-	res, err := Run(context.Background(), in, Options{Ceiling: 5000, MaxCostUSD: 100})
+	res, err := Run(context.Background(), in, Options{Ceiling: 500, MaxCostUSD: 100})
 	if err == nil {
 		t.Fatal("a request larger than the ceiling must be refused, not sent")
 	}
@@ -376,7 +378,7 @@ func TestAnOverCeilingRequestIsRefusedRatherThanSent(t *testing.T) {
 	}
 	// A dry run prices the request it cannot afford; that is how the caller
 	// finds out what ceiling it would take.
-	if _, err := Run(context.Background(), in, Options{Ceiling: 5000, MaxCostUSD: 100, DryRun: true}); err != nil {
+	if _, err := Run(context.Background(), in, Options{Ceiling: 500, MaxCostUSD: 100, DryRun: true}); err != nil {
 		t.Fatalf("--dry-run must still print an over-ceiling request: %v", err)
 	}
 }

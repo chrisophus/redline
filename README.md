@@ -434,7 +434,22 @@ The cost target is an average across reviews, not a cap on each one. Most
 changes are small and cost cents; a few are large and cost more. Holding
 every review to the average would trim context from exactly the large changes
 that most need it, so `--ceiling` is a tail bound rather than a budget, and
-the average is measured instead of asserted. Every review appends a line to
+the average is measured instead of asserted.
+
+A change whose diff and findings alone exceed the ceiling is still reviewed,
+with diffs held back. Context is deferred as under `--defer-context`, every
+changed file is listed with its lines added and removed and whether it is a
+test, and as many diffs as fit are shown in full: non-test files first, then
+files the pull request description or commit messages name, then larger diffs
+first. The reviewer reads the rest with `get_diff`, which takes a path and
+counts against the same lookup and turn limits as the other lookups. The
+posted review says how many files' diffs were held back and how many the
+reviewer read, and lists the ones it never read in a folded section. The run
+is refused only when the file list and the fixed parts of the prompt are over
+the ceiling on their own. This does not apply to `--cohorts` above 1 or to
+`--mode explore`, which are still refused over the ceiling.
+
+Every review appends a line to
 `.redline/reviews.jsonl`, and `redline review --stats` prints the
 distribution:
 

@@ -559,6 +559,7 @@ func buildBody(p Payload) string {
 	if s := overviewSection(p.rep); s != "" {
 		head0.WriteString(s)
 	}
+	head0.WriteString(heldBackSection(p.rep))
 	if table := evidenceTable(p.rep); table != "" {
 		head0.WriteString(table)
 		head0.WriteString("\n")
@@ -788,6 +789,7 @@ func buildBodyWalkthrough(p Payload) string {
 			fmt.Fprintf(&head0, "### What this change does\n\n%s\n\n", ov)
 		}
 	}
+	head0.WriteString(heldBackSection(p.rep))
 	if p.profile.includes("composition") {
 		head0.WriteString(compositionSection(p.files))
 	}
@@ -1245,6 +1247,39 @@ func overviewSection(rep *findings.Report) string {
 		overview = cutRunes(overview, maxNarrative) + "\n\n_(truncated; the full overview is on the report)_"
 	}
 	return "### What this change does\n\n" + overview + "\n\n_Written by the reviewing agent, not measured._\n\n"
+}
+
+// heldBackSection says which diffs the reviewer was not shown. A review made
+// from part of a change has to say so where its reader will see it, and the
+// files it never read are listed, so the author knows which ones had no look at
+// all.
+func heldBackSection(rep *findings.Report) string {
+	if rep == nil || rep.Agent == nil || rep.Agent.HeldBack == nil || len(rep.Agent.HeldBack.Held) == 0 {
+		return ""
+	}
+	h := rep.Agent.HeldBack
+	var b strings.Builder
+	fmt.Fprintf(&b, "_%d of %d files' diffs were held back; the reviewer read %d of them with get_diff._\n\n",
+		len(h.Held), h.Total, len(h.Read))
+	unread := h.Unread()
+	if len(unread) == 0 {
+		return b.String()
+	}
+	fmt.Fprintf(&b, "<details>\n<summary>Held-back files the reviewer did not read (%d)</summary>\n\n", len(unread))
+	var omitted int
+	for _, p := range unread {
+		row := fmt.Sprintf("- `%s`\n", p)
+		if b.Len()+len(row) > maxNarrative {
+			omitted++
+			continue
+		}
+		b.WriteString(row)
+	}
+	if omitted > 0 {
+		fmt.Fprintf(&b, "\n_%d more not listed._\n", omitted)
+	}
+	b.WriteString("\n</details>\n\n")
+	return b.String()
 }
 
 // fileSummarySection is one row per file the agent described. It is collapsed

@@ -402,9 +402,10 @@ func Run(opts Options) (*Result, error) {
 	}
 	if review != nil {
 		res.Report.Findings = append(res.Report.Findings, review.CommentFindings()...)
-		if review.Overview != "" || len(review.Files) > 0 {
+		if review.Overview != "" || len(review.Files) > 0 || review.HeldBack != nil {
 			res.Report.Agent = &findings.AgentReview{Overview: review.Overview, Recap: review.Recap,
-				RecapSince: review.RecapSince, RecapFiles: review.RecapFiles, Files: review.Files, Note: review.Note}
+				RecapSince: review.RecapSince, RecapFiles: review.RecapFiles, Files: review.Files, Note: review.Note,
+				HeldBack: review.HeldBack}
 		}
 		if u, ok := reviewVerifyUnknown(review); ok {
 			res.Report.Unknowns = append(res.Report.Unknowns, u)
@@ -1090,9 +1091,10 @@ func ReapplyReview(res *Result, rev *findings.Review) {
 	res.Report.Unknowns = dropReviewUnknowns(res.Report.Unknowns)
 	if rev != nil {
 		res.Report.Findings = append(res.Report.Findings, rev.CommentFindings()...)
-		if rev.Overview != "" || len(rev.Files) > 0 {
+		if rev.Overview != "" || len(rev.Files) > 0 || rev.HeldBack != nil {
 			res.Report.Agent = &findings.AgentReview{Overview: rev.Overview, Recap: rev.Recap,
-				RecapSince: rev.RecapSince, RecapFiles: rev.RecapFiles, Files: rev.Files, Note: rev.Note}
+				RecapSince: rev.RecapSince, RecapFiles: rev.RecapFiles, Files: rev.Files, Note: rev.Note,
+				HeldBack: rev.HeldBack}
 		}
 		if u, ok := reviewVerifyUnknown(rev); ok {
 			res.Report.Unknowns = append(res.Report.Unknowns, u)

@@ -127,7 +127,7 @@ const nudgeText = "Answer with the tool calls this pass asks for, not in prose. 
 // completion, the shape the rest of the review reads.
 func converse(ctx context.Context, opts Options, res *Result, conv conversation) (completion, error) {
 	stage := res.stage()
-	col := newCollector(stage, res.expect, res.deferred, opts.Look, res.recaps())
+	col := newCollector(stage, res.expect, res.deferred, opts.Look, res.recaps()).withDiffs(res.diffs)
 	var c completion
 	var total Usage
 	var thinking strings.Builder
@@ -215,7 +215,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 				case CallContext:
 					opts.Debug(fmt.Sprintf("%s turn %d: get_context %s", stage, turn, string(call.Input)))
 				default:
-					if isLookCall(call.Name) {
+					if call.Name == CallDiff || isLookCall(call.Name) {
 						opts.Debug(fmt.Sprintf("%s turn %d: %s %s", stage, turn, call.Name, string(call.Input)))
 					}
 				}
@@ -272,7 +272,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 				// constrained and says what is wrong when it cannot.
 				c.text = r.text
 				c.usage, c.thinking, c.rejected, c.fetched, c.looked = total, thinking.String(), col.rejected, col.fetched, col.looked
-				c.lookups, c.refusals = col.lookups, col.refusals
+				c.lookups, c.refusals, c.diffsRead = col.lookups, col.refusals, col.diffsRead
 				return c, nil
 			}
 			c.stopped = StoppedNoCalls
@@ -298,7 +298,7 @@ func converse(ctx context.Context, opts Options, res *Result, conv conversation)
 		conv.answer(r, results)
 	}
 	c.usage, c.thinking, c.rejected, c.fetched, c.looked = total, thinking.String(), col.rejected, col.fetched, col.looked
-	c.lookups, c.refusals = col.lookups, col.refusals
+	c.lookups, c.refusals, c.diffsRead = col.lookups, col.refusals, col.diffsRead
 	if !c.refused && !c.truncated {
 		c.text, c.fromTool = col.body(), true
 	}
@@ -406,6 +406,7 @@ func (r *Result) foldCalls(other *Result) {
 	r.Fetched += other.Fetched
 	r.Looked += other.Looked
 	r.Lookups = append(r.Lookups, other.Lookups...)
+	r.noteDiffsRead(other.heldRead())
 	r.Refusals = append(r.Refusals, other.Refusals...)
 	r.Stopped = append(r.Stopped, other.Stopped...)
 	r.Thinking = append(r.Thinking, other.Thinking...)

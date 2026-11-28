@@ -160,6 +160,11 @@ func callTools(describes, recaps, pulls bool, looks []string) []callTool {
 				"type": "array", "items": map[string]any{"type": "string"},
 				"description": "Ids from the index, for example [\"ctx3\", \"ctx7\"].",
 			}}, "ids")},
+		{CallDiff, "Return one changed file's diff, by path, for a file the prompt lists as held back. " +
+			"It comes back as the prompt would have shown it. Use the path exactly as the list gives it.",
+			flatObject(map[string]any{
+				"path": map[string]any{"type": "string", "description": "path of a held-back file, from the list"},
+			}, "path")},
 		{CallGrep, "Search the repository for a regular expression, to check a claim before you file it. " +
 			"Returns matching lines with their file and line number. It searches this repository and nothing else, " +
 			"so a dependency's own source will not be found. It matches text rather than types, so a hit may be a " +
@@ -223,6 +228,9 @@ func callTools(describes, recaps, pulls bool, looks []string) []callTool {
 		if !slices.Contains(looks, name) {
 			drop[name] = true
 		}
+	}
+	if !slices.Contains(looks, CallDiff) {
+		drop[CallDiff] = true
 	}
 	out := all[:0]
 	for _, t := range all {
@@ -309,6 +317,9 @@ func callsFor(stage string, recaps, pulls bool, looks []string) []string {
 		calls = append(calls, CallContext)
 	}
 	if stage == StageFindings || stage == StageReview || stage == StageSynopsis {
+		if slices.Contains(looks, CallDiff) {
+			calls = append(calls, CallDiff)
+		}
 		for _, name := range LookCalls {
 			if slices.Contains(looks, name) {
 				calls = append(calls, name)
@@ -350,7 +361,7 @@ func callsBlock(stage string, recaps, deferred bool, looks []string) string {
 	}
 	return "\n\n## How to answer\n\nAnswer by calling the tools. Every call is answered: \"Recorded.\" when it is " +
 		"taken, or what is wrong with it when it is not. Call done when this pass is finished.\n\n" +
-		"This pass takes " + takes + "." + readsContext(stage, deferred) + checksTree(stage, looks) + "\n"
+		"This pass takes " + takes + "." + readsContext(stage, deferred) + readsDiffs(stage, looks) + checksTree(stage, looks) + "\n"
 }
 
 // checksTree is the calls block's line about searching, on the passes that may.
@@ -362,6 +373,9 @@ func callsBlock(stage string, recaps, deferred bool, looks []string) string {
 // pass.
 func checksTree(stage string, looks []string) string {
 	if len(looks) == 0 || (stage != StageFindings && stage != StageReview && stage != StageSynopsis) {
+		return ""
+	}
+	if len(looks) == 1 && looks[0] == CallDiff {
 		return ""
 	}
 	var parts []string
@@ -404,6 +418,16 @@ func joinWithAnd(parts []string) string {
 		return parts[0] + " and " + parts[1]
 	}
 	return strings.Join(parts[:len(parts)-1], ", ") + ", and " + parts[len(parts)-1]
+}
+
+// readsDiffs is the calls block's line about held-back diffs, when some are.
+func readsDiffs(stage string, looks []string) string {
+	if !slices.Contains(looks, CallDiff) ||
+		(stage != StageFindings && stage != StageReview && stage != StageSynopsis) {
+		return ""
+	}
+	return " The files listed as held back have no diff in the prompt; get_diff returns one by path, " +
+		"and a file you did not read is a file you did not review."
 }
 
 // readsContext is the calls block's line about held-back context, when there
@@ -452,6 +476,10 @@ type collector struct {
 	// how many entries the pass has asked for.
 	deferred []deferredEntry
 	fetched  int
+	// diffs is the held-back diffs get_diff reads from, and diffsRead the
+	// paths it has served, in the order first asked.
+	diffs     map[string]string
+	diffsRead []string
 	// look answers the lookups, and is nil on a run that has none.
 	look Looker
 	// looked counts the lookups a pass made, for the progress line
@@ -491,7 +519,7 @@ type collector struct {
 // only the calls callsFor gives it, and a ruling pass takes no lookups.
 func (c *collector) canLook() bool {
 	for _, name := range callsFor(c.stage, c.recaps, len(c.deferred) > 0, c.lookCalls) {
-		if name == CallContext || isLookCall(name) {
+		if name == CallContext || name == CallDiff || isLookCall(name) {
 			return true
 		}
 	}
@@ -500,6 +528,20 @@ func (c *collector) canLook() bool {
 
 // closeLookups ends the pass's lookups. See lookupsClosed.
 func (c *collector) closeLookups() { c.lookupsClosed = true }
+
+// withDiffs gives the collector the held-back diffs to serve and puts get_diff
+// among the calls it takes, as the catalogue that went out does.
+func (c *collector) withDiffs(diffs map[string]string) *collector {
+	if len(diffs) == 0 {
+		return c
+	}
+	c.diffs = diffs
+	c.lookCalls = append([]string{CallDiff}, c.lookCalls...)
+	for _, t := range callTools(true, true, len(c.deferred) > 0, c.lookCalls) {
+		c.schemas[t.Name] = t.Schema
+	}
+	return c
+}
 
 func newCollector(stage string, expect passExpect, deferred []deferredEntry, look Looker, recaps bool) *collector {
 	looks := lookCallsFor(look)
@@ -591,7 +633,7 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 				content: "Not recorded: " + why + ". Send this call again with that fixed."})
 			continue
 		}
-		if c.lookupsClosed && (call.Name == CallContext || isLookCall(call.Name)) {
+		if c.lookupsClosed && (call.Name == CallContext || call.Name == CallDiff || isLookCall(call.Name)) {
 			// Not a malformed call and not counted as rejected: a done in
 			// the same reply must still end the pass. It is only too late
 			// to look.
@@ -608,6 +650,21 @@ func (c *collector) take(calls []toolCall) (results []callResult, done bool, rej
 			_ = json.Unmarshal(call.Input, &asked)
 			c.fetched += len(asked.IDs)
 			results = append(results, callResult{id: call.ID, content: fetchDeferred(c.deferred, call.Input)})
+			continue
+		}
+		if call.Name == CallDiff {
+			// Answered with the held-back diff. It counts as a lookup, so it
+			// spends the same turns and the same allowance as the rest.
+			c.looked++
+			answer, path := fetchDiff(c.diffs, call.Input)
+			if path != "" && !contains(c.diffsRead, path) {
+				c.diffsRead = append(c.diffsRead, path)
+			}
+			c.lookups = append(c.lookups, Lookup{
+				Tool: call.Name, Input: boundedArgs(raw), Bytes: len(answer),
+				Empty: path == "",
+			})
+			results = append(results, callResult{id: call.ID, content: answer})
 			continue
 		}
 		if isLookCall(call.Name) {

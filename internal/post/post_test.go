@@ -1308,3 +1308,35 @@ func TestPostedFindings_ReadsEveryMarkerWithItsHead(t *testing.T) {
 		t.Fatalf("no markers should read as nil, got %q", got)
 	}
 }
+
+// A review made with some diffs held back says how many, how many the reviewer
+// read, and names the ones it never read.
+func TestBuildBodySaysWhichDiffsWereHeldBack(t *testing.T) {
+	rep := sampleReport()
+	rep.Agent = &findings.AgentReview{
+		Overview: "Adds a feed.",
+		HeldBack: &findings.HeldBack{
+			Total: 5,
+			Held:  []string{"a_test.go", "b_test.go", "c_test.go"},
+			Read:  []string{"b_test.go"},
+		},
+	}
+	body := Build(rep, prTarget(), "", nil).Body
+	for _, want := range []string{
+		"3 of 5 files' diffs were held back; the reviewer read 1 of them with get_diff.",
+		"Held-back files the reviewer did not read (2)",
+		"- `a_test.go`",
+		"- `c_test.go`",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "- `b_test.go`") {
+		t.Error("a file the reviewer read is not listed as unread")
+	}
+	rep.Agent.HeldBack = nil
+	if strings.Contains(Build(rep, prTarget(), "", nil).Body, "held back") {
+		t.Error("a review with nothing held back says nothing about it")
+	}
+}

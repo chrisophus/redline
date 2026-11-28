@@ -485,6 +485,9 @@ func cmdReview(o opts) error {
 	// rather than merging the unchecked findings as if the pass had run.
 	reviewed.VerifyFailed = out.VerifyFailed
 	reviewed.Incomplete = out.Stopped
+	if h := out.Held; h != nil {
+		reviewed.HeldBack = &findings.HeldBack{Total: h.Total, Held: h.Held, Read: h.Read}
+	}
 	// The partition a split review drew, so --reuse-synopsis can stand in
 	// for a staged run's describing call too. Empty on a run that judged
 	// the change in one call.
