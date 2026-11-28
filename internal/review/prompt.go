@@ -1087,6 +1087,40 @@ func (in Input) absentSection() string {
 	return b.String()
 }
 
+// diffBreakdown says what the diff section is made of, for the refusal that
+// names it. The section is priced from what is sent, and a small file is sent
+// whole rather than as its diff, so it can cost several times what the diff
+// of the change weighs. Without the breakdown the number looks overstated.
+func (in Input) diffBreakdown() string {
+	if in.Change == nil {
+		return "no files"
+	}
+	shown := in.ShownFiles()
+	var files, tests, whole, held int
+	for _, f := range in.Change.Files {
+		if !shown[f.Path] {
+			if f.Diff != "" || f.Head != "" {
+				held++
+			}
+			continue
+		}
+		files++
+		if change.IsTestCode(f.Path) {
+			tests++
+		}
+		if f.Head != "" {
+			whole++
+		}
+	}
+	s := fmt.Sprintf("the diff section is %d tokens over %d file(s), %d of them test files, "+
+		"%d sent whole rather than as a diff",
+		envelope.EstimateTokens(in.diffSection()), files, tests, whole)
+	if held > 0 {
+		s += fmt.Sprintf("; %d test file(s) are held back and not counted", held)
+	}
+	return s
+}
+
 func (in Input) diffSection() string {
 	return in.diffSectionWith(nil)
 }

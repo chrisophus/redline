@@ -381,6 +381,35 @@ func TestAnOverCeilingRequestIsRefusedRatherThanSent(t *testing.T) {
 	}
 }
 
+// The refusal says what the diff is made of. A small file is sent whole, so
+// the diff section can weigh several times the raw diff, and a bare token
+// count reads as a miscount.
+func TestOverCeilingRefusalNamesWhatTheDiffIsMadeOf(t *testing.T) {
+	whole := strings.Repeat("line\n", 400)
+	in := Input{
+		Change: &change.Set{Files: []change.File{
+			{Path: "a.go", Diff: "+x\n", Head: whole},
+			{Path: "b.go", Diff: "+x\n", Head: whole},
+			{Path: "a_test.go", Diff: "+x\n", Head: whole, Status: "modified"},
+		}},
+		ShowModifiedTests: true,
+	}
+	_, err := Run(context.Background(), in, Options{Ceiling: 1000, MaxCostUSD: 100})
+	if err == nil {
+		t.Fatal("expected a refusal")
+	}
+	for _, want := range []string{"over 3 file(s)", "1 of them test files", "3 sent whole"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal should say %q, got %v", want, err)
+		}
+	}
+	in.ShowModifiedTests = false
+	_, err = Run(context.Background(), in, Options{Ceiling: 1000, MaxCostUSD: 100})
+	if err == nil || !strings.Contains(err.Error(), "1 test file(s) are held back") {
+		t.Errorf("held-back tests should be named, got %v", err)
+	}
+}
+
 // A provider's fragment is sent on every call, so it is priced like any
 // other input. It used to be assembled at call time and counted nowhere,
 // which understated both the ceiling check and the cost estimate.
