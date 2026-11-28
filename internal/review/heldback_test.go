@@ -187,3 +187,14 @@ func TestGetDiffAnswers(t *testing.T) {
 		t.Errorf("get_diff should count as a lookup: rejected=%d looked=%d read=%v", rejected, col.looked, col.diffsRead)
 	}
 }
+
+func TestCapDiffAnswer(t *testing.T) {
+	if got := capDiffAnswer("short\n"); got != "short\n" {
+		t.Errorf("a short diff should pass through, got %q", got)
+	}
+	long := strings.Repeat("+line of added code\n", 5000)
+	got := capDiffAnswer(long)
+	if len(got) > maxDiffAnswerBytes+300 || !strings.Contains(got, "the diff was cut here") {
+		t.Errorf("long diff should be cut with a note, got %d bytes", len(got))
+	}
+}

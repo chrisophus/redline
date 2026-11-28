@@ -183,9 +183,29 @@ func (in Input) heldDiffs() map[string]string {
 	}
 	out := make(map[string]string, len(files))
 	for _, f := range files {
-		out[f.Path] = fileSection(f, nil)
+		out[f.Path] = capDiffAnswer(fileSection(f, nil))
 	}
 	return out
+}
+
+// maxDiffAnswerBytes bounds what one get_diff call returns. The answer rides
+// in the conversation and is resent every turn, so an unbounded one could
+// undo the ceiling the hold-back exists to keep. About 20k tokens at the
+// estimate's ratio.
+const maxDiffAnswerBytes = 46_000
+
+// capDiffAnswer cuts a diff longer than maxDiffAnswerBytes at a line break and
+// says how to read the rest.
+func capDiffAnswer(s string) string {
+	if len(s) <= maxDiffAnswerBytes {
+		return s
+	}
+	cut := strings.LastIndex(s[:maxDiffAnswerBytes], "\n")
+	if cut <= 0 {
+		cut = maxDiffAnswerBytes
+	}
+	return s[:cut] + fmt.Sprintf("\n… the diff was cut here after %d of %d bytes to keep the request "+
+		"small. Use %s to read the rest of the file.\n", cut, len(s), CallRead)
 }
 
 // heldSummary is the accounting that goes on the result, nil when nothing was
