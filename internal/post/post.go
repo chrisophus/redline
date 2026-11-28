@@ -1265,7 +1265,7 @@ func heldBackSection(rep *findings.Report) string {
 	if len(unread) == 0 {
 		return b.String()
 	}
-	fmt.Fprintf(&b, "<details>\n<summary>Held-back files the reviewer did not read (%d)</summary>\n\n", len(unread))
+	fmt.Fprintf(&b, "<details>\n<summary>Held-back files the reviewer did not read in full (%d)</summary>\n\n", len(unread))
 	var omitted int
 	for _, p := range unread {
 		row := fmt.Sprintf("- `%s`\n", p)

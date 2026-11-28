@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/chrisophus/redline/internal/change"
 	"github.com/chrisophus/redline/internal/envelope"
@@ -189,12 +190,37 @@ func TestGetDiffAnswers(t *testing.T) {
 }
 
 func TestCapDiffAnswer(t *testing.T) {
-	if got := capDiffAnswer("short\n"); got != "short\n" {
+	if got := capDiffAnswer("short\n", true); got != "short\n" {
 		t.Errorf("a short diff should pass through, got %q", got)
 	}
 	long := strings.Repeat("+line of added code\n", 5000)
-	got := capDiffAnswer(long)
-	if len(got) > maxDiffAnswerBytes+300 || !strings.Contains(got, "the diff was cut here") {
-		t.Errorf("long diff should be cut with a note, got %d bytes", len(got))
+	got := capDiffAnswer(long, true)
+	if len(got) > maxDiffAnswerBytes+300 || !strings.Contains(got, "the diff was cut here") ||
+		!strings.Contains(got, CallRead) {
+		t.Errorf("long diff should be cut with a note naming %s, got %d bytes", CallRead, len(got))
+	}
+	got = capDiffAnswer(long, false)
+	if strings.Contains(got, CallRead) || !strings.HasSuffix(got, uncontinuedNote+"\n") {
+		t.Errorf("without %s the note should say the rest is not available, got %q", CallRead, got[len(got)-120:])
+	}
+}
+
+func TestCapDiffAnswerKeepsCharacters(t *testing.T) {
+	// No line break at all, and a three-byte character across the cut.
+	long := strings.Repeat("é", maxDiffAnswerBytes)
+	got := capDiffAnswer(long, true)
+	if !utf8.ValidString(got) {
+		t.Error("the cut split a multibyte character")
+	}
+}
+
+func TestFetchDiffUncontinuedIsNotRead(t *testing.T) {
+	long := strings.Repeat("+line of added code\n", 5000)
+	diffs := map[string]string{"a.go": capDiffAnswer(long, false), "b.go": capDiffAnswer(long, true)}
+	if _, p := fetchDiff(diffs, []byte(`{"path":"a.go"}`)); p != "" {
+		t.Errorf("a diff cut with no way to read on should not count as read, got %q", p)
+	}
+	if _, p := fetchDiff(diffs, []byte(`{"path":"b.go"}`)); p != "b.go" {
+		t.Errorf("a diff that can be read on should count as read, got %q", p)
 	}
 }

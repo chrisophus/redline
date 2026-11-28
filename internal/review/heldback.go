@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/chrisophus/redline/internal/change"
 )
@@ -93,7 +94,7 @@ func holdBack(in Input, opts Options) (Input, Options) {
 	tight := opts
 	tight.DeferContext = true
 	tight.heldDiffs = true
-	if held.fixedFor(tight).fixed > tight.Ceiling {
+	if held.priced(tight).est > tight.Ceiling {
 		return in, opts
 	}
 	said := in.intentText()
@@ -110,7 +111,7 @@ func holdBack(in Input, opts Options) (Input, Options) {
 	})
 	for _, f := range order {
 		delete(held.held, f.Path)
-		if held.fixedFor(tight).fixed > tight.Ceiling {
+		if held.priced(tight).est > tight.Ceiling {
 			held.held[f.Path] = true
 		}
 	}
@@ -176,14 +177,14 @@ func (in Input) heldList() string {
 
 // heldDiffs is what get_diff answers from: each held file's diff, rendered as
 // the prompt would have rendered it.
-func (in Input) heldDiffs() map[string]string {
+func (in Input) heldDiffs(canRead bool) map[string]string {
 	files := in.heldFiles()
 	if len(files) == 0 {
 		return nil
 	}
 	out := make(map[string]string, len(files))
 	for _, f := range files {
-		out[f.Path] = capDiffAnswer(fileSection(f, nil))
+		out[f.Path] = capDiffAnswer(fileSection(f, nil), canRead)
 	}
 	return out
 }
@@ -194,18 +195,31 @@ func (in Input) heldDiffs() map[string]string {
 // estimate's ratio.
 const maxDiffAnswerBytes = 46_000
 
-// capDiffAnswer cuts a diff longer than maxDiffAnswerBytes at a line break and
-// says how to read the rest.
-func capDiffAnswer(s string) string {
+// uncontinuedNote ends an answer that was cut where the reviewer has no way to
+// read the rest.
+const uncontinuedNote = "The rest of this diff is not available in this review."
+
+// capDiffAnswer cuts a diff longer than maxDiffAnswerBytes at a line break, or
+// at a character boundary when there is none, and says how to read the rest. The
+// rest can only be read with read_lines, so where that is not offered the note
+// says the rest is not available.
+func capDiffAnswer(s string, canRead bool) string {
 	if len(s) <= maxDiffAnswerBytes {
 		return s
 	}
 	cut := strings.LastIndex(s[:maxDiffAnswerBytes], "\n")
 	if cut <= 0 {
 		cut = maxDiffAnswerBytes
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+	}
+	how := uncontinuedNote
+	if canRead {
+		how = fmt.Sprintf("Use %s to read the rest of the file.", CallRead)
 	}
 	return s[:cut] + fmt.Sprintf("\n… the diff was cut here after %d of %d bytes to keep the request "+
-		"small. Use %s to read the rest of the file.\n", cut, len(s), CallRead)
+		"small. %s\n", cut, len(s), how)
 }
 
 // heldSummary is the accounting that goes on the result, nil when nothing was
@@ -228,8 +242,9 @@ func (in Input) heldSummary() *HeldDiffs {
 	return h
 }
 
-// fetchDiff answers a get_diff call and says which held path it served, empty
-// when it served none.
+// fetchDiff answers a get_diff call and says which held path it read in full,
+// or in part with a way to read on. It is empty when it served none, and for a
+// diff that was cut with no way to read the rest.
 func fetchDiff(diffs map[string]string, input json.RawMessage) (answer, path string) {
 	var in struct {
 		Path string `json:"path"`
@@ -240,6 +255,10 @@ func fetchDiff(diffs map[string]string, input json.RawMessage) (answer, path str
 		return "No diffs are held back in this review; every diff is in the prompt.", ""
 	}
 	if d, ok := diffs[p]; ok {
+		if strings.HasSuffix(d, uncontinuedNote+"\n") {
+			// Cut with no way to read on: not counted as read.
+			return d, ""
+		}
 		return d, p
 	}
 	return fmt.Sprintf("%s: no held-back diff for that path. Use a path from the held-back list "+

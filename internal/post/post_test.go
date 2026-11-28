@@ -1324,7 +1324,7 @@ func TestBuildBodySaysWhichDiffsWereHeldBack(t *testing.T) {
 	body := Build(rep, prTarget(), "", nil).Body
 	for _, want := range []string{
 		"3 of 5 files' diffs were held back; the reviewer read 1 of them with get_diff.",
-		"Held-back files the reviewer did not read (2)",
+		"Held-back files the reviewer did not read in full (2)",
 		"- `a_test.go`",
 		"- `c_test.go`",
 	} {

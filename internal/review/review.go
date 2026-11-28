@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -1080,6 +1081,50 @@ func (in Input) fixedFor(opts Options) fixedParts {
 	return fixedParts{system: system, tail: tail, note: note, describe: describe, calls: calls, fixed: fixed}
 }
 
+// pricedPrompt is a prompt built for a set of options and what it costs.
+type pricedPrompt struct {
+	fp       fixedParts
+	room     int
+	budget   envelope.Budgeted
+	deferred []deferredEntry
+	prompt   string
+	est      int
+}
+
+// priced builds the prompt the way Assemble does and prices the whole request,
+// so holdBack can test a candidate against the same number the ceiling is
+// checked with, deferred-context indexes included.
+func (in Input) priced(opts Options) pricedPrompt {
+	fp := in.fixedFor(opts)
+	scoped := opts.CohortContext && opts.Shape() == PipelineStaged
+	room := opts.Ceiling - fp.fixed
+	if room < 0 {
+		room = 0
+	}
+	if scoped {
+		room = 0
+	}
+	budget := envelope.FitAllFilter(in.Envelopes, room, in.shownLines(), in.contextFilter())
+	prompt := in.build(budget)
+	var deferred []deferredEntry
+	if opts.DeferContext {
+		deferred = deferEntries(in, budget.Kept)
+		prompt = in.buildDeferred(deferred)
+	}
+	// The catalogue is counted here for the reason ruleRequest counts it
+	// there: it rides on every call, so an estimate without it is short by
+	// the whole tool array against a request that carries it. The ruling was
+	// the only request that had it, so every quoted price understated a
+	// review by between 2800 and 4400 tokens depending on how many lookups
+	// were offered, and promptParts had been listing a `tools` line the total
+	// it sits beside did not include.
+	est := toolsTokens(opts.judgingCatalogueDescribes(), opts.recapable(), opts.DeferContext, opts.looks()) +
+		envelope.EstimateTokens(fp.system) + envelope.EstimateTokens(prompt) +
+		envelope.EstimateTokens(fp.tail) + envelope.EstimateTokens(fp.describe) + envelope.EstimateTokens(fp.note) +
+		envelope.EstimateTokens(fp.calls)
+	return pricedPrompt{fp: fp, room: room, budget: budget, deferred: deferred, prompt: prompt, est: est}
+}
+
 // Assemble builds the prompt and prices it without calling anything. It is
 // the whole of --dry-run, and it is what the eval freezes.
 //
@@ -1102,35 +1147,11 @@ func (in Input) fixedFor(opts Options) fixedParts {
 func Assemble(in Input, opts Options) (*Result, error) {
 	opts = opts.withDefaults()
 	in, opts = holdBack(in, opts)
-	fp := in.fixedFor(opts)
-	system, tail, note, describe, calls, fixed := fp.system, fp.tail, fp.note, fp.describe, fp.calls, fp.fixed
-	scoped := opts.CohortContext && opts.Shape() == PipelineStaged
-	room := opts.Ceiling - fixed
-	if room < 0 {
-		room = 0
-	}
-	if scoped {
-		room = 0
-	}
-	budget := envelope.FitAllFilter(in.Envelopes, room, in.shownLines(), in.contextFilter())
-	prompt := in.build(budget)
-	var deferred []deferredEntry
-	if opts.DeferContext {
-		deferred = deferEntries(in, budget.Kept)
-		prompt = in.buildDeferred(deferred)
-	}
+	pr := in.priced(opts)
+	fp, room, budget, deferred, prompt := pr.fp, pr.room, pr.budget, pr.deferred, pr.prompt
+	system, tail, note, describe, fixed := fp.system, fp.tail, fp.note, fp.describe, fp.fixed
 	parts := promptParts(in, opts, system, budget)
-	// The catalogue is counted here for the reason ruleRequest counts it
-	// there: it rides on every call, so an estimate without it is short by
-	// the whole tool array against a request that carries it. The ruling was
-	// the only request that had it, so every quoted price understated a
-	// review by between 2800 and 4400 tokens depending on how many lookups
-	// were offered, and promptParts had been listing a `tools` line the total
-	// it sits beside did not include.
-	est := toolsTokens(opts.judgingCatalogueDescribes(), opts.recapable(), opts.DeferContext, opts.looks()) +
-		envelope.EstimateTokens(system) + envelope.EstimateTokens(prompt) +
-		envelope.EstimateTokens(tail) + envelope.EstimateTokens(describe) + envelope.EstimateTokens(note) +
-		envelope.EstimateTokens(calls)
+	est := pr.est
 	expected := opts.ExpectedOutput
 	if expected <= 0 {
 		expected = ExpectedOutputTokens
@@ -1157,7 +1178,7 @@ func Assemble(in Input, opts Options) (*Result, error) {
 		Budget:             budget,
 		deferred:           deferred,
 		lookCalls:          opts.looks(),
-		diffs:              in.heldDiffs(),
+		diffs:              in.heldDiffs(slices.Contains(opts.looks(), CallRead)),
 		Held:               in.heldSummary(),
 		catalogueDescribes: opts.judgingCatalogueDescribes(),
 		catalogueRecaps:    opts.recapable(),
